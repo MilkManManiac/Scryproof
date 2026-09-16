@@ -136,9 +136,29 @@ export function hashIp(ip: string): string {
   return createHash('sha256').update(IP_SALT).update(ip).digest('hex').slice(0, 16);
 }
 
-/** Deterministic accent colour per user, so identity reads at a glance. */
+/**
+ * Deterministic accent colour per user, so identity reads at a glance.
+ *
+ * A fixed palette rather than a hue off the full colour wheel. Hashing to any
+ * hue produces neons that fight the interface and, next to each other, read as
+ * randomly generated, which is exactly what they are. These are chosen to sit
+ * with the cold surfaces and the one warm accent, and every one of them is
+ * light enough for dark text to stay readable on it.
+ */
+const ACCENTS = [
+  '#d8a05a',
+  '#c98b6b',
+  '#bd7a82',
+  '#9a86c4',
+  '#7fa3cc',
+  '#6fb2a8',
+  '#8fb072',
+  '#c4a95e',
+  '#a3919f',
+  '#cf8f5e',
+] as const;
+
 export function accentForId(id: string): string {
   const digest = createHash('sha256').update(id).digest();
-  const hue = digest.readUInt16BE(0) % 360;
-  return `hsl(${hue} 62% 58%)`;
+  return ACCENTS[digest.readUInt16BE(0) % ACCENTS.length]!;
 }

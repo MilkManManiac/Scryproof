@@ -1,0 +1,215 @@
+/**
+ * The message box.
+ *
+ * It disables itself when the server says the member cannot post, but that is
+ * a courtesy only: the send endpoint checks SEND_MESSAGES again and slowmode
+ * again, and a client that posts anyway simply gets a 403.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import { LIMITS, Permission } from '@gooffline/shared';
+import type { Attachment, Channel } from '@gooffline/shared';
+
+import { ApiError, api } from '../lib/api';
+import { can } from '../lib/usePermissions';
+import { useStore } from '../state/store';
+
+export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
+  const { sendTyping } = useStore();
+  const [text, setText] = useState('');
+  const [pending, setPending] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
+
+  const mayPost = can(mask, Permission.SEND_MESSAGES);
+  const mayAttach = can(mask, Permission.ATTACH_FILES);
+
+  // A fresh draft per channel, and focus lands where the typing goes.
+  useEffect(() => {
+    setText('');
+    setPending([]);
+    setError(null);
+    setCooldown(0);
+    input.current?.focus();
+  }, [channel.id]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  function grow() {
+    const element = input.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, 340)}px`;
+  }
+
+  async function send() {
+    const body = text.trim();
+    if ((!body && pending.length === 0) || cooldown > 0) return;
+
+    setText('');
+    setPending([]);
+    setError(null);
+    requestAnimationFrame(grow);
+
+    try {
+      await api.messages.send(channel.id, {
+        content: body || undefined,
+        attachmentIds: pending.length > 0 ? pending.map((file) => file.id) : undefined,
+      });
+    } catch (problem) {
+      // Put the draft back rather than losing what someone typed.
+      setText(body);
+      setPending(pending);
+      if (problem instanceof ApiError) {
+        setError(problem.message);
+        if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
+      } else {
+        setError('Message did not send.');
+      }
+    }
+  }
+
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0 || !mayAttach) return;
+    if (pending.length + files.length > LIMITS.attachmentsPerMessage) {
+      setError(`Up to ${LIMITS.attachmentsPerMessage} files per message.`);
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        const attachment = await api.upload(channel.id, file);
+        setPending((prev) => [...prev, attachment]);
+      }
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'Upload failed.');
+    } finally {
+      setUploading(false);
+      if (filePicker.current) filePicker.current.value = '';
+    }
+  }
+
+  const slowmode = channel.slowmodeSeconds ?? 0;
+
+  return (
+    <div className="composer">
+      {error ? (
+        <div className="error" style={{ marginBottom: 8 }}>
+          {error}
+        </div>
+      ) : null}
+
+      {pending.length > 0 ? (
+        <div className="composer-pending">
+          {pending.map((file) => (
+            <span className="pending-file" key={file.id}>
+              {file.filename}
+              <button
+                type="button"
+                className="icon-button"
+                style={{ width: 18, height: 18 }}
+                title="Remove"
+                onClick={() => setPending((prev) => prev.filter((entry) => entry.id !== file.id))}
+              >
+                &#10005;
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div
+        className={mayPost ? 'composer-box' : 'composer-box denied'}
+        onDragOver={(event) => {
+          if (mayAttach) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!mayAttach) return;
+          event.preventDefault();
+          void upload(event.dataTransfer.files);
+        }}
+      >
+        {mayAttach ? (
+          <>
+            <input
+              ref={filePicker}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => void upload(event.target.files)}
+            />
+            <button
+              type="button"
+              className="icon-button"
+              title="Attach a file"
+              disabled={uploading}
+              onClick={() => filePicker.current?.click()}
+            >
+              {uploading ? <span className="spinner" /> : '+'}
+            </button>
+          </>
+        ) : null}
+
+        <textarea
+          ref={input}
+          className="composer-input"
+          rows={1}
+          value={text}
+          disabled={!mayPost}
+          maxLength={LIMITS.message.max}
+          placeholder={
+            mayPost
+              ? cooldown > 0
+                ? `Slowmode. ${cooldown}s`
+                : `Message #${channel.name}`
+              : 'You do not have permission to post here.'
+          }
+          onChange={(event) => {
+            setText(event.target.value);
+            grow();
+            if (event.target.value.trim()) sendTyping(channel.id);
+          }}
+          onPaste={(event) => {
+            const files = event.clipboardData?.files;
+            if (mayAttach && files && files.length > 0) {
+              event.preventDefault();
+              void upload(files);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void send();
+            }
+          }}
+        />
+
+        <button
+          type="button"
+          className="icon-button"
+          title="Send"
+          disabled={!mayPost || cooldown > 0}
+          onClick={() => void send()}
+        >
+          &#10148;
+        </button>
+      </div>
+
+      <div className="composer-hint">
+        {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
+        {text.length > LIMITS.message.max - 400
+          ? `${LIMITS.message.max - text.length} characters left`
+          : ''}
+      </div>
+    </div>
+  );
+}

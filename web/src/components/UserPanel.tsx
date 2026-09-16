@@ -1,0 +1,127 @@
+/**
+ * Who you are, and the controls you reach for most: presence, mute, deafen,
+ * sign out.
+ *
+ * Mute and deafen here are the client's own state, sent to the server so other
+ * members see it. Nothing in this panel grants anything; it only reports.
+ */
+
+import { useState } from 'react';
+import type { PresenceStatus } from '@gooffline/shared';
+
+import { useStore } from '../state/store';
+import { Avatar } from './Avatar';
+
+const STATUS_LABEL: Record<PresenceStatus, string> = {
+  online: 'Online',
+  idle: 'Idle',
+  dnd: 'Do not disturb',
+  offline: 'Invisible',
+};
+
+export function UserPanel() {
+  const { state, setPresence, signOut, updateVoice, leaveVoice } = useStore();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const user = state.user;
+  if (!user) return null;
+
+  const myVoice = Object.values(state.voiceStates).find((voice) => voice.userId === user.id);
+  const status = state.presences[user.id] ?? 'online';
+
+  const connectionLabel =
+    state.connection === 'open'
+      ? STATUS_LABEL[status]
+      : state.connection === 'reconnecting'
+        ? 'Reconnecting'
+        : state.connection === 'connecting'
+          ? 'Connecting'
+          : 'Disconnected';
+
+  return (
+    <div className="user-panel" style={{ position: 'relative' }}>
+      <Avatar user={user} small presence={state.connection === 'open' ? status : 'offline'} />
+
+      <button
+        type="button"
+        className="user-panel-identity"
+        style={{ textAlign: 'left' }}
+        onClick={() => setMenuOpen((open) => !open)}
+        title="Change status"
+      >
+        <div className="user-panel-name">{user.displayName}</div>
+        <div className="user-panel-status">{connectionLabel}</div>
+      </button>
+
+      {myVoice ? (
+        <>
+          <button
+            type="button"
+            className={myVoice.selfMute ? 'icon-button danger on' : 'icon-button'}
+            title={myVoice.selfMute ? 'Unmute' : 'Mute'}
+            onClick={() => updateVoice({ selfMute: !myVoice.selfMute })}
+          >
+            {myVoice.selfMute ? '\u{1F507}' : '\u{1F3A4}'}
+          </button>
+          <button
+            type="button"
+            className={myVoice.selfDeaf ? 'icon-button danger on' : 'icon-button'}
+            title={myVoice.selfDeaf ? 'Undeafen' : 'Deafen'}
+            onClick={() => updateVoice({ selfDeaf: !myVoice.selfDeaf })}
+          >
+            {'\u{1F3A7}'}
+          </button>
+          <button
+            type="button"
+            className="icon-button danger"
+            title="Leave voice"
+            onClick={() => leaveVoice()}
+          >
+            &#10005;
+          </button>
+        </>
+      ) : null}
+
+      <button
+        type="button"
+        className="icon-button danger"
+        title="Sign out"
+        onClick={() => void signOut()}
+      >
+        &#9099;
+      </button>
+
+      {menuOpen ? (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 4px)',
+            left: 8,
+            right: 8,
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: 'var(--radius)',
+            padding: 4,
+            zIndex: 30,
+            boxShadow: '0 12px 32px #00000066',
+          }}
+        >
+          {(Object.keys(STATUS_LABEL) as PresenceStatus[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="channel"
+              onClick={() => {
+                setPresence(option);
+                setMenuOpen(false);
+              }}
+            >
+              <i className={`presence-dot ${option}`} style={{ position: 'static', border: 'none' }} />
+              <span className="channel-name">{STATUS_LABEL[option]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}

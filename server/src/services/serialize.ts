@@ -99,6 +99,7 @@ export function channel(row: ChannelRow): Channel {
     name: row.name,
     topic: row.topic,
     position: row.position,
+    slowmodeSeconds: row.slowmodeSeconds,
     encrypted: row.encrypted,
     createdAt: isoRequired(row.createdAt),
   };

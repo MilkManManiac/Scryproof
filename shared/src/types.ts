@@ -72,6 +72,8 @@ export interface Channel {
   name: string;
   topic: string | null;
   position: number;
+  /** Minimum seconds between messages from one member. Zero means no limit. */
+  slowmodeSeconds: number;
   /**
    * Whether message bodies in this channel are end-to-end encrypted. Voice is
    * always encrypted; this flag is about text, and drives Milestone 7.

@@ -72,10 +72,10 @@ export class Gateway {
       this.clearTimers();
       this.socket = null;
 
-      if (this.closedByUs) {
-        this.handlers.onStatus('closed');
-        return;
-      }
+      // A close we asked for is not a disconnection. Reporting one would tell
+      // the app the session had gone, and in React's development double-mount
+      // that means signing the user out a few milliseconds after signing in.
+      if (this.closedByUs) return;
 
       // 4001 means the server no longer recognises this session. Reconnecting
       // would loop forever, so stop and let the app send them to sign in.

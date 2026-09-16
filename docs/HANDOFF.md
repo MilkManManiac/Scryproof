@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-16, end of first build session.
+**Last updated:** 2026-09-16, end of second build session.
 
 ---
 
@@ -11,7 +11,7 @@ Living state. Update this at the end of every working session.
 | Milestone | State |
 |---|---|
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
-| M1 text skeleton | **Server done, client in progress.** |
+| M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Server done and tested.** No settings UI yet. |
 | M3 voice | **Scaffolding done.** Token minting, voice state, permission-gated grants. Needs a real LiveKit server. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
@@ -21,69 +21,99 @@ Living state. Update this at the end of every working session.
 
 **Repo:** https://github.com/MilkManManiac/GoOffline (private)
 
-## What runs right now
+## Run it
 
 ```bash
-npm install                       # once
-bash scripts/dev-restart.sh       # clean database, start API on :8787
-npm run smoke --workspace server   # 47 end-to-end checks, all passing
+npm install                        # once
+bash scripts/dev-restart.sh        # clean database, API on :8787
+npm run seed --workspace server    # four accounts, a server, a real conversation
+npm run dev:web --workspace web    # client on :5173
 ```
 
-The client is not runnable yet. `npm run dev` will start both once the
-remaining components below exist.
+Then open **http://localhost:5173** and sign in as `wes` (or `alex`, `mara`,
+`dev`) with the password the seed prints. Those accounts exist only in the
+local PGlite database, which `dev-restart.sh` wipes.
+
+`npm run dev` at the root starts the API and the client together.
+
+## Screenshots
+
+![The app](shots/app.png)
+
+![Sign in](shots/signin.png)
 
 ## Done this session
 
-**Shared** (`shared/src/`) — permission bitmasks and the full Discord-style
-resolution algorithm, wire types, gateway protocol, validation limits. Used by
-both sides so they cannot drift.
+**The client is finished and working.** `main.tsx`, `App.tsx`, the auth screen,
+server rail, channel sidebar, message list, composer, member list, user panel,
+avatars and dialogs. Creating a server, creating channels, minting an invite,
+joining with one, posting, editing, deleting, uploading, typing indicators,
+presence and voice presence all work against the real API.
 
-**Server** (`server/src/`) — complete. Accounts with argon2id and TOTP,
-sessions in httpOnly cookies, invite-only registration, servers, categories,
-channels, channel permission overwrites, messages with pagination and slowmode,
-attachments, roles with hierarchy, bans, audit log, read states, and a
-permission-filtered WebSocket gateway. Voice token minting is written and gated
-behind LiveKit config.
+**A seed script**, `server/src/scripts/seed.ts`. It drives the public HTTP API
+the way a browser does — register, invite, join, assign a role, post — so if
+the seed succeeds the app genuinely works. It refuses to run on an instance
+that already has accounts.
 
-**Tests** — `server/src/scripts/smoke.ts`, 47 checks over real HTTP including
-every privilege-escalation path. It found a real bug: first-run registration
-passed a null invite code, which was the exact condition that triggered the
-invite-required error, so the first account could never be created.
+**Two real fixes found by looking rather than guessing:**
 
-**Web** (`web/src/`) — design tokens and full stylesheet, API client, gateway
-client with backoff, and the state store. Components not yet written.
+- *The gateway signed you out immediately.* A socket closed by us reported
+  `closed`, which the app reads as "the session is gone". React's development
+  double-mount closes the first socket, so every load bounced straight back to
+  the sign-in screen. A deliberate close now reports nothing.
+- *Avatar colours were hashed to any hue on the wheel*, which produced neons
+  that fought the interface and, side by side, looked randomly generated. They
+  now come from a fixed ten-colour palette chosen against the theme.
+
+**Two small gaps closed:** `slowmodeSeconds` was stored and enforced but never
+sent to the client, so the composer could not show it; it is on the wire type
+now. The root `typecheck` script pointed at a `tsconfig.json` that does not
+exist, so it had never run; it now checks `server` and `web` directly. Both
+pass.
 
 ## Next, in order
 
-1. **Finish the client.** Missing files, all under `web/src/`:
-   - `main.tsx`, `App.tsx`
-   - `screens/AuthScreen.tsx` — sign in, register, first-run, TOTP prompt
-   - `components/ServerRail.tsx`, `ChannelSidebar.tsx`, `MessageList.tsx`,
-     `Composer.tsx`, `MemberList.tsx`, `UserPanel.tsx`
-   - The store and stylesheet already define everything they need.
-2. **Screenshot it and hand it to Wes.** He generates ideas by using the thing,
-   so this matters more than any further backend work.
-3. **M0 infra** once he has a droplet.
-4. **Settings UI** for roles and channel permissions. The API is done and
+1. **Hand it to Wes.** He generates ideas by using the thing. Everything below
+   this line is less valuable than his first ten minutes in it.
+2. **M0 infra** once he has a droplet. Adapt `infra/` to the bonesdeploy shape:
+   systemd units, an nginx site, build and deploy scripts. The Docker Compose
+   file in `infra/` is dead and should go.
+3. **Settings UI** for roles and channel permissions. The API is done and
    tested; this is pure frontend.
+4. **M3 voice for real** — a LiveKit server, then the client side with E2EE on
+   from the first frame, and the connection panel wired to actual stats. The
+   panel is already on screen during a call and honestly reports that media is
+   not connected.
 
 ## Decisions made this session
+
+- **The connection panel ships blank rather than fake.** During a call it shows
+  the signalling state truthfully and prints an em dash for RTT, jitter, loss
+  and TURN until there is a media connection to measure. A panel that invents
+  plausible numbers is worse than no panel.
+- **Message bodies are rendered as text.** No markdown pass,
+  no `dangerouslySetInnerHTML` anywhere in the client, so a message can never
+  become markup in someone else's browser.
+- **Channel permissions are fetched, not recomputed client-side.** The client
+  has the roles but not every overwrite, and a second implementation of the
+  resolution algorithm is how the two drift apart. `useChannelPermissions` asks
+  the server and fails closed on a 404.
+
+## Decisions carried from the previous session
 
 - **No Docker.** His buddy's deploy tool, `bonesdeploy`
   (https://github.com/AlextheYounga/bonesdeploy), is Rust, uses systemd plus
   nginx, isolates each site with its own Linux user and AppArmor, and keeps
-  secrets in a GPG-encrypted file. Wes said he will probably use it. It is a
-  better fit than Docker Compose and removes a dependency. **This supersedes
-  the Docker and Caddy parts of GAMEPLAN.md.** Nginx replaces Caddy.
+  secrets in a GPG-encrypted file. **This supersedes the Docker and Caddy parts
+  of GAMEPLAN.md.** Nginx replaces Caddy.
 - **PGlite for local development.** There is no Docker on the Windows machine.
   PGlite is Postgres compiled to WebAssembly, so a clone runs with zero
   installs and production uses the same SQL and the same migrations.
-- **Dropped `@fastify/static`.** It carries a high-severity path traversal
-  advisory. Nginx serves the built client instead. The production dependency
-  tree now audits clean; the four remaining advisories are dev-only tooling.
+- **Dropped `@fastify/static`** over a high-severity path traversal advisory.
+  Nginx serves the built client. The production dependency tree audits clean.
 - **LiveKit tokens minted by hand** with `node:crypto` rather than the server
-  SDK. A LiveKit token is a plain HS256 JWT, so this is about thirty lines and
-  removes a large dependency from the process holding our data.
+  SDK. About thirty lines, and it keeps a large dependency out of the process
+  holding our data.
 - **UUIDv7 ids**, so ids sort chronologically and message pagination needs no
   extra index.
 
@@ -99,8 +129,9 @@ client with backoff, and the state store. Components not yet written.
   cache and tells clients to refetch rather than computing a delta. Computing
   deltas is where privilege bugs live. Leave it alone.
 - **Never kill every node process on this machine.** Use
-  `scripts/dev-restart.sh`, which stops only the process on the API port. A
-  blanket `taskkill` takes down Wes's other tooling.
+  `scripts/dev-restart.sh`, which stops only the process on the API port.
+- **The seed refuses to run on a used instance.** That is correct, not a bug.
+  Restart first.
 - Windows has no Docker and no Postgres. Do not write instructions assuming
   either.
 
