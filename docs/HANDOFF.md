@@ -75,9 +75,10 @@ pass.
 
 1. **Hand it to Wes.** He generates ideas by using the thing. Everything below
    this line is less valuable than his first ten minutes in it.
-2. **M0 infra** once he has a droplet. Adapt `infra/` to the bonesdeploy shape:
-   systemd units, an nginx site, build and deploy scripts. The Docker Compose
-   file in `infra/` is dead and should go.
+2. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief:
+   `bonesdeploy init` with the custom template, build and prepare scripts,
+   LUKS by hand first, LiveKit and coturn as plain units. Ask Alex whether the
+   generated nginx config passes WebSocket upgrades before starting.
 3. **Settings UI** for roles and channel permissions. The API is done and
    tested; this is pure frontend.
 4. **M3 voice for real** — a LiveKit server, then the client side with E2EE on
@@ -104,8 +105,8 @@ pass.
 - **No Docker.** His buddy's deploy tool, `bonesdeploy`
   (https://github.com/AlextheYounga/bonesdeploy), is Rust, uses systemd plus
   nginx, isolates each site with its own Linux user and AppArmor, and keeps
-  secrets in a GPG-encrypted file. **This supersedes the Docker and Caddy parts
-  of GAMEPLAN.md.** Nginx replaces Caddy.
+  secrets in a GPG-encrypted file. GAMEPLAN.md was rewritten to match on
+  2026-09-16; section 2b is the deploy brief. Nginx replaces Caddy.
 - **PGlite for local development.** There is no Docker on the Windows machine.
   PGlite is Postgres compiled to WebAssembly, so a clone runs with zero
   installs and production uses the same SQL and the same migrations.
@@ -138,5 +139,7 @@ pass.
 ## Open questions for Wes
 
 - Domain name for the instance.
+- For Alex: does bonesdeploy's generated nginx config pass WebSocket upgrades?
+  (GAMEPLAN 2b.) Our gateway needs it.
 - Whether to stand up the droplet now or keep building locally. Local is free
   and nothing is blocked by it yet.

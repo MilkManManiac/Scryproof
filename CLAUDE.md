@@ -10,7 +10,7 @@ Wes's own Discord: servers, channels, roles, voice, video, screen share. Private
 2. Voice, video, and screen share are end-to-end encrypted (LiveKit E2EE) from Milestone 3 onward. Never "temporarily" disabled.
 3. Permissions are computed on the server. The client only hides buttons.
 4. Every milestone ends with a URL Wes can open and a screenshot in `docs/HANDOFF.md`. No milestone ends in a document.
-5. One box, one `docker-compose.yml`, one LUKS-encrypted volume. Must be movable to another host by restore + DNS change.
+5. One box, one deploy tool (bonesdeploy: systemd + nginx, no Docker), one LUKS-encrypted volume. Must be movable to another host by restore + DNS change.
 6. No Discord-clone tutorial code. Write it, understand it, own it.
 7. Every voice UI shows the connection panel (RTT, jitter, loss, TURN yes/no). Diagnose with instruments, not guesses.
 
