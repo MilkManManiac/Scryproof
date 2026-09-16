@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-16, end of fourth build session.
+**Last updated:** 2026-09-16, end of fifth build session.
 
 ---
 
@@ -12,7 +12,7 @@ Living state. Update this at the end of every working session.
 |---|---|
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
-| M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, audit log. |
+| M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Scaffolding done.** Token minting, voice state, permission-gated grants. Needs a real LiveKit server. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
@@ -36,6 +36,17 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 `npm run dev` at the root starts the API and the client together.
 
+## Test it
+
+```bash
+npm test          # the permission algebra. No server needed, runs in a second.
+npm run test:smoke  # 62 assertions over the real HTTP surface
+```
+
+`npm run test:smoke` needs a server that has just been restarted and **not**
+seeded — it registers its own accounts, and the sign-up rate limiter counts the
+seed's four against it.
+
 ## Screenshots
 
 ![The app](shots/app.png)
@@ -50,7 +61,69 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 ![The role hierarchy, seen by a moderator who cannot reach the top of it](shots/settings-role-order.png)
 
+![Category permissions: denying View channel here hides every channel beneath it](shots/settings-category-permissions.png)
+
 ## Done this session
+
+**The permission algebra has tests now.** Fifty of them over
+`shared/src/permissions.ts`: the overwrite resolution order, the VIEW_CHANNEL
+collapse, the mask wire format, and the rule that ADMINISTRATOR does not bypass
+the hierarchy. Pure functions, so `npm test` runs in about a second and is
+something you actually run before committing. `src/scripts/smoke.ts` still
+covers the HTTP wiring against a live server; this covers the algebra under it.
+
+**The tests were verified by sabotage, not by going green.** Five deliberate
+breaks of the permission engine were each confirmed to fail the suite. One did
+not: swapping allow and deny inside a level changed nothing any test could see.
+That order is only observable when a single overwrite carries the same bit in
+both masks, which `POST /api/channels/:id/permissions` already rejects as
+`conflicting_overwrite` — so the invariant held, but the rule and the check
+that protects it live in different files. Two tests pin it now.
+
+**Category permissions, which was the hole.** A category is a permission layer,
+not a heading in the sidebar. Its overwrites apply to every channel inside it,
+underneath each channel's own:
+
+    server roles  ->  category overwrites  ->  channel overwrites
+
+Deny View channel for @everyone on a category and every channel beneath it
+disappears, with nothing to configure per channel. Because the channel level
+runs last, one channel can still allow itself back open, which is how a public
+channel lives inside a private category.
+
+**Not Discord's model.** Discord copies a category's overwrites into each
+channel when you "sync" it. That is two sources of truth that drift the moment
+somebody edits one channel, and a category screen that is then lying about half
+the channels beneath it. Layering means dropping a channel into a locked
+category locks it immediately and moving it out restores it, with nothing to
+re-sync.
+
+**Two cache holes this opened, and closed.** Moving a channel between
+categories changes who can see it although none of its own overwrites changed,
+and deleting a category removes a layer from every channel that was inside it.
+Both now invalidate the permission cache. Neither was obvious; both were caught
+by asking "what else does making categories matter change?" and then proving it
+in the smoke test.
+
+**The overwrite editor is shared, not duplicated.** Channels and categories run
+the same algebra one level apart, so they use one component
+(`web/src/components/settings/OverwritePane.tsx`). Copying 290 lines of
+permission UI is exactly the drift the channel screen's own header warns about.
+
+**Verified against the running server and the running browser**: the smoke test
+went from 47 to 62 assertions, covering the category deny hiding a channel, the
+channel allow overriding it, a second channel hidden by the same lock, moving a
+channel out restoring it, a member without MANAGE_ROLES being refused, and
+allow-and-deny-at-once being rejected. Then in the real client, clicking Deny on
+View channel for the Text category wrote `deny: "1"` and `alex` immediately saw
+only the voice channel — three text channels gone. Cleared afterwards; the local
+database is back in seed state.
+
+**One layout fix.** The category screen carries a third column, and the 900px
+settings page left permission descriptions wrapping at 258px with 440px of the
+window empty beside them. That section gets 1280px now.
+
+## Done in the previous session
 
 **Role reordering, which is the hierarchy editor.** Order is meaning in a role
 list — the role at the top outranks everything beneath it — so dragging a row
@@ -87,7 +160,7 @@ and description together as one line ("Show separately in the member
 listHolders are grouped…"). The permission rows get two lines from
 `.perm-text`; these carry their text in a bare span and needed it spelled out.
 
-## Done in the previous session
+## Done two sessions ago
 
 
 **The settings screen, which is what M2 was missing.** A full-screen overlay
@@ -137,11 +210,26 @@ as small uppercase captions, which turned a role name into a heading. It is
    from the first frame, and the connection panel wired to actual stats. The
    panel is already on screen during a call and honestly reports that media is
    not connected.
-3. **Category permissions.** Channels inherit from the server, not from their
-   category; the schema has categories and the sidebar groups by them, but a
-   category carries no overwrites of its own yet.
+3. **Category permissions in the sidebar UI.** The permissions themselves are
+   done; what is missing is a way to reach them from the channel sidebar. Today
+   they live only under server settings, and only once a category exists.
 
 ## Decisions made this session
+
+- **A category is a layer, not a template.** Discord copies overwrites into
+  each channel on sync; we resolve through the category every time. No second
+  source of truth, nothing to re-sync, and moving a channel in or out is the
+  whole operation.
+- **The channel level runs last and wins.** Otherwise "one public channel in a
+  private category" is inexpressible.
+- **Tests are verified by breaking the thing they watch.** A suite that has
+  never been seen to fail is a suite that proves nothing. Five sabotages, and
+  the one that survived found a real gap.
+- **`npm test` is the pure algebra only.** Anything needing a live server goes
+  in the smoke script. A test you have to set up a server to run is a test that
+  stops being run.
+
+## Decisions made reordering roles
 
 - **Reordering is one request for the whole order, not a position per role.**
   Partial orderings on the wire are states nobody asked for, and each one costs
@@ -193,6 +281,13 @@ as small uppercase captions, which turned a role name into a heading. It is
 - **Permission masks are bigint, and JSON cannot carry them.** They travel as
   decimal strings. `drizzle-kit` also cannot serialize a bigint column default,
   which is why defaults use ``sql`0` `` rather than `0n`.
+- **Anything that changes which category a channel is in must invalidate the
+  permission cache.** The category is a permission layer, so moving a channel
+  or deleting a category changes who can see what although no overwrite was
+  touched. Both call sites do it; a third one will be easy to forget.
+- **`npm run test:smoke` needs an unseeded server.** It registers its own
+  accounts and the sign-up rate limiter counts the seed's four against it.
+  Restart, then smoke; seed only when you want the client populated.
 - **`hub.invalidateServerPermissions` is deliberately blunt.** It drops the
   cache and tells clients to refetch rather than computing a delta. Computing
   deltas is where privilege bugs live. Leave it alone.

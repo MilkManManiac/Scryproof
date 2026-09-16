@@ -327,6 +327,137 @@ describe('channel overwrites', () => {
   });
 });
 
+// ----------------------------------------------------- the category layer
+
+describe('category overwrites', () => {
+  const base = Permission.VIEW_CHANNEL | Permission.SEND_MESSAGES;
+
+  function apply(
+    categoryOverwrites: OverwriteLike[],
+    overwrites: OverwriteLike[] = [],
+    memberRoleIds: string[] = [MOD_ID],
+  ): bigint {
+    return applyChannelOverwrites({
+      basePermissions: base,
+      everyoneRoleId: EVERYONE_ID,
+      memberRoleIds,
+      userId: USER_ID,
+      overwrites,
+      categoryOverwrites,
+    });
+  }
+
+  test('a channel with no category behaves exactly as before', () => {
+    assert.equal(apply([]), base);
+    assert.equal(
+      applyChannelOverwrites({
+        basePermissions: base,
+        everyoneRoleId: EVERYONE_ID,
+        memberRoleIds: [MOD_ID],
+        userId: USER_ID,
+        overwrites: [],
+      }),
+      base,
+    );
+  });
+
+  /**
+   * The whole reason this layer exists. Locking the category locks every
+   * channel inside it, with no per-channel work and nothing to keep in sync.
+   */
+  test('a category deny reaches a channel that has no overwrites of its own', () => {
+    const result = apply([overwrite(EVERYONE_ID, 0n, Permission.VIEW_CHANNEL)]);
+    assert.equal(has(result, Permission.VIEW_CHANNEL), false);
+  });
+
+  test('a category allow reaches a channel that has no overwrites of its own', () => {
+    const result = apply([overwrite(MOD_ID, Permission.MANAGE_MESSAGES, 0n)]);
+    assert.equal(has(result, Permission.MANAGE_MESSAGES), true);
+  });
+
+  /**
+   * The category sets the default; the channel gets the final word. Without
+   * this, one public channel inside a private category would be inexpressible.
+   */
+  test('a channel allow overrides a category deny', () => {
+    const result = apply(
+      [overwrite(EVERYONE_ID, 0n, Permission.VIEW_CHANNEL)],
+      [overwrite(EVERYONE_ID, Permission.VIEW_CHANNEL, 0n)],
+    );
+    assert.equal(has(result, Permission.VIEW_CHANNEL), true);
+  });
+
+  test('a channel deny overrides a category allow', () => {
+    const result = apply(
+      [overwrite(MOD_ID, Permission.MANAGE_MESSAGES, 0n)],
+      [overwrite(MOD_ID, 0n, Permission.MANAGE_MESSAGES)],
+    );
+    assert.equal(has(result, Permission.MANAGE_MESSAGES), false);
+  });
+
+  /**
+   * The levels are ordered by specificity, not by target. A category rule
+   * aimed at one member still loses to a channel rule aimed at @everyone,
+   * because the channel is nearer to the thing being protected.
+   */
+  test('the whole channel level runs after the whole category level', () => {
+    const result = apply(
+      [overwrite(USER_ID, Permission.MANAGE_MESSAGES, 0n, 'member')],
+      [overwrite(EVERYONE_ID, 0n, Permission.MANAGE_MESSAGES)],
+    );
+    assert.equal(has(result, Permission.MANAGE_MESSAGES), false);
+  });
+
+  test('within the category level the same specificity order applies', () => {
+    const result = apply([
+      overwrite(EVERYONE_ID, 0n, Permission.VIEW_CHANNEL),
+      overwrite(MOD_ID, Permission.VIEW_CHANNEL, 0n),
+    ]);
+    assert.equal(has(result, Permission.VIEW_CHANNEL), true);
+  });
+
+  test('a category overwrite for a role the member does not hold is ignored', () => {
+    const result = apply([overwrite(GUEST_ID, 0n, Permission.SEND_MESSAGES)], [], [MOD_ID]);
+    assert.equal(has(result, Permission.SEND_MESSAGES), true);
+  });
+
+  test('administrator ignores the category layer too', () => {
+    const result = applyChannelOverwrites({
+      basePermissions: ALL_PERMISSIONS,
+      everyoneRoleId: EVERYONE_ID,
+      memberRoleIds: [MOD_ID],
+      userId: USER_ID,
+      overwrites: [],
+      categoryOverwrites: [overwrite(EVERYONE_ID, 0n, ALL_PERMISSIONS)],
+    });
+    assert.equal(result, ALL_PERMISSIONS);
+  });
+
+  test('a category that hides a channel still collapses the voice bits', () => {
+    const effective = applyChannelOverwrites({
+      basePermissions: Permission.VIEW_CHANNEL | Permission.CONNECT | Permission.SPEAK,
+      everyoneRoleId: EVERYONE_ID,
+      memberRoleIds: [],
+      userId: USER_ID,
+      overwrites: [],
+      categoryOverwrites: [overwrite(EVERYONE_ID, 0n, Permission.VIEW_CHANNEL)],
+    });
+    assert.equal(normalizeChannelPermissions(effective), 0n);
+  });
+
+  test('the owner short-circuits past the category as well', () => {
+    const result = computeChannelPermissions({
+      isOwner: true,
+      userId: USER_ID,
+      roles: [everyone(0n)],
+      everyoneRoleId: EVERYONE_ID,
+      overwrites: [],
+      categoryOverwrites: [overwrite(EVERYONE_ID, 0n, ALL_PERMISSIONS)],
+    });
+    assert.equal(result, ALL_PERMISSIONS);
+  });
+});
+
 // --------------------------------------------------- the VIEW_CHANNEL rule
 
 describe('losing sight of a channel', () => {

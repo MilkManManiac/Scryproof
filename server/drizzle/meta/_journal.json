@@ -8,6 +8,13 @@
       "when": 1789596171829,
       "tag": "0000_hot_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789601818111,
+      "tag": "0001_fearless_vector",
+      "breakpoints": true
     }
   ]
 }

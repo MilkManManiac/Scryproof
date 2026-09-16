@@ -23,6 +23,7 @@ import {
 
 import { getDb } from '../db/index.js';
 import {
+  categoryOverwrites,
   channelOverwrites,
   channels,
   memberRoles,
@@ -103,18 +104,38 @@ export async function loadMemberContext(
   };
 }
 
-export async function loadChannelOverwrites(channelId: string): Promise<OverwriteLike[]> {
-  const rows = await getDb()
-    .select()
-    .from(channelOverwrites)
-    .where(eq(channelOverwrites.channelId, channelId));
-
+/** Rows out of either overwrite table, narrowed to the shape the algebra wants. */
+function toOverwrites(
+  rows: readonly { targetType: string; targetId: string; allow: bigint; deny: bigint }[],
+): OverwriteLike[] {
   return rows.map((row) => ({
     targetType: row.targetType === 'member' ? 'member' : 'role',
     targetId: row.targetId,
     allow: row.allow,
     deny: row.deny,
   }));
+}
+
+export async function loadChannelOverwrites(channelId: string): Promise<OverwriteLike[]> {
+  const rows = await getDb()
+    .select()
+    .from(channelOverwrites)
+    .where(eq(channelOverwrites.channelId, channelId));
+
+  return toOverwrites(rows);
+}
+
+export async function loadCategoryOverwrites(
+  categoryId: string | null | undefined,
+): Promise<OverwriteLike[]> {
+  if (!categoryId) return [];
+
+  const rows = await getDb()
+    .select()
+    .from(categoryOverwrites)
+    .where(eq(categoryOverwrites.categoryId, categoryId));
+
+  return toOverwrites(rows);
 }
 
 /**
@@ -125,17 +146,38 @@ export async function loadChannelOverwrites(channelId: string): Promise<Overwrit
 export async function computePermissionsInChannel(
   ctx: MemberContext,
   channelId: string,
+  /**
+   * The channel's category, when the caller already has the row. Pass it to
+   * avoid a second lookup; leave it `undefined` and this will fetch it. `null`
+   * means the caller knows the channel sits outside every category.
+   */
+  categoryId?: string | null,
 ): Promise<bigint> {
   if (ctx.isOwner) return ALL_PERMISSIONS;
   if (has(ctx.basePermissions, Permission.ADMINISTRATOR)) return ALL_PERMISSIONS;
 
-  const overwrites = await loadChannelOverwrites(channelId);
+  let category = categoryId;
+  if (category === undefined) {
+    const [channel] = await getDb()
+      .select({ categoryId: channels.categoryId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    category = channel?.categoryId ?? null;
+  }
+
+  const [overwrites, categoryLevel] = await Promise.all([
+    loadChannelOverwrites(channelId),
+    loadCategoryOverwrites(category),
+  ]);
+
   const effective = applyChannelOverwrites({
     basePermissions: ctx.basePermissions,
     everyoneRoleId: ctx.everyoneRoleId,
     memberRoleIds: ctx.roles.filter((role) => !role.isEveryone).map((role) => role.id),
     userId: ctx.userId,
     overwrites,
+    categoryOverwrites: categoryLevel,
   });
 
   return normalizeChannelPermissions(effective);
@@ -149,7 +191,7 @@ export async function computePermissionsForServerChannels(
   const result = new Map<string, bigint>();
 
   const serverChannels = await db
-    .select({ id: channels.id })
+    .select({ id: channels.id, categoryId: channels.categoryId })
     .from(channels)
     .where(eq(channels.serverId, ctx.serverId));
 
@@ -175,13 +217,33 @@ export async function computePermissionsForServerChannels(
   const byChannel = new Map<string, OverwriteLike[]>();
   for (const row of allOverwrites) {
     const list = byChannel.get(row.channelId) ?? [];
-    list.push({
-      targetType: row.targetType === 'member' ? 'member' : 'role',
-      targetId: row.targetId,
-      allow: row.allow,
-      deny: row.deny,
-    });
+    list.push(...toOverwrites([row]));
     byChannel.set(row.channelId, list);
+  }
+
+  // Same trick one level up: every category overwrite in the server in one
+  // query, grouped in memory. A server with twenty categories should not cost
+  // twenty round trips to paint its sidebar once.
+  const categoryIds = [
+    ...new Set(
+      serverChannels
+        .map((channel) => channel.categoryId)
+        .filter((categoryId): categoryId is string => categoryId !== null),
+    ),
+  ];
+
+  const byCategory = new Map<string, OverwriteLike[]>();
+  if (categoryIds.length > 0) {
+    const rows = await db
+      .select()
+      .from(categoryOverwrites)
+      .where(inArray(categoryOverwrites.categoryId, categoryIds));
+
+    for (const row of rows) {
+      const list = byCategory.get(row.categoryId) ?? [];
+      list.push(...toOverwrites([row]));
+      byCategory.set(row.categoryId, list);
+    }
   }
 
   const memberRoleIds = ctx.roles.filter((role) => !role.isEveryone).map((role) => role.id);
@@ -193,6 +255,7 @@ export async function computePermissionsForServerChannels(
       memberRoleIds,
       userId: ctx.userId,
       overwrites: byChannel.get(channel.id) ?? [],
+      categoryOverwrites: channel.categoryId ? byCategory.get(channel.categoryId) ?? [] : [],
     });
     result.set(channel.id, normalizeChannelPermissions(effective));
   }
@@ -237,7 +300,7 @@ export async function requireChannelPermission(
   const ctx = await loadMemberContext(channel.serverId, userId);
   if (!ctx) throw new HttpError(404, 'unknown_channel', 'That channel does not exist.');
 
-  const channelPermissions = await computePermissionsInChannel(ctx, channelId);
+  const channelPermissions = await computePermissionsInChannel(ctx, channelId, channel.categoryId);
 
   // Not being able to see a channel reports as "does not exist", so the API
   // never reveals the names or ids of channels a member was not meant to know

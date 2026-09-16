@@ -195,6 +195,29 @@ export const categories = pgTable(
   (table) => [index('categories_server_idx').on(table.serverId)],
 );
 
+/**
+ * Overwrites attached to a category rather than a channel.
+ *
+ * Same shape as `channel_overwrites` on purpose: it is the same algebra, one
+ * level less specific. Kept as its own table rather than a nullable column
+ * union so the foreign key can cascade from categories and the primary key
+ * stays honest.
+ */
+export const categoryOverwrites = pgTable(
+  'category_overwrites',
+  {
+    categoryId: text('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+    /** 'role' | 'member' */
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    allow: bigint('allow', { mode: 'bigint' }).notNull().default(sql`0`),
+    deny: bigint('deny', { mode: 'bigint' }).notNull().default(sql`0`),
+  },
+  (table) => [primaryKey({ columns: [table.categoryId, table.targetType, table.targetId] })],
+);
+
 export const channels = pgTable(
   'channels',
   {
@@ -376,3 +399,4 @@ export type MessageRow = typeof messages.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type OverwriteRow = typeof channelOverwrites.$inferSelect;
+export type CategoryOverwriteRow = typeof categoryOverwrites.$inferSelect;

@@ -287,6 +287,111 @@ async function main(): Promise<void> {
   const ownerStillSees = await owner.get(`/api/channels/${privateChannel.json.channel.id}`);
   check('owner still sees the hidden channel', ownerStillSees.status === 200, ownerStillSees.json);
 
+  /* --------------------------- category layer ---------------------------- */
+  console.log('\ncategory permissions');
+
+  // A category is a permission layer, not a heading. Locking it should lock
+  // every channel inside it without touching the channels themselves.
+  const category = await owner.post(`/api/servers/${serverId}/categories`, { name: 'Staff' });
+  check('owner can create a category', category.status === 200, category.json);
+  const categoryId = category.json?.category?.id;
+
+  const inCategory = await owner.post(`/api/servers/${serverId}/channels`, {
+    name: 'staff-room',
+    categoryId,
+  });
+  check('owner can create a channel inside it', inCategory.status === 200, inCategory.json);
+  const inCategoryId = inCategory.json?.channel?.id;
+
+  const beforeLock = await friend.get(`/api/channels/${inCategoryId}`);
+  check(
+    'the channel is visible before the category is locked',
+    beforeLock.status === 200,
+    beforeLock.json,
+  );
+
+  const lockCategory = await owner.put(
+    `/api/categories/${categoryId}/permissions/${everyoneRole.id}`,
+    { targetType: 'role', allow: '0', deny: VIEW_CHANNEL },
+  );
+  check('owner can deny @everyone view on the category', lockCategory.status === 200, lockCategory.json);
+
+  const afterLock = await friend.get(`/api/channels/${inCategoryId}`);
+  check(
+    'a category deny hides a channel that has no overwrites of its own',
+    afterLock.status === 404,
+    afterLock.json,
+  );
+
+  const afterLockList = await friend.get(`/api/servers/${serverId}`);
+  const namesAfterLock: string[] = (afterLockList.json?.server?.channels ?? []).map(
+    (c: any) => c.name,
+  );
+  check(
+    'the hidden channel is absent from the sidebar too',
+    !namesAfterLock.includes('staff-room'),
+    namesAfterLock,
+  );
+
+  // The category sets the default; the channel gets the final word.
+  const reopen = await owner.put(
+    `/api/channels/${inCategoryId}/permissions/${everyoneRole.id}`,
+    { targetType: 'role', allow: VIEW_CHANNEL, deny: '0' },
+  );
+  check('owner can allow view back on one channel', reopen.status === 200, reopen.json);
+
+  const afterReopen = await friend.get(`/api/channels/${inCategoryId}`);
+  check(
+    'a channel allow overrides the category deny',
+    afterReopen.status === 200,
+    afterReopen.json,
+  );
+
+  // Moving a channel out of a locked category must restore it, with no
+  // re-syncing and nothing left over.
+  const secondChannel = await owner.post(`/api/servers/${serverId}/channels`, {
+    name: 'staff-notes',
+    categoryId,
+  });
+  const secondId = secondChannel.json?.channel?.id;
+  const secondHidden = await friend.get(`/api/channels/${secondId}`);
+  check('a second channel in the category is hidden too', secondHidden.status === 404, secondHidden.json);
+
+  const moveOut = await owner.patch(`/api/channels/${secondId}`, { categoryId: null });
+  check('owner can move a channel out of the category', moveOut.status === 200, moveOut.json);
+
+  const afterMove = await friend.get(`/api/channels/${secondId}`);
+  check(
+    'moving a channel out of a locked category reveals it again',
+    afterMove.status === 200,
+    afterMove.json,
+  );
+
+  const clearedCategory = await owner.del(
+    `/api/categories/${categoryId}/permissions/${everyoneRole.id}`,
+  );
+  check('owner can clear a category overwrite', clearedCategory.status === 200, clearedCategory.json);
+
+  const friendEditsCategory = await friend.put(
+    `/api/categories/${categoryId}/permissions/${everyoneRole.id}`,
+    { targetType: 'role', allow: '0', deny: VIEW_CHANNEL },
+  );
+  check(
+    'a member without MANAGE_ROLES cannot edit category permissions',
+    friendEditsCategory.status === 403,
+    friendEditsCategory.json,
+  );
+
+  const conflictingCategory = await owner.put(
+    `/api/categories/${categoryId}/permissions/${everyoneRole.id}`,
+    { targetType: 'role', allow: VIEW_CHANNEL, deny: VIEW_CHANNEL },
+  );
+  check(
+    'a category overwrite cannot both allow and deny the same bit',
+    conflictingCategory.status === 400,
+    conflictingCategory.json,
+  );
+
   /* --------------------------- privilege ceiling ------------------------- */
   console.log('\nprivilege escalation');
 
@@ -381,6 +486,11 @@ async function main(): Promise<void> {
   check('audit log records channel creation', actions.includes('channel.create'), actions);
   check('audit log records permission changes', actions.includes('channel.permissions'), actions);
   check('audit log records role creation', actions.includes('role.create'), actions);
+  check(
+    'audit log records category permission changes',
+    actions.includes('category.permissions'),
+    actions,
+  );
 
   const friendAudit = await friend.get(`/api/servers/${serverId}/audit-log`);
   check(

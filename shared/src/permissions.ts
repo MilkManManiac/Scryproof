@@ -169,26 +169,28 @@ export function computeBasePermissions(input: {
 }
 
 /**
- * Apply a channel's overwrites to a member's base permissions.
+ * Apply one level of overwrites to a running permission mask.
  *
- * Order matters and is the part clones get wrong:
- *   @everyone overwrite, then all role overwrites merged together, then the
- *   member-specific overwrite. Within each level deny is applied before allow,
- *   so an explicit allow at a more specific level can rescue a deny from a
- *   broader one.
+ * Order within a level matters and is the part clones get wrong:
+ *   the @everyone overwrite, then every role overwrite the member actually
+ *   holds merged together, then the member-specific overwrite. Deny is applied
+ *   before allow at each step, so an explicit allow at a more specific level
+ *   can rescue a deny from a broader one.
+ *
+ * The role overwrites are merged into a single allow mask and a single deny
+ * mask before either is applied, so no accident of iteration order can let one
+ * role shadow another.
  */
-export function applyChannelOverwrites(input: {
-  basePermissions: bigint;
+function applyOverwriteLevel(input: {
+  permissions: bigint;
   everyoneRoleId: string;
-  memberRoleIds: readonly string[];
+  held: ReadonlySet<string>;
   userId: string;
   overwrites: readonly OverwriteLike[];
 }): bigint {
-  if ((input.basePermissions & Permission.ADMINISTRATOR) === Permission.ADMINISTRATOR) {
-    return ALL_PERMISSIONS;
-  }
+  if (input.overwrites.length === 0) return input.permissions;
 
-  let permissions = input.basePermissions;
+  let permissions = input.permissions;
 
   const everyone = input.overwrites.find(
     (o) => o.targetType === 'role' && o.targetId === input.everyoneRoleId,
@@ -198,15 +200,12 @@ export function applyChannelOverwrites(input: {
     permissions |= everyone.allow;
   }
 
-  // All non-@everyone role overwrites merge into one allow mask and one deny
-  // mask before being applied, so no single role ordering can shadow another.
   let roleAllow = 0n;
   let roleDeny = 0n;
-  const held = new Set(input.memberRoleIds);
   for (const o of input.overwrites) {
     if (o.targetType !== 'role') continue;
     if (o.targetId === input.everyoneRoleId) continue;
-    if (!held.has(o.targetId)) continue;
+    if (!input.held.has(o.targetId)) continue;
     roleAllow |= o.allow;
     roleDeny |= o.deny;
   }
@@ -225,6 +224,58 @@ export function applyChannelOverwrites(input: {
 }
 
 /**
+ * Apply a channel's overwrites, and the overwrites of the category it sits in,
+ * to a member's base permissions.
+ *
+ * Three levels, least specific first: the server-wide roles, then the
+ * category, then the channel itself.
+ *
+ * The category is a real layer rather than a template that gets copied into
+ * each channel when you "sync" it, which is how Discord does it. Copying means
+ * two sources of truth that drift the moment somebody edits one channel, and a
+ * category whose permissions are a lie about half the channels beneath it.
+ * Layering means a channel dropped into "Staff" is staff-only immediately, and
+ * moving it out restores it, with nothing to re-sync.
+ *
+ * Because the channel level runs last, one channel inside a locked category
+ * can still open itself back up with its own allow. That is the point: the
+ * category sets the default, the channel gets the final word.
+ */
+export function applyChannelOverwrites(input: {
+  basePermissions: bigint;
+  everyoneRoleId: string;
+  memberRoleIds: readonly string[];
+  userId: string;
+  overwrites: readonly OverwriteLike[];
+  /** The overwrites of the category this channel belongs to, if any. */
+  categoryOverwrites?: readonly OverwriteLike[];
+}): bigint {
+  if ((input.basePermissions & Permission.ADMINISTRATOR) === Permission.ADMINISTRATOR) {
+    return ALL_PERMISSIONS;
+  }
+
+  const held = new Set(input.memberRoleIds);
+
+  let permissions = applyOverwriteLevel({
+    permissions: input.basePermissions,
+    everyoneRoleId: input.everyoneRoleId,
+    held,
+    userId: input.userId,
+    overwrites: input.categoryOverwrites ?? [],
+  });
+
+  permissions = applyOverwriteLevel({
+    permissions,
+    everyoneRoleId: input.everyoneRoleId,
+    held,
+    userId: input.userId,
+    overwrites: input.overwrites,
+  });
+
+  return permissions;
+}
+
+/**
  * The whole computation in one call. This is what request handlers use.
  */
 export function computeChannelPermissions(input: {
@@ -233,6 +284,7 @@ export function computeChannelPermissions(input: {
   roles: readonly RoleLike[];
   everyoneRoleId: string;
   overwrites: readonly OverwriteLike[];
+  categoryOverwrites?: readonly OverwriteLike[];
 }): bigint {
   const base = computeBasePermissions({ isOwner: input.isOwner, roles: input.roles });
   if (input.isOwner) return ALL_PERMISSIONS;
@@ -243,6 +295,7 @@ export function computeChannelPermissions(input: {
     memberRoleIds: input.roles.filter((r) => !r.isEveryone).map((r) => r.id),
     userId: input.userId,
     overwrites: input.overwrites,
+    categoryOverwrites: input.categoryOverwrites,
   });
 }
 

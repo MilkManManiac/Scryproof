@@ -1742,3 +1742,11 @@ textarea {
   gap: 2px;
   min-width: 0;
 }
+
+/* Three columns -- a category list, a target list and the permission rows --
+ * do not fit the 900px a page of settings is otherwise capped at. Without the
+ * extra room every permission description wraps to three lines while 440px of
+ * the window sits empty beside it. */
+.settings-content.wide {
+  max-width: 1280px;
+}

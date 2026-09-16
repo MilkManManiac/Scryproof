@@ -16,13 +16,15 @@ import { LIMITS, Permission, toNames, decodeMask } from '@gooffline/shared';
 import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@gooffline/shared';
 
 import { ApiError, api } from '../../lib/api';
-import { PERMISSION_META } from '../../lib/permissionMeta';
+import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
+import { OverwritePane } from './OverwritePane';
 import { RolesPane } from './RolesPane';
 import { authorityFor } from './authority';
+import type { Authority } from './authority';
 
-type Section = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'audit';
+type Section = 'overview' | 'roles' | 'categories' | 'members' | 'invites' | 'bans' | 'audit';
 
 export function ServerSettings({
   server,
@@ -51,6 +53,11 @@ export function ServerSettings({
   const sections: { id: Section; label: string; visible: boolean }[] = [
     { id: 'overview', label: 'Overview', visible: true },
     { id: 'roles', label: 'Roles', visible: authority.can(Permission.MANAGE_ROLES) },
+    {
+      id: 'categories',
+      label: 'Categories',
+      visible: authority.can(Permission.MANAGE_ROLES) && server.categories.length > 0,
+    },
     { id: 'members', label: 'Members', visible: true },
     { id: 'invites', label: 'Invites', visible: authority.can(Permission.CREATE_INVITE) },
     { id: 'bans', label: 'Bans', visible: authority.can(Permission.BAN_MEMBERS) },
@@ -82,12 +89,17 @@ export function ServerSettings({
           </button>
         </nav>
 
-        <div className="settings-content">
+        {/* The category screen carries a third column, so it gets more room
+            than a single list of settings needs. */}
+        <div className={section === 'categories' ? 'settings-content wide' : 'settings-content'}>
           {section === 'overview' ? (
             <Overview server={server} authority={authority} onClose={onClose} />
           ) : null}
           {section === 'roles' ? (
             <RolesPane server={server} members={members} authority={authority} />
+          ) : null}
+          {section === 'categories' ? (
+            <CategoriesPane server={server} members={members} authority={authority} />
           ) : null}
           {section === 'members' ? (
             <MembersPane server={server} members={members} authority={authority} />
@@ -233,6 +245,114 @@ function Overview({
           </button>
         </div>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * Category permissions.
+ *
+ * A category is a permission layer, not just a heading in the sidebar. Its
+ * overwrites apply to every channel inside it, underneath each channel's own,
+ * so locking a category locks everything in it without touching the channels
+ * and without anything to keep in sync afterwards.
+ *
+ * The editor is the same component the channel screen uses, because it is the
+ * same algebra one level up.
+ */
+function CategoriesPane({
+  server,
+  members,
+  authority,
+}: {
+  server: ServerDetail;
+  members: Member[];
+  authority: Authority;
+}) {
+  const ordered = useMemo(
+    () => [...server.categories].sort((a, b) => a.position - b.position),
+    [server.categories],
+  );
+
+  const [selectedId, setSelectedId] = useState<string | null>(ordered[0]?.id ?? null);
+
+  // A category deleted by somebody else should not leave this pane pointing at
+  // a thing that no longer exists.
+  useEffect(() => {
+    if (selectedId && ordered.some((entry) => entry.id === selectedId)) return;
+    setSelectedId(ordered[0]?.id ?? null);
+  }, [ordered, selectedId]);
+
+  const selected = ordered.find((entry) => entry.id === selectedId) ?? null;
+  const groups = useMemo(() => groupsForCategory(), []);
+
+  const channelsIn = (categoryId: string) =>
+    server.channels.filter((channel) => channel.categoryId === categoryId).length;
+
+  return (
+    <>
+      <h2 className="settings-heading">Categories</h2>
+      <p className="settings-note">
+        Permissions set here apply to every channel in the category. A channel can still override
+        them with its own, which is how one public channel lives inside a private category.
+      </p>
+
+      {selected === null ? (
+        <p className="settings-note">
+          This server has no categories yet. Create one from the channel sidebar and its
+          permissions will appear here.
+        </p>
+      ) : (
+        <div className="overwrite-layout">
+          <div className="overwrite-targets">
+            <div className="role-list-header">
+              <span>Categories</span>
+            </div>
+            {ordered.map((category) => {
+              const count = channelsIn(category.id);
+              return (
+                <button
+                  type="button"
+                  key={category.id}
+                  className={category.id === selectedId ? 'role-entry active' : 'role-entry'}
+                  onClick={() => setSelectedId(category.id)}
+                >
+                  <span className="role-entry-name">{category.name}</span>
+                  <span className="role-locked">
+                    {count} channel{count === 1 ? '' : 's'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="overwrite-editor">
+            <h3 className="settings-heading" style={{ fontSize: 16 }}>
+              {selected.name}
+            </h3>
+            <OverwritePane
+              scopeId={selected.id}
+              server={server}
+              members={members}
+              authority={authority}
+              groups={groups}
+              // A category has no view gate of its own, so the bar for "you
+              // cannot grant what you do not have" is the server-wide mask.
+              ceiling={authority.ceiling}
+              note={
+                <>
+                  These apply to every channel under {selected.name}. Deny View channel for
+                  @everyone and allow it for one role to make the whole category private.
+                </>
+              }
+              load={() => api.categories.permissions(selected.id)}
+              save={(targetId, body) => api.categories.setOverwrite(selected.id, targetId, body)}
+              clear={(targetId) => api.categories.clearOverwrite(selected.id, targetId)}
+              loadFailed="Could not load this category’s permissions."
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -690,6 +810,10 @@ function AuditPane({ server, members }: { server: ServerDetail; members: Member[
         return `renamed the category ${changedName ?? target}`;
       case 'category.delete':
         return `deleted the category ${changedName ?? ''}`.trim();
+      case 'category.permissions':
+        return entry.changes?.cleared
+          ? `cleared a permission overwrite on the category ${target}`
+          : `changed permissions on the category ${target}`;
       case 'role.create':
         return `created the role ${changedName ?? target}`;
       case 'role.update':

@@ -22,7 +22,13 @@ import {
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { categories, channelOverwrites, channels, roles } from '../db/schema.js';
+import {
+  categories,
+  categoryOverwrites,
+  channelOverwrites,
+  channels,
+  roles,
+} from '../db/schema.js';
 import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
@@ -180,6 +186,13 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       t: 'channel_update',
       d: serialize.channel(updated),
     });
+
+    // Moving a channel between categories changes who can see it, because the
+    // category is a permission layer. Nothing about the channel's own
+    // overwrites changed, which is exactly why this is easy to forget.
+    if (body.categoryId !== undefined && body.categoryId !== existing.categoryId) {
+      hub.invalidateServerPermissions(ctx.serverId);
+    }
 
     return { channel: serialize.channel(updated) };
   });
@@ -467,6 +480,150 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       });
     }
 
+    // The category's overwrites went with it, so every channel that was inside
+    // it now resolves against the server alone. A category used to hide things
+    // is a category whose deletion reveals them.
+    if (orphaned.length > 0) hub.invalidateServerPermissions(existing.serverId);
+
+    return { ok: true };
+  });
+
+  /* ------------------------- category overwrites ------------------------- */
+
+  /**
+   * A category's overwrites apply to every channel inside it, as a layer
+   * beneath each channel's own. See `applyChannelOverwrites` in the shared
+   * package for the resolution order.
+   *
+   * These endpoints mirror the channel ones deliberately — same body, same two
+   * guards — because they are the same escalation surface. The difference is
+   * what "you cannot grant what you do not have" is measured against: a
+   * category has no VIEW gate of its own, so the bar is the actor's
+   * server-wide permissions rather than their permissions in one channel.
+   */
+  async function requireCategory(categoryId: string, userId: string) {
+    const [category] = await getDb()
+      .select()
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .limit(1);
+    if (!category) throw notFound('That category does not exist.', 'unknown_category');
+
+    const ctx = await requireServerPermission(category.serverId, userId, Permission.MANAGE_ROLES);
+    return { category, ctx };
+  }
+
+  app.get('/api/categories/:categoryId/permissions', async (request) => {
+    const user = requireUser(request);
+    const { categoryId } = z.object({ categoryId: z.string() }).parse(request.params);
+
+    await requireCategory(categoryId, user.id);
+
+    const rows = await getDb()
+      .select()
+      .from(categoryOverwrites)
+      .where(eq(categoryOverwrites.categoryId, categoryId));
+
+    return {
+      overwrites: rows.map((row) => ({
+        targetType: row.targetType,
+        targetId: row.targetId,
+        allow: encodeMask(row.allow),
+        deny: encodeMask(row.deny),
+      })),
+    };
+  });
+
+  app.put('/api/categories/:categoryId/permissions/:targetId', async (request) => {
+    const user = requireUser(request);
+    const { categoryId, targetId } = z
+      .object({ categoryId: z.string(), targetId: z.string() })
+      .parse(request.params);
+    const body = z
+      .object({
+        targetType: z.enum(['role', 'member']),
+        allow: z.string().regex(/^\d+$/),
+        deny: z.string().regex(/^\d+$/),
+      })
+      .parse(request.body);
+
+    const { category, ctx } = await requireCategory(categoryId, user.id);
+
+    const allow = decodeMask(body.allow);
+    const deny = decodeMask(body.deny);
+
+    if ((allow & deny) !== 0n) {
+      throw badRequest('A permission cannot be both allowed and denied.', 'conflicting_overwrite');
+    }
+
+    if (!has(ctx.basePermissions, allow | deny)) {
+      throw forbidden('You can only change permissions you have yourself.');
+    }
+
+    if (body.targetType === 'role') {
+      const [role] = await getDb()
+        .select()
+        .from(roles)
+        .where(and(eq(roles.id, targetId), eq(roles.serverId, category.serverId)))
+        .limit(1);
+      if (!role) throw badRequest('That role does not exist.', 'unknown_role');
+      if (!role.isEveryone) requireRoleBelow(ctx, role.position);
+    }
+
+    await getDb()
+      .insert(categoryOverwrites)
+      .values({ categoryId, targetType: body.targetType, targetId, allow, deny })
+      .onConflictDoUpdate({
+        target: [
+          categoryOverwrites.categoryId,
+          categoryOverwrites.targetType,
+          categoryOverwrites.targetId,
+        ],
+        set: { allow, deny },
+      });
+
+    await audit.record({
+      serverId: category.serverId,
+      actorId: user.id,
+      action: 'category.permissions',
+      targetType: 'category',
+      targetId: categoryId,
+      changes: { target: targetId, targetType: body.targetType, allow: body.allow, deny: body.deny },
+    });
+
+    // Every channel under this category just resolved differently.
+    hub.invalidateServerPermissions(category.serverId);
+
+    return { ok: true };
+  });
+
+  app.delete('/api/categories/:categoryId/permissions/:targetId', async (request) => {
+    const user = requireUser(request);
+    const { categoryId, targetId } = z
+      .object({ categoryId: z.string(), targetId: z.string() })
+      .parse(request.params);
+
+    const { category } = await requireCategory(categoryId, user.id);
+
+    await getDb()
+      .delete(categoryOverwrites)
+      .where(
+        and(
+          eq(categoryOverwrites.categoryId, categoryId),
+          eq(categoryOverwrites.targetId, targetId),
+        ),
+      );
+
+    await audit.record({
+      serverId: category.serverId,
+      actorId: user.id,
+      action: 'category.permissions',
+      targetType: 'category',
+      targetId: categoryId,
+      changes: { target: targetId, cleared: true },
+    });
+
+    hub.invalidateServerPermissions(category.serverId);
     return { ok: true };
   });
 }

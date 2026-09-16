@@ -149,6 +149,21 @@ export const api = {
     create: (serverId: string, name: string) =>
       post<{ category: Category }>(`/api/servers/${serverId}/categories`, { name }),
     remove: (id: string) => del<{ ok: true }>(`/api/categories/${id}`),
+    /**
+     * A category's overwrites apply to every channel inside it, underneath
+     * each channel's own. Same shape as the channel endpoints on purpose.
+     */
+    permissions: (id: string) =>
+      get<{ overwrites: { targetType: string; targetId: string; allow: MaskString; deny: MaskString }[] }>(
+        `/api/categories/${id}/permissions`,
+      ),
+    setOverwrite: (
+      categoryId: string,
+      targetId: string,
+      body: { targetType: 'role' | 'member'; allow: MaskString; deny: MaskString },
+    ) => put<{ ok: true }>(`/api/categories/${categoryId}/permissions/${targetId}`, body),
+    clearOverwrite: (categoryId: string, targetId: string) =>
+      del<{ ok: true }>(`/api/categories/${categoryId}/permissions/${targetId}`),
   },
 
   messages: {

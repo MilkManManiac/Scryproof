@@ -271,3 +271,32 @@ export function groupsForChannel(type: 'text' | 'voice'): PermissionGroup[] {
     },
   ];
 }
+
+/**
+ * A category can hold both text and voice channels, so its overwrites offer
+ * both sets. Server-level permissions are still absent for the same reason
+ * they are absent from a channel: an overwrite cannot grant them, and offering
+ * the row would imply otherwise.
+ */
+export function groupsForCategory(): PermissionGroup[] {
+  const inGroup = (name: string) =>
+    PERMISSION_GROUPS.find((group) => group.name === name)?.permissions ?? [];
+
+  return [
+    {
+      name: 'General',
+      note: 'Denying this hides every channel in the category rather than refusing access to them.',
+      permissions: [PERMISSION_META.VIEW_CHANNEL],
+    },
+    {
+      name: 'Text',
+      note: 'Posting and reading in the text channels under this category.',
+      permissions: inGroup('Text').filter((meta) => meta.name !== 'VIEW_CHANNEL'),
+    },
+    {
+      name: 'Voice',
+      note: 'Audio, video and screen share in the voice channels under this category.',
+      permissions: inGroup('Voice').filter((meta) => meta.name !== 'VIEW_CHANNEL'),
+    },
+  ];
+}
