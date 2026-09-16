@@ -15,6 +15,7 @@ import { canOnServer } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
+import { ServerSettings } from './settings/ServerSettings';
 import { UserPanel } from './UserPanel';
 
 interface Group {
@@ -57,7 +58,7 @@ function group(server: ServerDetail): Group[] {
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [dialog, setDialog] = useState<'channel' | 'invite' | null>(null);
+  const [dialog, setDialog] = useState<'channel' | 'invite' | 'settings' | null>(null);
 
   const groups = useMemo(() => group(server), [server]);
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
@@ -79,6 +80,14 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
           {server.name}
         </span>
         <span style={{ display: 'flex', gap: 2 }}>
+          <button
+            type="button"
+            className="icon-button"
+            title="Server settings"
+            onClick={() => setDialog('settings')}
+          >
+            &#9881;
+          </button>
           {canInvite ? (
             <button
               type="button"
@@ -193,6 +202,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
       ) : null}
       {dialog === 'invite' ? (
         <InviteDialog server={server} onClose={() => setDialog(null)} />
+      ) : null}
+      {dialog === 'settings' ? (
+        <ServerSettings server={server} onClose={() => setDialog(null)} />
       ) : null}
     </aside>
   );

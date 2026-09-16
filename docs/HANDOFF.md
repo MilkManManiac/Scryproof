@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-16, end of second build session.
+**Last updated:** 2026-09-16, end of third build session.
 
 ---
 
@@ -12,7 +12,7 @@ Living state. Update this at the end of every working session.
 |---|---|
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
-| M2 roles and permissions | **Server done and tested.** No settings UI yet. |
+| M2 roles and permissions | **Done.** Server, settings UI, audit log. |
 | M3 voice | **Scaffolding done.** Token minting, voice state, permission-gated grants. Needs a real LiveKit server. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
@@ -42,63 +42,78 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 ![Sign in](shots/signin.png)
 
+![Role permissions](shots/settings-roles.png)
+
+![Channel permission overwrites](shots/settings-channel-permissions.png)
+
+![Audit log](shots/settings-audit-log.png)
+
 ## Done this session
 
-**The client is finished and working.** `main.tsx`, `App.tsx`, the auth screen,
-server rail, channel sidebar, message list, composer, member list, user panel,
-avatars and dialogs. Creating a server, creating channels, minting an invite,
-joining with one, posting, editing, deleting, uploading, typing indicators,
-presence and voice presence all work against the real API.
+**The settings screen, which is what M2 was missing.** A full-screen overlay
+rather than a dialog, because the role editor is two panes and the permission
+lists are long.
 
-**A seed script**, `server/src/scripts/seed.ts`. It drives the public HTTP API
-the way a browser does — register, invite, join, assign a role, post — so if
-the seed succeeds the app genuinely works. It refuses to run on an instance
-that already has accounts.
+- **Roles.** Create, rename, colour, hoist, mentionable, delete, and the full
+  26-bit permission checklist with a sentence under every row explaining what
+  the bit actually does. Assign and unassign the role from its Members tab.
+- **Channel permissions.** Deny / inherit / allow per permission, per role or
+  member, with the inherited outcome printed next to every neutral row so
+  nobody has to hold the resolution order in their head.
+- **Members**, with role toggles and kick and ban; **Invites**, with revoke;
+  **Bans**, with lift; and the **audit log** rendered as sentences rather than
+  a table of action strings and ids.
 
-**Two real fixes found by looking rather than guessing:**
+**Two rules made visible instead of hidden in an error.** A permission the
+editor does not hold themselves is drawn disabled with the reason on hover,
+and a role at or above their own highest is listed but locked. Both are
+mirrors of `server/src/services/permissions.ts` — the server checks again on
+every request, and if the two ever disagree the server wins.
 
-- *The gateway signed you out immediately.* A socket closed by us reported
-  `closed`, which the app reads as "the session is gone". React's development
-  double-mount closes the first socket, so every load bounced straight back to
-  the sign-in screen. A deliberate close now reports nothing.
-- *Avatar colours were hashed to any hue on the wheel*, which produced neons
-  that fought the interface and, side by side, looked randomly generated. They
-  now come from a fixed ten-colour palette chosen against the theme.
+**The inherited-permission hint is computed with `computeBasePermissions` from
+the shared package**, the identical function the server runs, rather than a
+second implementation written for the UI. Two implementations of a permission
+algorithm drift, and the day they drift is the day this screen says a channel
+is private when it is not.
 
-**Two small gaps closed:** `slowmodeSeconds` was stored and enforced but never
-sent to the client, so the composer could not show it; it is on the wire type
-now. The root `typecheck` script pointed at a `tsconfig.json` that does not
-exist, so it had never run; it now checks `server` and `web` directly. Both
-pass.
+**Verified by driving the real UI**, not by reading the code: clicked Deny on
+one bit in `#general` and confirmed the server stored `deny: "64"`
+(MENTION_EVERYONE) and wrote an audit entry; changed a role colour through the
+save bar and confirmed it landed; signed in as `alex`, who has Manage messages
+and Kick but not Manage roles, and confirmed the Roles, Bans and Audit log
+sections and the channel gear are all absent for him.
+
+**One CSS bug found and fixed:** `.field label` was styling nested toggle rows
+as small uppercase captions, which turned a role name into a heading. It is
+`.field > label` now.
 
 ## Next, in order
 
-1. **Hand it to Wes.** He generates ideas by using the thing. Everything below
-   this line is less valuable than his first ten minutes in it.
-2. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief:
+1. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief:
    `bonesdeploy init` with the custom template, build and prepare scripts,
    LUKS by hand first, LiveKit and coturn as plain units. Ask Alex whether the
    generated nginx config passes WebSocket upgrades before starting.
-3. **Settings UI** for roles and channel permissions. The API is done and
-   tested; this is pure frontend.
-4. **M3 voice for real** — a LiveKit server, then the client side with E2EE on
+2. **M3 voice for real** — a LiveKit server, then the client side with E2EE on
    from the first frame, and the connection panel wired to actual stats. The
    panel is already on screen during a call and honestly reports that media is
    not connected.
+3. **Role reordering.** The API takes a `position` and enforces the hierarchy
+   on it; the settings screen has no drag handle yet, so the order is whatever
+   creation order produced.
 
 ## Decisions made this session
 
-- **The connection panel ships blank rather than fake.** During a call it shows
-  the signalling state truthfully and prints an em dash for RTT, jitter, loss
-  and TURN until there is a media connection to measure. A panel that invents
-  plausible numbers is worse than no panel.
-- **Message bodies are rendered as text.** No markdown pass,
-  no `dangerouslySetInnerHTML` anywhere in the client, so a message can never
-  become markup in someone else's browser.
-- **Channel permissions are fetched, not recomputed client-side.** The client
-  has the roles but not every overwrite, and a second implementation of the
-  resolution algorithm is how the two drift apart. `useChannelPermissions` asks
-  the server and fails closed on a 404.
+- **Neutral is a first-class state in channel overwrites.** A two-state
+  control cannot express "this channel has no opinion, inherit the roles",
+  which is not the same as denying. Every row is Deny / Inherit / Allow.
+- **Roles above yours are shown, not hidden.** Knowing a role exists is not a
+  leak, and a hierarchy list with silent gaps cannot be reasoned about. They
+  carry a lock and cannot be opened.
+- **Every permission row carries a sentence.** A screen where each row is a
+  two-word label is how someone hands a friend Manage roles without
+  understanding they have handed over the server.
+- **The audit log is rendered in sentences.** `channel.permissions` next to a
+  UUID is the same information and practically useless.
 
 ## Decisions carried from the previous session
 

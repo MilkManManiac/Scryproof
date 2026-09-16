@@ -103,6 +103,17 @@ export const api = {
       del<{ ok: true }>(`/api/servers/${serverId}/members/${userId}`),
     ban: (serverId: string, userId: string, reason?: string) =>
       put<{ ok: true }>(`/api/servers/${serverId}/bans/${userId}`, { reason }),
+    bans: (serverId: string) =>
+      get<{
+        bans: {
+          user: PublicUser;
+          reason: string | null;
+          bannedBy: string;
+          createdAt: string;
+        }[];
+      }>(`/api/servers/${serverId}/bans`),
+    unban: (serverId: string, userId: string) =>
+      del<{ ok: true }>(`/api/servers/${serverId}/bans/${userId}`),
     setNickname: (serverId: string, userId: string, nickname: string | null) =>
       patch<{ ok: true }>(`/api/servers/${serverId}/members/${userId}`, { nickname }),
     setMemberRoles: (serverId: string, userId: string, roleIds: string[]) =>
@@ -165,14 +176,24 @@ export const api = {
       post<{ role: Role }>(`/api/servers/${serverId}/roles`, body),
     update: (
       id: string,
-      body: { name?: string; permissions?: MaskString; color?: string | null; hoist?: boolean },
+      body: {
+        name?: string;
+        permissions?: MaskString;
+        color?: string | null;
+        hoist?: boolean;
+        mentionable?: boolean;
+        position?: number;
+      },
     ) => patch<{ role: Role }>(`/api/roles/${id}`, body),
     remove: (id: string) => del<{ ok: true }>(`/api/roles/${id}`),
+    members: (id: string) => get<{ members: PublicUser[] }>(`/api/roles/${id}/members`),
   },
 
   invites: {
     create: (serverId: string, expiresIn: '30m' | '6h' | '1d' | '7d' | 'never' = '7d') =>
       post<{ invite: Invite; url: string }>(`/api/servers/${serverId}/invites`, { expiresIn }),
+    list: (serverId: string) => get<{ invites: Invite[] }>(`/api/servers/${serverId}/invites`),
+    revoke: (code: string) => del<{ ok: true }>(`/api/invites/${code}`),
     createInstance: (maxUses = 1) =>
       post<{ invite: Invite; url: string }>('/api/instance-invites', { maxUses }),
     preview: (code: string) =>

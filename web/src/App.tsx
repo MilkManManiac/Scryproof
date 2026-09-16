@@ -8,16 +8,19 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { Permission } from '@gooffline/shared';
 import type { SelfUser } from '@gooffline/shared';
 
 import { api } from './lib/api';
-import { useChannelPermissions } from './lib/usePermissions';
+import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { ServerRail } from './components/ServerRail';
+import { ChannelSettings } from './components/settings/ChannelSettings';
+import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
 import { StoreProvider, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
@@ -58,6 +61,11 @@ function Shell() {
   const { state, loadMembers } = useStore();
   const server = useSelectedServer();
   const channel = useSelectedChannel();
+  const [channelSettings, setChannelSettings] = useState(false);
+
+  // A channel that is closed, deleted or switched away from should not leave
+  // its settings sitting open over the next one.
+  useEffect(() => setChannelSettings(false), [channel?.id]);
 
   // Members arrive on demand rather than in the ready frame, because a large
   // instance should not pay for every roster on every connect.
@@ -120,6 +128,16 @@ function Shell() {
                   <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>
                     {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
                   </span>
+                  {can(mask, Permission.MANAGE_ROLES) || can(mask, Permission.MANAGE_CHANNELS) ? (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Channel settings"
+                      onClick={() => setChannelSettings(true)}
+                    >
+                      &#9881;
+                    </button>
+                  ) : null}
                 </div>
               </header>
 
@@ -150,6 +168,16 @@ function Shell() {
 
         {server ? <MemberList server={server} /> : null}
       </div>
+
+      {channelSettings && server && channel ? (
+        <ChannelSettings
+          channel={channel}
+          server={server}
+          members={state.members[server.id] ?? []}
+          authority={authorityFor(server, state.members[server.id] ?? [], state.user?.id ?? null)}
+          onClose={() => setChannelSettings(false)}
+        />
+      ) : null}
     </div>
   );
 }
