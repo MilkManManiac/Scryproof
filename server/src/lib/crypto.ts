@@ -1,0 +1,144 @@
+/**
+ * Cryptographic helpers.
+ *
+ * Everything here is either a standard primitive from node:crypto or argon2id
+ * from a maintained Rust binding. No hand-rolled constructions.
+ */
+
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+
+import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
+
+import { config } from '../config.js';
+
+/**
+ * argon2id parameters. 19 MiB and two passes is the OWASP baseline: it costs a
+ * legitimate login a few tens of milliseconds and costs an attacker with a GPU
+ * farm orders of magnitude more than any SHA-family hash would.
+ */
+const ARGON_OPTIONS = {
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+} as const;
+
+export async function hashPassword(password: string): Promise<string> {
+  return argonHash(password, ARGON_OPTIONS);
+}
+
+export async function verifyPassword(hash: string, password: string): Promise<boolean> {
+  try {
+    return await argonVerify(hash, password);
+  } catch {
+    // A malformed hash in the database must read as "wrong password", never as
+    // a crash that leaks which accounts exist.
+    return false;
+  }
+}
+
+/**
+ * A dummy verification used when the username does not exist, so that login
+ * takes the same wall-clock time whether or not the account is real. Without
+ * it, response timing is a free account-enumeration oracle.
+ */
+const DUMMY_HASH =
+  '$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHR2YWx1ZQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG';
+
+export async function fakeVerifyPassword(password: string): Promise<void> {
+  try {
+    await argonVerify(DUMMY_HASH, password);
+  } catch {
+    // Expected: the dummy hash does not verify. The point is the time spent.
+  }
+}
+
+/** 256 bits of entropy, url-safe. Used for session cookies. */
+export function generateToken(bytes = 32): string {
+  return randomBytes(bytes).toString('base64url');
+}
+
+/**
+ * Session cookies are stored only as a SHA-256 digest. SHA-256 is correct here
+ * rather than argon2: the input is already 256 bits of uniform randomness, so
+ * there is nothing for a slow hash to defend against, and lookups happen on
+ * every single request.
+ */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function constantTimeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Key for encrypting secrets at rest (currently TOTP seeds), derived from the
+ * session secret so there is one secret to manage on the box. Separate `info`
+ * strings keep derived keys independent.
+ */
+function derivedKey(info: string): Buffer {
+  return Buffer.from(
+    hkdfSync('sha256', Buffer.from(config.sessionSecret), Buffer.alloc(0), Buffer.from(info), 32),
+  );
+}
+
+const SECRET_KEY_INFO = 'gooffline:secret-box:v1';
+
+/** AES-256-GCM. Output is iv.tag.ciphertext, base64url, self-describing. */
+export function encryptSecret(plaintext: string): string {
+  const key = derivedKey(SECRET_KEY_INFO);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${enc.toString('base64url')}`;
+}
+
+export function decryptSecret(payload: string): string | null {
+  try {
+    const [ivPart, tagPart, dataPart] = payload.split('.');
+    if (!ivPart || !tagPart || !dataPart) return null;
+    const key = derivedKey(SECRET_KEY_INFO);
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivPart, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    const dec = Buffer.concat([
+      decipher.update(Buffer.from(dataPart, 'base64url')),
+      decipher.final(),
+    ]);
+    return dec.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fresh symmetric key for a voice channel, handed to members over the
+ * authenticated socket. The media server never sees it.
+ */
+export function generateChannelKey(): string {
+  return randomBytes(32).toString('base64');
+}
+
+/** Hash an IP for logs. Salted per boot, so logs cannot be correlated later. */
+const IP_SALT = randomBytes(16);
+
+export function hashIp(ip: string): string {
+  return createHash('sha256').update(IP_SALT).update(ip).digest('hex').slice(0, 16);
+}
+
+/** Deterministic accent colour per user, so identity reads at a glance. */
+export function accentForId(id: string): string {
+  const digest = createHash('sha256').update(id).digest();
+  const hue = digest.readUInt16BE(0) % 360;
+  return `hsl(${hue} 62% 58%)`;
+}

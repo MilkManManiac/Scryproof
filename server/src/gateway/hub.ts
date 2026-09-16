@@ -1,0 +1,267 @@
+/**
+ * The realtime hub.
+ *
+ * Holds every open socket and decides who is allowed to hear about what. The
+ * rule that governs this file: a member must never receive an event for a
+ * channel they cannot see. Getting that wrong leaks channel names, message
+ * bodies and who is talking to whom, which would defeat the whole project even
+ * though the REST API was correct.
+ *
+ * Permissions are cached per connection because recomputing them for every
+ * recipient of every message would be wasteful, and invalidated explicitly
+ * whenever a role, overwrite or membership changes. Cache correctness is
+ * driven by invalidation events, never by a timeout.
+ */
+
+import type { WebSocket } from 'ws';
+
+import { Permission, encodeEvent, has } from '@gooffline/shared';
+import type { Presence, ServerEvent, VoiceState } from '@gooffline/shared';
+
+import {
+  computePermissionsForServerChannels,
+  loadMemberContext,
+} from '../services/permissions.js';
+
+export interface Connection {
+  readonly id: string;
+  readonly ws: WebSocket;
+  readonly userId: string;
+  readonly sessionId: string;
+  /** Servers this user belongs to. Kept current on join and leave. */
+  servers: Set<string>;
+  /** serverId -> channelId -> effective permissions. Cleared on invalidation. */
+  permissionCache: Map<string, Map<string, bigint>>;
+  status: Presence['status'];
+  lastSeenAt: number;
+  alive: boolean;
+}
+
+const connections = new Map<string, Connection>();
+const byUser = new Map<string, Set<Connection>>();
+
+/** Ephemeral, so it lives in memory and dies with a restart, as it should. */
+const voiceStates = new Map<string, VoiceState>();
+
+const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
+
+export function addConnection(connection: Connection): void {
+  connections.set(connection.id, connection);
+  const set = byUser.get(connection.userId) ?? new Set<Connection>();
+  set.add(connection);
+  byUser.set(connection.userId, set);
+}
+
+export function removeConnection(connection: Connection): void {
+  connections.delete(connection.id);
+  const set = byUser.get(connection.userId);
+  if (!set) return;
+  set.delete(connection);
+  if (set.size === 0) byUser.delete(connection.userId);
+}
+
+export function isOnline(userId: string): boolean {
+  return byUser.has(userId);
+}
+
+export function onlineUserIds(): string[] {
+  return [...byUser.keys()];
+}
+
+export function connectionCount(): number {
+  return connections.size;
+}
+
+/** Highest-priority status across a user's devices, for the member list. */
+export function presenceFor(userId: string): Presence {
+  const set = byUser.get(userId);
+  if (!set || set.size === 0) return { userId, status: 'offline' };
+
+  let status: Presence['status'] = 'offline';
+  for (const connection of set) {
+    if (connection.status === 'online') return { userId, status: 'online' };
+    if (connection.status === 'dnd') status = 'dnd';
+    else if (connection.status === 'idle' && status !== 'dnd') status = 'idle';
+  }
+  return { userId, status };
+}
+
+function send(connection: Connection, event: ServerEvent): void {
+  // 1 === WebSocket.OPEN. Comparing the numeric constant avoids importing the
+  // ws class into a module that only ever holds instances.
+  if (connection.ws.readyState !== 1) return;
+  try {
+    connection.ws.send(encodeEvent(event));
+  } catch {
+    // A failed write means the socket is going away; the close handler will
+    // clean it up. Never let one dead client break a broadcast to everyone
+    // else.
+  }
+}
+
+export function sendToUser(userId: string, event: ServerEvent): void {
+  const set = byUser.get(userId);
+  if (!set) return;
+  for (const connection of set) send(connection, event);
+}
+
+export function sendToConnection(connectionId: string, event: ServerEvent): void {
+  const connection = connections.get(connectionId);
+  if (connection) send(connection, event);
+}
+
+/**
+ * Everyone in a server, regardless of channel. Used for things that are server
+ * scoped by nature: roles, members, the server itself.
+ */
+export function broadcastToServer(serverId: string, event: ServerEvent): void {
+  for (const connection of connections.values()) {
+    if (connection.servers.has(serverId)) send(connection, event);
+  }
+}
+
+/**
+ * Everyone in a server who can actually see a channel.
+ *
+ * `required` defaults to VIEW_CHANNEL. Message events also require
+ * READ_MESSAGE_HISTORY so a member who may enter a channel but not read it
+ * does not receive its contents over the socket.
+ */
+export async function broadcastToChannel(
+  serverId: string,
+  channelId: string,
+  event: ServerEvent,
+  required: bigint = Permission.VIEW_CHANNEL,
+): Promise<void> {
+  const targets = [...connections.values()].filter((c) => c.servers.has(serverId));
+  if (targets.length === 0) return;
+
+  // Resolve permissions once per user, not once per connection: a user with
+  // three devices should not cost three permission computations.
+  const byUserId = new Map<string, Connection[]>();
+  for (const connection of targets) {
+    const list = byUserId.get(connection.userId) ?? [];
+    list.push(connection);
+    byUserId.set(connection.userId, list);
+  }
+
+  await Promise.all(
+    [...byUserId.entries()].map(async ([userId, userConnections]) => {
+      const first = userConnections[0];
+      if (!first) return;
+
+      const permissions = await permissionsForChannel(first, serverId, channelId);
+      if (permissions === null) return;
+      if (!has(permissions, required)) return;
+
+      for (const connection of userConnections) send(connection, event);
+    }),
+  );
+}
+
+/**
+ * Cached lookup of one connection's permissions in one channel. Returns null
+ * when the user is no longer a member, which is treated as "cannot see it".
+ */
+async function permissionsForChannel(
+  connection: Connection,
+  serverId: string,
+  channelId: string,
+): Promise<bigint | null> {
+  let serverCache = connection.permissionCache.get(serverId);
+
+  if (!serverCache) {
+    const ctx = await loadMemberContext(serverId, connection.userId);
+    if (!ctx) {
+      connection.servers.delete(serverId);
+      return null;
+    }
+    serverCache = await computePermissionsForServerChannels(ctx);
+    connection.permissionCache.set(serverId, serverCache);
+  }
+
+  const cached = serverCache.get(channelId);
+  if (cached !== undefined) return cached;
+
+  // A channel created since this cache was built. Rebuild rather than guess.
+  const ctx = await loadMemberContext(serverId, connection.userId);
+  if (!ctx) return null;
+  const fresh = await computePermissionsForServerChannels(ctx);
+  connection.permissionCache.set(serverId, fresh);
+  return fresh.get(channelId) ?? null;
+}
+
+/**
+ * Drop cached permissions for a server across every connection, and tell
+ * clients to refetch. Called whenever a role, an overwrite, a channel or a
+ * membership changes.
+ *
+ * This is deliberately blunt. Computing an exact per-user permission delta is
+ * where subtle privilege bugs live; refetching a server is cheap and cannot be
+ * wrong.
+ */
+export function invalidateServerPermissions(serverId: string, notify = true): void {
+  for (const connection of connections.values()) {
+    if (!connection.servers.has(serverId)) continue;
+    connection.permissionCache.delete(serverId);
+    if (notify) send(connection, { t: 'permissions_stale', d: { serverId } });
+  }
+}
+
+/** Track a user joining a server while already connected. */
+export function addUserToServer(userId: string, serverId: string): void {
+  const set = byUser.get(userId);
+  if (!set) return;
+  for (const connection of set) {
+    connection.servers.add(serverId);
+    connection.permissionCache.delete(serverId);
+  }
+}
+
+export function removeUserFromServer(userId: string, serverId: string): void {
+  const set = byUser.get(userId);
+  if (!set) return;
+  for (const connection of set) {
+    connection.servers.delete(serverId);
+    connection.permissionCache.delete(serverId);
+  }
+  voiceStates.delete(voiceKey(serverId, userId));
+}
+
+/* ---------------------------------- voice --------------------------------- */
+
+export function getVoiceState(serverId: string, userId: string): VoiceState | null {
+  return voiceStates.get(voiceKey(serverId, userId)) ?? null;
+}
+
+export function allVoiceStatesFor(serverIds: readonly string[]): VoiceState[] {
+  const wanted = new Set(serverIds);
+  return [...voiceStates.values()].filter((state) => wanted.has(state.serverId));
+}
+
+export function setVoiceState(state: VoiceState): void {
+  if (state.channelId === null) {
+    voiceStates.delete(voiceKey(state.serverId, state.userId));
+    return;
+  }
+  voiceStates.set(voiceKey(state.serverId, state.userId), state);
+}
+
+/** Clear every voice state for a user across all their servers. */
+export function clearVoiceStatesForUser(userId: string): VoiceState[] {
+  const cleared: VoiceState[] = [];
+  for (const [key, state] of voiceStates) {
+    if (state.userId !== userId) continue;
+    voiceStates.delete(key);
+    cleared.push({ ...state, channelId: null, sharingScreen: false, cameraOn: false });
+  }
+  return cleared;
+}
+
+export function connectionsForUser(userId: string): Connection[] {
+  return [...(byUser.get(userId) ?? [])];
+}
+
+export function allConnections(): Connection[] {
+  return [...connections.values()];
+}

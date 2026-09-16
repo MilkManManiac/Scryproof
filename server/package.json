@@ -1,0 +1,40 @@
+{
+  "name": "@gooffline/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "start": "node dist/index.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "invite": "tsx src/scripts/make-invite.ts",
+    "smoke": "tsx src/scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^9.0.3",
+    "@gooffline/shared": "*",
+    "@node-rs/argon2": "^2.2.1",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.5",
+    "otplib": "^13.5.0",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.3",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.15.5",
+    "@types/qrcode": "^1.5.5",
+    "@types/ws": "^8.18.1",
+    "drizzle-kit": "^0.31.5",
+    "esbuild": "^0.25.9",
+    "tsx": "^4.20.5"
+  }
+}
