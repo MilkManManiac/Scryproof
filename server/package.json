@@ -12,7 +12,9 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/scripts/seed.ts",
     "invite": "tsx src/scripts/make-invite.ts",
-    "smoke": "tsx src/scripts/smoke.ts"
+    "smoke": "tsx src/scripts/smoke.ts",
+    "test": "node --import tsx --test \"src/tests/**/*.test.ts\"",
+    "test:smoke": "tsx src/scripts/smoke.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
