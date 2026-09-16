@@ -210,6 +210,103 @@ export async function registerRoleRoutes(app: FastifyInstance): Promise<void> {
     return { role: serialize.role(updated) };
   });
 
+
+  /**
+   * Reordering the hierarchy.
+   *
+   * One request, not one per role. A drag that moves a role past four others
+   * changes five positions, and doing that as five PATCHes means five audit
+   * entries, five broadcasts and five permission-cache invalidations for a
+   * single gesture — with four intermediate orderings on the wire that the
+   * actor never asked for and that other clients would briefly render.
+   *
+   * The body is the whole order, highest first, which is also the order the
+   * settings screen draws. Positions are then handed out fresh from the top,
+   * so they stay dense and no two roles collide.
+   *
+   * The hierarchy rule is stricter here than it looks. It is not enough to
+   * check that each role's new position is below the actor's own highest: the
+   * actor must also be unable to rearrange the roles above them relative to
+   * each other, or to drop one of them below their own. So everything at or
+   * above the actor's highest role has to arrive as an unchanged prefix. The
+   * owner has no highest role and is exempt, as everywhere else.
+   */
+  app.patch('/api/servers/:serverId/roles/order', async (request) => {
+    const user = requireUser(request);
+    const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
+    const body = z
+      .object({ roleIds: z.array(z.string()).min(1).max(250) })
+      .parse(request.body);
+
+    const ctx = await requireServerPermission(serverId, user.id, Permission.MANAGE_ROLES);
+
+    const db = getDb();
+    const existing = await db
+      .select()
+      .from(roles)
+      .where(eq(roles.serverId, serverId))
+      .orderBy(asc(roles.position));
+
+    // @everyone is the floor. It is not part of the ordering and never moves.
+    const movable = existing.filter((role) => !role.isEveryone);
+    const current = [...movable].sort((a, b) => b.position - a.position);
+
+    const wanted = body.roleIds;
+    if (wanted.length !== current.length || new Set(wanted).size !== wanted.length) {
+      throw badRequest('Send every role in this server exactly once.', 'incomplete_order');
+    }
+    const byId = new Map(current.map((role) => [role.id, role]));
+    if (wanted.some((id) => !byId.has(id))) {
+      throw badRequest('That order names a role that is not in this server.', 'unknown_role');
+    }
+
+    if (!ctx.isOwner) {
+      const actorHighest = ctx.roles.reduce((max, role) => Math.max(max, role.position), -1);
+      const locked = current.filter((role) => role.position >= actorHighest);
+      const prefix = wanted.slice(0, locked.length);
+      if (locked.some((role, index) => prefix[index] !== role.id)) {
+        throw forbidden('You cannot move roles at or above your own highest role.');
+      }
+    }
+
+    // Top of the list gets the largest number, and @everyone keeps 0.
+    const assigned = wanted.map((id, index) => ({ id, position: wanted.length - index }));
+    const unchanged = assigned.every(({ id, position }) => byId.get(id)?.position === position);
+    if (unchanged) return { roles: existing.map(serialize.role) };
+
+    await db.transaction(async (tx) => {
+      for (const { id, position } of assigned) {
+        await tx.update(roles).set({ position }).where(eq(roles.id, id));
+      }
+    });
+
+    const updated = await db
+      .select()
+      .from(roles)
+      .where(eq(roles.serverId, serverId))
+      .orderBy(asc(roles.position));
+
+    await audit.record({
+      serverId,
+      actorId: user.id,
+      action: 'role.reorder',
+      targetType: 'server',
+      targetId: serverId,
+      changes: { order: wanted },
+    });
+
+    hub.broadcastToServer(serverId, {
+      t: 'roles_reorder',
+      d: { serverId, roles: updated.map(serialize.role) },
+    });
+    // Position decides who outranks whom, not what anyone may do, so nobody's
+    // permission mask changed. Clients still hold role positions, though, and
+    // the event above is what corrects them.
+    hub.invalidateServerPermissions(serverId, false);
+
+    return { roles: updated.map(serialize.role) };
+  });
+
   app.delete('/api/roles/:roleId', async (request) => {
     const user = requireUser(request);
     const { roleId } = z.object({ roleId: z.string() }).parse(request.params);

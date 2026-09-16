@@ -186,6 +186,9 @@ export const api = {
       },
     ) => patch<{ role: Role }>(`/api/roles/${id}`, body),
     remove: (id: string) => del<{ ok: true }>(`/api/roles/${id}`),
+    /** The whole order at once, highest first. See the route for why. */
+    reorder: (serverId: string, roleIds: string[]) =>
+      patch<{ roles: Role[] }>(`/api/servers/${serverId}/roles/order`, { roleIds }),
     members: (id: string) => get<{ members: PublicUser[] }>(`/api/roles/${id}/members`),
   },
 

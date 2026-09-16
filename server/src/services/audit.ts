@@ -30,6 +30,7 @@ export type AuditAction =
   | 'category.delete'
   | 'role.create'
   | 'role.update'
+  | 'role.reorder'
   | 'role.delete'
   | 'member.roles'
   | 'member.nickname'

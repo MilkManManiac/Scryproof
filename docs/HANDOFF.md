@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-16, end of third build session.
+**Last updated:** 2026-09-16, end of fourth build session.
 
 ---
 
@@ -12,7 +12,7 @@ Living state. Update this at the end of every working session.
 |---|---|
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
-| M2 roles and permissions | **Done.** Server, settings UI, audit log. |
+| M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, audit log. |
 | M3 voice | **Scaffolding done.** Token minting, voice state, permission-gated grants. Needs a real LiveKit server. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
@@ -48,7 +48,47 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 ![Audit log](shots/settings-audit-log.png)
 
+![The role hierarchy, seen by a moderator who cannot reach the top of it](shots/settings-role-order.png)
+
 ## Done this session
+
+**Role reordering, which is the hierarchy editor.** Order is meaning in a role
+list — the role at the top outranks everything beneath it — so dragging a row
+is the edit, not a sort preference. Roles carry a grip; @everyone sits below a
+divider because it is the floor and does not move.
+
+**One request, not one per role.** A drag past four others changes five
+positions. As five PATCHes that is five audit entries, five broadcasts and five
+permission-cache invalidations for one gesture, with four intermediate
+orderings on the wire that nobody asked for. `PATCH
+/api/servers/:id/roles/order` takes the whole order, renumbers it in a
+transaction, and emits one `roles_reorder` event carrying every role.
+
+**The hierarchy rule here is stricter than it first looks.** Checking that each
+role lands below the actor's own highest is not enough: it would still let them
+shuffle the roles *above* them relative to each other, or push one of those
+below their own. So every role at or above the actor's highest must arrive as
+an unchanged prefix. The owner is exempt, as everywhere.
+
+**Arrow keys work on the grip.** A hierarchy that can only be rearranged with a
+mouse is a hierarchy some people cannot rearrange.
+
+**Verified against the running server**, not by reading it: as owner, moving
+the bottom role to the top renumbered all three and wrote a `role.reorder`
+audit entry. As a moderator whose highest role is second from the top, a legal
+swap below him returned 200, lifting a role over his own head returned 403
+`You cannot move roles at or above your own highest role`, and a short list
+returned 400 `incomplete_order`. In the client, an arrow-key move persisted to
+the database, and holding the arrow key against the locked band did nothing at
+all — no snap-back, no doomed request.
+
+**One CSS bug found in the screenshot:** toggle rows were running their label
+and description together as one line ("Show separately in the member
+listHolders are grouped…"). The permission rows get two lines from
+`.perm-text`; these carry their text in a bare span and needed it spelled out.
+
+## Done in the previous session
+
 
 **The settings screen, which is what M2 was missing.** A full-screen overlay
 rather than a dialog, because the role editor is two panes and the permission
@@ -97,11 +137,23 @@ as small uppercase captions, which turned a role name into a heading. It is
    from the first frame, and the connection panel wired to actual stats. The
    panel is already on screen during a call and honestly reports that media is
    not connected.
-3. **Role reordering.** The API takes a `position` and enforces the hierarchy
-   on it; the settings screen has no drag handle yet, so the order is whatever
-   creation order produced.
+3. **Category permissions.** Channels inherit from the server, not from their
+   category; the schema has categories and the sidebar groups by them, but a
+   category carries no overwrites of its own yet.
 
 ## Decisions made this session
+
+- **Reordering is one request for the whole order, not a position per role.**
+  Partial orderings on the wire are states nobody asked for, and each one costs
+  a permission-cache invalidation.
+- **Positions are renumbered densely from the top on every reorder.** The
+  column is not unique and never was; treating the submitted list as the truth
+  and rewriting the numbers under it removes the collision question entirely.
+- **Roles above the actor arrive as an unchanged prefix or the request is
+  refused.** Per-role bounds checking would still permit rearranging the band
+  above them.
+
+## Decisions made building the settings screen
 
 - **Neutral is a first-class state in channel overwrites.** A two-state
   control cannot express "this channel has no opinion, inherit the roles",

@@ -50,6 +50,9 @@ export type ServerEvent =
   | { t: 'role_create'; d: Role }
   | { t: 'role_update'; d: Role }
   | { t: 'role_delete'; d: { id: Snowflake; serverId: Snowflake } }
+  /** The whole hierarchy was renumbered at once. Carries every role in the
+   * server so a client never has to reconcile a partial reorder. */
+  | { t: 'roles_reorder'; d: { serverId: Snowflake; roles: Role[] } }
   | { t: 'member_join'; d: Member }
   | { t: 'member_update'; d: Member }
   | { t: 'member_leave'; d: { userId: Snowflake; serverId: Snowflake } }

@@ -694,6 +694,8 @@ function AuditPane({ server, members }: { server: ServerDetail; members: Member[
         return `created the role ${changedName ?? target}`;
       case 'role.update':
         return `edited the role ${target}`;
+      case 'role.reorder':
+        return 'reordered the roles';
       case 'role.delete':
         return `deleted the role ${changedName ?? ''}`.trim();
       case 'member.roles':

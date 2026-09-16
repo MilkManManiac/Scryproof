@@ -90,47 +90,15 @@ export function RolesPane({
 
   return (
     <div className="roles-pane">
-      <div className="role-list">
-        <div className="role-list-header">
-          <span>Roles</span>
-          {authority.can(Permission.MANAGE_ROLES) ? (
-            <button
-              type="button"
-              className="icon-button"
-              title="New role"
-              disabled={creating}
-              onClick={() => void createRole()}
-            >
-              +
-            </button>
-          ) : null}
-        </div>
-
-        {ordered.map((role) => {
-          const editable = authority.canEditRole(role);
-          return (
-            <button
-              type="button"
-              key={role.id}
-              className={role.id === selected?.id ? 'role-entry active' : 'role-entry'}
-              onClick={() => setSelectedId(role.id)}
-            >
-              <span
-                className="role-dot"
-                style={{ background: role.color ?? 'var(--text-faint)' }}
-              />
-              <span className="role-entry-name">
-                {role.isEveryone ? '@everyone' : role.name}
-              </span>
-              {editable ? null : (
-                <span className="role-locked" title="This role is at or above your highest role.">
-                  &#128274;
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <RoleList
+        server={server}
+        roles={ordered}
+        authority={authority}
+        selectedId={selected?.id ?? null}
+        onSelect={setSelectedId}
+        onCreate={() => void createRole()}
+        creating={creating}
+      />
 
       <div className="role-editor">
         {error ? <div className="error">{error}</div> : null}
@@ -150,6 +118,204 @@ export function RolesPane({
           <p className="settings-note">This server has no roles yet.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The role list, which is also the hierarchy editor.
+ *
+ * Order is meaning here: the role at the top outranks every role beneath it,
+ * so the list is not a menu that happens to be sorted — dragging a row is the
+ * edit. Roles the actor cannot touch sit above the ones they can, and the
+ * boundary between the two is drawn rather than implied.
+ *
+ * A drop sends the whole order in one request and renders optimistically. If
+ * the server refuses, the list snaps back to what the server says it is,
+ * because a hierarchy that looks rearranged but is not is worse than one that
+ * refused out loud.
+ */
+function RoleList({
+  server,
+  roles: all,
+  authority,
+  selectedId,
+  onSelect,
+  onCreate,
+  creating,
+}: {
+  server: ServerDetail;
+  roles: Role[];
+  authority: Authority;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
+  creating: boolean;
+}) {
+  const everyone = all.find((role) => role.isEveryone) ?? null;
+  const movable = useMemo(() => all.filter((role) => !role.isEveryone), [all]);
+
+  // While a drag is in flight the list follows the pointer rather than the
+  // server. Null means "whatever the server last said".
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Once the server's order matches what we drew, stop overriding it, so a
+  // reorder by somebody else is not fought by our stale copy.
+  useEffect(() => {
+    if (!order) return;
+    const live = movable.map((role) => role.id);
+    if (live.length === order.length && live.every((id, i) => id === order[i])) setOrder(null);
+  }, [order, movable]);
+
+  const shown = useMemo(() => {
+    if (!order) return movable;
+    const byId = new Map(movable.map((role) => [role.id, role]));
+    const listed = order.map((id) => byId.get(id)).filter((role): role is Role => Boolean(role));
+    // A role created or deleted mid-drag must not vanish from the list.
+    const extra = movable.filter((role) => !order.includes(role.id));
+    return [...listed, ...extra];
+  }, [order, movable]);
+
+  // Everything above the first role the actor can edit is out of reach, and
+  // nothing may be dragged into that band.
+  const firstEditable = shown.findIndex((role) => authority.canEditRole(role));
+  const floor = firstEditable === -1 ? shown.length : firstEditable;
+  const canReorder = authority.can(Permission.MANAGE_ROLES) && shown.length - floor > 1;
+
+  async function commit(next: string[]) {
+    setOrder(next);
+    setError(null);
+    try {
+      await api.roles.reorder(server.id, next);
+    } catch (problem) {
+      setOrder(null);
+      setError(
+        problem instanceof ApiError ? problem.message : 'Could not save the new order.',
+      );
+    }
+  }
+
+  function move(from: number, to: number) {
+    if (from === to || from < floor || to < floor) return;
+    if (to < 0 || to >= shown.length) return;
+    const next = shown.map((role) => role.id);
+    const [held] = next.splice(from, 1);
+    if (!held) return;
+    next.splice(to, 0, held);
+    void commit(next);
+  }
+
+  return (
+    <div className="role-list">
+      <div className="role-list-header">
+        <span>Roles</span>
+        {authority.can(Permission.MANAGE_ROLES) ? (
+          <button
+            type="button"
+            className="icon-button"
+            title="New role"
+            disabled={creating}
+            onClick={onCreate}
+          >
+            +
+          </button>
+        ) : null}
+      </div>
+
+      {canReorder ? (
+        <p className="role-list-hint">
+          Drag a role to change who outranks whom, or focus its handle and use the arrow keys.
+        </p>
+      ) : null}
+
+      {error ? <div className="error">{error}</div> : null}
+
+      {shown.map((role, index) => {
+        const editable = authority.canEditRole(role);
+        const draggable = canReorder && index >= floor;
+
+        return (
+          <div
+            className={dragging === role.id ? 'role-entry-wrap dragging' : 'role-entry-wrap'}
+            key={role.id}
+            onDragOver={(event) => {
+              if (!dragging || index < floor) return;
+              event.preventDefault();
+            }}
+            onDrop={(event) => {
+              if (!dragging || index < floor) return;
+              event.preventDefault();
+              move(
+                shown.findIndex((entry) => entry.id === dragging),
+                index,
+              );
+              setDragging(null);
+            }}
+          >
+            {draggable ? (
+              <button
+                type="button"
+                className="role-grip"
+                draggable
+                aria-label={`Reorder ${role.name}`}
+                title="Drag, or use the arrow keys"
+                onDragStart={() => setDragging(role.id)}
+                onDragEnd={() => setDragging(null)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    move(index, index - 1);
+                  }
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    move(index, index + 1);
+                  }
+                }}
+              >
+                &#8942;&#8942;
+              </button>
+            ) : (
+              <span className="role-grip placeholder" aria-hidden="true" />
+            )}
+
+            <button
+              type="button"
+              className={role.id === selectedId ? 'role-entry active' : 'role-entry'}
+              onClick={() => onSelect(role.id)}
+            >
+              <span className="role-dot" style={{ background: role.color ?? 'var(--text-faint)' }} />
+              <span className="role-entry-name">{role.name}</span>
+              {editable ? null : (
+                <span className="role-locked" title="This role is at or above your highest role.">
+                  &#128274;
+                </span>
+              )}
+            </button>
+          </div>
+        );
+      })}
+
+      {everyone ? (
+        <>
+          <div className="role-list-floor">Applies to everyone</div>
+          <div className="role-entry-wrap">
+            <span className="role-grip placeholder" aria-hidden="true" />
+            <button
+              type="button"
+              className={everyone.id === selectedId ? 'role-entry active' : 'role-entry'}
+              onClick={() => onSelect(everyone.id)}
+            >
+              <span
+                className="role-dot"
+                style={{ background: everyone.color ?? 'var(--text-faint)' }}
+              />
+              <span className="role-entry-name">@everyone</span>
+            </button>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

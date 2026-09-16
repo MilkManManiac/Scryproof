@@ -45,8 +45,8 @@ export async function initDatabase(): Promise<Database> {
       connectionString: config.databaseUrl,
       max: 10,
       idleTimeoutMillis: 30_000,
-      // The droplet talks to Postgres over the Docker network, not the
-      // internet, so TLS here would be ceremony. A managed database would
+      // Postgres runs on the same box as the API and listens on localhost,
+      // so TLS here would be ceremony. A managed database elsewhere would
       // need this set to true.
       ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
     });

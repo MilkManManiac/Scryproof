@@ -379,6 +379,12 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       });
     }
 
+    case 'roles_reorder': {
+      const server = state.servers[event.d.serverId];
+      if (!server) return state;
+      return upsertServer(state, { ...server, roles: event.d.roles });
+    }
+
     case 'role_delete': {
       const server = state.servers[event.d.serverId];
       if (!server) return state;
