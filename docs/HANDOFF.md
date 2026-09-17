@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-17, after the first real encrypted call between two browsers, and with everything that can be prepared for the box prepared.
+**Last updated:** 2026-09-17, after M5: reactions, mentions, replies, unread marks, links, the keyboard and the sounds.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -22,7 +22,7 @@ Living state. Update this at the end of every working session.
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **Not done:** never on a real box; the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
-| M5 feel | Not started. |
+| M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. It is not done: M5 ends when Wes says it does not feel like a clone, and he has not looked at it yet. |
 | M6 desktop | Not started. |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
@@ -87,9 +87,18 @@ and `npm run dev:livekit` (LiveKit 1.13.6, a Windows binary in the gitignored
 beeps, and they run with `--mute-audio` because headless Chrome plays a call
 out of the real speakers. Without that flag Wes hears thirty seconds of beeping.
 
+`npm test` now covers the message-body split (links and mentions in one pass,
+and every scheme that must never become a link) and the rule for when a message
+makes a sound.
+
 `npm run test:smoke` needs a server that has just been restarted and **not**
 seeded — it registers its own accounts, and the sign-up rate limiter counts the
 seed's four against it.
+
+`node scripts/shot.mjs docs/shots/x.png --as wes --channel maps` signs in and
+photographs the app; `--click <selector>` and `--press ctrl+k` reach a screen
+that only opens on an action. Needs the API, the web dev server and a seeded
+database.
 
 ## Screenshots
 
@@ -111,7 +120,56 @@ seed's four against it.
 
 ![The production build behind the shipping security headers](shots/prod-check.png)
 
-## Done this session
+![Unread channels, mention badges and the rail count](shots/m5-unread.png)
+
+![The quick switcher, unread first](shots/m5-switcher.png)
+
+![Every shortcut, in the only place they are written down](shots/m5-keyboard.png)
+
+![What makes a sound](shots/m5-notifications.png)
+
+## Done in the M5 session
+
+**Reactions, mentions, replies and read marks.** Reactions are one row per
+person per emoji per message, so a double click changes nothing the second
+time, and every change answers with the message's whole set. Mentions are
+resolved by the server when the message is written: an id that is not a member
+is noise, nobody pings themselves, `@everyone` is a permission rather than a
+string, and a ping only reaches someone who can already see the channel —
+otherwise an unread badge would announce that a hidden channel exists and that
+people in it are talking about you. **In an encrypted channel the server pings
+nobody**, because it cannot read the body and will not guess. Editing
+re-resolves who a message names but rings no bells.
+
+Read marks live on the server, so they follow a person between devices, and
+reading never goes backwards. Channels carry `last_message_id`, so painting a
+whole sidebar costs no extra query.
+
+**Links are only ever links.** Only http and https are turned into something
+clickable; every other scheme comes out as flat text, which is the defence,
+because `javascript:` and `data:` are how a body becomes code. A bare `www.`
+gets https, never http. Every link opens with no referrer. **Nothing is fetched
+to make a preview** — an unfurl puts a third party in the data path whichever
+end does the asking (non-negotiable 1).
+
+**The keyboard.** Ctrl+K goes to a channel by letters in order, searching only
+what the client already holds, so no keystroke leaves the machine. Alt+arrows
+walk channels and servers; stepping onto a voice channel selects it and never
+joins it. Escape marks read, Up in an empty composer edits your last message,
+Ctrl+Shift+K lists all of it. One rule underneath: a key pressed while someone
+is typing belongs to what they are typing.
+
+**Sounds.** Two sine tones for a mention, one quiet note for everything else,
+made on the spot like the call chimes — no audio files. The decision of whether
+to make a noise is a pure function with tests, because a client that pings on
+everything gets muted and one that misses the message addressed to you is why
+people go back. A burst is one sound, not one each. The tab title carries the
+mention count.
+
+**What is not done.** Wes has not used any of it. M5's finish line is his
+verdict, not a passing test.
+
+## Done in the voice session
 
 Wes asked for everything that could be finished before he buys the droplet.
 Two halves: get the deploy ready, and build voice against a local LiveKit.

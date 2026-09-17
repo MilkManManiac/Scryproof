@@ -34,6 +34,7 @@ import type {
 } from '@gooffline/shared';
 
 import { api } from '../lib/api';
+import { notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { VoiceSession } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
@@ -577,6 +578,10 @@ export function StoreProvider({
   const gatewayRef = useRef<Gateway | null>(null);
   const currentVoiceChannel = useRef<string | null>(null);
   const selfId = useRef<string | null>(null);
+  // Read inside the long-lived gateway callback, which is created once and
+  // would otherwise be looking at whatever was selected when it was made.
+  const openChannel = useRef<string | null>(null);
+  openChannel.current = state.selectedChannelId;
 
   // One session object for the life of the app. It is idle until a call is
   // joined, and it reaches the gateway through the ref so it never holds a
@@ -599,6 +604,20 @@ export function StoreProvider({
     const gateway = new Gateway({
       onEvent: (event) => {
         dispatch({ type: 'gateway', event });
+
+        if (event.t === 'message_create') {
+          const sound = soundFor({
+            authorId: event.d.authorId,
+            mentions: event.d.mentions ?? [],
+            mentionsEveryone: event.d.mentionsEveryone ?? false,
+            selfId: selfId.current,
+            channelId: event.d.channelId,
+            openChannelId: openChannel.current,
+            windowFocused: document.hasFocus(),
+            prefs: notifyPrefs.get(),
+          });
+          if (sound) play(sound);
+        }
 
         if (event.t === 'ready') {
           selfId.current = event.d.user.id;

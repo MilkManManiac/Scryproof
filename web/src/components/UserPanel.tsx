@@ -12,6 +12,7 @@ import type { PresenceStatus } from '@gooffline/shared';
 
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { NotifySettings } from './NotifySettings';
 import { VoiceSettings } from './VoiceSettings';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
@@ -25,6 +26,7 @@ export function UserPanel() {
   const { state, setPresence, signOut, updateVoice, leaveVoice } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
 
   const user = state.user;
   if (!user) return null;
@@ -88,6 +90,15 @@ export function UserPanel() {
       <button
         type="button"
         className="icon-button"
+        title="Notifications"
+        onClick={() => setNotifyOpen(true)}
+      >
+        &#9836;
+      </button>
+
+      <button
+        type="button"
+        className="icon-button"
         title="Voice and audio settings"
         onClick={() => setAudioOpen(true)}
       >
@@ -95,6 +106,7 @@ export function UserPanel() {
       </button>
 
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
+      {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
 
       {menuOpen ? (
         <div

@@ -2599,3 +2599,34 @@ kbd {
   align-items: center;
   gap: 4px;
 }
+
+/* Not a .field: that wrapper makes its direct labels small uppercase captions
+   and stretches any input inside it to the full width, which turns a radio
+   into a very wide circle sitting above its own text. */
+.radio-group {
+  margin-bottom: 14px;
+}
+.radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.radio-row input[type='radio'] {
+  width: 14px;
+  height: 14px;
+  margin: 3px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+.radio-row > span {
+  display: flex;
+  flex-direction: column;
+}
+.radio-row .field-note {
+  margin-top: 2px;
+}

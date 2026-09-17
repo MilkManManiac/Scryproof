@@ -28,7 +28,7 @@ import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
-import { StoreProvider, useSelectedChannel, useSelectedServer, useStore } from './state/store';
+import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
 type Gate = { status: 'checking' } | { status: 'out' } | { status: 'in'; user: SelfUser };
 
@@ -103,6 +103,16 @@ function Shell() {
 
   // While a dialog is open it owns the keyboard, including Escape.
   useShortcuts(handlers, overlay === null && !channelSettings);
+
+  // The tab title carries the count, so a window behind three others still
+  // says whether anybody wanted you.
+  const pending = useMemo(
+    () => state.serverOrder.reduce((total, id) => total + unreadForServer(state, id).mentions, 0),
+    [state],
+  );
+  useEffect(() => {
+    document.title = pending > 0 ? `(${pending}) GoOffline` : 'GoOffline';
+  }, [pending]);
 
   // A channel that is closed, deleted or switched away from should not leave
   // its settings sitting open over the next one.

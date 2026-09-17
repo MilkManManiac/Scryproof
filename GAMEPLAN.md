@@ -276,7 +276,7 @@ Order changed from the original brief: M1 and most of M2 were built locally firs
 
 **M4 — Video and screen share.** Camera tiles, share screen or one window, simulcast, viewer chooses focus, E2EE covers video too. *Done when: someone shares a map and someone else shares a game, both at once.*
 
-**M5 — Feel.** Unread badges, mentions, reactions, replies, link handling, keyboard shortcuts, sounds. Read `references/ai-tell.md` in the milk-project skill before this one. *Done when: Wes says it doesn't feel like a clone.*
+**M5 — Feel.** Unread badges, mentions, reactions, replies, link handling, keyboard shortcuts, sounds. Read `references/ai-tell.md` in the milk-project skill before this one. **All of it is built** — see `docs/HANDOFF.md`. Two decisions worth carrying forward: the server resolves mentions and therefore pings nobody in an encrypted channel, and there are no link previews, because an unfurl puts a third party in the data path whichever end does the fetching. *Done when: Wes says it doesn't feel like a clone.* **Not done: he has not looked at it.**
 
 **M6 — Desktop app.** Tauri 2, global push-to-talk, share a game window with its audio, start with Windows, tray icon. **This is also the trust tier (1b, finding 2):** the client ships inside the installer rather than loading from the server, and updates are signed with a key that lives on Wes's workstation, never on the box. *Done when: Wes plays a game with PTT and never alt-tabs, and replacing the web client on the server changes nothing about what the desktop app runs.*
 

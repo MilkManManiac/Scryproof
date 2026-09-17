@@ -96,6 +96,16 @@ try {
     await sleep(1200);
   }
 
+  // e.g. --click 'button[title="Notifications"]'
+  const click = flag('click', null);
+  if (click) {
+    const hit = await run(
+      `(() => { const el = document.querySelector(${JSON.stringify(click)}); if (!el) return false; el.click(); return true; })()`,
+    );
+    if (!hit) throw new Error(`nothing on the page matches ${click}`);
+    await sleep(700);
+  }
+
   // e.g. --press ctrl+k, to photograph something only a shortcut opens.
   const press = flag('press', null);
   if (press) {
