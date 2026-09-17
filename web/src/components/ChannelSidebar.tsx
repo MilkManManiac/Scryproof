@@ -12,7 +12,7 @@ import type { Channel, ServerDetail } from '@gooffline/shared';
 
 import { ApiError, api } from '../lib/api';
 import { canOnServer } from '../lib/usePermissions';
-import { useStore } from '../state/store';
+import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 import { ServerSettings } from './settings/ServerSettings';
@@ -137,12 +137,22 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     const inVoice = Object.values(state.voiceStates).filter(
                       (voice) => voice.channelId === channel.id,
                     );
+                    // No special case for the open channel. Looking at it marks
+                    // it read and the badge goes by itself; if the window is
+                    // not focused it has not been read, and saying so here is
+                    // the only thing that keeps this count and the rail's from
+                    // disagreeing.
+                    const { unread, mentions } = unreadFor(state, channel);
+
+                    const classes = ['channel'];
+                    if (active) classes.push('active');
+                    if (unread) classes.push('unread');
 
                     return (
                       <div key={channel.id}>
                         <button
                           type="button"
-                          className={active ? 'channel active' : 'channel'}
+                          className={classes.join(' ')}
                           onClick={() => {
                             selectChannel(channel.id);
                             if (channel.type === 'voice') joinVoice(channel.id);
@@ -155,6 +165,11 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                           {channel.encrypted ? (
                             <span className="channel-lock" title="End-to-end encrypted">
                               &#128274;
+                            </span>
+                          ) : null}
+                          {mentions > 0 ? (
+                            <span className="badge" title={countLabel(mentions)}>
+                              {badgeText(mentions)}
                             </span>
                           ) : null}
                         </button>

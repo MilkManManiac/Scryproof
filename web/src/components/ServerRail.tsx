@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { LIMITS, validateServerName } from '@gooffline/shared';
 
 import { ApiError, api } from '../lib/api';
-import { useStore } from '../state/store';
+import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
 import { Modal } from './Modal';
 
 function tile(name: string): string {
@@ -82,17 +82,25 @@ export function ServerRail() {
         const server = state.servers[id];
         if (!server) return null;
         const active = state.selectedServerId === id;
+        // The pip is the server's own news. Looking at it is not reading it,
+        // so an open server still shows one until its channels are read.
+        const { unread, mentions } = unreadForServer(state, id);
+
+        const classes = ['rail-item'];
+        if (active) classes.push('active');
+        if (unread) classes.push('unread');
 
         return (
           <button
             key={id}
             type="button"
-            className={active ? 'rail-item active' : 'rail-item'}
-            title={server.name}
+            className={classes.join(' ')}
+            title={mentions > 0 ? `${server.name} — ${countLabel(mentions)}` : server.name}
             aria-current={active ? 'true' : undefined}
             onClick={() => selectServer(id)}
           >
             {tile(server.name)}
+            {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}
           </button>
         );
       })}

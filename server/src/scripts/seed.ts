@@ -60,10 +60,26 @@ class Actor {
 }
 
 /** Spread the timestamps so the timeline groups and divides like a real one. */
-async function say(actor: Actor, channelId: string, content: string): Promise<void> {
-  await actor.post(`/api/channels/${channelId}/messages`, { content });
+async function say(
+  actor: Actor,
+  channelId: string,
+  content: string,
+  replyToId?: string,
+): Promise<string> {
+  const { message } = await actor.post(`/api/channels/${channelId}/messages`, {
+    content,
+    ...(replyToId ? { replyToId } : {}),
+  });
   await new Promise((resolve) => setTimeout(resolve, 60));
+  return message.id as string;
 }
+
+async function react(actor: Actor, messageId: string, emoji: string): Promise<void> {
+  await actor.put(`/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
+}
+
+/** How you write someone's name so the server reads it as a ping. */
+const at = (actor: Actor) => `<@${actor.id}>`;
 
 async function main(): Promise<void> {
   const context = await new Actor('', '').get('/api/auth/context');
@@ -153,22 +169,41 @@ async function main(): Promise<void> {
 
   await say(wes, general.id, 'Right, this is ours now. No Discord, no telemetry, nobody else on the wire.');
   await say(alex, general.id, 'It loads fast. What is it actually running on?');
-  await say(wes, general.id, 'One box. The whole thing moves to another host with a restore and a DNS change.');
+  const oneBox = await say(
+    wes,
+    general.id,
+    'One box. The whole thing moves to another host with a restore and a DNS change.',
+  );
   await say(mara, general.id, 'Does voice work the same way?');
-  await say(
+  const encrypted = await say(
     wes,
     general.id,
     'Same box, and the audio is end to end encrypted, so the server relays it without being able to listen.',
   );
   await say(devon, general.id, 'Prove it later. For now I just want the map channel.');
-  await say(alex, general.id, 'Seconded.');
+  await say(alex, general.id, 'Seconded.', encrypted);
+
+  await react(alex, oneBox, '\u{1F440}');
+  await react(mara, encrypted, '\u{1F512}');
+  await react(devon, encrypted, '\u{1F512}');
+  await react(alex, encrypted, '\u{1F525}');
 
   await say(wes, planning.channel.id, 'Next session: the river crossing, then the thing under it.');
   await say(mara, planning.channel.id, 'Do we need to bring the boat or is that a trap');
   await say(wes, planning.channel.id, 'Yes.');
+  // Left unread, and addressed to Wes, so the sidebar has something to say the
+  // moment he signs in.
+  await say(mara, planning.channel.id, `${at(wes)} that was not an answer`);
 
   await say(wes, maps.channel.id, 'Started the marshes. The rivers take longer than the whole coastline.');
-  await say(devon, maps.channel.id, 'That is the part that makes it look hand made though.');
+  const handMade = await say(
+    devon,
+    maps.channel.id,
+    'That is the part that makes it look hand made though.',
+  );
+  await react(wes, handMade, '\u{2764}\u{FE0F}');
+  // Mara, not Devon: #maps has slowmode on, and the seed obeys its own rules.
+  await say(mara, maps.channel.id, `${at(wes)} is the north edge the border or just where you stopped`);
 
   console.log('\nDone.\n');
   console.log('  Open      http://localhost:5173');

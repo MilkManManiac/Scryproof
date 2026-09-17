@@ -2415,3 +2415,35 @@ video.mirrored {
   bottom: -3px;
   box-shadow: 0 0 0 3px var(--bg-rail);
 }
+
+/* The mention count. One shape in two places: hanging off the corner of a
+   rail tile, riding at the end of a channel row. Unread is weight and the
+   pip; this is only ever for the times someone said your name. */
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  /* The accent, not a red: --good/--warn/--bad mean connection health here and
+     nothing else, and being named is not a fault condition. */
+  background: var(--accent);
+  color: var(--bg-void);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.rail-item .badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  border: 2px solid var(--bg-rail);
+  height: 19px;
+  min-width: 19px;
+}
+.channel .badge {
+  margin-left: auto;
+}

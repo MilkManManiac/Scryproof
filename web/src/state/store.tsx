@@ -880,3 +880,13 @@ export function unreadForServer(state: State, serverId: string): Unread {
   }
   return { unread, mentions };
 }
+
+/** Past 99 the number stops being information and starts being a shape. */
+export function badgeText(count: number): string {
+  return count > 99 ? '99+' : String(count);
+}
+
+/** The same count said aloud, for a title or a screen reader. */
+export function countLabel(count: number): string {
+  return count === 1 ? '1 mention' : `${count} mentions`;
+}
