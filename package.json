@@ -23,7 +23,9 @@
     "test": "npm run test --workspace server && npm run test --workspace web",
     "test:smoke": "npm run test:smoke --workspace server",
     "test:exif": "node scripts/exif-check.mjs",
-    "test:prod": "node scripts/prod-check.mjs"
+    "test:prod": "node scripts/prod-check.mjs",
+    "dev:livekit": "node scripts/dev-livekit.mjs",
+    "test:voice": "node scripts/voice-check.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

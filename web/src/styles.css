@@ -1013,6 +1013,157 @@ textarea {
   background: var(--bad);
 }
 
+.connection-verify {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.connection-verify:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* ----------------------------------------------------------------- voice */
+
+.voice-stage {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+}
+
+.voice-stage-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.voice-stage-empty {
+  color: var(--text-dim);
+}
+
+.voice-stage-error {
+  color: var(--bad);
+  max-width: 460px;
+  text-align: center;
+}
+
+.voice-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.voice-tile {
+  width: 148px;
+  padding: 18px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  transition: border-color 90ms linear;
+}
+
+/* The ring is the whole tile edge, not a glow on the avatar: at a glance across
+   eight tiles you can see who is talking without reading anything. */
+.voice-tile.speaking {
+  border-color: var(--good);
+}
+
+.voice-tile.held {
+  border-color: var(--warn);
+  border-style: dashed;
+}
+
+.voice-tile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-rail);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.voice-tile-name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-tile-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.voice-tile.held .voice-tile-note {
+  color: var(--warn);
+}
+
+.voice-consent {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--warn) 12%, var(--bg-rail));
+  border-top: 1px solid var(--warn);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.voice-consent-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-consent-print {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.voice-code {
+  padding: 12px 14px;
+  background: var(--bg-rail);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.voice-code-digits {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.voice-code p {
+  max-width: 620px;
+}
+
 /* --------------------------------------------------------------- utility */
 
 .empty {

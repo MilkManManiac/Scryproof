@@ -34,6 +34,7 @@ import type {
 
 import { api } from '../lib/api';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
+import { VoiceSession } from '../lib/voice-session';
 
 export interface State {
   connection: ConnectionStatus;
@@ -465,6 +466,8 @@ interface StoreValue {
   joinVoice: (channelId: string) => void;
   leaveVoice: () => void;
   updateVoice: (patch: { selfMute?: boolean; selfDeaf?: boolean; sharingScreen?: boolean; cameraOn?: boolean }) => void;
+  /** The live call, if any: media, keys, and the numbers the connection panel shows. */
+  voice: VoiceSession;
   loadMessages: (channelId: string, before?: string) => Promise<void>;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
@@ -483,11 +486,53 @@ export function StoreProvider({
   const [state, dispatch] = useReducer(reducer, initialState);
   const gatewayRef = useRef<Gateway | null>(null);
   const currentVoiceChannel = useRef<string | null>(null);
+  const selfId = useRef<string | null>(null);
+
+  // One session object for the life of the app. It is idle until a call is
+  // joined, and it reaches the gateway through the ref so it never holds a
+  // socket that has since been replaced.
+  const voiceRef = useRef<VoiceSession | null>(null);
+  if (!voiceRef.current) {
+    voiceRef.current = new VoiceSession(
+      () => selfId.current ?? '',
+      (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
+    );
+  }
+  const voice = voiceRef.current;
+  // Lets `npm run test:voice` ask a real browser what it actually decoded.
+  // Dev builds only; Vite removes the branch from production.
+  if (import.meta.env.DEV) (window as unknown as { __voice?: VoiceSession }).__voice = voice;
 
   useEffect(() => {
     const gateway = new Gateway({
       onEvent: (event) => {
         dispatch({ type: 'gateway', event });
+
+        if (event.t === 'ready') {
+          selfId.current = event.d.user.id;
+          // A fresh gateway connection means the server forgot we were in a
+          // call when the old one dropped. Rejoin rather than sit in a room
+          // the server no longer thinks we are in.
+          const channelId = currentVoiceChannel.current;
+          if (channelId) {
+            void voice.join(channelId, () =>
+              gatewayRef.current?.send({ t: 'voice_state', d: { channelId } }),
+            );
+          }
+        }
+        if (event.t === 'voice_membership') void voice.onMembership(event.d);
+        if (event.t === 'voice_signal') void voice.onSignal(event.d);
+        if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {
+          if (event.d.channelId === null && currentVoiceChannel.current) {
+            // Moved out by a moderator, or removed from the server.
+            currentVoiceChannel.current = null;
+            void voice.leave();
+          } else {
+            // A server mute is not a request. Enforce it here as well as in the grant.
+            void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
+            voice.setDeafened(event.d.selfDeaf || event.d.serverDeaf);
+          }
+        }
 
         // Any permission change anywhere means our view of that server may be
         // wrong. Refetching is cheap and cannot be subtly incorrect the way a
@@ -512,10 +557,11 @@ export function StoreProvider({
     gateway.connect();
 
     return () => {
+      void voice.leave();
       gateway.close();
       gatewayRef.current = null;
     };
-  }, [onSignedOut]);
+  }, [onSignedOut, voice]);
 
   const selectServer = useCallback((serverId: string) => {
     dispatch({ type: 'select-server', serverId });
@@ -541,15 +587,24 @@ export function StoreProvider({
     gatewayRef.current?.send({ t: 'presence', d: { status } });
   }, []);
 
-  const joinVoice = useCallback((channelId: string) => {
-    currentVoiceChannel.current = channelId;
-    gatewayRef.current?.send({ t: 'voice_state', d: { channelId } });
-  }, []);
+  const joinVoice = useCallback(
+    (channelId: string) => {
+      if (currentVoiceChannel.current === channelId) return;
+      currentVoiceChannel.current = channelId;
+      // The session prepares its keys first and only then tells the gateway,
+      // because the gateway answers a join with the membership event at once.
+      void voice.join(channelId, () =>
+        gatewayRef.current?.send({ t: 'voice_state', d: { channelId } }),
+      );
+    },
+    [voice],
+  );
 
   const leaveVoice = useCallback(() => {
     currentVoiceChannel.current = null;
     gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
-  }, []);
+    void voice.leave();
+  }, [voice]);
 
   const updateVoice = useCallback(
     (patch: { selfMute?: boolean; selfDeaf?: boolean; sharingScreen?: boolean; cameraOn?: boolean }) => {
@@ -595,6 +650,7 @@ export function StoreProvider({
       joinVoice,
       leaveVoice,
       updateVoice,
+      voice,
       loadMessages,
       loadMembers,
       refreshServer,
@@ -609,6 +665,7 @@ export function StoreProvider({
       joinVoice,
       leaveVoice,
       updateVoice,
+      voice,
       loadMessages,
       loadMembers,
       refreshServer,

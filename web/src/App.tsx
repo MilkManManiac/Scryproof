@@ -22,6 +22,7 @@ import { ServerRail } from './components/ServerRail';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
+import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { StoreProvider, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
 type Gate = { status: 'checking' } | { status: 'out' } | { status: 'in'; user: SelfUser };
@@ -178,89 +179,6 @@ function Shell() {
           onClose={() => setChannelSettings(false)}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * Voice channels render their occupants and the controls. Media itself lands
- * in Milestone 3, once there is a LiveKit server to publish to; until then the
- * channel is real, the presence is real, and the panel says plainly what is
- * and is not connected. It never pretends.
- */
-function VoiceStage({ channelId, channelName }: { channelId: string; channelName: string }) {
-  const { state, joinVoice, leaveVoice } = useStore();
-  const [media, setMedia] = useState<{ configured: boolean } | null>(null);
-
-  useEffect(() => {
-    api.voice
-      .config()
-      .then(setMedia)
-      .catch(() => setMedia({ configured: false }));
-  }, []);
-
-  const occupants = Object.values(state.voiceStates).filter(
-    (voice) => voice.channelId === channelId,
-  );
-  const members = state.members[state.selectedServerId ?? ''] ?? [];
-  const here = occupants.some((voice) => voice.userId === state.user?.id);
-
-  return (
-    <div className="empty" style={{ alignContent: 'center' }}>
-      <div>
-        <h2>{channelName}</h2>
-        <p style={{ marginBottom: 16 }}>
-          {occupants.length === 0
-            ? 'Nobody is in this channel.'
-            : occupants
-                .map((voice) => {
-                  const member = members.find((entry) => entry.userId === voice.userId);
-                  return member?.nickname ?? member?.user.displayName ?? 'Someone';
-                })
-                .join(', ')}
-        </p>
-
-        {media && !media.configured ? (
-          <p style={{ marginBottom: 16, color: 'var(--warn)' }}>
-            No media server configured yet, so nothing is being transmitted. Presence in this
-            channel still works.
-          </p>
-        ) : null}
-
-        <button
-          type="button"
-          className={here ? 'button secondary inline' : 'button inline'}
-          onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
-        >
-          {here ? 'Leave' : 'Join'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Non-negotiable: any voice UI shows the numbers. "Voice is choppy" is not a
- * diagnosis, and a panel you have to go looking for does not get looked at.
- * The values stay blank until there is a media connection to measure.
- */
-function ConnectionPanel() {
-  const { state } = useStore();
-  const healthy = state.connection === 'open';
-
-  return (
-    <div className="connection-panel">
-      <span className="connection-stat">
-        <i className={`connection-dot ${healthy ? 'good' : 'bad'}`} />
-        {healthy ? 'Signalling' : 'Signal lost'}
-      </span>
-      <span className="connection-stat">RTT —</span>
-      <span className="connection-stat">Jitter —</span>
-      <span className="connection-stat">Loss —</span>
-      <span className="connection-stat">TURN —</span>
-      <span className="connection-stat" style={{ marginLeft: 'auto' }}>
-        Media not connected
-      </span>
     </div>
   );
 }

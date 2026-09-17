@@ -100,11 +100,22 @@ export const config = {
     },
   },
 
-  /** Media server. Not needed until Milestone 3. */
+  /**
+   * Media server.
+   *
+   * In development these default to the throwaway values in
+   * `infra/livekit/livekit.dev.yaml`, so `npm run dev:livekit` is all it takes
+   * to have working voice locally. The key pair guards a server bound to
+   * 127.0.0.1 and nothing else. In production there are no defaults: unset
+   * means voice is off, and the API says so.
+   */
   livekit: {
-    url: optional('LIVEKIT_URL', ''),
-    apiKey: optional('LIVEKIT_API_KEY', ''),
-    apiSecret: optional('LIVEKIT_API_SECRET', ''),
+    url: optional('LIVEKIT_URL', isProduction ? '' : 'ws://127.0.0.1:7880'),
+    apiKey: optional('LIVEKIT_API_KEY', isProduction ? '' : 'devkey'),
+    apiSecret: optional(
+      'LIVEKIT_API_SECRET',
+      isProduction ? '' : 'devsecret-devsecret-devsecret-devsecret',
+    ),
     /** How long a join token stays valid. Short on purpose. */
     tokenTtlSeconds: optionalNumber('LIVEKIT_TOKEN_TTL_SECONDS', 900),
   },
