@@ -228,6 +228,7 @@ async function reachable(url) {
 
 const wes = new Person('wes', 9341);
 const alex = new Person('alex', 9342);
+const mara = new Person('mara', 9343);
 
 async function main() {
   const up = {
@@ -300,14 +301,37 @@ async function main() {
   const restored = await wes.listenTo(alex.userId);
   check('audio comes back after the rotation', restored.energy > 0.001, `+${restored.packets} packets, +${restored.energy.toFixed(4)} energy`);
 
-  const errors = [...wes.complaints, ...alex.complaints];
-  check('no uncaught exceptions in either browser', errors.length === 0, errors.join('\n      '));
+  // ---- a third person: keys go pairwise, so three is where ordering bites -------
+  await mara.open();
+  await mara.signIn();
+  await mara.clickVoiceChannel();
+  const three = `(() => { const s = window.__voice.getSnapshot(); return s.phase === 'connected' && s.people.length === 2 && s.people.every((p) => p.state === 'secured') && s.code; })()`;
+  const trio = await Promise.all([wes.until(three, 45_000), alex.until(three, 45_000), mara.until(three, 45_000)]);
+  const [w3, a3, m3] = await Promise.all([wes.snapshot(), alex.snapshot(), mara.snapshot()]);
+  check('a third person joins and all three hold one another\'s keys', trio.every(Boolean),
+    [w3, a3, m3].map((s) => JSON.stringify(s.people.map((p) => p.state))).join('  '));
+  check('all three see the same code, and it is not the two-person code',
+    w3.code === a3.code && a3.code === m3.code && w3.code !== w.code, `${w3.code} (was ${w.code})`);
+  const [fromWes, fromAlex] = await Promise.all([mara.listenTo(wes.userId), mara.listenTo(alex.userId)]);
+  check('the newcomer decodes both of the others', fromWes.energy > 0.001 && fromAlex.energy > 0.001,
+    `wes +${fromWes.energy.toFixed(4)}, alex +${fromAlex.energy.toFixed(4)}`);
+
+  await mara.clickButton('Leave');
+  const pair = await Promise.all([wes.until(connected, 30_000), alex.until(connected, 30_000)]);
+  const [w4, a4] = await Promise.all([wes.snapshot(), alex.snapshot()]);
+  check('when the third leaves, the two who stay move to a key she never had',
+    pair.every(Boolean) && w4.epoch > w3.epoch && w4.epoch === a4.epoch, `epoch ${w3.epoch} -> ${w4.epoch}`);
+  const after = await wes.listenTo(alex.userId);
+  check('and they can still hear each other', after.energy > 0.001, `+${after.energy.toFixed(4)} energy`);
+
+  const errors = [...wes.complaints, ...alex.complaints, ...mara.complaints];
+  check('no uncaught exceptions in any browser', errors.length === 0, errors.join('\n      '));
 }
 
 main()
   .catch((problem) => check('the check ran to completion', false, problem.stack ?? String(problem)))
   .finally(async () => {
-    await Promise.all([wes.close(), alex.close()]);
+    await Promise.all([wes.close(), alex.close(), mara.close()]);
     const failed = results.filter((entry) => !entry.ok).length;
     console.log(failed === 0 ? `RESULT: ALL PASS (${results.length})` : `RESULT: ${failed} FAILED of ${results.length}`);
     process.exit(failed === 0 ? 0 : 1);

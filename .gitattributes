@@ -11,3 +11,6 @@
 .node-version text eol=lf
 .npmrc  text eol=lf
 infra/box/remote/* text eol=lf
+*.template text eol=lf
+*.patch text eol=lf
+.env.example text eol=lf
