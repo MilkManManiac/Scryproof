@@ -1,0 +1,56 @@
+# LiveKit media server. UNVERIFIED: never yet run on a real box.
+#
+# Installed by infra/box/remote/60-livekit-install.sh, which carries its own
+# copy of this text. Change one, change the other.
+#
+# This unit must be listed in /etc/gooffline/units.list so that
+# 30-gate-services.sh gives it the vault drop-in (RequiresMountsFor=/mnt/vault
+# and AssertPathExists=/run/gooffline/unlocked). Its config, with the API
+# secret in it, is on the vault: a rebooted, locked box cannot start it.
+# It is deliberately NOT enabled at boot. gooffline-unlock starts it.
+
+[Unit]
+Description=LiveKit media server (GoOffline voice)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=livekit
+Group=livekit
+# To read the TLS key for TURN on 5349. Confirm on the box that the key file
+# is group-readable by ssl-cert; if bonesdeploy made it root-only, this is not
+# enough and the key needs a copy owned by livekit on the vault.
+SupplementaryGroups=ssl-cert
+ExecStart=/usr/local/bin/livekit-server --config /mnt/vault/livekit/livekit.yaml
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+
+# All ports are above 1024, so no capabilities are needed.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+# It writes nothing to disk. Logs go to the journal.
+ReadOnlyPaths=/mnt/vault/livekit
+
+[Install]
+WantedBy=multi-user.target

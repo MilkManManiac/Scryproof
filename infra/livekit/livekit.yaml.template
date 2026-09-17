@@ -1,0 +1,65 @@
+# LiveKit 1.13.6, production. UNVERIFIED: never yet run on a real box.
+#
+# This is a template. infra/box/remote/60-livekit-install.sh writes the real
+# file to /mnt/vault/livekit/livekit.yaml with the three placeholders filled:
+#
+#   ${LIVEKIT_DOMAIN}   the public hostname, the same one nginx serves
+#   ${LIVEKIT_KEY}      API key, generated on the box
+#   ${LIVEKIT_SECRET}   API secret, generated on the box
+#
+# The rendered file holds a secret, so it lives on the vault and nowhere else.
+# 60-livekit-install.sh carries its own copy of this text, because scripts/box.sh
+# only ships infra/box/remote to the box. Change one, change the other.
+#
+# What this server can and cannot see: it forwards encrypted media frames. The
+# frame keys are made in members' browsers and never come here (non-negotiable 8).
+
+# Signalling. Loopback only: browsers reach it through nginx at /rtc on 443, so
+# the page's CSP can stay at connect-src 'self'.
+port: 7880
+bind_addresses:
+  - 127.0.0.1
+
+rtc:
+  # Media over TCP, for networks that block UDP.
+  tcp_port: 7881
+  # Media over UDP, one port per connection. Matches 40-firewall.sh.
+  port_range_start: 50000
+  port_range_end: 60000
+  # The address we tell callers to send media to. It is written here rather
+  # than discovered, because discovery (use_external_ip) asks a Google STUN
+  # server by default: a third party, and one our outbound firewall blocks.
+  # A DigitalOcean droplet has its public IPv4 directly on the network card.
+  use_external_ip: false
+  node_ip: ${BOX_PUBLIC_IPV4}
+
+# Embedded TURN, instead of a separate coturn. Credentials are per session and
+# issued by LiveKit itself, and it is one less daemon to gate behind the vault.
+turn:
+  enabled: true
+  domain: ${LIVEKIT_DOMAIN}
+  udp_port: 3478
+  tls_port: 5349
+  # LiveKit terminates TURN/TLS itself, so it needs to read the certificate.
+  external_tls: false
+  cert_file: /etc/ssl/certs/${LIVEKIT_DOMAIN}.fullchain.pem
+  key_file: /etc/ssl/private/${LIVEKIT_DOMAIN}.key
+  # TODO on the box: confirm the two paths above against what bonesdeploy
+  # actually wrote, and that the livekit user can read the key (see the
+  # SupplementaryGroups line in livekit.service).
+  relay_range_start: 40000
+  relay_range_end: 40999
+
+keys:
+  ${LIVEKIT_KEY}: ${LIVEKIT_SECRET}
+
+logging:
+  level: info
+  json: false
+  # The WebRTC library underneath is chatty; errors only.
+  pion_level: error
+  # There is no option I know of that keeps participant identities out of the
+  # log. Our identities are opaque user ids rather than names, and the journal
+  # is RAM-only until the vault is open, then archived there for 14 days.
+
+# No webhooks, no Redis (single node), no egress/ingress, no telemetry endpoints.

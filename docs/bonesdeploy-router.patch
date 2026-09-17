@@ -1,0 +1,57 @@
+UNTESTED. Written by reading bonesdeploy v0.8.7 (91f32c4), never applied or run.
+
+What it does to the router template:
+  - proxy_http_version 1.1 plus Upgrade/Connection headers, so a WebSocket
+    handshake survives the router layer.
+  - client_max_body_size from a new variable, nginx_client_max_body_size,
+    defaulting to nginx's own 1m so existing sites do not change.
+
+Two things assumed and not checked:
+  - that project_name is in the render context for this template (it is for
+    the AppArmor profile; not confirmed here). It names the map variable per
+    project, because two sites defining the same map variable in one http
+    block will stop nginx from loading.
+  - that nginx_client_max_body_size can be passed through from bones.toml.
+    That plumbing is not part of this patch.
+
+The per-site template (frameworks/*/templates/nginx/app-site-nginx.conf.j2,
+line 35, `proxy_set_header Connection "";`) needs the same treatment for
+WebSockets to work end to end.
+
+--- a/crates/bonesinfra/python/src/bonesinfra/assets/nginx/router.conf.j2
++++ b/crates/bonesinfra/python/src/bonesinfra/assets/nginx/router.conf.j2
+@@ -1,3 +1,12 @@
++# WebSocket upgrade. The variable is named per project because every site's
++# router file is included into the same http block, and nginx refuses a second
++# map that defines the same variable.
++{% set ws_connection = "bones_" ~ (project_name | replace("-", "_") | replace(".", "_")) ~ "_connection" %}
++map $http_upgrade ${{ ws_connection }} {
++    default upgrade;
++    ""      "";
++}
++
+ {% if preview_domain and ssl_domain and preview_domain != ssl_domain %}
+ # When a real domain is configured, preview_domain redirects to it.
+ server {
+@@ -22,6 +31,10 @@
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection ${{ ws_connection }};
++        client_max_body_size {{ nginx_client_max_body_size | default("1m") }};
+     }
+ 
+     location ^~ /.well-known/acme-challenge/ {
+@@ -48,6 +61,10 @@
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection ${{ ws_connection }};
++        client_max_body_size {{ nginx_client_max_body_size | default("1m") }};
+     }
+ }
+ {% endif %}
