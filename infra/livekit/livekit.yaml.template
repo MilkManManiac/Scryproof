@@ -32,6 +32,12 @@ rtc:
   # A DigitalOcean droplet has its public IPv4 directly on the network card.
   use_external_ip: false
   node_ip: ${BOX_PUBLIC_IPV4}
+  # Left empty, LiveKit tells every browser to ask Google's and Twilio's STUN
+  # servers for its address, which hands them each caller's IP at the start of
+  # every call. Browsers ask our own TURN port instead; it answers STUN too.
+  # `npm run test:voice` fails if a browser is ever pointed anywhere else.
+  stun_servers:
+    - ${LIVEKIT_DOMAIN}:3478
 
 # Embedded TURN, instead of a separate coturn. Credentials are per session and
 # issued by LiveKit itself, and it is one less daemon to gate behind the vault.

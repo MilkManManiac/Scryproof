@@ -87,6 +87,10 @@ class Person {
         // reads decoded energy from WebRTC stats, which sit before the output,
         // so silencing the speakers costs it nothing.
         '--mute-audio',
+        // Let WebRTC use 127.0.0.1. Without it Chrome only offers the machine's
+        // network addresses, and a VPN's firewall can drop traffic between those
+        // and the local LiveKit even though neither end ever leaves this computer.
+        '--allow-loopback-in-peer-connection',
         `--remote-debugging-port=${this.debugPort}`,
         `--user-data-dir=${this.profile}`,
         '--window-size=1280,800',
@@ -276,6 +280,41 @@ async function main() {
     writeFileSync(process.env.VOICE_CHECK_SHOT, Buffer.from(shot.data, 'base64'));
     console.log(`screenshot: ${process.env.VOICE_CHECK_SHOT}`);
   }
+
+  // ---- nobody else is told where we are --------------------------------------
+  const iceServers = await wes.evaluate(`window.__voice.debugIceServers()`);
+  const foreign = iceServers.filter((url) => !/^(stun|turns?):(127\.0\.0\.1|localhost)[:?]/.test(url));
+  check('the browser is pointed at no STUN or TURN server that is not ours', foreign.length === 0,
+    iceServers.length === 0 ? 'none at all' : iceServers.join(', '));
+
+  // ---- the sound path: volume, and the gate ------------------------------------
+  await wes.evaluate(`window.__voicePrefs.setVolumeFor('${alex.userId}', 0)`);
+  await sleep(300);
+  const silenced = await wes.listenTo(alex.userId, 3000);
+  await wes.evaluate(`window.__voicePrefs.setVolumeFor('${alex.userId}', 2)`);
+  await sleep(300);
+  const boosted = await wes.listenTo(alex.userId, 3000);
+  await wes.evaluate(`window.__voicePrefs.setVolumeFor('${alex.userId}', 1)`);
+  await sleep(300);
+  const normal = await wes.listenTo(alex.userId, 3000);
+  check('one person can be turned down to nothing, and up past 100%',
+    silenced.energy === 0 && boosted.energy > normal.energy * 2.5 && normal.energy > 0,
+    `0%: ${silenced.energy.toFixed(4)}  100%: ${normal.energy.toFixed(4)}  200%: ${boosted.energy.toFixed(4)}`);
+
+  await alex.evaluate(`window.__voicePrefs.set({ inputMode: 'push', pushKey: 'F8' })`);
+  await sleep(1200);
+  const shut = await wes.listenTo(alex.userId, 3000);
+  await alex.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'F8' }))`);
+  await sleep(800);
+  const held = await wes.listenTo(alex.userId, 3000);
+  await alex.evaluate(`window.dispatchEvent(new KeyboardEvent('keyup', { code: 'F8' }))`);
+  await sleep(800);
+  const released = await wes.listenTo(alex.userId, 3000);
+  await alex.evaluate(`window.__voicePrefs.set({ inputMode: 'open' })`);
+  await sleep(800);
+  check('push-to-talk sends nothing until the key is held, and nothing again after',
+    shut.energy < held.energy * 0.02 && released.energy < held.energy * 0.02 && held.energy > 0.001,
+    `up ${shut.energy.toFixed(5)}  held ${held.energy.toFixed(5)}  up again ${released.energy.toFixed(5)}`);
 
   // ---- sabotage: the wrong key ------------------------------------------------
   await wes.evaluate(`window.__voice.debugCorruptKeyFor('${alex.userId}')`);

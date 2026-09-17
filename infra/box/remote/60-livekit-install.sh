@@ -104,6 +104,8 @@ rtc:
   port_range_end: 60000
   use_external_ip: false
   node_ip: $public_ip
+  stun_servers:
+    - $DOMAIN:3478
 
 turn:
   enabled: true

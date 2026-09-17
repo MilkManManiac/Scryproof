@@ -14,6 +14,12 @@ rtc:
   tcp_port: 7881
   use_external_ip: false
   node_ip: 127.0.0.1
+  # Left empty, LiveKit tells every browser to ask Google's and Twilio's STUN
+  # servers for its address, which hands them each caller's IP. There is no
+  # "none" setting, so point it at ourselves. Nothing answers here in
+  # development and nothing needs to: everyone is on this machine.
+  stun_servers:
+    - 127.0.0.1:3478
 
 keys:
   devkey: devsecret-devsecret-devsecret-devsecret

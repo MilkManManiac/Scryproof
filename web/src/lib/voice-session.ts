@@ -28,6 +28,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  type LocalAudioTrack,
   type Participant as LiveKitParticipant,
   type RemoteTrack,
 } from 'livekit-client';
@@ -36,6 +37,8 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import type { VoiceMembership, VoiceSignal } from '@gooffline/shared';
 
 import { api, ApiError } from './api';
+import { MicGate, OutputMix, sounds } from './voice-audio';
+import { captureOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -89,6 +92,8 @@ export interface VoiceSnapshot {
   /** Announcements that failed their signature check. Shown, because it should never happen. */
   rejected: number;
   speaking: string[];
+  /** False while the gate (threshold or push-to-talk) is holding the microphone shut. */
+  transmitting: boolean;
   stats: VoiceStats;
   can: { speak: boolean; video: boolean; screenShare: boolean };
 }
@@ -105,6 +110,7 @@ const IDLE: VoiceSnapshot = {
   people: [],
   rejected: 0,
   speaking: [],
+  transmitting: false,
   stats: EMPTY_STATS,
   can: { speak: false, video: false, screenShare: false },
 };
@@ -135,7 +141,10 @@ export class VoiceSession {
   private room: Room | null = null;
   private keyProvider: GoOfflineKeyProvider | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
-  private audioSink: HTMLElement | null = null;
+  private mix: OutputMix | null = null;
+  private gate: MicGate | null = null;
+  private prefs: VoicePrefs = voicePrefs.get();
+  private stopWatching: (() => void) | null = null;
 
   private members: string[] = [];
   /** Seats we have sent this epoch's key to, so an announcement does not trigger a second copy. */
@@ -214,6 +223,7 @@ export class VoiceSession {
         // Audio first. These two matter for video, which comes later.
         adaptiveStream: true,
         dynacast: true,
+        audioCaptureDefaults: captureOptions(voicePrefs.get()),
       });
       this.room = room;
       this.listenTo(room);
@@ -235,8 +245,12 @@ export class VoiceSession {
       if (stale()) return;
 
       if (grant.can.speak) await room.localParticipant.setMicrophoneEnabled(true);
+      if (stale()) return;
+      this.rebuildGate();
+      this.watchPrefs();
 
       this.update({ phase: 'connected', encrypted: room.isE2EEEnabled });
+      if (voicePrefs.get().sounds) sounds.joined();
       this.statsTimer = setInterval(() => void this.measure(), STATS_INTERVAL_MS);
     } catch (problem) {
       if (stale()) return;
@@ -265,9 +279,14 @@ export class VoiceSession {
     this.rejected = 0;
     this.pendingMembership = null;
     this.previousLoss = null;
-    this.audioSink?.remove();
-    this.audioSink = null;
+    this.stopWatching?.();
+    this.stopWatching = null;
+    this.gate?.close();
+    this.gate = null;
+    this.mix?.close();
+    this.mix = null;
 
+    if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) sounds.left();
     if (room) await room.disconnect().catch(() => undefined);
     if (this.snapshot.phase !== 'idle') this.update(IDLE);
   }
@@ -277,11 +296,95 @@ export class VoiceSession {
   async setMuted(muted: boolean): Promise<void> {
     if (!this.room || !this.snapshot.can.speak) return;
     await this.room.localParticipant.setMicrophoneEnabled(!muted).catch(() => undefined);
+    // Unmuting can hand back a different underlying track; the gate follows it.
+    if (!muted) this.rebuildGate();
   }
 
   setDeafened(deafened: boolean): void {
     this.deafened = deafened;
-    for (const element of this.audioSink?.querySelectorAll('audio') ?? []) element.muted = deafened;
+    this.mix?.setDeafened(deafened);
+  }
+
+  /** The microphone's level right now in dBFS, before the gate. -100 when there is no microphone. */
+  micLevel(): number {
+    return this.gate?.level ?? -100;
+  }
+
+  /* ------------------------ microphone gate and settings ------------------- */
+
+  private micTrack(): LocalAudioTrack | undefined {
+    return this.room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack as
+      | LocalAudioTrack
+      | undefined;
+  }
+
+  private rebuildGate(): void {
+    this.gate?.close();
+    this.gate = null;
+    const media = this.micTrack()?.mediaStreamTrack;
+    if (!media) {
+      this.update({ transmitting: false });
+      return;
+    }
+    this.gate = new MicGate(
+      media,
+      () => ({ mode: voicePrefs.get().inputMode, thresholdDb: voicePrefs.get().thresholdDb }),
+      () => this.update({ transmitting: this.gate?.open ?? false }),
+    );
+    this.update({ transmitting: this.gate.open });
+  }
+
+  /**
+   * Settings apply to a call in progress. Each kind of change does the least
+   * it can: a volume is one number, a new microphone restarts one track, and
+   * nothing here ever reconnects the call or touches a key.
+   */
+  private watchPrefs(): void {
+    this.stopWatching?.();
+    this.prefs = voicePrefs.get();
+
+    const onKey = (event: KeyboardEvent) => {
+      if (voicePrefs.get().inputMode !== 'push' || event.code !== voicePrefs.get().pushKey) return;
+      if (event.repeat) return;
+      this.gate?.hold(event.type === 'keydown');
+    };
+    const onBlur = () => this.gate?.hold(false);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', onBlur);
+
+    const unsubscribe = voicePrefs.subscribe(() => void this.applyPrefs());
+    this.stopWatching = () => {
+      unsubscribe();
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', onBlur);
+    };
+
+    const { outputDeviceId, outputVolume } = this.prefs;
+    this.mix?.setVolume(outputVolume);
+    if (outputDeviceId) void this.mix?.setOutputDevice(outputDeviceId);
+  }
+
+  private async applyPrefs(): Promise<void> {
+    const before = this.prefs;
+    const now = (this.prefs = voicePrefs.get());
+
+    this.mix?.setVolume(now.outputVolume);
+    for (const person of this.room?.remoteParticipants.values() ?? []) {
+      this.mix?.setVolumeFor(person.identity, now.volumes[person.identity] ?? 1);
+    }
+    if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
+
+    const captureChanged =
+      now.inputDeviceId !== before.inputDeviceId ||
+      now.noiseSuppression !== before.noiseSuppression ||
+      now.echoCancellation !== before.echoCancellation ||
+      now.autoGain !== before.autoGain;
+    if (captureChanged) {
+      await this.micTrack()?.restartTrack(captureOptions(now)).catch(() => undefined);
+      this.rebuildGate();
+    }
   }
 
   /* --------------------------- the key agreement -------------------------- */
@@ -315,6 +418,14 @@ export class VoiceSession {
     if (!call || !this.myAnnouncement) {
       this.pendingMembership = event;
       return;
+    }
+
+    if (this.snapshot.phase === 'connected' && voicePrefs.get().sounds) {
+      const others = (list: string[]) => list.filter((id) => id !== this.userId);
+      const was = new Set(others(this.members));
+      const is = new Set(others(event.members));
+      if ([...is].some((id) => !was.has(id))) sounds.joined();
+      else if ([...was].some((id) => !is.has(id))) sounds.left();
     }
 
     this.members = event.members;
@@ -427,19 +538,19 @@ export class VoiceSession {
   private listenTo(room: Room): void {
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant) => {
       if (track.kind !== Track.Kind.Audio) return;
-      if (!this.audioSink) {
-        this.audioSink = document.createElement('div');
-        this.audioSink.hidden = true;
-        document.body.append(this.audioSink);
+      if (!this.mix) {
+        this.mix = new OutputMix();
+        this.mix.setVolume(voicePrefs.get().outputVolume);
+        this.mix.setDeafened(this.deafened);
+        const speaker = voicePrefs.get().outputDeviceId;
+        if (speaker) void this.mix.setOutputDevice(speaker);
       }
-      const element = track.attach();
-      element.dataset.userId = participant.identity;
-      element.muted = this.deafened;
-      this.audioSink.append(element);
+      const volume = voicePrefs.get().volumes[participant.identity] ?? 1;
+      this.mix.add(participant.identity, track.mediaStreamTrack, volume);
     });
 
-    room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
-      for (const element of track.detach()) element.remove();
+    room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _publication, participant) => {
+      if (track.kind === Track.Kind.Audio) this.mix?.remove(participant.identity);
     });
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers: LiveKitParticipant[]) => {
@@ -520,9 +631,11 @@ export class VoiceSession {
   /* ------------------------ for the browser test only ---------------------- */
 
   /**
-   * How much sound has actually been decoded from each person. With the right
-   * key this climbs; with the wrong one, frames fail to decrypt, are dropped,
-   * and it stays flat while packets keep arriving. Used by `npm run test:voice`.
+   * How much sound has actually reached the speakers' mix from each person.
+   * With the right key this climbs; with the wrong one, frames fail to decrypt,
+   * are dropped, and it stays flat while packets keep arriving. Measured at
+   * the mix, after the person's volume, because that is what would be heard.
+   * Used by `npm run test:voice`.
    */
   async debugInbound(): Promise<Record<string, { energy: number; packets: number }>> {
     const result: Record<string, { energy: number; packets: number }> = {};
@@ -533,13 +646,39 @@ export class VoiceSession {
         report?.forEach((entry: Record<string, unknown>) => {
           if (entry.type !== 'inbound-rtp') return;
           result[participant.identity] = {
-            energy: typeof entry.totalAudioEnergy === 'number' ? entry.totalAudioEnergy : 0,
+            energy: this.mix?.energyOf(participant.identity) ?? 0,
             packets: typeof entry.packetsReceived === 'number' ? entry.packetsReceived : 0,
           };
         });
       }
     }
     return result;
+  }
+
+  /**
+   * Every STUN or TURN address this browser has been told to use. LiveKit hands
+   * out Google's STUN servers unless told otherwise, which would send each
+   * caller's IP address to Google at the start of every call.
+   */
+  debugIceServers(): string[] {
+    type Transport = { pc?: RTCPeerConnection } | undefined;
+    const manager = (this.room as unknown as { engine?: { pcManager?: Record<string, Transport> } })?.engine
+      ?.pcManager;
+    const urls: string[] = [];
+    let found = 0;
+    for (const side of ['publisher', 'subscriber']) {
+      const connection = manager?.[side]?.pc;
+      if (!connection) continue;
+      found += 1;
+      for (const server of connection.getConfiguration().iceServers ?? []) urls.push(...[server.urls].flat());
+    }
+    // An instrument that cannot see must say so, not report a clean result.
+    if (found === 0) throw new Error('no peer connection found to inspect');
+    return [...new Set(urls)];
+  }
+
+  debugGate(): { level: number; open: boolean } {
+    return { level: this.gate?.level ?? -100, open: this.gate?.open ?? false };
   }
 
   /** Swap one person's key for random bytes, as if the wrong key had been delivered. */

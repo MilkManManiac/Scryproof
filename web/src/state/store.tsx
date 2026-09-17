@@ -35,6 +35,7 @@ import type {
 import { api } from '../lib/api';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { VoiceSession } from '../lib/voice-session';
+import { voicePrefs } from '../lib/voice-prefs';
 
 export interface State {
   connection: ConnectionStatus;
@@ -501,7 +502,9 @@ export function StoreProvider({
   const voice = voiceRef.current;
   // Lets `npm run test:voice` ask a real browser what it actually decoded.
   // Dev builds only; Vite removes the branch from production.
-  if (import.meta.env.DEV) (window as unknown as { __voice?: VoiceSession }).__voice = voice;
+  if (import.meta.env.DEV) {
+    Object.assign(window, { __voice: voice, __voicePrefs: voicePrefs });
+  }
 
   useEffect(() => {
     const gateway = new Gateway({
