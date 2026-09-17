@@ -17,6 +17,7 @@ import type { Channel, Member, Message } from '@gooffline/shared';
 
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
+import { EDIT_LAST, on } from '../lib/signals';
 import { can } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
@@ -107,6 +108,17 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   useEffect(() => {
     if (newestId && loaded && focused && pinned.current) markRead(channel.id, newestId);
   }, [channel.id, newestId, loaded, focused, markRead]);
+
+  // Up in an empty composer edits the last thing this person said here. Only
+  // what is loaded counts: a message far enough back to be off the page is
+  // not what anyone means by "the last one".
+  const [editRequest, setEditRequest] = useState<string | null>(null);
+  const editable = useMemo(
+    () => [...messages].reverse().find((entry) => entry.authorId === selfId && !entry.deleted && entry.content !== null),
+    [messages, selfId],
+  );
+  const editableId = editable?.id;
+  useEffect(() => on(EDIT_LAST, () => setEditRequest(editableId ?? null)), [editableId]);
 
   // Re-pin on channel change, before paint, so a switch always lands at the
   // newest message rather than wherever the previous channel was scrolled to.
@@ -219,7 +231,14 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
           <div key={message.id}>
             {day ? <div className="day-divider">{day}</div> : null}
             {firstNew ? <div className="new-divider">New</div> : null}
-            <MessageRow message={message} grouped={grouped} mask={mask} members={members} />
+            <MessageRow
+              message={message}
+              grouped={grouped}
+              mask={mask}
+              members={members}
+              openEditor={editRequest === message.id}
+              onEditorOpened={() => setEditRequest(null)}
+            />
           </div>
         ))}
       </div>
@@ -267,6 +286,23 @@ function MessageContent({
             </span>
           );
         }
+        if (part.kind === 'link') {
+          return (
+            // noreferrer is the point: without it the site being opened learns
+            // which page sent the visitor, and the address of a private
+            // instance is not theirs to have.
+            <a
+              key={index}
+              className="link"
+              href={part.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerPolicy="no-referrer"
+            >
+              {part.text}
+            </a>
+          );
+        }
         const member = members.find((entry) => entry.userId === part.userId);
         return (
           <span key={index} className={part.userId === selfId ? 'mention me' : 'mention'}>
@@ -283,16 +319,28 @@ function MessageRow({
   grouped,
   mask,
   members,
+  openEditor,
+  onEditorOpened,
 }: {
   message: Message;
   grouped: boolean;
   mask: bigint;
   members: Member[];
+  /** Set when the composer asked for this one, the last thing this person said. */
+  openEditor?: boolean;
+  onEditorOpened?: () => void;
 }) {
   const { state, replyTo } = useStore();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
+
+  useEffect(() => {
+    if (!openEditor || editing) return;
+    setDraft(toDraft(message.content ?? '', members));
+    setEditing(true);
+    onEditorOpened?.();
+  }, [openEditor, editing, message.content, members, onEditorOpened]);
 
   const selfId = state.user?.id;
   const mine = message.authorId === selfId;

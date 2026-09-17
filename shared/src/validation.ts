@@ -44,22 +44,109 @@ export function parseMentions(content: string): { userIds: string[]; everyone: b
   return { userIds: [...userIds], everyone: EVERYONE_RE.test(content) };
 }
 
-/** Body text split into plain runs and mentions, for drawing. */
+/* ---------------------------------- links ---------------------------------- */
+
+/**
+ * Only http and https ever become something clickable. Every other scheme
+ * stays flat text, and that is the whole defence: `javascript:` and `data:`
+ * are how a message body turns into code, and a link that is never built
+ * cannot be clicked.
+ *
+ * Nothing is fetched to make a preview. An unfurl means somebody asks a
+ * stranger's server about a link, and whichever end does the asking — our box
+ * on everyone's behalf, or each browser on its own — puts a third party in the
+ * data path. So a link here is a link, and the picture is the one you see
+ * after you decide to go.
+ */
+const LINK_SOURCE = String.raw`\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+`;
+
+/** Punctuation at the end belongs to the sentence, not to the address. */
+const LINK_TRAILING = `.,;:!?'"‘’“”`;
+const LINK_BRACKETS: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+function trimLink(raw: string): string {
+  let text = raw;
+  while (text.length > 0) {
+    const last = text[text.length - 1]!;
+
+    if (LINK_TRAILING.includes(last)) {
+      text = text.slice(0, -1);
+      continue;
+    }
+    // A closing bracket is part of the address only if the address opened one,
+    // which is what keeps "(see https://x.test/a_(b))" from losing its tail.
+    const opener = LINK_BRACKETS[last];
+    if (opener && text.split(last).length > text.split(opener).length) {
+      text = text.slice(0, -1);
+      continue;
+    }
+    break;
+  }
+  return text;
+}
+
+/**
+ * Where a link actually goes. A bare `www.` gets https and never http:
+ * guessing downward would quietly take someone off TLS.
+ */
+export function hrefFor(text: string): string | null {
+  const candidate = /^www\./i.test(text) ? `https://${text}` : text;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+}
+
+/** Body text split into plain runs, mentions and links, for drawing. */
 export type ContentPart =
   | { kind: 'text'; text: string }
   | { kind: 'mention'; userId: string }
-  | { kind: 'everyone' };
+  | { kind: 'everyone' }
+  | { kind: 'link'; href: string; text: string };
+
+const CONTENT_SOURCE =
+  String.raw`<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])|` + LINK_SOURCE;
 
 export function splitContent(content: string): ContentPart[] {
   const parts: ContentPart[] = [];
-  const pattern = /<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])/g;
+  // Rebuilt every call rather than shared: a /g regex carries lastIndex, and
+  // one left behind by an earlier body would skip the start of the next.
+  const pattern = new RegExp(CONTENT_SOURCE, 'g');
   let cursor = 0;
+
+  const flushTextUpTo = (at: number) => {
+    if (at > cursor) parts.push({ kind: 'text', text: content.slice(cursor, at) });
+  };
+
   for (const match of content.matchAll(pattern)) {
     const at = match.index ?? 0;
-    if (at > cursor) parts.push({ kind: 'text', text: content.slice(cursor, at) });
-    parts.push(match[1] ? { kind: 'mention', userId: match[1].toLowerCase() } : { kind: 'everyone' });
-    cursor = at + match[0].length;
+    const whole = match[0];
+
+    if (match[1]) {
+      flushTextUpTo(at);
+      parts.push({ kind: 'mention', userId: match[1].toLowerCase() });
+      cursor = at + whole.length;
+      continue;
+    }
+    if (whole === '@everyone') {
+      flushTextUpTo(at);
+      parts.push({ kind: 'everyone' });
+      cursor = at + whole.length;
+      continue;
+    }
+
+    const text = trimLink(whole);
+    const href = hrefFor(text);
+    // Not a link we will build. Leave it in the text run it came from.
+    if (!href) continue;
+    flushTextUpTo(at);
+    parts.push({ kind: 'link', href, text });
+    cursor = at + text.length;
   }
+
   if (cursor < content.length) parts.push({ kind: 'text', text: content.slice(cursor) });
   return parts;
 }

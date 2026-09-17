@@ -96,6 +96,35 @@ try {
     await sleep(1200);
   }
 
+  // e.g. --press ctrl+k, to photograph something only a shortcut opens.
+  const press = flag('press', null);
+  if (press) {
+    const parts = press.toLowerCase().split('+');
+    const key = parts.pop();
+    await run(
+      `window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: ${JSON.stringify(key)},
+        ctrlKey: ${parts.includes('ctrl')},
+        metaKey: ${parts.includes('meta')},
+        shiftKey: ${parts.includes('shift')},
+        altKey: ${parts.includes('alt')},
+        bubbles: true,
+        cancelable: true,
+      })) || true`,
+    );
+    await sleep(600);
+  }
+
+  const type = flag('type', null);
+  if (type) {
+    for (const letter of type) {
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', text: letter });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp' });
+      await sleep(40);
+    }
+    await sleep(400);
+  }
+
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(out, Buffer.from(shot.data, 'base64'));
   console.log(`wrote ${out} (as ${user}${channel ? `, in #${channel}` : ''})`);

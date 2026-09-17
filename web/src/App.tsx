@@ -7,18 +7,23 @@
  * rather than leaving it open against a session that no longer exists.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Permission } from '@gooffline/shared';
 import type { SelfUser } from '@gooffline/shared';
 
 import { api } from './lib/api';
+import { flatChannelOrder } from './lib/channel-order';
+import { useShortcuts } from './lib/shortcuts';
+import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
+import { QuickSwitcher } from './components/QuickSwitcher';
 import { ServerRail } from './components/ServerRail';
+import { ShortcutHelp } from './components/ShortcutHelp';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
@@ -59,10 +64,45 @@ export function App() {
 }
 
 function Shell() {
-  const { state, loadMembers } = useStore();
+  const { state, loadMembers, selectChannel, selectServer, markRead } = useStore();
   const server = useSelectedServer();
   const channel = useSelectedChannel();
   const [channelSettings, setChannelSettings] = useState(false);
+  const [overlay, setOverlay] = useState<'switcher' | 'help' | null>(null);
+
+  // The keyboard steps through the same list the sidebar draws, so Alt+Down
+  // always lands on the row below the one being looked at.
+  const handlers = useMemo<Shortcuts>(
+    () => ({
+      onSwitcher: () => setOverlay('switcher'),
+      onHelp: () => setOverlay('help'),
+      onStepChannel: (step) => {
+        if (!server) return;
+        const order = flatChannelOrder(server);
+        const at = order.findIndex((entry) => entry.id === state.selectedChannelId);
+        const next = order[at === -1 ? 0 : (at + step + order.length) % order.length];
+        // Stepping past a voice channel selects it without joining the call:
+        // an accidental arrow key should never put a live microphone in a room.
+        if (next) selectChannel(next.id);
+      },
+      onStepServer: (step) => {
+        const order = state.serverOrder;
+        if (order.length === 0) return;
+        const at = order.indexOf(state.selectedServerId ?? '');
+        const next = order[at === -1 ? 0 : (at + step + order.length) % order.length];
+        if (next) selectServer(next);
+      },
+      onEscape: () => {
+        if (!channel) return;
+        const newest = state.messages[channel.id]?.at(-1);
+        if (newest) markRead(channel.id, newest.id);
+      },
+    }),
+    [server, channel, state.selectedChannelId, state.selectedServerId, state.serverOrder, state.messages, selectChannel, selectServer, markRead],
+  );
+
+  // While a dialog is open it owns the keyboard, including Escape.
+  useShortcuts(handlers, overlay === null && !channelSettings);
 
   // A channel that is closed, deleted or switched away from should not leave
   // its settings sitting open over the next one.
@@ -168,6 +208,9 @@ function Shell() {
         </main>
 
         {server ? <MemberList server={server} /> : null}
+
+        {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
+        {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
       </div>
 
       {channelSettings && server && channel ? (

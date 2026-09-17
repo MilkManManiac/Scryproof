@@ -13,6 +13,7 @@ import type { Attachment, Channel } from '@gooffline/shared';
 import { ApiError, api } from '../lib/api';
 import { fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
+import { EDIT_LAST, emit } from '../lib/signals';
 import { can } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 
@@ -303,6 +304,14 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             }
             if (event.key === 'Escape' && replyingTo) {
               replyTo(channel.id, null);
+              return;
+            }
+            // Only with the box empty. Up in the middle of a draft is how you
+            // get back to the line above, and taking that would be worse than
+            // not having the shortcut.
+            if (event.key === 'ArrowUp' && text === '') {
+              event.preventDefault();
+              emit(EDIT_LAST);
               return;
             }
             if (event.key === 'Enter' && !event.shiftKey) {

@@ -1,0 +1,101 @@
+/**
+ * How a message body is cut into the pieces a client draws.
+ *
+ * Links are the part with teeth. A body is text somebody else wrote, so the
+ * question is never "does this look like a link" but "what will this build".
+ * Anything that is not http or https has to come out the far end as text.
+ */
+
+import { strict as assert } from 'node:assert';
+import { describe, it } from 'node:test';
+
+import { hrefFor, mentionToken, splitContent } from '@gooffline/shared';
+import type { ContentPart } from '@gooffline/shared';
+
+const ALEX = '018f0000-0000-7000-8000-000000000002';
+
+const links = (content: string) =>
+  splitContent(content).filter((part): part is Extract<ContentPart, { kind: 'link' }> => part.kind === 'link');
+
+const text = (parts: ContentPart[]) =>
+  parts.map((part) => (part.kind === 'text' ? part.text : '')).join('');
+
+describe('links in a message body', () => {
+  it('finds a plain address', () => {
+    assert.deepEqual(links('see https://example.test/a'), [
+      { kind: 'link', href: 'https://example.test/a', text: 'https://example.test/a' },
+    ]);
+  });
+
+  it('gives a bare www. https, never http', () => {
+    const [link] = links('www.example.test');
+    assert.equal(link?.href, 'https://www.example.test/');
+    assert.equal(link?.text, 'www.example.test');
+  });
+
+  it('leaves the full stop with the sentence', () => {
+    const parts = splitContent('go to https://example.test/a.');
+    assert.equal(links('go to https://example.test/a.')[0]?.text, 'https://example.test/a');
+    assert.equal(text(parts).endsWith('.'), true);
+  });
+
+  it('keeps a bracket the address opened, and drops one it did not', () => {
+    assert.equal(links('https://example.test/a_(b)')[0]?.text, 'https://example.test/a_(b)');
+    assert.equal(links('(see https://example.test/a)')[0]?.text, 'https://example.test/a');
+  });
+
+  it('builds nothing from a scheme that is not http or https', () => {
+    for (const body of [
+      'javascript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'file:///C:/Windows/System32',
+      'vbscript:msgbox(1)',
+    ]) {
+      assert.deepEqual(links(body), [], body);
+      assert.equal(text(splitContent(body)), body, `${body} should survive as text`);
+    }
+  });
+
+  it('is not fooled by a scheme hidden inside a word', () => {
+    assert.deepEqual(links('notjavascript:alert(1)'), []);
+    assert.deepEqual(links('xhttps://example.test'), []);
+  });
+
+  it('keeps the whole body when it is put back together', () => {
+    const body = `hi ${mentionToken(ALEX)} look at https://example.test/a, and www.b.test too!`;
+    const rebuilt = splitContent(body)
+      .map((part) => {
+        if (part.kind === 'text') return part.text;
+        if (part.kind === 'link') return part.text;
+        if (part.kind === 'everyone') return '@everyone';
+        return mentionToken(part.userId);
+      })
+      .join('');
+    assert.equal(rebuilt, body);
+  });
+
+  it('reads the same body twice the same way', () => {
+    const body = 'https://example.test/a and https://example.test/b';
+    assert.deepEqual(splitContent(body), splitContent(body));
+  });
+
+  it('finds mentions and links in one pass', () => {
+    const kinds = splitContent(`${mentionToken(ALEX)} https://example.test @everyone`).map(
+      (part) => part.kind,
+    );
+    assert.deepEqual(kinds, ['mention', 'text', 'link', 'text', 'everyone']);
+  });
+});
+
+describe('hrefFor', () => {
+  it('refuses anything that is not http or https', () => {
+    assert.equal(hrefFor('javascript:alert(1)'), null);
+    assert.equal(hrefFor('data:text/plain,hi'), null);
+    assert.equal(hrefFor('not a url at all'), null);
+  });
+
+  it('accepts both http and https, unchanged in scheme', () => {
+    assert.equal(hrefFor('http://example.test/'), 'http://example.test/');
+    assert.equal(hrefFor('https://example.test/'), 'https://example.test/');
+  });
+});

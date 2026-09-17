@@ -8,9 +8,10 @@
 
 import { useMemo, useState } from 'react';
 import { LIMITS, Permission, slugifyChannelName, validateChannelName } from '@gooffline/shared';
-import type { Channel, ServerDetail } from '@gooffline/shared';
+import type { ServerDetail } from '@gooffline/shared';
 
 import { ApiError, api } from '../lib/api';
+import { groupChannels } from '../lib/channel-order';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -18,49 +19,12 @@ import { Modal } from './Modal';
 import { ServerSettings } from './settings/ServerSettings';
 import { UserPanel } from './UserPanel';
 
-interface Group {
-  id: string | null;
-  name: string;
-  position: number;
-  channels: Channel[];
-}
-
-function group(server: ServerDetail): Group[] {
-  const groups = new Map<string | null, Group>();
-  groups.set(null, { id: null, name: 'Channels', position: -1, channels: [] });
-
-  for (const category of [...server.categories].sort((a, b) => a.position - b.position)) {
-    groups.set(category.id, {
-      id: category.id,
-      name: category.name,
-      position: category.position,
-      channels: [],
-    });
-  }
-
-  for (const channel of server.channels) {
-    // A channel whose category was hidden from us still has to land somewhere.
-    const bucket = groups.get(channel.categoryId) ?? groups.get(null)!;
-    bucket.channels.push(channel);
-  }
-
-  return [...groups.values()]
-    .filter((entry) => entry.channels.length > 0)
-    .sort((a, b) => a.position - b.position)
-    .map((entry) => ({
-      ...entry,
-      channels: [...entry.channels].sort(
-        (a, b) => a.position - b.position || a.name.localeCompare(b.name),
-      ),
-    }));
-}
-
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [dialog, setDialog] = useState<'channel' | 'invite' | 'settings' | null>(null);
 
-  const groups = useMemo(() => group(server), [server]);
+  const groups = useMemo(() => groupChannels(server), [server]);
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
   const canInvite = canOnServer(server, Permission.CREATE_INVITE);
 

@@ -45,6 +45,8 @@ export function toDraft(content: string, members: Member[]): string {
   return splitContent(content)
     .map((part) => {
       if (part.kind === 'text') return part.text;
+      // A link was never rewritten on the way in, so it goes back as it was.
+      if (part.kind === 'link') return part.text;
       if (part.kind === 'everyone') return '@everyone';
       const member = members.find((entry) => entry.userId === part.userId);
       return member ? `@${mentionLabel(member, members)}` : '@someone who left';
