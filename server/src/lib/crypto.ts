@@ -121,13 +121,19 @@ export function decryptSecret(payload: string): string | null {
   }
 }
 
-/**
- * Fresh symmetric key for a voice channel, handed to members over the
- * authenticated socket. The media server never sees it.
+/*
+ * `generateChannelKey()` used to live here: 32 random bytes, handed to members
+ * over the socket. It is deleted rather than left unused.
+ *
+ * The comment above it said "the media server never sees it", which was true
+ * and beside the point — *this* server saw it, and this server is the one an
+ * intruder, or DigitalOcean under legal process, gets to. Voice keys are made
+ * in the clients now and this process never holds one.
+ *
+ * Non-negotiable 8. GAMEPLAN 1b, finding 1. If you are about to add a function
+ * here that returns key material for members' content, that is the rule you
+ * are about to break.
  */
-export function generateChannelKey(): string {
-  return randomBytes(32).toString('base64');
-}
 
 /** Hash an IP for logs. Salted per boot, so logs cannot be correlated later. */
 const IP_SALT = randomBytes(16);

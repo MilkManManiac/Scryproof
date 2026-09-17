@@ -2,14 +2,14 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-17, after the security and privacy review (no code changed; GAMEPLAN.md did).
+**Last updated:** 2026-09-17, after building the security review's three no-box items.
 
-> **Read GAMEPLAN.md section 1b before building anything in M0 or M3.** Wes made
-> security and privacy a top priority and the plan was reviewed against it. The
-> headline: the M3 scaffolding has the *server* generating the voice key
-> (`generateChannelKey()` in `server/src/lib/crypto.ts`, the `voice_key` gateway
-> event, the `voice_key` case in `web/src/state/store.tsx`). That is wrong by
-> design and gets deleted, not extended. Keys are made in the clients.
+> **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
+> `docs/voice-e2ee.md` before touching voice. The server-held voice key is
+> gone: `generateChannelKey()`, the `voice_key` gateway event and its client
+> case are all deleted, and `web/src/lib/voice-crypto.ts` replaces them. The
+> rule that produced that change is non-negotiable 8 — no key that decrypts
+> members' content ever exists on the server.
 
 ---
 
@@ -20,11 +20,11 @@ Living state. Update this at the end of every working session.
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
-| M3 voice | **Scaffolding done, key distribution to be replaced** (GAMEPLAN 1b, finding 1). Token minting, voice state, permission-gated grants are fine. Needs a real LiveKit server for media; the client-side key agreement does not. |
+| M3 voice | **Key agreement done and tested** (`web/src/lib/voice-crypto.ts`, `docs/voice-e2ee.md`). Token minting, voice state, permission-gated grants were already fine. Everything left needs a real LiveKit server. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
 | M6 desktop | Not started. |
-| M7 text end-to-end encryption | Schema and wire format ready. No key exchange yet. |
+| M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
 **Repo:** https://github.com/MilkManManiac/GoOffline (private)
 
@@ -46,9 +46,15 @@ local PGlite database, which `dev-restart.sh` wipes.
 ## Test it
 
 ```bash
-npm test          # the permission algebra. No server needed, runs in a second.
+npm test            # 50 server + 49 web assertions. No server needed, about a second.
 npm run test:smoke  # 62 assertions over the real HTTP surface
+npm run test:exif   # a real headless browser; needs the web dev server on :5173
 ```
+
+`npm test` covers the permission algebra, the image scrubber's decisions and
+the whole voice key agreement including a gateway that cheats. `test:exif` is
+the one thing Node cannot do: the canvas round trip that actually removes the
+metadata.
 
 `npm run test:smoke` needs a server that has just been restarted and **not**
 seeded — it registers its own accounts, and the sign-up rate limiter counts the
@@ -71,6 +77,58 @@ seed's four against it.
 ![Category permissions: denying View channel here hides every channel beneath it](shots/settings-category-permissions.png)
 
 ## Done this session
+
+**The server-held voice key is gone, and what replaces it is built.** This was
+finding 1 of the review and the only thing in it that was a real flaw rather
+than a precaution. `generateChannelKey()` and the `voice_key` event are
+deleted, with comments where they were saying why, because the next person to
+need a voice key will look in exactly those two places.
+
+`web/src/lib/voice-crypto.ts` is the replacement, about 450 lines of WebCrypto
+and no new dependencies. Each device holds a non-extractable identity key, makes
+a throwaway key per call and signs it, invents its own media key, and wraps a
+copy of it for each other participant using a secret only those two devices can
+compute. Every join and leave rotates. `docs/voice-e2ee.md` is the write-up the
+GAMEPLAN promised.
+
+**The malicious-server test exists, and it found a design bug.** Forty-nine web
+tests, most of them a gateway free to tamper with anything passing through: it
+substitutes call keys, substitutes identity keys, re-addresses a wrapped key to
+a third person, replays one from an old epoch, relabels its epoch, flips a bit,
+sends a second key for one sender, and forges an announcement. All refused.
+
+The bug it found: each client was counting epochs on its own, so a device
+joining a call in progress disagreed with the room and its keys never opened.
+The epoch now comes from the gateway's membership event, clamped so it can only
+go up. That hands the server the ordering, which it had anyway, and none of the
+key material.
+
+**Four defences verified by sabotage.** Removing the authenticated headers,
+skipping signature checks, accepting any epoch, and letting a second key
+overwrite the first. The first of those *passed* the suite on the first attempt
+— the authenticated headers were covering a case nothing tested, because the
+ECDH pairing and the HKDF info already catch every other tampering. The one
+thing only they catch is a relay inventing a second device for somebody, so
+there is a test for exactly that now.
+
+**Photos no longer carry GPS.** Images are re-encoded through a canvas before
+upload, which drops every metadata container at once. If an image cannot be
+decoded the upload is refused rather than sending the original, which is the
+rule the tests pin hardest. Proven in a real browser by `npm run test:exif`:
+it builds a JPEG that really carries coordinates and searches the bytes that
+come out, and it checks a 120x80 image comes back rotated to 80x120, which only
+happens if the browser genuinely parsed the EXIF being removed.
+
+![The EXIF check](shots/exif-check.png)
+
+**A committed `.npmrc`, tested rather than assumed.** Install scripts off,
+exact versions, and a seven-day hold on new releases. A clean `npm ci` installs
+242 packages, everything builds, and all 239 production packages have verified
+registry signatures. Worth knowing: `npm ci` ignores the hold because it
+installs the lockfile verbatim, so the cooldown only bites when npm is choosing
+versions — and it bit immediately, refusing a package published four days ago.
+
+## Done before that
 
 **The permission algebra has tests now.** Fifty of them over
 `shared/src/permissions.ts`: the overwrite resolution order, the VIEW_CHANNEL
@@ -209,29 +267,52 @@ as small uppercase captions, which turned a role name into a heading. It is
 
 ## Next, in order
 
-0. **Two small privacy fixes that need no box** (GAMEPLAN 1b, findings 5 and 6):
-   a committed `.npmrc` (`ignore-scripts`, `save-exact`, `min-release-age=7` —
-   confirm the install still works with scripts off, `@node-rs/argon2` and
-   esbuild are the ones to watch), and re-encoding images through a canvas in
-   the client before upload so photos stop carrying GPS coordinates.
-   Then **the client half of M3's key agreement**, which also needs no box:
-   device identity keys, pairwise-wrapped sender keys, rotation, the
-   key-change warning, and a test that plays a key-swapping server.
 1. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief,
    and section 4 grew in the review (box boots dumb, outbound firewall
    allowlist, no DO agents or snapshots, nginx access log off):
    `bonesdeploy init` with the custom template, build and prepare scripts,
    LUKS by hand first, LiveKit and coturn as plain units. Ask Alex whether the
    generated nginx config passes WebSocket upgrades before starting.
-2. **M3 voice for real** — a LiveKit server, then the client side with E2EE on
-   from the first frame, and the connection panel wired to actual stats. The
-   panel is already on screen during a call and honestly reports that media is
-   not connected.
+2. **M3 voice for real** — a LiveKit server, then the parts of the key
+   agreement that need one. The protocol itself is built and tested; what is
+   missing is everything around it: gateway events relaying announcements and
+   wrapped keys, a `device_keys` table replacing `users.identity_key`, calling
+   `GoOfflineKeyProvider.setParticipantKey` as keys arrive, and the
+   verification code and identity warnings in the connection panel. Read
+   `docs/voice-e2ee.md` first. The panel is already on screen during a call and
+   honestly reports that media is not connected.
 3. **Category permissions in the sidebar UI.** The permissions themselves are
    done; what is missing is a way to reach them from the channel sidebar. Today
    they live only under server settings, and only once a category exists.
 
 ## Decisions made this session
+
+- **Pairwise sender keys, not MLS.** At twenty-five people MLS's scaling buys
+  nothing, and the browser options are an unaudited TypeScript library or a
+  Rust build compiled to WebAssembly. This is 450 lines over WebCrypto with no
+  new dependencies, which means it can be read end to end — its own kind of
+  security, given that nobody has audited the composition.
+- **The epoch comes from the gateway, not from each client.** A device joining
+  a call in progress cannot know how many changes it missed. The server gets
+  the ordering, which it had anyway; it gets no influence on the key, because
+  the key is fresh on every rotation whatever number arrives and the epoch can
+  only go up. Wrong numbers make the call fail closed.
+- **Refusals are silent and return null.** A call is a place where a hostile
+  relay sends whatever it likes. Each of those is an event to ignore, not an
+  error that tears down the call.
+- **A changed identity key is never written over the old one automatically.**
+  Silently accepting a new key is exactly the move a server in the middle
+  needs. It takes a person clicking through a warning that names them.
+- **Firefox is refused from voice, not accommodated by turning E2EE off.**
+  livekit/client-sdk-js#2103 is open with no fix. Non-negotiable 2 has no
+  "temporarily".
+- **An image that cannot be stripped is not uploaded.** Falling back to the
+  original would defeat the entire point of stripping it.
+- **`voice-crypto.ts` lives in the web workspace and imports nothing from
+  `shared`.** Key handling the server cannot import is key handling the server
+  cannot accidentally acquire.
+
+## Decisions made building categories
 
 - **A category is a layer, not a template.** Discord copies overwrites into
   each channel on sync; we resolve through the category every time. No second
@@ -291,6 +372,21 @@ as small uppercase captions, which turned a role name into a heading. It is
   extra index.
 
 ## Traps for the next session
+
+- **The voice key provider has never run against a LiveKit server.**
+  `web/src/lib/voice-key-provider.ts` compiles against livekit-client 2.22.3
+  and matches its API, and that is all that is known. The first thing to do
+  with a server running is watch frames actually decrypt — especially whether
+  LiveKit is happy with a non-extractable AES key while ratcheting is off.
+- **LiveKit identifies participants by the token's `identity`, which is the
+  bare user id.** Two devices for one person collide there. A call is one
+  device per person until that is solved, and the key agreement already carries
+  device ids for when it is.
+- **Do not add a "call history" table.** Voice presence is in memory and stays
+  there. GAMEPLAN 1b, finding 4.
+- **`npm audit signatures` fails with the cooldown on.** That is the cooldown
+  working, not a broken lockfile. Run it as
+  `npm audit signatures --min-release-age=0`.
 
 - **Do not weaken the 404-not-403 rule.** A channel a member cannot view must
   report "does not exist" everywhere, including the gateway. Returning 403

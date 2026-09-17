@@ -448,7 +448,6 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     // Handled by an effect that refetches the server; see the provider below.
     case 'permissions_stale':
     case 'heartbeat_ack':
-    case 'voice_key':
     case 'error':
       return state;
 

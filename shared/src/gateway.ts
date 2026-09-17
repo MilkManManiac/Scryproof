@@ -63,11 +63,18 @@ export type ServerEvent =
    */
   | { t: 'permissions_stale'; d: { serverId: Snowflake } }
   | { t: 'voice_state_update'; d: VoiceState }
-  /**
-   * The symmetric key for an encrypted voice channel, wrapped for this member.
-   * Sent over the authenticated socket, never over the media path.
+  /*
+   * There was a `voice_key` event here, carrying a key this server had
+   * generated. It is gone. A server that makes the key has the key, which
+   * makes "end-to-end encrypted" a false claim in our own interface.
+   *
+   * Keys are made in the clients and wrapped for one recipient at a time; what
+   * this gateway will relay is sealed blobs it cannot open. See
+   * `web/src/lib/voice-crypto.ts`, GAMEPLAN 1b finding 1, and non-negotiable 8.
+   * The relay events are defined when the server half of M3 is built, so that
+   * they arrive with the code that handles them rather than as a shape nobody
+   * has implemented.
    */
-  | { t: 'voice_key'; d: { channelId: Snowflake; epoch: number; key: string } }
   | { t: 'error'; d: { code: string; message: string } };
 
 export type ClientEvent =
