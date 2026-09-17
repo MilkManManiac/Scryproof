@@ -83,6 +83,10 @@ class Person {
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
         '--autoplay-policy=no-user-gesture-required',
+        // Headless Chrome still plays a call out of the real speakers. The test
+        // reads decoded energy from WebRTC stats, which sit before the output,
+        // so silencing the speakers costs it nothing.
+        '--mute-audio',
         `--remote-debugging-port=${this.debugPort}`,
         `--user-data-dir=${this.profile}`,
         '--window-size=1280,800',

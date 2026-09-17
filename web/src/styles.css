@@ -1096,7 +1096,7 @@ textarea {
   display: grid;
   place-items: center;
   background: var(--bg-rail);
-  color: var(--text);
+  color: #0b0c0f;
   font-weight: 600;
   font-size: 18px;
 }

@@ -286,7 +286,30 @@ export class VoiceSession {
 
   /* --------------------------- the key agreement -------------------------- */
 
-  async onMembership(event: VoiceMembership): Promise<void> {
+  /**
+   * Events are handled strictly one at a time, in the order they arrived.
+   * Each handler awaits real cryptography, and without this a wrapped key
+   * overtakes the announcement sent just before it, finds a sender it has not
+   * admitted yet, and is thrown away for good. The two-browser test caught
+   * exactly that: one side secured, the other waiting for ever.
+   */
+  private queue: Promise<void> = Promise.resolve();
+
+  private inOrder(work: () => Promise<void>): Promise<void> {
+    const next = this.queue.then(work);
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+
+  onMembership(event: VoiceMembership): Promise<void> {
+    return this.inOrder(() => this.handleMembership(event));
+  }
+
+  onSignal(event: VoiceSignal & { from: string }): Promise<void> {
+    return this.inOrder(() => this.handleSignal(event));
+  }
+
+  private async handleMembership(event: VoiceMembership): Promise<void> {
     if (event.channelId !== this.snapshot.channelId) return;
     const call = this.call;
     if (!call || !this.myAnnouncement) {
@@ -311,7 +334,7 @@ export class VoiceSession {
     await this.publish(call);
   }
 
-  async onSignal(event: VoiceSignal & { from: string }): Promise<void> {
+  private async handleSignal(event: VoiceSignal & { from: string }): Promise<void> {
     const call = this.call;
     if (!call || event.channelId !== this.snapshot.channelId) return;
     // The gateway sends a membership event before it relays anything labelled
@@ -342,11 +365,13 @@ export class VoiceSession {
 
   /** The person looked at the warning and said this device is expected. */
   async approve(userId: string, deviceId: string): Promise<void> {
-    const call = this.call;
-    if (!call) return;
-    if (!(await call.approve(userId, deviceId))) return;
-    await this.sendKeys(call);
-    await this.publish(call);
+    return this.inOrder(async () => {
+      const call = this.call;
+      if (!call) return;
+      if (!(await call.approve(userId, deviceId))) return;
+      await this.sendKeys(call);
+      await this.publish(call);
+    });
   }
 
   private async sendKeys(call: VoiceCall): Promise<void> {

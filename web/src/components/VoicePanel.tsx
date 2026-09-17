@@ -17,6 +17,7 @@
 import { useState, useSyncExternalStore } from 'react';
 
 import { useStore } from '../state/store';
+import { initials } from './Avatar';
 import type { VoicePerson, VoiceSnapshot } from '../lib/voice-session';
 
 function useVoice(): VoiceSnapshot {
@@ -33,13 +34,13 @@ function useNames(): (userId: string) => string {
   };
 }
 
-const initials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+/** The same colour a person has everywhere else, so a tile is recognisably them. */
+function useAccents(): (userId: string) => string | undefined {
+  const { state } = useStore();
+  const members = state.members[state.selectedServerId ?? ''] ?? [];
+  return (userId) => members.find((entry) => entry.userId === userId)?.user.accent;
+}
+
 
 /* --------------------------------- the stage -------------------------------- */
 
@@ -47,6 +48,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
   const { state, joinVoice, leaveVoice } = useStore();
   const voice = useVoice();
   const nameOf = useNames();
+  const accentOf = useAccents();
 
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
@@ -76,7 +78,9 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                 key={occupant.userId}
                 className={`voice-tile${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}`}
               >
-                <div className="voice-tile-avatar">{initials(name)}</div>
+                <div className="voice-tile-avatar" style={{ background: accentOf(occupant.userId) }}>
+                  {initials(name)}
+                </div>
                 <div className="voice-tile-name">{name}</div>
                 <div className="voice-tile-note">
                   {security === 'held'
