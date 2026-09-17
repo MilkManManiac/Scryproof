@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>EXIF scrubber check</title>
+    <style>
+      body { font: 14px/1.6 ui-monospace, Consolas, monospace; background: #101114; color: #d7dae0; padding: 32px; }
+      h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+      p.lede { color: #8b8f99; margin: 0 0 20px; max-width: 60ch; }
+      li { list-style: none; margin: 2px 0; }
+      .pass::before { content: 'PASS  '; color: #4ec98a; }
+      .fail::before { content: 'FAIL  '; color: #e8607a; }
+      #verdict { margin-top: 20px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>EXIF scrubber check</h1>
+    <p class="lede">
+      Builds a JPEG that really carries GPS coordinates, runs it through
+      <code>src/lib/scrub-image.ts</code>, and searches the bytes that come out.
+      This runs in a real browser because the canvas round trip has no
+      equivalent in Node. The decision logic is covered by <code>npm test</code>.
+    </p>
+    <ul id="results"></ul>
+    <div id="verdict">running…</div>
+
+    <script type="module">
+      import { scrubImage } from '/src/lib/scrub-image.ts';
+      import { EXIF_HEADER, PROBE_MARKER, buildExifSegment, containsAscii, containsBytes, spliceExif } from '/src/lib/exif-probe.ts';
+
+      const results = document.getElementById('results');
+      let failures = 0;
+
+      function check(label, condition) {
+        const item = document.createElement('li');
+        item.className = condition ? 'pass' : 'fail';
+        item.textContent = label;
+        results.appendChild(item);
+        if (!condition) failures += 1;
+      }
+
+      const bytesOf = async (blob) => new Uint8Array(await blob.arrayBuffer());
+
+      async function run() {
+        // A small image with a recognisable shape, so a blank canvas would be
+        // obvious if anything ever went that wrong.
+        const canvas = document.createElement('canvas');
+        canvas.width = 120;
+        canvas.height = 80;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#4ec98a';
+        context.fillRect(0, 0, 120, 80);
+        context.fillStyle = '#101114';
+        context.fillRect(0, 0, 40, 80);
+
+        const plain = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        // 48.8584 N, 2.2945 E — the Eiffel Tower, so a leak is unmistakable.
+        const withExif = spliceExif(await bytesOf(plain), buildExifSegment(48.8584, 2.2945));
+        const original = new File([withExif], 'holiday.jpg', { type: 'image/jpeg' });
+
+        check('the test image carries an EXIF segment', containsBytes(withExif, EXIF_HEADER));
+        check('the test image carries the marker string', containsAscii(withExif, PROBE_MARKER));
+
+        const clean = await scrubImage(original);
+        const cleaned = await bytesOf(clean);
+
+        // The browser applied our Orientation tag, which it could only have
+        // done by parsing the EXIF. Without this, the two absence checks below
+        // could pass against metadata nothing ever read.
+        const size = await createImageBitmap(clean);
+        check(
+          `the browser parsed the EXIF: 120x80 came back rotated as ${size.width}x${size.height}`,
+          size.width === 80 && size.height === 120,
+        );
+
+        check('the scrubbed file has no EXIF segment', !containsBytes(cleaned, EXIF_HEADER));
+        check('the scrubbed file has no marker string', !containsAscii(cleaned, PROBE_MARKER));
+        check('the scrubbed file is still a JPEG', cleaned[0] === 0xff && cleaned[1] === 0xd8);
+        check('the scrubbed file is a different file', clean !== original && cleaned.length !== withExif.length);
+        check('the scrubbed file still has image data', cleaned.length > 500);
+      }
+
+      run()
+        .then(() => {
+          document.getElementById('verdict').textContent =
+            failures === 0 ? 'RESULT: ALL PASS' : `RESULT: ${failures} FAILED`;
+        })
+        .catch((problem) => {
+          check(`the check itself threw: ${problem && problem.message}`, false);
+          document.getElementById('verdict').textContent = 'RESULT: ERRORED';
+        });
+    </script>
+  </body>
+</html>

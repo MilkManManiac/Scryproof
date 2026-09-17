@@ -11,6 +11,7 @@ import { LIMITS, Permission } from '@gooffline/shared';
 import type { Attachment, Channel } from '@gooffline/shared';
 
 import { ApiError, api } from '../lib/api';
+import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { can } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 
@@ -87,11 +88,16 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     setError(null);
     try {
       for (const file of Array.from(files)) {
-        const attachment = await api.upload(channel.id, file);
+        // Images are re-encoded here, before anything leaves the machine, so
+        // the GPS coordinates in a phone photo are never sent. If that fails
+        // the upload stops: sending the original instead would defeat it.
+        const clean = await scrubImage(file);
+        const attachment = await api.upload(channel.id, clean);
         setPending((prev) => [...prev, attachment]);
       }
     } catch (problem) {
-      setError(problem instanceof ApiError ? problem.message : 'Upload failed.');
+      if (problem instanceof ScrubError) setError(problem.message);
+      else setError(problem instanceof ApiError ? problem.message : 'Upload failed.');
     } finally {
       setUploading(false);
       if (filePicker.current) filePicker.current.value = '';
