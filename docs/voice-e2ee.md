@@ -7,6 +7,9 @@ generated there, not relayed in the clear, not backed up there. Non-negotiable
 The GAMEPLAN said this composition would be small enough to read in one
 sitting and would get written up. This is the write-up. Code:
 `web/src/lib/voice-crypto.ts`, tests `web/src/tests/voice-crypto.test.ts`.
+Around it: `web/src/lib/voice-session.ts` runs a call,
+`web/src/lib/voice-key-provider.ts` hands keys to LiveKit, and
+`server/src/gateway/voice.ts` is the relay.
 
 ## The plain version
 
@@ -21,7 +24,8 @@ arrives cannot unscramble a recording of what was said before.
 
 The one thing a server could still try is lying about who is who — telling Alex
 that *its* key belongs to Wes. Two things catch that. Each device remembers
-what everyone's key looked like last time and says so loudly if it changes. And
+what everyone's key looked like last time and says so loudly if it changes, or
+if someone it already knows turns up on a device it has never seen. And
 the call panel shows a twenty-digit number derived from everyone's keys: read
 it aloud once, in a voice the others recognise, and if everyone's matches, no
 server got in between.
@@ -56,6 +60,39 @@ info, so it differs per direction, per pair and per epoch. The whole header is
 the additional authenticated data, which is what binds the device ids — they
 are the only fields not already in the derivation.
 
+## How the gateway carries them
+
+Two events, both only ever sent to people who are in the voice channel.
+
+`voice_membership { channelId, epoch, members }` goes to everyone in the room
+on every join and leave, including a browser dying and a person being removed
+from the server. Mute, deafen, camera and screen share do not move the epoch.
+
+`voice_signal { channelId, epoch, kind, payload, to? }` is the envelope.
+`kind` is `announce` or `key`, and `payload` is one of the two messages above.
+The gateway stamps `from` with the sender's user id and passes the payload on
+unread. With `to` it goes to that one person; without, to everyone else in the
+room. Never back to the sender.
+
+What the server checks, all of it about who may put a message in front of whom
+and none of it about secrecy: the shape, a size cap of 4096 bytes, a rate limit
+per connection, that the sender is in the room, that `to` is in the room, and
+that `epoch` is exactly the room's current one. Anything else is dropped
+without a reply. `server/src/tests/voice-relay.test.ts`, 17 tests.
+
+On a membership event a client drops anyone no longer present, rotates, gives
+LiveKit its own new key, announces itself, and sends its key to everyone it
+already trusts. On an announcement it verifies and admits the device, then
+sends it a key. On a key it unwraps and hands the result to LiveKit.
+
+**Events are handled strictly one at a time, in arrival order.** Every handler
+awaits real cryptography. Without an explicit queue, a wrapped key overtakes
+the announcement that was sent just before it, meets a sender it has not
+admitted yet, and is refused for good: one side secured, the other waiting for
+ever. The two-browser test found exactly that on its first run. The gateway
+already delivers in order on one connection; the queue in `voice-session.ts`
+keeps that order through the awaits.
+
 ## Epochs
 
 The epoch is a number that goes up on every membership change and comes from
@@ -86,6 +123,43 @@ announcement in this call, anything from another epoch, anything whose tag does
 not check, and a *second, different* key for one sender in one epoch — the
 first one that opened is the one that counts.
 
+## Who gets a key without anyone being asked
+
+Each device pins the identity keys it has seen, per person and per device, and
+every announcement gets a verdict:
+
+- `first-seen`: nobody by this user id has been seen before. Trusted on first
+  use and pinned. This is the one leap of faith, and the verification code is
+  what closes it.
+- `known`: same device, same key as last time.
+- `changed`: a device we have pinned, with a different key.
+- `new-device`: a person we have pinned, on a device id we have not.
+
+The last one exists because pins are per device. Without it a relay could
+invent a fresh device id for someone already known and be waved through as
+first contact.
+
+`changed` and `new-device` put the device on hold. No key is sent to it, a key
+from it is refused, it is left out of the verification code, and the call
+screen shows a banner naming the person and saying what approving means.
+Nothing is pinned until a person clicks approve. Until then the two cannot
+hear each other, which is the honest state.
+
+## Handing keys to LiveKit
+
+`GoOfflineKeyProvider` is a `BaseKeyProvider` with `sharedKey: false` and
+ratcheting off, since we rotate with fresh keys instead.
+
+The 32 bytes are imported as **HKDF key material**, not as an AES-GCM key.
+LiveKit's worker refuses a raw AES key ("algorithm AES-GCM is currently
+unsupported"): it accepts HKDF or PBKDF2 material and derives the frame key
+itself. The material is still 32 random bytes that never leave the two devices,
+so nothing about who can decrypt changes.
+
+LiveKit keeps a ring of 16 keys per participant. The slot is `epoch % 16`, the
+same on the sending and receiving side, so a frame encrypted just before a
+rotation still finds its key just after.
+
 ## The verification code
 
 Twenty digits, in four groups of five, derived from the user ids and identity
@@ -113,10 +187,10 @@ membership change.
 - **Not protection against a compromised client.** The browser downloads its
   code from the box it is trying not to trust. That is finding 2, and the
   desktop app in M6 is the answer to it.
-- **Not yet proven against real media.** The agreement is tested end to end in
-  Node. `web/src/lib/voice-key-provider.ts` — the piece that hands these keys to
-  LiveKit — compiles against livekit-client 2.22.3 and matches its API, but has
-  never run against a LiveKit server, because there is not one yet.
+- **Not yet proven beyond one PC.** Two browsers and a local LiveKit 1.13.6.
+  Never on the real box, never through TURN, never with three people.
+- **One device per person in a call.** LiveKit identifies a participant by the
+  token's identity, which is the bare user id, so two devices collide there.
 
 ## Firefox
 
@@ -129,7 +203,8 @@ move is to say why.
 ## Testing it
 
 ```bash
-npm test          # 49 web tests; the voice ones are most of them
+npm test            # 59 web tests, mostly voice, and 17 server tests on the relay
+npm run test:voice  # two headless browsers in a real call; see HANDOFF for what it needs
 ```
 
 The malicious-server cases are the point of the suite. Four defences were each
@@ -137,3 +212,13 @@ verified by sabotage — removing the authenticated headers, skipping signature
 checks, accepting any epoch, and letting a second key overwrite the first —
 and each one breaks the suite. The first of those did *not* break it on the
 first attempt, which is how the gap it covers was found.
+
+`test:voice` is the last hop, where Node cannot go. Chromium processes
+with separate profiles (two, then a third) join through the real interface against a real LiveKit.
+It checks both sides secured, the same code on both, first contact labelled as
+such, and decoded audio energy climbing. Then the sabotage: one side's copy of
+the other's key is swapped for random bytes. Packets keep arriving and decoded
+energy stays at exactly zero, which is what "cannot decrypt" looks like from
+outside. Then a leave and rejoin: the epoch moves, fresh keys are exchanged
+with nobody touching anything, the verdict is `known`, and audio comes back.
+All 14 checks passed on 2026-09-17.

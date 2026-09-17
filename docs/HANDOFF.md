@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-17, after building the security review's three no-box items.
+**Last updated:** 2026-09-17, after the first real encrypted call between two browsers, and with everything that can be prepared for the box prepared.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -17,10 +17,10 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
+| M0 infra | **Not started, but prepared.** Needs a droplet, which needs Wes to buy one. The production build is rehearsed locally; the box scripts, bonesdeploy runtime and runbook are written and **unverified**, because none of them has run on a box. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
-| M3 voice | **Key agreement done and tested** (`web/src/lib/voice-crypto.ts`, `docs/voice-e2ee.md`). Token minting, voice state, permission-gated grants were already fine. Everything left needs a real LiveKit server. |
+| M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 19 checks). **Not done:** never on a real box, no TURN path tested, three participants at most, no video or screen share. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
 | M6 desktop | Not started. |
@@ -46,15 +46,28 @@ local PGlite database, which `dev-restart.sh` wipes.
 ## Test it
 
 ```bash
-npm test            # 50 server + 49 web assertions. No server needed, about a second.
+npm test            # 79 server + 59 web assertions. No server needed, about a second.
 npm run test:smoke  # 62 assertions over the real HTTP surface
 npm run test:exif   # a real headless browser; needs the web dev server on :5173
+npm run test:prod   # builds the production bundle and drives it through a stand-in for nginx
+npm run test:voice  # two headless browsers in a real encrypted call
 ```
 
 `npm test` covers the permission algebra, the image scrubber's decisions and
 the whole voice key agreement including a gateway that cheats. `test:exif` is
 the one thing Node cannot do: the canvas round trip that actually removes the
 metadata.
+
+`npm run test:prod` needs nothing running. It builds the server and client as
+they ship, starts them behind a small proxy that reads its headers out of our
+real nginx template, signs up in a headless browser and fails on any CSP
+violation. Thirteen checks.
+
+`npm run test:voice` needs the API restarted and seeded, the web dev server,
+and `npm run dev:livekit` (LiveKit 1.13.6, a Windows binary in the gitignored
+`.tools/livekit/`). The test browsers use Chrome's fake microphone, which
+beeps, and they run with `--mute-audio` because headless Chrome plays a call
+out of the real speakers. Without that flag Wes hears thirty seconds of beeping.
 
 `npm run test:smoke` needs a server that has just been restarted and **not**
 seeded — it registers its own accounts, and the sign-up rate limiter counts the
@@ -76,7 +89,88 @@ seed's four against it.
 
 ![Category permissions: denying View channel here hides every channel beneath it](shots/settings-category-permissions.png)
 
+![An encrypted call between two browsers, with the verification code open](shots/voice-call.png)
+
+![The production build behind the shipping security headers](shots/prod-check.png)
+
 ## Done this session
+
+Wes asked for everything that could be finished before he buys the droplet.
+Two halves: get the deploy ready, and build voice against a local LiveKit.
+
+**The production build had never started, and now it is rehearsed.** The first
+attempt to run the bundle failed twice: the workspace package was left out of
+it, and the migrations path only worked from source. Both fixed
+(`server/build.mjs`, `findMigrations()`). `npm run test:prod` now does the whole
+thing on every run: 13 checks, under the CSP we will ship, with the WebSocket
+going through the proxy. Planting an inline script fails it.
+
+**The client IP can no longer be forged.** `server/src/lib/client-ip.ts` reads
+`X-Forwarded-For` from the right, skips loopback and non-addresses, and only
+believes the header at all when the socket peer is local. Fastify's
+`trustProxy` is off. Twelve tests, and `test:prod` checks that a forged header
+does not dodge the rate limiter.
+
+**bonesdeploy's source was read before any box exists** (v0.8.7, read-only
+clone, never installed). What it found is in `docs/for-alex.md`, written for
+Wes to send, with `docs/bonesdeploy-router.patch`. **The patch is untested.**
+The short version: neither nginx layer passes WebSocket upgrades, the body cap
+is 1 MB, the access log is on, the AppArmor profile would stop argon2 loading,
+`init` overwrites our runtime files, and `server setup` reopens outbound
+traffic. One thing we had wrong: the stock next and nuxt kits already use
+`npm ci`; only the generic, sveltekit and vue kits use `npm install`.
+
+**The deploy and box scripts are written. None has ever run on a box.**
+`infra/custom/` is the bonesdeploy runtime, manifest, nginx template and
+AppArmor profile. `infra/box/remote/` is the vault, the gated services, the
+firewall, host hygiene, unlock and lock, and a LiveKit installer.
+`scripts/box.sh` and `scripts/unlock.sh` run them from Wes's PC. The shell
+scripts pass `bash -n` and that is the whole of what is known about them. The
+runbook is `infra/box/README.md`. Treat every line as **unverified** until M0.
+
+**The gateway relays voice keys without being able to read them.** It counts
+epochs, sends `voice_membership` to the people in a channel on every join and
+leave, and carries `voice_signal` envelopes between them. It refuses senders
+who are not in the room, recipients who are not in the room, any epoch but the
+current one, oversized envelopes and wrong shapes. Seventeen tests, and three
+sabotages each fail them. One call per person: joining a channel on one server
+leaves any call on another.
+
+**A made-up device no longer slips past the pin.** Pins were per device, so a
+relay inventing a fresh device id for someone already known got treated as
+first contact. There is a `new-device` verdict now, and the call holds such a
+device: no key is sent to it, its key is refused, it is left out of the
+verification code, and a banner names the person and says what approving
+means. Ten tests.
+
+**The key provider would have thrown on the first frame.** LiveKit's worker
+rejects raw AES-GCM keys; it wants HKDF or PBKDF2 material and derives the rest
+itself. The import is HKDF now. Found by reading LiveKit's worker, confirmed by
+the call test.
+
+**The voice session, the call screen, and a test that holds a real call.**
+`web/src/lib/voice-session.ts` and `web/src/components/VoicePanel.tsx`. The
+panel says "encrypted" only when LiveKit reports E2EE on and every person shown
+as secured is one whose key this device verified. Numbers that have not been
+measured print a dash.
+
+`npm run test:voice` passed all 19 checks on 2026-09-17 against the local
+LiveKit: both sides secured, the same twenty-digit code on both, first contact
+labelled as first contact, decoded audio energy climbing, measured stats in the
+panel, a rotation when one leaves and rejoins, `known` the second time. The
+sabotage is the one that matters: hand one side the wrong key and the packets
+keep arriving while decoded energy stays at exactly zero. A third browser then
+joins: all three hold one another's keys and agree on a new code, the newcomer
+decodes both others, and when she leaves the two who stay rotate again.
+
+**The bug that test found.** Its first run failed with one side secured and the
+other stuck on "Securing..." for ever. Each handler awaits real cryptography
+and nothing put them in order, so a wrapped key overtook the announcement sent
+just before it, met a sender it had not admitted yet, and was thrown away. All
+voice events now go through one in-order queue in `voice-session.ts`. No unit
+test would have caught it; it needed two real browsers.
+
+## Done in the security-review session
 
 **The server-held voice key is gone, and what replaces it is built.** This was
 finding 1 of the review and the only thing in it that was a real flaw rather
@@ -267,25 +361,52 @@ as small uppercase captions, which turned a role name into a heading. It is
 
 ## Next, in order
 
-1. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief,
-   and section 4 grew in the review (box boots dumb, outbound firewall
-   allowlist, no DO agents or snapshots, nginx access log off):
-   `bonesdeploy init` with the custom template, build and prepare scripts,
-   LUKS by hand first, LiveKit and coturn as plain units. Ask Alex whether the
-   generated nginx config passes WebSocket upgrades before starting.
-2. **M3 voice for real** — a LiveKit server, then the parts of the key
-   agreement that need one. The protocol itself is built and tested; what is
-   missing is everything around it: gateway events relaying announcements and
-   wrapped keys, a `device_keys` table replacing `users.identity_key`, calling
-   `GoOfflineKeyProvider.setParticipantKey` as keys arrive, and the
-   verification code and identity warnings in the connection panel. Read
-   `docs/voice-e2ee.md` first. The panel is already on screen during a call and
-   honestly reports that media is not connected.
-3. **Category permissions in the sidebar UI.** The permissions themselves are
+1. **Wes buys the droplet and a domain.** 2 GB / 1 vCPU, a 10 GB volume,
+   ATL1, Ubuntu 24.04, the SSH key named `gooffline`, no backups and no
+   monitoring agent. Resize later with "CPU and RAM only" so it stays
+   reversible. Domain from Porkbun or Namecheap. He sends a screenshot of the
+   droplet page for the address.
+2. **M0 infra, by the runbook** (`infra/box/README.md`). Every script in it is
+   unverified, so expect to fix them as they run. Four things the runbook says
+   that are easy to lose:
+   - rerun `40-firewall.sh` after `bonesdeploy server setup`, which sets ufw
+     back to allowing all outbound;
+   - run `git checkout infra/custom` after `bonesdeploy init`, which overwrites
+     `runtime.py` and `manifest.py` with stubs;
+   - `web_root` must be `web/dist`, the only part of the release nginx's
+     AppArmor profile may read;
+   - a 2 GB box with swap off may run out of memory during the build. The
+     runbook lists the ways out.
+
+   Installing the bonesdeploy CLI needs Rust on Wes's PC. Ask him first.
+3. **M3 on the real box.** The TURN path has never carried a call, nothing has
+   been tried with three people, and a `device_keys` table still has to replace
+   `users.identity_key`. Then video and screen share (M4).
+4. **Category permissions in the sidebar UI.** The permissions themselves are
    done; what is missing is a way to reach them from the channel sidebar. Today
    they live only under server settings, and only once a category exists.
 
 ## Decisions made this session
+
+- **LiveKit's embedded TURN, not coturn.** Credentials are per session and
+  issued by LiveKit, and it is one less daemon to gate behind the vault. Same
+  ports. Recorded in GAMEPLAN as a deviation.
+- **LiveKit's signalling goes through nginx at `/rtc`, same origin.** The CSP
+  stays `connect-src 'self'` with no second hostname in it.
+- **The box's media address is read off its own network card.** LiveKit's
+  default is to ask a Google STUN server. That is a third party, and our
+  outbound firewall would block it anyway.
+- **A new device for a known person is held until a human approves it.** First
+  contact is still trusted on first use; a second device is not.
+- **Voice events are handled strictly one at a time.** Slower by nothing anyone
+  can measure, and the alternative loses keys.
+- **LiveKit 1.13.6, not the three-day-old 1.13.7.** The same seven-day hold we
+  apply to npm. The Windows binary's SHA-256 was checked; the Linux one has not
+  been, and the installer refuses to run until its hash is filled in.
+- **Not the reel-rival box.** LUKS, reboots and an outbound deny cannot be
+  rehearsed on a machine that is serving something else.
+
+## Decisions made building voice encryption
 
 - **Pairwise sender keys, not MLS.** At twenty-five people MLS's scaling buys
   nothing, and the browser options are an unaudited TypeScript library or a
@@ -373,11 +494,16 @@ as small uppercase captions, which turned a role name into a heading. It is
 
 ## Traps for the next session
 
-- **The voice key provider has never run against a LiveKit server.**
-  `web/src/lib/voice-key-provider.ts` compiles against livekit-client 2.22.3
-  and matches its API, and that is all that is known. The first thing to do
-  with a server running is watch frames actually decrypt — especially whether
-  LiveKit is happy with a non-extractable AES key while ratcheting is off.
+- **Voice has only ever run on one PC.** Two browsers, one local LiveKit, no
+  NAT, no TURN, no packet loss. RTT 1 ms proves nothing about Atlanta.
+- **Headless Chrome plays audio out of the real speakers.** Any new browser
+  test that joins a call needs `--mute-audio`.
+- **A declined command may already be running.** Twice Wes declined
+  `test:voice` and the process carried on in the background. After a decline,
+  look for the process before saying it never ran.
+- **Long Bash heredocs with apostrophes fail in this Git Bash.** Use the Write
+  tool for files like that. `.gitattributes` pins LF for the box scripts
+  because they are piped over SSH.
 - **LiveKit identifies participants by the token's `identity`, which is the
   bare user id.** Two devices for one person collide there. A call is one
   device per person until that is solved, and the key agreement already carries
@@ -414,7 +540,7 @@ as small uppercase captions, which turned a role name into a heading. It is
 ## Open questions for Wes
 
 - Domain name for the instance.
-- For Alex: does bonesdeploy's generated nginx config pass WebSocket upgrades?
-  (GAMEPLAN 2b.) Our gateway needs it.
-- Whether to stand up the droplet now or keep building locally. Local is free
-  and nothing is blocked by it yet.
+- For Alex: answered by reading the source. It does not pass WebSocket
+  upgrades, in either nginx layer. `docs/for-alex.md` is the note to send him;
+  sending it is Wes's call.
+- The droplet. Local work that does not need a box is close to used up.

@@ -4,6 +4,8 @@ Written 2026-09-16 for handoff to the build session. Revised the same evening af
 
 **Revised 2026-09-17: security and privacy review.** Wes made "as secure and private as possible" a top priority. Section 1b is new and the build session reads it before writing any M0 or M3 code. It changed the threat model (1), the media E2EE decision (2), the box checklist (4), and the exit criteria of M0, M3, M6 and M7 (6). The biggest change: **the server no longer generates or sees the voice encryption key.**
 
+**Revised 2026-09-17, later: deviations found while preparing for the box.** Section 2c is new. Three changes to the media side (LiveKit's embedded TURN instead of coturn, signalling through nginx on the same origin, no STUN lookup for the box's address) and a smaller first droplet. Wherever an older section still says "coturn", 2c is the authority.
+
 Wes's three priorities, in his words: **it's ours, our data is secure, and latency.** Everything below is ordered by those.
 
 ---
@@ -12,9 +14,9 @@ Wes's three priorities, in his words: **it's ours, our data is secure, and laten
 
 - **M1 is done and runs locally, end to end.** Server, client, seed script. Screenshots in `docs/HANDOFF.md`.
 - **M2 is done locally.** Roles, channel and category permissions, settings UI, hierarchy reordering, audit log. 50 unit tests on the permission algebra (`npm test`), 62 smoke checks over real HTTP.
-- **M3's key agreement is built and the old scaffolding is deleted.** `generateChannelKey()` and the `voice_key` event are gone; `web/src/lib/voice-crypto.ts` is the replacement, written up in `docs/voice-e2ee.md` and covered by 49 tests including a server that cheats. Token minting and voice state were already fine. What is left of M3 needs a media server: the LiveKit wiring, the gateway relay, and the connection panel.
+- **M3 holds an encrypted call between two browsers, locally.** `generateChannelKey()` and the `voice_key` event are gone; `web/src/lib/voice-crypto.ts` is the replacement, written up in `docs/voice-e2ee.md` and covered by 59 web tests including a server that cheats. The gateway relay, the LiveKit wiring and the connection panel are built, and `npm run test:voice` proves the call in three real browsers against a local LiveKit 1.13.6, including that the wrong key decodes nothing. M3 is **not** done: it has never run on a real box, the TURN path is untested, and no more than three people have been in a call.
 - **The two no-box privacy fixes are done.** Images are stripped of metadata in the client before upload (`npm run test:exif` proves it in a real browser), and a committed `.npmrc` turns off install scripts and holds new package versions for seven days.
-- **M0 has not started.** It is blocked on one thing only: a box, which only Wes can buy.
+- **M0 has not started.** It is blocked on one thing only: a box, which only Wes can buy. The production build is rehearsed locally (`npm run test:prod`), and the box scripts, bonesdeploy runtime and runbook (`infra/box/README.md`) are written. None of them has run on a box, so all of them are unverified.
 - **Deploy tool decided: bonesdeploy** (section 2b). Docker and Caddy are gone from this plan.
 
 ## 1. What "ours and secure" means here (the threat model)
@@ -182,9 +184,20 @@ How GoOffline maps onto it:
 - `bonesdeploy site services` provisions Postgres. `DATABASE_URL` goes into the encrypted secrets.
 - LUKS is ours to do, before `bonesdeploy server setup`: attach the block volume, `cryptsetup`, mount at `/var/lib/gooffline` (uploads) and point Postgres's data directory at it. bonesdeploy does not know about disk encryption and should not need to.
 
+**Answered 2026-09-17 by reading bonesdeploy v0.8.7's source: no, and in both of its nginx layers.** The per-site config is ours to write under `infra/custom/`, and ours passes upgrades. The root router on 80/443 is Alex's file and needs a change upstream; `docs/for-alex.md` and `docs/bonesdeploy-router.patch` (untested) are what Wes sends him. The question as first asked, kept for the record:
+
 **Open question for Alex, ask before M0:** does the generated nginx site config pass WebSocket upgrades (`Upgrade` / `Connection` headers, long `proxy_read_timeout`)? Our gateway is a WebSocket. If it does not, the app loads and then silently never updates. If the answer is no, it is four lines in a custom nginx snippet under `infra/custom/`, and we find out now rather than on launch night.
 
 Honest note: it is a friend's tool under active development, and he says so — "sharp edges and perhaps some cool bugs." When it breaks, we are the bug report. That is a fair trade for a deploy path we can read end to end, and the author is a message away.
+
+## 2c. Deviations (2026-09-17)
+
+Decided while preparing for the box. None has been tried on one yet.
+
+- **LiveKit's embedded TURN, not coturn.** LiveKit issues TURN credentials per session itself, so there is no long-lived coturn secret to store, and it is one less daemon to install, pin, gate behind the vault and watch in the firewall log. Same ports: 3478/udp and 5349/tcp, relay range 40000-40999/udp. Where sections 1b, 2, 2b, 3, 4 and 7 say "coturn", read "LiveKit's TURN"; the TURN-usage number in section 3 comes from the connection panel and LiveKit's log instead of coturn's. If embedded TURN turns out not to be good enough on real networks, coturn comes back and this entry says why.
+- **LiveKit's signalling goes through nginx, same origin.** `location /rtc` proxies to LiveKit on `127.0.0.1:7880`. The browser only ever talks to one hostname, so the CSP stays `connect-src 'self'`, there is no second certificate, and LiveKit's signalling port is not open to the internet.
+- **The box's media address is read off its own network card, not discovered.** LiveKit's `use_external_ip` asks a Google STUN server by default. It carries no member data, but it is a third party the box would contact on every start (non-negotiable 1), and the outbound firewall would block it. A droplet has its public IPv4 directly on the interface, so the installer writes it into `node_ip`.
+- **A smaller first box.** 2 GB / 1 vCPU and a 10 GB volume, about $13-15 a month, instead of the 4 GB / 50 GB in the table above. Wes asked to start cheaper. Resize with "CPU and RAM only" so it can be undone. Known risk: with swap off, the build may run out of memory on 2 GB; the runbook lists the ways out.
 
 ## 3. Latency plan
 
