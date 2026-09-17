@@ -2,7 +2,14 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-16, end of fifth build session.
+**Last updated:** 2026-09-17, after the security and privacy review (no code changed; GAMEPLAN.md did).
+
+> **Read GAMEPLAN.md section 1b before building anything in M0 or M3.** Wes made
+> security and privacy a top priority and the plan was reviewed against it. The
+> headline: the M3 scaffolding has the *server* generating the voice key
+> (`generateChannelKey()` in `server/src/lib/crypto.ts`, the `voice_key` gateway
+> event, the `voice_key` case in `web/src/state/store.tsx`). That is wrong by
+> design and gets deleted, not extended. Keys are made in the clients.
 
 ---
 
@@ -13,7 +20,7 @@ Living state. Update this at the end of every working session.
 | M0 infra | **Not started.** Needs a droplet, which needs Wes to buy one. Deploy path decided (see below). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
-| M3 voice | **Scaffolding done.** Token minting, voice state, permission-gated grants. Needs a real LiveKit server. |
+| M3 voice | **Scaffolding done, key distribution to be replaced** (GAMEPLAN 1b, finding 1). Token minting, voice state, permission-gated grants are fine. Needs a real LiveKit server for media; the client-side key agreement does not. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
 | M6 desktop | Not started. |
@@ -202,7 +209,17 @@ as small uppercase captions, which turned a role name into a heading. It is
 
 ## Next, in order
 
-1. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief:
+0. **Two small privacy fixes that need no box** (GAMEPLAN 1b, findings 5 and 6):
+   a committed `.npmrc` (`ignore-scripts`, `save-exact`, `min-release-age=7` —
+   confirm the install still works with scripts off, `@node-rs/argon2` and
+   esbuild are the ones to watch), and re-encoding images through a canvas in
+   the client before upload so photos stop carrying GPS coordinates.
+   Then **the client half of M3's key agreement**, which also needs no box:
+   device identity keys, pairwise-wrapped sender keys, rotation, the
+   key-change warning, and a test that plays a key-swapping server.
+1. **M0 infra** once he has a droplet. GAMEPLAN.md section 2b is the brief,
+   and section 4 grew in the review (box boots dumb, outbound firewall
+   allowlist, no DO agents or snapshots, nginx access log off):
    `bonesdeploy init` with the custom template, build and prepare scripts,
    LUKS by hand first, LiveKit and coturn as plain units. Ask Alex whether the
    generated nginx config passes WebSocket upgrades before starting.

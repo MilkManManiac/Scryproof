@@ -13,6 +13,8 @@ Wes's own Discord: servers, channels, roles, voice, video, screen share. Private
 5. One box, one deploy tool (bonesdeploy: systemd + nginx, no Docker), one LUKS-encrypted volume. Must be movable to another host by restore + DNS change.
 6. No Discord-clone tutorial code. Write it, understand it, own it.
 7. Every voice UI shows the connection panel (RTT, jitter, loss, TURN yes/no). Diagnose with instruments, not guesses.
+8. No key that decrypts members' content ever exists on the server. Not generated there, not relayed in the clear, not backed up there. The UI says "encrypted" only where that is true. (GAMEPLAN 1b, finding 1.)
+9. The box boots dumb: nothing secret on the unencrypted root disk, the volume passphrase never on the box, a reboot stays locked until Wes unlocks it. (GAMEPLAN 1b, finding 3.)
 
 ## Working with Wes
 
