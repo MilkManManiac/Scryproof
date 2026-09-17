@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Installed on the box as /usr/local/sbin/gooffline-unlock.
+#
+# After any reboot the box is up, reachable over SSH, and useless: the vault is
+# locked, so there is no database, no uploads, no secrets file, no TLS key, and
+# every service that matters has refused to start. This is the only way back,
+# and it needs a passphrase that exists in exactly one place, which is not here.
+#
+# From Wes's PC:   bash scripts/unlock.sh
+
+source /usr/local/lib/gooffline/lib.sh
+need_root
+
+if vault_is_mounted && [ -e "$UNLOCKED_FLAG" ]; then
+  say "Already unlocked."
+else
+  if ! vault_is_open; then
+    volume="$(find_volume)"
+    say "Vault passphrase (from the password manager):"
+    cryptsetup open "$volume" "$VAULT_NAME"
+  fi
+
+  vault_is_mounted || mount "$VAULT_MOUNT"
+
+  say "Binding directories"
+  while read -r path; do
+    [ -n "$path" ] || continue
+    if mountpoint -q "$path"; then
+      note "already bound  $path"
+      continue
+    fi
+    slot="$VAULT_MOUNT/binds/$(bind_slot "$path")"
+    [ -d "$slot" ] || die "$path is registered but $slot does not exist on the vault."
+    mkdir -p "$path"
+    # Anything in the way was written while locked. Refuse rather than hide it
+    # under the mount, where it would sit unnoticed on the unencrypted disk.
+    [ -z "$(ls -A "$path")" ] || die "$path is not empty on the root disk. Something wrote there while the vault was locked. Look before continuing."
+    mount --bind "$slot" "$path"
+    note "bound          $path"
+  done < "$BINDS_FILE"
+
+  # Only now, with every bind in place, may gated services start.
+  mkdir -p "$(dirname "$UNLOCKED_FLAG")"
+  touch "$UNLOCKED_FLAG"
+fi
+
+say "Starting services"
+failed=0
+while read -r unit; do
+  [ -n "$unit" ] || continue
+  systemctl reset-failed "$unit" 2>/dev/null || true
+  if systemctl start "$unit"; then
+    note "$(printf '%-34s %s' "$unit" "$(systemctl is-active "$unit")")"
+  else
+    note "$(printf '%-34s %s' "$unit" "FAILED  (journalctl -u $unit -n 40)")"
+    failed=1
+  fi
+done < "$UNITS_FILE"
+
+say "Health"
+if curl -fsS --max-time 5 http://127.0.0.1:8787/api/health; then
+  printf '\n'
+else
+  note "the API did not answer on 127.0.0.1:8787"
+  failed=1
+fi
+
+[ "$failed" -eq 0 ] || die "unlocked, but not everything came back. See above."
+say "Unlocked and serving."

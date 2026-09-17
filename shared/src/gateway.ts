@@ -68,13 +68,19 @@ export type ServerEvent =
    * generated. It is gone. A server that makes the key has the key, which
    * makes "end-to-end encrypted" a false claim in our own interface.
    *
-   * Keys are made in the clients and wrapped for one recipient at a time; what
-   * this gateway will relay is sealed blobs it cannot open. See
-   * `web/src/lib/voice-crypto.ts`, GAMEPLAN 1b finding 1, and non-negotiable 8.
-   * The relay events are defined when the server half of M3 is built, so that
-   * they arrive with the code that handles them rather than as a shape nobody
-   * has implemented.
+   * What replaces it is two events, neither of which carries anything this
+   * server can use. See `web/src/lib/voice-crypto.ts`, `docs/voice-e2ee.md`,
+   * GAMEPLAN 1b finding 1, and non-negotiable 8.
    */
+  /**
+   * Who is in a voice channel right now, and which epoch that makes it. Sent
+   * to the occupants only, on every join and leave. The epoch is a counter and
+   * nothing more: it gives everyone the same number to label keys with, and
+   * has no influence on what any key is.
+   */
+  | { t: 'voice_membership'; d: VoiceMembership }
+  /** A sealed message from another occupant, relayed unread. */
+  | { t: 'voice_signal'; d: VoiceSignal & { from: Snowflake } }
   | { t: 'error'; d: { code: string; message: string } };
 
 export type ClientEvent =
@@ -90,7 +96,33 @@ export type ClientEvent =
         sharingScreen?: boolean;
         cameraOn?: boolean;
       };
-    };
+    }
+  /** Ask the gateway to pass a sealed message to the others in a voice channel. */
+  | { t: 'voice_signal'; d: VoiceSignal & { to?: Snowflake } };
+
+export interface VoiceMembership {
+  channelId: Snowflake;
+  epoch: number;
+  members: Snowflake[];
+}
+
+/**
+ * The envelope around key-agreement traffic.
+ *
+ * `payload` is opaque to the server by design. It is either a signed
+ * announcement of public keys or a media key wrapped for exactly one device,
+ * and the gateway's whole job is to check that the sender is really in the
+ * channel and pass it along. It never parses it, stores it, or logs it.
+ */
+export interface VoiceSignal {
+  channelId: Snowflake;
+  epoch: number;
+  kind: 'announce' | 'key';
+  payload: Record<string, unknown>;
+}
+
+/** Bytes of JSON. A wrapped key is about 400; an announcement about 600. */
+export const VOICE_SIGNAL_MAX_BYTES = 4096;
 
 export type ServerEventName = ServerEvent['t'];
 export type ClientEventName = ClientEvent['t'];

@@ -20,6 +20,7 @@ import { before, describe, test } from 'node:test';
 import {
   type Announcement,
   MemoryIdentityStore,
+  needsConsent,
   VoiceCall,
   type WrappedKey,
   announce,
@@ -173,6 +174,45 @@ describe('a server that lies', () => {
 
     // And the change was not written over the old one behind anyone's back.
     assert.equal(await store.get('alex', 'alex-device'), real.fingerprint);
+  });
+
+  test('inventing a new device id does not get round the pin', async () => {
+    // Pins are per device. So the quiet way past the test above is not to
+    // change Alex's key but to claim Alex has a second device, which has no
+    // old key to disagree with. That must not arrive looking like first contact.
+    const store = new MemoryIdentityStore();
+    const real = await createDeviceIdentity('alex-laptop');
+    const impostor = await createDeviceIdentity('alex-totally-real-phone');
+
+    assert.equal(await pinIdentity(store, 'alex', 'alex-laptop', real.fingerprint), 'first-seen');
+
+    const verdict = await pinIdentity(store, 'alex', 'alex-totally-real-phone', impostor.fingerprint);
+    assert.equal(verdict, 'new-device');
+    assert.equal(needsConsent(verdict), true);
+
+    // Not pinned on sight: asking again gives the same answer until a person accepts.
+    assert.equal(await store.get('alex', 'alex-totally-real-phone'), null);
+    assert.equal(
+      await pinIdentity(store, 'alex', 'alex-totally-real-phone', impostor.fingerprint),
+      'new-device',
+    );
+  });
+
+  test('somebody nobody has met is still ordinary first contact', async () => {
+    const store = new MemoryIdentityStore();
+    const mara = await createDeviceIdentity('mara-laptop');
+    await pinIdentity(store, 'alex', 'alex-laptop', 'unrelated');
+
+    const verdict = await pinIdentity(store, 'mara', 'mara-laptop', mara.fingerprint);
+    assert.equal(verdict, 'first-seen');
+    assert.equal(needsConsent(verdict), false);
+  });
+
+  test('a user id that is a prefix of another does not share its devices', async () => {
+    // "al" must not be treated as already known because "alex" is.
+    const store = new MemoryIdentityStore();
+    await pinIdentity(store, 'alex', 'laptop', 'aaaa');
+    assert.equal(await pinIdentity(store, 'al', 'laptop', 'bbbb'), 'first-seen');
   });
 
   test('a substituted identity changes the number everybody reads aloud', async () => {
@@ -438,5 +478,111 @@ describe('who can be heard', () => {
     const wes = await makeDevice('wes');
     const result = await wes.call.admit([wes.announcement]);
     assert.deepEqual(result.flagged, []);
+  });
+});
+
+describe('a device nobody expected', () => {
+  /**
+   * Wes has met Alex before, on Alex's laptop. Now something claiming to be
+   * Alex turns up on a device Wes has never seen. It might be a new phone. It
+   * might be the relay. Until Wes says which, it is not in the call.
+   */
+  async function scene() {
+    const pins = new MemoryIdentityStore();
+    await pinIdentity(pins, 'alex', 'alex-laptop', 'the-key-wes-remembers');
+
+    const identity = await createDeviceIdentity('wes-device');
+    const callKeys = await createCallKeypair();
+    const wes = new VoiceCall({ callId: CALL, userId: 'wes', identity, callKeys, pins });
+    const wesAnnouncement = await announce(CALL, 'wes', identity, callKeys);
+
+    const strangerIdentity = await createDeviceIdentity('alex-new-phone');
+    const strangerKeys = await createCallKeypair();
+    const stranger = new VoiceCall({
+      callId: CALL,
+      userId: 'alex',
+      identity: strangerIdentity,
+      callKeys: strangerKeys,
+      pins: new MemoryIdentityStore(),
+    });
+    const strangerAnnouncement = await announce(CALL, 'alex', strangerIdentity, strangerKeys);
+
+    return { wes, wesAnnouncement, stranger, strangerAnnouncement };
+  }
+
+  test('it is flagged, held, and not counted as a participant', async () => {
+    const { wes, wesAnnouncement, strangerAnnouncement } = await scene();
+    const result = await wes.admit([wesAnnouncement, strangerAnnouncement]);
+
+    assert.equal(result.flagged.length, 1);
+    assert.equal(result.flagged[0]!.verdict, 'new-device');
+    assert.equal(wes.awaitingConsent.length, 1);
+    assert.deepEqual(wes.members.map((member) => member.announcement.userId), ['wes']);
+  });
+
+  test('it is sent no key', async () => {
+    const { wes, wesAnnouncement, strangerAnnouncement } = await scene();
+    await wes.admit([wesAnnouncement, strangerAnnouncement]);
+    wes.rotate(1);
+
+    assert.deepEqual(await wes.distribute(), []);
+  });
+
+  test('its own key is refused, so it cannot be heard either', async () => {
+    const { wes, wesAnnouncement, stranger, strangerAnnouncement } = await scene();
+    await wes.admit([wesAnnouncement, strangerAnnouncement]);
+    await stranger.admit([wesAnnouncement, strangerAnnouncement]);
+    wes.rotate(1);
+    stranger.rotate(1);
+
+    const [fromStranger] = await stranger.distribute();
+    assert.ok(fromStranger, 'the stranger has no reason to hold back');
+    assert.equal(await wes.accept(fromStranger), null);
+  });
+
+  test('it does not change the number read aloud until it is approved', async () => {
+    const { wes, wesAnnouncement, strangerAnnouncement } = await scene();
+    await wes.admit([wesAnnouncement]);
+    const alone = await wes.verificationCode();
+
+    await wes.admit([strangerAnnouncement]);
+    assert.equal(await wes.verificationCode(), alone);
+
+    await wes.approve('alex', 'alex-new-phone');
+    assert.notEqual(await wes.verificationCode(), alone);
+  });
+
+  test('approving it releases keys in both directions and remembers the device', async () => {
+    const { wes, wesAnnouncement, stranger, strangerAnnouncement } = await scene();
+    await wes.admit([wesAnnouncement, strangerAnnouncement]);
+    await stranger.admit([wesAnnouncement, strangerAnnouncement]);
+    wes.rotate(1);
+    stranger.rotate(1);
+
+    const approved = await wes.approve('alex', 'alex-new-phone');
+    assert.equal(approved?.verdict, 'known');
+    assert.equal(wes.awaitingConsent.length, 0);
+
+    const [toStranger] = await wes.distribute();
+    assert.ok(sameBytes(await stranger.accept(toStranger!), wes.mediaKey));
+
+    const [fromStranger] = await stranger.distribute();
+    assert.ok(sameBytes(await wes.accept(fromStranger!), stranger.mediaKey));
+
+    // Next call, the same phone is simply known.
+    const again = await wes.admit([strangerAnnouncement]);
+    assert.deepEqual(again.flagged, []);
+  });
+
+  test('approving something that is not waiting does nothing', async () => {
+    const { wes } = await scene();
+    assert.equal(await wes.approve('alex', 'never-announced'), null);
+  });
+
+  test('a held device that leaves is forgotten, not left waiting', async () => {
+    const { wes, wesAnnouncement, strangerAnnouncement } = await scene();
+    await wes.admit([wesAnnouncement, strangerAnnouncement]);
+    wes.remove('alex', 'alex-new-phone');
+    assert.equal(wes.awaitingConsent.length, 0);
   });
 });

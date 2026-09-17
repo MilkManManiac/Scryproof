@@ -225,7 +225,8 @@ export function removeUserFromServer(userId: string, serverId: string): void {
     connection.servers.delete(serverId);
     connection.permissionCache.delete(serverId);
   }
-  voiceStates.delete(voiceKey(serverId, userId));
+  const state = voiceStates.get(voiceKey(serverId, userId));
+  if (state) setVoiceState({ ...state, channelId: null });
 }
 
 /* ---------------------------------- voice --------------------------------- */
@@ -240,22 +241,71 @@ export function allVoiceStatesFor(serverIds: readonly string[]): VoiceState[] {
 }
 
 export function setVoiceState(state: VoiceState): void {
-  if (state.channelId === null) {
-    voiceStates.delete(voiceKey(state.serverId, state.userId));
-    return;
+  const key = voiceKey(state.serverId, state.userId);
+  const before = voiceStates.get(key)?.channelId ?? null;
+
+  if (state.channelId === null) voiceStates.delete(key);
+  else voiceStates.set(key, state);
+
+  // Muting and unmuting come through here too and must not rotate anything.
+  if (before !== state.channelId) {
+    if (before) voiceMembershipChanged(before);
+    if (state.channelId) voiceMembershipChanged(state.channelId);
   }
-  voiceStates.set(voiceKey(state.serverId, state.userId), state);
 }
 
 /** Clear every voice state for a user across all their servers. */
-export function clearVoiceStatesForUser(userId: string): VoiceState[] {
+export function clearVoiceStatesForUser(userId: string, exceptServerId?: string): VoiceState[] {
   const cleared: VoiceState[] = [];
   for (const [key, state] of voiceStates) {
     if (state.userId !== userId) continue;
+    if (state.serverId === exceptServerId) continue;
     voiceStates.delete(key);
     cleared.push({ ...state, channelId: null, sharingScreen: false, cameraOn: false });
+    if (state.channelId) voiceMembershipChanged(state.channelId);
   }
   return cleared;
+}
+
+/*
+ * Voice epochs.
+ *
+ * Every time the set of people in a voice channel changes, that channel's
+ * epoch goes up by one and the occupants are told. Clients answer by throwing
+ * away their media keys and making new ones, which is what makes leaving a
+ * call mean something.
+ *
+ * It lives here, under setVoiceState and clearVoiceStatesForUser, rather than
+ * beside the code that handles a join, so that no path out of a channel can
+ * forget it: leaving, moving, being disconnected by a moderator, being removed
+ * from the server, a browser dying. A missed rotation is a departed member who
+ * can still decrypt.
+ *
+ * The counter is the only thing the server contributes. It never goes down
+ * while the process lives, and clients refuse to go backwards regardless.
+ */
+const voiceEpochs = new Map<string, number>();
+
+export function voiceEpoch(channelId: string): number {
+  return voiceEpochs.get(channelId) ?? 0;
+}
+
+export function voiceOccupants(channelId: string): string[] {
+  const occupants: string[] = [];
+  for (const state of voiceStates.values()) {
+    if (state.channelId === channelId) occupants.push(state.userId);
+  }
+  return occupants;
+}
+
+function voiceMembershipChanged(channelId: string): void {
+  const epoch = voiceEpoch(channelId) + 1;
+  voiceEpochs.set(channelId, epoch);
+
+  const members = voiceOccupants(channelId);
+  for (const userId of members) {
+    sendToUser(userId, { t: 'voice_membership', d: { channelId, epoch, members } });
+  }
 }
 
 export function connectionsForUser(userId: string): Connection[] {

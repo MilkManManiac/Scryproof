@@ -259,12 +259,27 @@ export type PinVerdict =
   /** Same key as last time. Silence is correct here. */
   | 'known'
   /** The key changed. Either they reinstalled, or somebody is in the middle. */
-  | 'changed';
+  | 'changed'
+  /**
+   * Somebody we already know, on a device we have never seen. Usually a new
+   * phone. It is also exactly what a relay would present to get round the
+   * `changed` warning: pins are per device, so a made-up device id has no old
+   * key to disagree with. Without this verdict an impostor arrives as a
+   * harmless-looking `first-seen`. Held until a person accepts it, like
+   * `changed`, and never pinned automatically.
+   */
+  | 'new-device';
+
+/** Verdicts that stop keys moving until a person has looked. */
+export const needsConsent = (verdict: PinVerdict): boolean =>
+  verdict === 'changed' || verdict === 'new-device';
 
 /** Storage for what this device has seen. IndexedDB in the browser, a map in tests. */
 export interface IdentityStore {
   get(userId: string, deviceId: string): Promise<string | null>;
   set(userId: string, deviceId: string, fingerprint: string): Promise<void>;
+  /** Every device id pinned for this person. */
+  devices(userId: string): Promise<string[]>;
 }
 
 export class MemoryIdentityStore implements IdentityStore {
@@ -276,6 +291,11 @@ export class MemoryIdentityStore implements IdentityStore {
 
   async set(userId: string, deviceId: string, fingerprint: string): Promise<void> {
     this.seen.set(`${userId}:${deviceId}`, fingerprint);
+  }
+
+  async devices(userId: string): Promise<string[]> {
+    const prefix = `${userId}:`;
+    return [...this.seen.keys()].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
   }
 }
 
@@ -293,14 +313,17 @@ export async function pinIdentity(
   fingerprint: string,
 ): Promise<PinVerdict> {
   const known = await store.get(userId, deviceId);
-  if (known === null) {
-    await store.set(userId, deviceId, fingerprint);
-    return 'first-seen';
-  }
-  return known === fingerprint ? 'known' : 'changed';
+  if (known !== null) return known === fingerprint ? 'known' : 'changed';
+
+  // Never seen this device. Whether that is unremarkable depends on whether we
+  // have seen this *person*.
+  if ((await store.devices(userId)).length > 0) return 'new-device';
+
+  await store.set(userId, deviceId, fingerprint);
+  return 'first-seen';
 }
 
-/** Accept a changed key. Only ever called because somebody clicked through a warning. */
+/** Accept a changed key or a new device. Only ever called because somebody clicked through a warning. */
 export async function acceptIdentityChange(
   store: IdentityStore,
   userId: string,
@@ -562,6 +585,8 @@ export class VoiceCall {
 
   private readonly pins: IdentityStore;
   private readonly participants = new Map<string, Participant>();
+  /** Signed correctly, but waiting for a person to say they expected this. */
+  private readonly held = new Map<string, Participant>();
   private readonly receivedKeys = new Map<string, Uint8Array>();
 
   private currentEpoch = 0;
@@ -622,15 +647,49 @@ export class VoiceCall {
           : await pinIdentity(this.pins, announcement.userId, announcement.deviceId, fingerprint);
 
       const participant: Participant = { announcement, fingerprint, verdict, signed: true };
-      this.participants.set(VoiceCall.seat(announcement.userId, announcement.deviceId), participant);
+      const seat = VoiceCall.seat(announcement.userId, announcement.deviceId);
       if (verdict !== 'known') flagged.push(participant);
+
+      // A changed key or an unexpected device gets no key from us and has none
+      // of theirs used, until someone approves it. They are not a participant:
+      // `distribute` skips them, `accept` refuses them, and the verification
+      // code does not include them.
+      if (needsConsent(verdict)) {
+        this.participants.delete(seat);
+        this.held.set(seat, participant);
+        continue;
+      }
+      this.held.delete(seat);
+      this.participants.set(seat, participant);
     }
 
     return { rejected, flagged };
   }
 
+  /** Devices whose identity needs a person's say-so before any key moves. */
+  get awaitingConsent(): Participant[] {
+    return [...this.held.values()];
+  }
+
+  /**
+   * Somebody looked at the warning and said yes. The new key is pinned and the
+   * device becomes an ordinary participant. The caller then sends it a key.
+   */
+  async approve(userId: string, deviceId: string): Promise<Participant | null> {
+    const seat = VoiceCall.seat(userId, deviceId);
+    const participant = this.held.get(seat);
+    if (!participant) return null;
+
+    await acceptIdentityChange(this.pins, userId, deviceId, participant.fingerprint);
+    this.held.delete(seat);
+    const approved: Participant = { ...participant, verdict: 'known' };
+    this.participants.set(seat, approved);
+    return approved;
+  }
+
   /** Drop someone who left. */
   remove(userId: string, deviceId: string): void {
+    this.held.delete(VoiceCall.seat(userId, deviceId));
     this.participants.delete(VoiceCall.seat(userId, deviceId));
     this.receivedKeys.delete(VoiceCall.seat(userId, deviceId));
   }

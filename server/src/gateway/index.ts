@@ -27,7 +27,7 @@ import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
 import * as hub from './hub.js';
-import { handleVoiceStateIntent } from './voice.js';
+import { handleVoiceSignal, handleVoiceStateIntent } from './voice.js';
 
 /** Parse one cookie out of a raw header without pulling in a parser. */
 function readCookie(header: string | undefined, name: string): string | undefined {
@@ -287,6 +287,11 @@ async function handleClientEvent(
 
     case 'voice_state': {
       await handleVoiceStateIntent(connection, event.d);
+      return;
+    }
+
+    case 'voice_signal': {
+      handleVoiceSignal(connection, event.d);
       return;
     }
 

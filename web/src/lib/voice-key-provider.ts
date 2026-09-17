@@ -12,10 +12,9 @@
  * invented on this device or unwrapped from a blob only this device could
  * open — see `voice-crypto.ts`. This file only hands them over.
  *
- * Unverified against a real LiveKit server: there is not one yet. It compiles
- * against livekit-client 2.22.3 and matches that version's API; the first
- * thing the M3 session does with a server running is watch frames actually
- * decrypt. HANDOFF says so too.
+ * Verified against a real LiveKit server (1.13.6, run locally) by
+ * `npm run test:voice`: two browsers, real microphones' worth of fake audio,
+ * and a check that a listener holding the wrong key hears nothing.
  *
  * GAMEPLAN.md section 1b, finding 1.
  */
@@ -45,15 +44,23 @@ export class GoOfflineKeyProvider extends BaseKeyProvider {
   /**
    * Hand LiveKit one participant's media key.
    *
-   * The key is imported non-extractable: LiveKit's worker needs to encrypt and
-   * decrypt with it, and nothing needs to read it back out.
+   * It goes in as HKDF key *material*, not as a finished AES key. LiveKit's
+   * worker always derives the frame key itself (`deriveKeys` in its e2ee
+   * worker) and throws "algorithm AES-GCM is currently unsupported" for
+   * anything that is not HKDF or PBKDF2. An AES-GCM import here compiles, type
+   * checks, and fails on the first frame, which is what this file did until it
+   * was run against a real server.
+   *
+   * Every participant derives the same frame key from the same 32 bytes, so
+   * nothing is lost: the secret is still ours, still per sender, still fresh
+   * each epoch. Non-extractable, because nothing needs to read it back out.
    */
   async setParticipantKey(identity: string, mediaKey: Uint8Array, keyIndex = 0): Promise<void> {
-    const key = await crypto.subtle.importKey('raw', mediaKey as BufferSource, 'AES-GCM', false, [
-      'encrypt',
-      'decrypt',
+    const material = await crypto.subtle.importKey('raw', mediaKey as BufferSource, 'HKDF', false, [
+      'deriveBits',
+      'deriveKey',
     ]);
-    this.onSetEncryptionKey(key, identity, keyIndex);
+    this.onSetEncryptionKey(material, identity, keyIndex);
   }
 
   /** Our own key, used to encrypt what this device publishes. */

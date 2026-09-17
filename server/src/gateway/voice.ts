@@ -10,12 +10,13 @@
  * screen without SHARE_SCREEN is simply not believed.
  */
 
-import { Permission, has } from '@gooffline/shared';
-import type { VoiceState } from '@gooffline/shared';
+import { Permission, VOICE_SIGNAL_MAX_BYTES, has } from '@gooffline/shared';
+import type { VoiceSignal, VoiceState } from '@gooffline/shared';
 
 import { getDb } from '../db/index.js';
 import { channels } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { consume } from '../lib/rate-limit.js';
 import { computePermissionsInChannel, loadMemberContext } from '../services/permissions.js';
 import * as hub from './hub.js';
 
@@ -64,6 +65,13 @@ export async function handleVoiceStateIntent(
     return;
   }
 
+  // One call at a time. A person has one microphone, and their device holds
+  // one set of call keys; standing in two servers' voice channels at once
+  // would leave a ghost in whichever one the client is not actually connected to.
+  for (const elsewhere of hub.clearVoiceStatesForUser(connection.userId, channel.serverId)) {
+    hub.broadcastToServer(elsewhere.serverId, { t: 'voice_state_update', d: elsewhere });
+  }
+
   const previous = hub.getVoiceState(channel.serverId, connection.userId);
 
   // Moving between channels leaves the old one first, so nobody appears in two
@@ -109,4 +117,55 @@ export function disconnectFromVoice(serverId: string, userId: string): void {
     t: 'voice_state_update',
     d: { ...state, channelId: null, sharingScreen: false, cameraOn: false },
   });
+}
+
+/**
+ * Pass a sealed key-agreement message to the other people in a voice channel.
+ *
+ * This is the whole of the server's part in voice encryption, and it is a
+ * postman's part. It checks that the sender is standing in the channel they
+ * name, that the recipient is too, and that the envelope is a sane size. It
+ * does not open the envelope. `payload` is never parsed, stored or logged, and
+ * nothing in it would be any use to us if it were: announcements are public
+ * keys, and wrapped keys open only on the one device they were sealed for.
+ *
+ * `from` is stamped here, but clients do not rely on it. Every announcement is
+ * signed by the device that made it, so a server that lied about `from` would
+ * produce a message that fails verification, not one that is believed.
+ */
+export function handleVoiceSignal(
+  connection: hub.Connection,
+  signal: VoiceSignal & { to?: string },
+): void {
+  if (typeof signal !== 'object' || signal === null) return;
+  const { channelId, epoch, kind, payload, to } = signal;
+
+  if (typeof channelId !== 'string') return;
+  if (typeof epoch !== 'number' || !Number.isInteger(epoch)) return;
+  if (kind !== 'announce' && kind !== 'key') return;
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
+  if (to !== undefined && typeof to !== 'string') return;
+
+  // Twenty-five people rotating at once is about six hundred messages from
+  // each of them. This is far above that and far below a flood.
+  if (!consume(`voice-signal:${connection.id}`, 2000, 10_000).allowed) return;
+
+  if (Buffer.byteLength(JSON.stringify(payload)) > VOICE_SIGNAL_MAX_BYTES) return;
+
+  // Only someone in the channel may speak into it, and only about the present.
+  // A message labelled with an old epoch is about a set of people that no
+  // longer exists, and every client would refuse it anyway.
+  const occupants = hub.voiceOccupants(channelId);
+  if (!occupants.includes(connection.userId)) return;
+  if (epoch !== hub.voiceEpoch(channelId)) return;
+
+  const recipients = to === undefined ? occupants : occupants.includes(to) ? [to] : [];
+
+  for (const userId of recipients) {
+    if (userId === connection.userId) continue;
+    hub.sendToUser(userId, {
+      t: 'voice_signal',
+      d: { channelId, epoch, kind, payload, from: connection.userId },
+    });
+  }
 }

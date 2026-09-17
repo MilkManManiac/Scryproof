@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Installed on the box as /usr/local/sbin/gooffline-lock.
+#
+# Stops everything and closes the vault, without a reboot. Two uses: the M0
+# test that a locked box serves nothing, and the moment Wes wants the data dark
+# right now.
+
+source /usr/local/lib/gooffline/lib.sh
+need_root
+
+say "Stopping services"
+if [ -s "$UNITS_FILE" ]; then
+  # Reverse order: the app goes down before the database under it.
+  tac "$UNITS_FILE" | while read -r unit; do
+    [ -n "$unit" ] || continue
+    systemctl stop "$unit" 2>/dev/null || true
+    note "$(printf '%-34s %s' "$unit" "$(systemctl is-active "$unit" 2>/dev/null || true)")"
+  done
+fi
+
+rm -f "$UNLOCKED_FLAG"
+
+say "Unbinding"
+if [ -s "$BINDS_FILE" ]; then
+  tac "$BINDS_FILE" | while read -r path; do
+    [ -n "$path" ] || continue
+    if mountpoint -q "$path"; then
+      umount "$path" || die "$path is busy. Something still has files open: lsof +D $path"
+      note "unbound  $path"
+    fi
+  done
+fi
+
+if vault_is_mounted; then umount "$VAULT_MOUNT"; fi
+if vault_is_open; then cryptsetup close "$VAULT_NAME"; fi
+
+say "Locked. The key is no longer in this machine's memory."

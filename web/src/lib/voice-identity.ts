@@ -127,4 +127,13 @@ export class IndexedDbIdentityStore implements IdentityStore {
       run(store.put(fingerprint, `${userId}:${deviceId}`)),
     );
   }
+
+  async devices(userId: string): Promise<string[]> {
+    // Keys are "userId:deviceId", so everything for one person is a contiguous range.
+    const prefix = `${userId}:`;
+    const keys = await withStore(PINS_STORE, 'readonly', (store) =>
+      run<IDBValidKey[]>(store.getAllKeys(IDBKeyRange.bound(prefix, `${prefix}￿`))),
+    );
+    return keys.map((key) => String(key).slice(prefix.length));
+  }
 }

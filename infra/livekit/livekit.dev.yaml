@@ -1,0 +1,26 @@
+# LiveKit for local development ONLY. Everything stays on this machine.
+# The key pair below is a throwaway that exists nowhere else and guards nothing.
+# Production uses infra/livekit/livekit.yaml.template with real secrets.
+#
+#   npm run dev:livekit
+
+port: 7880
+bind_addresses:
+  - 127.0.0.1
+
+rtc:
+  # One UDP port instead of a range: fewer sockets, and nothing to open.
+  udp_port: 7882
+  tcp_port: 7881
+  use_external_ip: false
+  node_ip: 127.0.0.1
+
+keys:
+  devkey: devsecret-devsecret-devsecret-devsecret
+
+logging:
+  level: info
+
+room:
+  auto_create: true
+  empty_timeout: 30
