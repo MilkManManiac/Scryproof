@@ -20,13 +20,31 @@ Living state. Update this at the end of every working session.
 | M0 infra | **Not started, but prepared.** Needs a droplet, which needs Wes to buy one. The production build is rehearsed locally; the box scripts, bonesdeploy runtime and runbook are written and **unverified**, because none of them has run on a box. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
-| M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 19 checks). **Not done:** never on a real box, no TURN path tested, three participants at most, no video or screen share. |
+| M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 22 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most, no video or screen share. |
 | M4 video and screen share | Permissions and grants exist. No UI. |
 | M5 feel | Not started. |
 | M6 desktop | Not started. |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
 **Repo:** https://github.com/MilkManManiac/GoOffline (private)
+
+## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
+
+With `rtc.stun_servers` unset, LiveKit tells every browser to use
+`stun.l.google.com`, `stun1.l.google.com` and `global.stun.twilio.com`. Each
+caller's IP would have gone to both companies at the start of every call
+(non-negotiable 1). `livekit.dev.yaml`, `livekit.yaml.template` and
+`60-livekit-install.sh` now set it to ourselves. `npm run test:voice` reads the
+ICE servers the browser was really given and fails on any that is not ours. The
+production value (`<domain>:3478`, the embedded TURN port answering STUN) is
+**unverified** until M0: run the check against the real box.
+
+Trap: with NordVPN connected, two programs on this PC cannot reach each other
+over the machine's network addresses, and a local call fails with "could not
+establish pc connection". The test browsers now run with
+`--allow-loopback-in-peer-connection`. A normal browser on this PC talking to
+the local LiveKit will still fail while the VPN is on; against the real box it
+is not an issue.
 
 ## Run it
 

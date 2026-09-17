@@ -17,6 +17,7 @@
 import { useState, useSyncExternalStore } from 'react';
 
 import { useStore } from '../state/store';
+import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
 import type { VoicePerson, VoiceSnapshot } from '../lib/voice-session';
 
@@ -49,6 +50,8 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
   const voice = useVoice();
   const nameOf = useNames();
   const accentOf = useAccents();
+  const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
+  const [adjusting, setAdjusting] = useState<string | null>(null);
 
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
@@ -73,10 +76,14 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
             const security = securityOf(occupant.userId);
             const speaking = live && voice.speaking.includes(occupant.userId);
             const muted = occupant.selfMute || occupant.serverMute;
+            const mine = occupant.userId === state.user?.id;
+            const volume = prefs.volumes[occupant.userId] ?? 1;
             return (
               <div
                 key={occupant.userId}
-                className={`voice-tile${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}`}
+                className={`voice-tile${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}${mine ? '' : ' adjustable'}`}
+                onClick={() => (mine ? undefined : setAdjusting(adjusting === occupant.userId ? null : occupant.userId))}
+                title={mine ? undefined : `Change how loud ${name} is for you`}
               >
                 <div className="voice-tile-avatar" style={{ background: accentOf(occupant.userId) }}>
                   {initials(name)}
@@ -91,8 +98,27 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                         ? 'Deafened'
                         : muted
                           ? 'Muted'
-                          : ' '}
+                          : volume !== 1
+                            ? `${Math.round(volume * 100)}%`
+                            : ' '}
                 </div>
+                {adjusting === occupant.userId ? (
+                  <div className="voice-tile-volume" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="range"
+                      className="voice-range"
+                      min={0}
+                      max={200}
+                      step={5}
+                      value={Math.round(volume * 100)}
+                      onChange={(event) => voicePrefs.setVolumeFor(occupant.userId, Number(event.target.value) / 100)}
+                      aria-label={`Volume of ${name}, for you only`}
+                    />
+                    <div className="voice-tile-volume-note">
+                      {Math.round(volume * 100)}% · only you hear the change
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

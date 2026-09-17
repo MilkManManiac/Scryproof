@@ -11,6 +11,7 @@ import type { PresenceStatus } from '@gooffline/shared';
 
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { VoiceSettings } from './VoiceSettings';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
   online: 'Online',
@@ -22,6 +23,7 @@ const STATUS_LABEL: Record<PresenceStatus, string> = {
 export function UserPanel() {
   const { state, setPresence, signOut, updateVoice, leaveVoice } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [audioOpen, setAudioOpen] = useState(false);
 
   const user = state.user;
   if (!user) return null;
@@ -81,6 +83,17 @@ export function UserPanel() {
           </button>
         </>
       ) : null}
+
+      <button
+        type="button"
+        className="icon-button"
+        title="Voice and audio settings"
+        onClick={() => setAudioOpen(true)}
+      >
+        &#9881;
+      </button>
+
+      {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
 
       <button
         type="button"

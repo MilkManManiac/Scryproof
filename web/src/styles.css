@@ -945,6 +945,10 @@ textarea {
   max-width: 460px;
   box-shadow: 0 24px 64px #00000077;
   overflow: hidden;
+  /* A tall dialog scrolls its body; the title and the buttons stay in reach. */
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -955,6 +959,8 @@ textarea {
 
 .modal-body {
   padding: 0 18px 4px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -1900,4 +1906,143 @@ textarea {
  * the window sits empty beside it. */
 .settings-content.wide {
   max-width: 1280px;
+}
+
+/* ---------------------------- voice and audio settings --------------------------- */
+
+.voice-settings .settings-subhead:first-child {
+  margin-top: 0;
+}
+
+.voice-select {
+  width: 100%;
+  background: var(--bg-void);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  margin: 6px 0 10px;
+  outline: none;
+}
+.voice-select:focus {
+  border-color: var(--accent-dim);
+}
+
+/* The meter is an instrument: a plain bar, a plain line. It dims when the gate
+ * would be shut, so the threshold is set by watching it, not by reading dB. */
+.voice-meter-wrap {
+  position: relative;
+  padding: 6px 0;
+}
+.voice-meter {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--bg-void);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.voice-meter-fill {
+  height: 100%;
+  background: var(--good, #4fb286);
+  transition: width 60ms linear;
+}
+.voice-meter.shut .voice-meter-fill {
+  background: var(--text-faint);
+}
+.voice-meter-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+  pointer-events: none;
+}
+.voice-meter-line::before,
+.voice-meter-line::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  border: 5px solid transparent;
+}
+.voice-meter-line::before {
+  top: 0;
+  border-top-color: var(--text);
+}
+.voice-meter-line::after {
+  bottom: 0;
+  border-bottom-color: var(--text);
+}
+
+.voice-range {
+  accent-color: var(--accent);
+  width: 160px;
+}
+/* The real slider lies invisibly over the meter, so the line on the meter is
+ * the thing you drag and there is one bar to look at, not two. */
+.voice-range.over-meter {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+.voice-modes {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 3px;
+  background: var(--bg-void);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.voice-mode {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.voice-mode:hover {
+  color: var(--text);
+}
+.voice-mode.active {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.voice-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.voice-volume-number {
+  width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.voice-tile.adjustable {
+  cursor: pointer;
+}
+.voice-tile-volume {
+  margin-top: 8px;
+  cursor: default;
+}
+.voice-tile-volume .voice-range {
+  width: 100%;
+}
+.voice-tile-volume-note {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
 }
