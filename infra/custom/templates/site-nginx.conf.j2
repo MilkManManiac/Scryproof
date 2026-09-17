@@ -1,0 +1,156 @@
+# Per-site nginx for GoOffline. Rendered by infra/custom/runtime.py.
+#
+# bonesdeploy runs two nginx layers: a shared "router" on :80/:443 that holds
+# the certificate, and this one, which runs as the site's own user and listens
+# on a unix socket. Everything specific to GoOffline lives here.
+#
+# Still needed in the ROUTER, which is bonesdeploy's file, not ours
+# (docs/for-alex.md): WebSocket upgrade headers, `proxy_http_version 1.1`,
+# and `client_max_body_size`. Until those are there, this layer is correct
+# and the gateway still cannot connect.
+
+worker_processes 1;
+pid {{ paths.runtime_nginx_pid }};
+error_log {{ paths.runtime_nginx_dir }}/error.log warn;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # GAMEPLAN section 4: no access log. It would be a standing record of who
+    # connected, when, from where, and which channels they opened.
+    access_log off;
+
+    client_body_temp_path {{ paths.runtime_nginx_dir }}/client_body;
+    proxy_temp_path {{ paths.runtime_nginx_dir }}/proxy;
+    fastcgi_temp_path {{ paths.runtime_nginx_dir }}/fastcgi;
+    uwsgi_temp_path {{ paths.runtime_nginx_dir }}/uwsgi;
+    scgi_temp_path {{ paths.runtime_nginx_dir }}/scgi;
+    proxy_buffer_size 16k;
+    proxy_buffers 8 8k;
+    proxy_busy_buffers_size 16k;
+
+    server_tokens off;
+    sendfile on;
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Attachments are capped at 100 MB by the app (shared/src/validation.ts).
+    # nginx's default is 1 MB, which would reject most phone photos.
+    client_max_body_size 110m;
+
+    # "upgrade" when the browser asks for a WebSocket, empty otherwise, so
+    # ordinary requests keep their upstream keep-alive.
+    map $http_upgrade $gooffline_connection {
+        default upgrade;
+        ''      '';
+    }
+
+    server {
+        listen unix:{{ paths.runtime_nginx_socket }};
+        # web_root must be set to `web/dist` in the bonesdeploy site config. It is
+        # also the only part of the release nginx's AppArmor profile may read.
+        root {{ paths.current_web_root }};
+        index index.html;
+
+        # ---- security headers ------------------------------------------------
+        # nginx drops inherited add_header lines in any location that declares
+        # its own, so every location below that adds a header includes this
+        # whole set again. That is what the repetition is for.
+        #
+        # The policy: everything comes from this origin. No CDN, no font host,
+        # no analytics, because non-negotiable 1 says there are none.
+        #   data:  the TOTP enrolment QR code is a data: URL
+        #   blob:  media elements and the LiveKit E2EE worker
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
+        add_header Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()" always;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+
+        # ---- the API ---------------------------------------------------------
+        # The app sets its own security headers on these responses.
+        location /api/ {
+            proxy_pass {{ app_proxy_target }};
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            # Appended, not overwritten, and that is fine: the app reads this
+            # list from the right and skips our own hops
+            # (server/src/lib/client-ip.ts). A visitor's forged entry sits on
+            # the left where nothing reads it.
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            # Uploads stream straight through instead of landing on disk twice.
+            proxy_request_buffering off;
+        }
+
+        # ---- the gateway (WebSocket) -----------------------------------------
+        location /gateway {
+            proxy_pass {{ app_proxy_target }};
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $gooffline_connection;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            # The client heartbeats every 25 s. Anything silent for 75 s is gone.
+            proxy_read_timeout 75s;
+            proxy_send_timeout 75s;
+            proxy_buffering off;
+        }
+
+        # ---- LiveKit signalling (M3) -----------------------------------------
+        # Same origin on purpose: no second certificate, no second hostname,
+        # and connect-src stays 'self'. Media itself never touches nginx; it is
+        # UDP straight to the box.
+        location /rtc {
+            proxy_pass http://127.0.0.1:7880;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $gooffline_connection;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 120s;
+            proxy_send_timeout 120s;
+            proxy_buffering off;
+        }
+
+        # ---- the built client ------------------------------------------------
+        # Vite fingerprints everything under /assets, so it can be cached
+        # forever; index.html must never be, or a deploy would not show up.
+        location /assets/ {
+            try_files $uri =404;
+            add_header Cache-Control "public, max-age=31536000, immutable" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Cross-Origin-Resource-Policy "same-origin" always;
+            add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+        }
+
+        location / {
+            try_files $uri /index.html;
+            add_header Cache-Control "no-store" always;
+            add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+            add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Referrer-Policy "no-referrer" always;
+            add_header Cross-Origin-Opener-Policy "same-origin" always;
+            add_header Cross-Origin-Resource-Policy "same-origin" always;
+            add_header Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+        }
+
+        location ^~ /.well-known/acme-challenge/ {
+            try_files $uri =404;
+        }
+    }
+}

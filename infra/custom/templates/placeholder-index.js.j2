@@ -1,0 +1,10 @@
+// Stands in for the real server until the first deploy. Answers the health
+// check so provisioning can verify the service, and nothing else.
+import { createServer } from 'node:http';
+
+createServer((request, response) => {
+  response.writeHead(request.url === '/api/health' ? 200 : 503, {
+    'content-type': 'application/json',
+  });
+  response.end(JSON.stringify({ ok: request.url === '/api/health', placeholder: true }));
+}).listen({{ port }}, '127.0.0.1');

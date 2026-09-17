@@ -12,6 +12,9 @@
  */
 
 const BASE = process.env.SMOKE_BASE ?? 'http://127.0.0.1:8787';
+// Production only accepts its own PUBLIC_URL as an origin, so a run against a
+// production build has to say which origin it is pretending to be.
+const ORIGIN = process.env.SMOKE_ORIGIN ?? 'http://localhost:5173';
 
 let passed = 0;
 let failed = 0;
@@ -42,8 +45,8 @@ class Actor {
       headers: {
         // Only declare a JSON body when there is one.
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        // Matches the dev origin the server allows, so the CSRF check passes.
-        origin: 'http://localhost:5173',
+        // Matches an origin the server allows, so the CSRF check passes.
+        origin: ORIGIN,
         ...(this.cookie ? { cookie: this.cookie } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

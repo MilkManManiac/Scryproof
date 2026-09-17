@@ -15,6 +15,7 @@ import { LIMITS } from '@gooffline/shared';
 import { config } from './config.js';
 import { HttpError } from './lib/http-error.js';
 import { logger } from './lib/logger.js';
+import { pickClientIp } from './lib/client-ip.js';
 import { hashIp } from './lib/crypto.js';
 import { resolveSession } from './services/auth.js';
 import type { User } from './db/schema.js';
@@ -43,13 +44,8 @@ export function requireUser(request: FastifyRequest): User {
 }
 
 export function clientIp(request: FastifyRequest): string {
-  // Trusting a forwarded header is only safe because nginx on the box sets it
-  // and nothing else can reach this port.
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0]?.trim() ?? request.ip;
-  }
-  return request.ip;
+  // The reasoning, and the attack this replaces, are in lib/client-ip.ts.
+  return pickClientIp(request.headers['x-forwarded-for'], request.socket.remoteAddress);
 }
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -57,7 +53,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     // We do our own structured logging with redaction; Fastify's would be a
     // second, less careful path for the same data.
     logger: false,
-    trustProxy: true,
+    // Off on purpose. Fastify's version believes the *first* forwarded address,
+    // which is the one the visitor controls. clientIp() is the only reader.
+    trustProxy: false,
     bodyLimit: 1024 * 1024,
   });
 

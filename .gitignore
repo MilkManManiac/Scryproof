@@ -1,9 +1,14 @@
 node_modules/
 dist/
 build/
+# bonesdeploy's build scripts live in a folder the line above would swallow.
+!deployment/build/
 .env
 .env.*
 !.env.example
+!.env.build
+# The box's address and SSH details. Not secret, but not the repo's business.
+.env.box
 *.log
 npm-debug.log*
 .DS_Store
