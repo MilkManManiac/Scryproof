@@ -27,6 +27,7 @@
 import {
   Room,
   RoomEvent,
+  ScreenSharePresets,
   Track,
   type LocalAudioTrack,
   type Participant as LiveKitParticipant,
@@ -38,7 +39,7 @@ import type { VoiceMembership, VoiceSignal } from '@gooffline/shared';
 
 import { api, ApiError } from './api';
 import { MicGate, OutputMix, sounds } from './voice-audio';
-import { captureOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
+import { cameraOptions, captureOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -70,6 +71,14 @@ export interface VoicePerson {
   verdict: PinVerdict;
 }
 
+/** A picture somebody in the call is sending: their camera, or their screen. */
+export interface VoiceVideo {
+  userId: string;
+  source: 'camera' | 'screen';
+  /** Changes when the underlying track does, so the screen knows to re-attach. */
+  sid: string;
+}
+
 export interface VoiceStats {
   rttMs: number | null;
   jitterMs: number | null;
@@ -94,6 +103,12 @@ export interface VoiceSnapshot {
   speaking: string[];
   /** False while the gate (threshold or push-to-talk) is holding the microphone shut. */
   transmitting: boolean;
+  /** Whether this device is sending its camera, and its screen. Read off LiveKit, never assumed. */
+  camera: boolean;
+  sharing: boolean;
+  videos: VoiceVideo[];
+  /** Why the camera or screen share did not start, in words. */
+  mediaError: string | null;
   stats: VoiceStats;
   can: { speak: boolean; video: boolean; screenShare: boolean };
 }
@@ -111,6 +126,10 @@ const IDLE: VoiceSnapshot = {
   rejected: 0,
   speaking: [],
   transmitting: false,
+  camera: false,
+  sharing: false,
+  videos: [],
+  mediaError: null,
   stats: EMPTY_STATS,
   can: { speak: false, video: false, screenShare: false },
 };
@@ -130,6 +149,22 @@ function isWrappedKey(value: Record<string, unknown>): value is Record<string, u
       (field) => typeof value[field] === 'string',
     )
   );
+}
+
+/** A shared screen's sound is mixed separately from the same person's microphone. */
+const screenSound = (userId: string): string => `${userId}:screen`;
+const mixKey = (userId: string, source: Track.Source): string =>
+  source === Track.Source.ScreenShareAudio ? screenSound(userId) : userId;
+
+function describeCaptureProblem(problem: unknown, what: 'camera' | 'screen'): string {
+  const name = problem instanceof Error ? problem.name : '';
+  if (what === 'camera') {
+    if (name === 'NotAllowedError') return 'The browser is not allowed to use the camera. Check the icon in the address bar.';
+    if (name === 'NotFoundError') return 'No camera was found.';
+    if (name === 'NotReadableError') return 'The camera is in use by another program.';
+    return 'The camera could not be started.';
+  }
+  return 'The screen share could not be started.';
 }
 
 export class VoiceSession {
@@ -220,10 +255,14 @@ export class VoiceSession {
       this.keyProvider = new GoOfflineKeyProvider();
       const room = new Room({
         encryption: { keyProvider: this.keyProvider, worker: new E2EEWorker() },
-        // Audio first. These two matter for video, which comes later.
+        // Only fetch the picture sizes somebody is actually looking at, and
+        // only send the sizes somebody is fetching.
         adaptiveStream: true,
         dynacast: true,
         audioCaptureDefaults: captureOptions(voicePrefs.get()),
+        videoCaptureDefaults: cameraOptions(voicePrefs.get()),
+        // A shared game at 15 frames a second is a slideshow.
+        publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding },
       });
       this.room = room;
       this.listenTo(room);
@@ -305,6 +344,82 @@ export class VoiceSession {
     this.mix?.setDeafened(deafened);
   }
 
+  /* --------------------------- camera and screen --------------------------- */
+
+  /**
+   * Both of these go through the same encrypted room as the microphone. The
+   * worker encrypts every frame of every track with the same per-person key,
+   * so there is no separate switch for video and nothing to forget to turn on.
+   */
+  async setCamera(on: boolean): Promise<void> {
+    const room = this.room;
+    if (!room || !this.snapshot.can.video) return;
+    this.update({ mediaError: null });
+    try {
+      await room.localParticipant.setCameraEnabled(on, cameraOptions(voicePrefs.get()));
+    } catch (problem) {
+      this.update({ mediaError: describeCaptureProblem(problem, 'camera') });
+    }
+    if (this.room === room) this.refreshVideos();
+  }
+
+  async setScreenShare(on: boolean): Promise<void> {
+    const room = this.room;
+    if (!room || !this.snapshot.can.screenShare) return;
+    this.update({ mediaError: null });
+    try {
+      await room.localParticipant.setScreenShareEnabled(on, {
+        // Game sound, untouched: the voice clean-up would mangle it. Where the
+        // browser can, leave this call's own voices out of what is captured,
+        // or everyone hears themselves come back.
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+        resolution: ScreenSharePresets.h1080fps30.resolution,
+        contentHint: 'motion',
+        selfBrowserSurface: 'exclude',
+      });
+    } catch (problem) {
+      // Closing the picker without choosing is not an error worth a message.
+      const cancelled = problem instanceof Error && problem.name === 'NotAllowedError';
+      if (!cancelled) this.update({ mediaError: describeCaptureProblem(problem, 'screen') });
+    }
+    if (this.room === room) this.refreshVideos();
+  }
+
+  /** Show one person's camera or screen in a <video>. Returns the undo. */
+  attachVideo(userId: string, source: VoiceVideo['source'], element: HTMLVideoElement): () => void {
+    const room = this.room;
+    const participant = userId === this.userId ? room?.localParticipant : room?.remoteParticipants.get(userId);
+    const track = participant?.getTrackPublication(
+      source === 'screen' ? Track.Source.ScreenShare : Track.Source.Camera,
+    )?.track;
+    if (!track) return () => undefined;
+    track.attach(element);
+    return () => void track.detach(element);
+  }
+
+  private refreshVideos(): void {
+    const room = this.room;
+    if (!room) return;
+    const videos: VoiceVideo[] = [];
+    for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
+      for (const publication of participant.trackPublications.values()) {
+        if (publication.kind !== Track.Kind.Video || !publication.track || publication.isMuted) continue;
+        const source =
+          publication.source === Track.Source.ScreenShare
+            ? 'screen'
+            : publication.source === Track.Source.Camera
+              ? 'camera'
+              : null;
+        if (source) videos.push({ userId: participant.identity, source, sid: publication.trackSid });
+      }
+    }
+    this.update({
+      videos,
+      camera: room.localParticipant.isCameraEnabled,
+      sharing: room.localParticipant.isScreenShareEnabled,
+    });
+  }
+
   /** The microphone's level right now in dBFS, before the gate. -100 when there is no microphone. */
   micLevel(): number {
     return this.gate?.level ?? -100;
@@ -372,7 +487,9 @@ export class VoiceSession {
 
     this.mix?.setVolume(now.outputVolume);
     for (const person of this.room?.remoteParticipants.values() ?? []) {
-      this.mix?.setVolumeFor(person.identity, now.volumes[person.identity] ?? 1);
+      const volume = now.volumes[person.identity] ?? 1;
+      this.mix?.setVolumeFor(person.identity, volume);
+      this.mix?.setVolumeFor(screenSound(person.identity), volume);
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
 
@@ -384,6 +501,12 @@ export class VoiceSession {
     if (captureChanged) {
       await this.micTrack()?.restartTrack(captureOptions(now)).catch(() => undefined);
       this.rebuildGate();
+    }
+
+    if (now.cameraDeviceId !== before.cameraDeviceId && this.snapshot.camera) {
+      const camera = this.room?.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+      await camera?.restartTrack(cameraOptions(now)).catch(() => undefined);
+      this.refreshVideos();
     }
   }
 
@@ -536,8 +659,8 @@ export class VoiceSession {
   /* --------------------------------- media -------------------------------- */
 
   private listenTo(room: Room): void {
-    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant) => {
-      if (track.kind !== Track.Kind.Audio) return;
+    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
+      if (track.kind !== Track.Kind.Audio) return this.refreshVideos();
       if (!this.mix) {
         this.mix = new OutputMix();
         this.mix.setVolume(voicePrefs.get().outputVolume);
@@ -546,12 +669,24 @@ export class VoiceSession {
         if (speaker) void this.mix.setOutputDevice(speaker);
       }
       const volume = voicePrefs.get().volumes[participant.identity] ?? 1;
-      this.mix.add(participant.identity, track.mediaStreamTrack, volume);
+      this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume);
     });
 
-    room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _publication, participant) => {
-      if (track.kind === Track.Kind.Audio) this.mix?.remove(participant.identity);
+    room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication, participant) => {
+      if (track.kind === Track.Kind.Audio) this.mix?.remove(mixKey(participant.identity, publication.source));
+      else this.refreshVideos();
     });
+
+    // Includes the browser's own "Stop sharing" bar, which ends a share
+    // without going anywhere near our button.
+    for (const event of [
+      RoomEvent.LocalTrackPublished,
+      RoomEvent.LocalTrackUnpublished,
+      RoomEvent.TrackMuted,
+      RoomEvent.TrackUnmuted,
+    ] as const) {
+      room.on(event, () => this.refreshVideos());
+    }
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers: LiveKitParticipant[]) => {
       this.update({ speaking: speakers.map((speaker) => speaker.identity) });
@@ -641,12 +776,37 @@ export class VoiceSession {
     const result: Record<string, { energy: number; packets: number }> = {};
     for (const participant of this.room?.remoteParticipants.values() ?? []) {
       for (const publication of participant.trackPublications.values()) {
-        if (publication.kind !== Track.Kind.Audio) continue;
+        if (publication.source !== Track.Source.Microphone) continue;
         const report = await publication.track?.getRTCStatsReport();
         report?.forEach((entry: Record<string, unknown>) => {
           if (entry.type !== 'inbound-rtp') return;
           result[participant.identity] = {
             energy: this.mix?.energyOf(participant.identity) ?? 0,
+            packets: typeof entry.packetsReceived === 'number' ? entry.packetsReceived : 0,
+          };
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Pictures actually decoded from each person, per source. With the wrong key
+   * the packets keep coming and this number stops: an undecryptable frame is
+   * not a frame.
+   */
+  async debugVideo(): Promise<Record<string, { frames: number; width: number; packets: number }>> {
+    const result: Record<string, { frames: number; width: number; packets: number }> = {};
+    for (const participant of this.room?.remoteParticipants.values() ?? []) {
+      for (const publication of participant.trackPublications.values()) {
+        if (publication.kind !== Track.Kind.Video) continue;
+        const source = publication.source === Track.Source.ScreenShare ? 'screen' : 'camera';
+        const report = await publication.track?.getRTCStatsReport();
+        report?.forEach((entry: Record<string, unknown>) => {
+          if (entry.type !== 'inbound-rtp') return;
+          result[`${participant.identity}:${source}`] = {
+            frames: typeof entry.framesDecoded === 'number' ? entry.framesDecoded : 0,
+            width: typeof entry.frameWidth === 'number' ? entry.frameWidth : 0,
             packets: typeof entry.packetsReceived === 'number' ? entry.packetsReceived : 0,
           };
         });

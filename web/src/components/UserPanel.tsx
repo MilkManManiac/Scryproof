@@ -1,6 +1,7 @@
 /**
- * Who you are, and the controls you reach for most: presence, mute, deafen,
- * sign out.
+ * Who you are, and the controls you reach for most: presence, mute, deafen.
+ * Signing out lives in the menu behind your name, because it is rare and the
+ * bar is narrow.
  *
  * Mute and deafen here are the client's own state, sent to the server so other
  * members see it. Nothing in this panel grants anything; it only reports.
@@ -49,7 +50,7 @@ export function UserPanel() {
         className="user-panel-identity"
         style={{ textAlign: 'left' }}
         onClick={() => setMenuOpen((open) => !open)}
-        title="Change status"
+        title="Status and sign out"
       >
         <div className="user-panel-name">{user.displayName}</div>
         <div className="user-panel-status">{connectionLabel}</div>
@@ -95,15 +96,6 @@ export function UserPanel() {
 
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
 
-      <button
-        type="button"
-        className="icon-button danger"
-        title="Sign out"
-        onClick={() => void signOut()}
-      >
-        &#9099;
-      </button>
-
       {menuOpen ? (
         <div
           style={{
@@ -133,6 +125,9 @@ export function UserPanel() {
               <span className="channel-name">{STATUS_LABEL[option]}</span>
             </button>
           ))}
+          <button type="button" className="channel" onClick={() => void signOut()}>
+            <span className="channel-name">Sign out</span>
+          </button>
         </div>
       ) : null}
     </div>

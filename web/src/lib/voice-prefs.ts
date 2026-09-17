@@ -10,6 +10,7 @@ export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
   inputDeviceId: string;
   outputDeviceId: string;
+  cameraDeviceId: string;
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGain: boolean;
@@ -33,6 +34,7 @@ export interface VoicePrefs {
 const DEFAULTS: VoicePrefs = {
   inputDeviceId: '',
   outputDeviceId: '',
+  cameraDeviceId: '',
   noiseSuppression: true,
   echoCancellation: true,
   autoGain: true,
@@ -93,6 +95,14 @@ export function captureOptions(prefs: VoicePrefs): MediaTrackConstraints {
     noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     autoGainControl: prefs.autoGain,
+  };
+}
+
+/** What to ask the browser for when opening the camera. 720p is plenty for a face. */
+export function cameraOptions(prefs: VoicePrefs): { deviceId?: ConstrainDOMString; resolution: { width: number; height: number; frameRate: number } } {
+  return {
+    deviceId: prefs.cameraDeviceId ? { exact: prefs.cameraDeviceId } : undefined,
+    resolution: { width: 1280, height: 720, frameRate: 30 },
   };
 }
 

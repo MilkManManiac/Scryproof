@@ -2046,3 +2046,103 @@ textarea {
   color: var(--text-faint);
   margin-top: 2px;
 }
+
+/* ---------------------------- camera and screen share --------------------------- */
+
+.voice-stage {
+  min-height: 0;
+  overflow: hidden;
+}
+.voice-tile {
+  justify-content: center;
+}
+.voice-stage.has-focus {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 16px;
+}
+.voice-stage.has-focus .voice-stage-title {
+  display: none;
+}
+
+/* The big picture takes whatever height is left and never crops: a shared
+   screen with its edges cut off is a shared screen you cannot read. */
+.voice-focus {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+}
+/* The picture is taken out of the flow, so its own size (a 1080p screen) can
+   never push the buttons and the connection numbers off the bottom. */
+.voice-focus-frame {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.voice-focus-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.voice-focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 7px 12px;
+  background: var(--bg-raised);
+  font-size: 12.5px;
+}
+.voice-focus-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.voice-stage.has-focus .voice-tiles {
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.voice-stage.has-focus .voice-tile {
+  flex-shrink: 0;
+  width: 116px;
+  padding: 10px 8px 8px;
+  gap: 5px;
+}
+.voice-stage.has-focus .voice-tile.wide {
+  width: 168px;
+}
+.voice-stage.has-focus .voice-tile-avatar {
+  width: 38px;
+  height: 38px;
+  font-size: 14px;
+}
+
+.voice-tile.wide {
+  width: 240px;
+  padding: 6px 6px 10px;
+}
+.voice-tile-video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+}
+video.mirrored {
+  transform: scaleX(-1);
+}
+
+.voice-stage-controls {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}

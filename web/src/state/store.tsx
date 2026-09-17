@@ -618,6 +618,23 @@ export function StoreProvider({
     [],
   );
 
+  // What the member list says about the camera and the screen follows what
+  // LiveKit is actually sending, including a share ended from the browser's
+  // own "Stop sharing" bar.
+  useEffect(() => {
+    let sent = { camera: false, sharing: false };
+    return voice.subscribe(() => {
+      const { phase, camera, sharing } = voice.getSnapshot();
+      if (phase !== 'connected') {
+        sent = { camera: false, sharing: false };
+        return;
+      }
+      if (camera === sent.camera && sharing === sent.sharing) return;
+      sent = { camera, sharing };
+      updateVoice({ cameraOn: camera, sharingScreen: sharing });
+    });
+  }, [voice, updateVoice]);
+
   const loadMessages = useCallback(async (channelId: string, before?: string) => {
     const { messages } = await api.messages.list(channelId, { before, limit: 50 });
     dispatch({ type: 'messages-loaded', channelId, messages, prepend: Boolean(before) });

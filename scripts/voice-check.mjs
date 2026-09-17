@@ -142,7 +142,8 @@ class Person {
   }
 
   async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    // userGesture: the browser only opens a screen share for a real click.
+    const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, userGesture: true });
     if (result.exceptionDetails) {
       throw new Error(`${this.username}: ${result.exceptionDetails.exception?.description ?? 'evaluation failed'}`);
     }
@@ -211,6 +212,15 @@ class Person {
     await sleep(ms);
     const after = (await this.inbound())[userId] ?? { energy: 0, packets: 0 };
     return { energy: after.energy - before.energy, packets: after.packets - before.packets };
+  }
+
+  /** Pictures decoded from one source ("<userId>:camera" or "<userId>:screen") over a few seconds. */
+  async watch(key, ms = 3000) {
+    const zero = { frames: 0, width: 0, packets: 0 };
+    const before = (await this.evaluate(`window.__voice.debugVideo()`))[key] ?? zero;
+    await sleep(ms);
+    const after = (await this.evaluate(`window.__voice.debugVideo()`))[key] ?? zero;
+    return { frames: after.frames - before.frames, packets: after.packets - before.packets, width: after.width };
   }
 
   async close() {
@@ -316,10 +326,45 @@ async function main() {
     shut.energy < held.energy * 0.02 && released.energy < held.energy * 0.02 && held.energy > 0.001,
     `up ${shut.energy.toFixed(5)}  held ${held.energy.toFixed(5)}  up again ${released.energy.toFixed(5)}`);
 
+  // ---- camera and screen, through the same encryption --------------------------
+  check('alex has a camera button and presses it', await alex.clickButton('Turn camera on'));
+  const cameraKey = `${alex.userId}:camera`;
+  await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'camera')`, 15_000);
+  await sleep(1500);
+  const seen = await wes.watch(cameraKey);
+  check('wes is decoding real pictures from the camera alex turned on', seen.frames > 20 && seen.width > 0,
+    `+${seen.frames} frames at ${seen.width}px wide, +${seen.packets} packets`);
+  check('the picture is on screen for wes, in a tile',
+    await wes.evaluate(`(() => { const v = document.querySelector('video.voice-tile-video, video.voice-focus-video'); return Boolean(v && v.videoWidth > 0); })()`));
+
+  check('alex has a share button and presses it', await alex.clickButton('Share your screen'));
+  const screenKey = `${alex.userId}:screen`;
+  const sharing = await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen')`, 15_000);
+  await sleep(1500);
+  const shared = sharing ? await wes.watch(screenKey) : { frames: 0, width: 0, packets: 0 };
+  const alexMedia = await alex.snapshot();
+  check('wes is decoding the screen alex shared, and it took over the stage',
+    shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
+    `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);
+
+  if (process.env.VOICE_CHECK_VIDEO_SHOT) {
+    const shot = await wes.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(process.env.VOICE_CHECK_VIDEO_SHOT, Buffer.from(shot.data, 'base64'));
+    await wes.clickButton('Make small');
+    await sleep(600);
+    const tiles = await wes.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(process.env.VOICE_CHECK_VIDEO_SHOT.replace('.png', '-tiles.png'), Buffer.from(tiles.data, 'base64'));
+  }
+
   // ---- sabotage: the wrong key ------------------------------------------------
   await wes.evaluate(`window.__voice.debugCorruptKeyFor('${alex.userId}')`);
   await sleep(1500); // frames already in the jitter buffer drain out
+  const blind = wes.watch(cameraKey, 4000);
   const garbled = await wes.listenTo(alex.userId);
+  const unseen = await blind;
+  check('with the WRONG key, the camera goes dark too: packets arrive, no picture decodes',
+    unseen.packets > 20 && unseen.frames === 0,
+    `+${unseen.packets} packets, +${unseen.frames} frames (was +${seen.frames})`);
   check('with the WRONG key, packets still arrive but nothing can be decoded',
     garbled.packets > 50 && garbled.energy < clear.energy * 0.02,
     `+${garbled.packets} packets, +${garbled.energy.toFixed(6)} energy (was +${clear.energy.toFixed(4)} with the right key)`);

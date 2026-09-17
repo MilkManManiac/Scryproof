@@ -78,6 +78,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
   }, [capturingKey]);
 
   const microphones = devices.filter((device) => device.kind === 'audioinput' && device.deviceId !== 'default');
+  const cameras = devices.filter((device) => device.kind === 'videoinput');
   const speakers = devices.filter((device) => device.kind === 'audiooutput' && device.deviceId !== 'default');
   const open = prefs.inputMode !== 'threshold' || level >= prefs.thresholdDb;
 
@@ -253,6 +254,20 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
             onChange={(event) => voicePrefs.set({ sounds: event.target.checked })}
           />
         </label>
+
+        <div className="settings-subhead">Camera</div>
+        <select
+          className="voice-select"
+          value={prefs.cameraDeviceId}
+          onChange={(event) => voicePrefs.set({ cameraDeviceId: event.target.value })}
+        >
+          <option value="">System default</option>
+          {cameras.map((device) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label || 'Camera'}
+            </option>
+          ))}
+        </select>
       </div>
     </Modal>
   );

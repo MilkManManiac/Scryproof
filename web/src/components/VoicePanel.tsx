@@ -14,12 +14,12 @@
  * menu; they get a banner that names them and says what approving means.
  */
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useStore } from '../state/store';
 import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
-import type { VoicePerson, VoiceSnapshot } from '../lib/voice-session';
+import type { VoicePerson, VoiceSnapshot, VoiceVideo } from '../lib/voice-session';
 
 function useVoice(): VoiceSnapshot {
   const { voice } = useStore();
@@ -43,15 +43,40 @@ function useAccents(): (userId: string) => string | undefined {
 }
 
 
+/* --------------------------------- pictures --------------------------------- */
+
+/**
+ * One camera or one screen. The element is handed to the call session, which
+ * points the decrypted track at it; nothing in this file touches media.
+ */
+function VideoView({ video, className }: { video: VoiceVideo; className: string }) {
+  const { state, voice } = useStore();
+  const element = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!element.current) return undefined;
+    return voice.attachVideo(video.userId, video.source, element.current);
+  }, [voice, video.userId, video.source, video.sid]);
+
+  // Your own camera is shown mirrored, because that is what a mirror has
+  // taught everyone to expect. Everyone else sees it the right way round.
+  const mirrored = video.source === 'camera' && video.userId === state.user?.id;
+  return <video ref={element} className={`${className}${mirrored ? ' mirrored' : ''}`} autoPlay playsInline muted />;
+}
+
+const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}`;
+
 /* --------------------------------- the stage -------------------------------- */
 
 export function VoiceStage({ channelId, channelName }: { channelId: string; channelName: string }) {
-  const { state, joinVoice, leaveVoice } = useStore();
+  const { state, voice: session, joinVoice, leaveVoice } = useStore();
   const voice = useVoice();
   const nameOf = useNames();
   const accentOf = useAccents();
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
   const [adjusting, setAdjusting] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const focusFrame = useRef<HTMLDivElement>(null);
 
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
@@ -63,14 +88,77 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
     return voice.people.find((person) => person.userId === userId)?.state ?? 'waiting';
   };
 
+  // A picture is only drawn for someone whose key this device holds. Anyone
+  // else's frames cannot be decrypted, and a black rectangle explains nothing.
+  const videos = live
+    ? voice.videos.filter((video) => ['self', 'secured'].includes(securityOf(video.userId)))
+    : [];
+  const screens = videos.filter((video) => video.source === 'screen');
+  const cameraOf = (userId: string) => videos.find((video) => video.userId === userId && video.source === 'camera');
+
+  // Someone else starting to share is the one moment the stage rearranges
+  // itself without being asked: it is almost always what you want to look at.
+  const newestScreen = screens.filter((video) => video.userId !== state.user?.id).at(-1);
+  const newestScreenSid = newestScreen?.sid;
+  useEffect(() => {
+    if (newestScreen) setFocused(videoKey(newestScreen));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newestScreenSid]);
+
+  const big = videos.find((video) => videoKey(video) === focused) ?? null;
+  const labelOf = (video: VoiceVideo): string => {
+    const mine = video.userId === state.user?.id;
+    if (video.source === 'camera') return mine ? 'You' : nameOf(video.userId);
+    return mine ? 'Your screen' : `${nameOf(video.userId)}'s screen`;
+  };
+
   return (
-    <div className="voice-stage">
+    <div className={`voice-stage${big ? ' has-focus' : ''}`}>
       <h2 className="voice-stage-title">{channelName}</h2>
+
+      {big ? (
+        <div className="voice-focus" ref={focusFrame}>
+          <div className="voice-focus-frame">
+            <VideoView key={big.sid} video={big} className="voice-focus-video" />
+          </div>
+          <div className="voice-focus-bar">
+            <span className="voice-focus-label">{labelOf(big)}</span>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() =>
+                document.fullscreenElement
+                  ? void document.exitFullscreen()
+                  : void focusFrame.current?.requestFullscreen().catch(() => undefined)
+              }
+            >
+              Full screen
+            </button>
+            <button type="button" className="link-button" onClick={() => setFocused(null)}>
+              Make small
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {occupants.length === 0 ? (
         <p className="voice-stage-empty">Nobody is in here.</p>
       ) : (
         <div className="voice-tiles">
+          {screens
+            .filter((video) => video !== big)
+            .map((video) => (
+              <div
+                key={videoKey(video)}
+                className="voice-tile wide adjustable"
+                onClick={() => setFocused(videoKey(video))}
+                title="Make this bigger"
+              >
+                <VideoView key={video.sid} video={video} className="voice-tile-video" />
+                <div className="voice-tile-name">{labelOf(video)}</div>
+              </div>
+            ))}
+
           {occupants.map((occupant) => {
             const name = nameOf(occupant.userId);
             const security = securityOf(occupant.userId);
@@ -78,16 +166,26 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
             const muted = occupant.selfMute || occupant.serverMute;
             const mine = occupant.userId === state.user?.id;
             const volume = prefs.volumes[occupant.userId] ?? 1;
+            const camera = cameraOf(occupant.userId);
+            const showCamera = camera && camera !== big;
+            const open = adjusting === occupant.userId;
             return (
               <div
                 key={occupant.userId}
-                className={`voice-tile${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}${mine ? '' : ' adjustable'}`}
-                onClick={() => (mine ? undefined : setAdjusting(adjusting === occupant.userId ? null : occupant.userId))}
+                className={`voice-tile${showCamera ? ' wide' : ''}${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}${mine && !camera ? '' : ' adjustable'}`}
+                onClick={() => {
+                  if (mine) return camera ? setFocused(videoKey(camera)) : undefined;
+                  setAdjusting(open ? null : occupant.userId);
+                }}
                 title={mine ? undefined : `Change how loud ${name} is for you`}
               >
-                <div className="voice-tile-avatar" style={{ background: accentOf(occupant.userId) }}>
-                  {initials(name)}
-                </div>
+                {showCamera ? (
+                  <VideoView key={camera.sid} video={camera} className="voice-tile-video" />
+                ) : (
+                  <div className="voice-tile-avatar" style={{ background: accentOf(occupant.userId) }}>
+                    {initials(name)}
+                  </div>
+                )}
                 <div className="voice-tile-name">{name}</div>
                 <div className="voice-tile-note">
                   {security === 'held'
@@ -100,9 +198,13 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                           ? 'Muted'
                           : volume !== 1
                             ? `${Math.round(volume * 100)}%`
-                            : ' '}
+                            : !live && occupant.sharingScreen
+                              ? 'Sharing their screen'
+                              : !live && occupant.cameraOn
+                                ? 'Camera on'
+                                : ' '}
                 </div>
-                {adjusting === occupant.userId ? (
+                {open ? (
                   <div className="voice-tile-volume" onClick={(event) => event.stopPropagation()}>
                     <input
                       type="range"
@@ -117,6 +219,11 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                     <div className="voice-tile-volume-note">
                       {Math.round(volume * 100)}% · only you hear the change
                     </div>
+                    {camera ? (
+                      <button type="button" className="link-button" onClick={() => setFocused(videoKey(camera))}>
+                        Make their camera bigger
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -126,14 +233,35 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
       )}
 
       {live && voice.phase === 'failed' ? <p className="voice-stage-error">{voice.error}</p> : null}
+      {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
 
-      <button
-        type="button"
-        className={here ? 'button secondary inline' : 'button inline'}
-        onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
-      >
-        {here ? 'Leave' : 'Join'}
-      </button>
+      <div className="voice-stage-controls">
+        {live && voice.phase === 'connected' && voice.can.video ? (
+          <button
+            type="button"
+            className={voice.camera ? 'button inline' : 'button secondary inline'}
+            onClick={() => void session.setCamera(!voice.camera)}
+          >
+            {voice.camera ? 'Turn camera off' : 'Turn camera on'}
+          </button>
+        ) : null}
+        {live && voice.phase === 'connected' && voice.can.screenShare ? (
+          <button
+            type="button"
+            className={voice.sharing ? 'button inline' : 'button secondary inline'}
+            onClick={() => void session.setScreenShare(!voice.sharing)}
+          >
+            {voice.sharing ? 'Stop sharing' : 'Share your screen'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={here ? 'button secondary inline' : 'button inline'}
+          onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
+        >
+          {here ? 'Leave' : 'Join'}
+        </button>
+      </div>
     </div>
   );
 }

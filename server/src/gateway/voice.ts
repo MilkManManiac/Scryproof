@@ -83,6 +83,8 @@ export async function handleVoiceStateIntent(
     });
   }
 
+  const staying = previous?.channelId === channel.id;
+
   const state: VoiceState = {
     userId: connection.userId,
     serverId: channel.serverId,
@@ -94,8 +96,10 @@ export async function handleVoiceStateIntent(
     // A client cannot claim a capability it does not have. The media server
     // enforces this too, via the grant in the access token, but the member
     // list must not show a screen-share icon for someone who cannot share.
-    sharingScreen: (intent.sharingScreen ?? false) && has(permissions, Permission.SHARE_SCREEN),
-    cameraOn: (intent.cameraOn ?? false) && has(permissions, Permission.VIDEO),
+    // Left unsaid, these stay as they were: muting must not switch the camera
+    // icon off. They do not follow anyone into a different channel.
+    sharingScreen: (intent.sharingScreen ?? (staying && previous.sharingScreen)) && has(permissions, Permission.SHARE_SCREEN),
+    cameraOn: (intent.cameraOn ?? (staying && previous.cameraOn)) && has(permissions, Permission.VIDEO),
   };
 
   hub.setVoiceState(state);
