@@ -15,6 +15,13 @@
       "when": 1789601818111,
       "tag": "0001_fearless_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789674047225,
+      "tag": "0002_simple_the_order",
+      "breakpoints": true
     }
   ]
 }

@@ -240,6 +240,12 @@ export const channels = pgTable(
     keyEpoch: integer('key_epoch').notNull().default(1),
     /** Seconds a member must wait between messages. 0 disables. */
     slowmodeSeconds: integer('slowmode_seconds').notNull().default(0),
+    /**
+     * The newest message, deleted or not. Kept here so painting unread badges
+     * for a whole sidebar is no extra query. No foreign key: it is a marker to
+     * compare against, and it has to survive the message it names.
+     */
+    lastMessageId: text('last_message_id'),
     createdAt: createdAt(),
   },
   (table) => [index('channels_server_idx').on(table.serverId)],
@@ -287,6 +293,13 @@ export const messages = pgTable(
     keyEpoch: integer('key_epoch'),
 
     replyToId: text('reply_to_id'),
+    /**
+     * Who this message pings, resolved once when it is written. Always empty
+     * in an encrypted channel: the server cannot read that body, and it does
+     * not guess.
+     */
+    mentions: jsonb('mentions').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    mentionsEveryone: boolean('mentions_everyone').notNull().default(false),
     createdAt: createdAt(),
     editedAt: timestamp('edited_at', { withTimezone: true, mode: 'date' }),
     /** Soft delete keeps replies pointing at something real. */
@@ -367,6 +380,25 @@ export const auditLog = pgTable(
   (table) => [index('audit_log_server_idx').on(table.serverId, table.id)],
 );
 
+/** One row per person, per emoji, per message. The key is what makes adding twice harmless. */
+export const reactions = pgTable(
+  'reactions',
+  {
+    messageId: text('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: text('emoji').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId, table.emoji] }),
+    index('reactions_message_idx').on(table.messageId),
+  ],
+);
+
 /**
  * Where a member last read each channel. Drives unread badges without asking
  * the client to remember anything across devices.
@@ -396,6 +428,7 @@ export type MemberRow = typeof members.$inferSelect;
 export type ChannelRow = typeof channels.$inferSelect;
 export type CategoryRow = typeof categories.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
+export type ReactionRow = typeof reactions.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type OverwriteRow = typeof channelOverwrites.$inferSelect;

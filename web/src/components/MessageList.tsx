@@ -12,13 +12,15 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Permission } from '@gooffline/shared';
-import type { Channel, Message } from '@gooffline/shared';
+import { Permission, splitContent } from '@gooffline/shared';
+import type { Channel, Member, Message } from '@gooffline/shared';
 
 import { api } from '../lib/api';
+import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { can } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
+import { ReactionPicker, rememberReaction } from './ReactionPicker';
 
 /** Consecutive messages from one author within this window share a header. */
 const GROUP_WINDOW_MS = 7 * 60 * 1000;
@@ -46,11 +48,24 @@ function dayLabel(date: Date): string {
   return dayFormat.format(date);
 }
 
+/** Bring a message into view and flash it, for following a reply back to what it answers. */
+function jumpTo(messageId: string): void {
+  const row = document.getElementById(`message-${messageId}`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.remove('flash');
+  // Reading a layout property makes the browser notice the class went away,
+  // so adding it back restarts the animation.
+  void row.offsetWidth;
+  row.classList.add('flash');
+}
+
 export function MessageList({ channel, mask }: { channel: Channel; mask: bigint }) {
-  const { state, loadMessages } = useStore();
+  const { state, loadMessages, markRead } = useStore();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [focused, setFocused] = useState(() => document.hasFocus());
 
   const messages = state.messages[channel.id] ?? [];
   const loaded = state.loadedChannels[channel.id] ?? false;
@@ -58,10 +73,40 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   const members = state.members[channel.serverId] ?? [];
 
   const canReadHistory = can(mask, Permission.READ_MESSAGE_HISTORY);
+  const selfId = state.user?.id;
 
   useEffect(() => {
     if (!loaded && canReadHistory) void loadMessages(channel.id).catch(() => undefined);
   }, [channel.id, loaded, canReadHistory, loadMessages]);
+
+  // Where reading had got to when this channel was opened. The "new" line sits
+  // after it and stays put while you read, then is gone next time you come back.
+  const [newAfter, setNewAfter] = useState<string | null | undefined>(undefined);
+  const readAtOpen = state.readStates[channel.id]?.lastReadMessageId ?? null;
+  const bootstrapped = state.bootstrapped;
+  useEffect(() => {
+    if (bootstrapped) setNewAfter(readAtOpen);
+    // Deliberately not following readAtOpen: it moves as soon as the channel is read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel.id, bootstrapped]);
+
+  useEffect(() => {
+    const onFocus = () => setFocused(true);
+    const onBlur = () => setFocused(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
+  // A channel counts as read when its newest message is on screen in a window
+  // you are actually looking at. Open in a background tab does not count.
+  const newestId = messages.at(-1)?.id;
+  useEffect(() => {
+    if (newestId && loaded && focused && pinned.current) markRead(channel.id, newestId);
+  }, [channel.id, newestId, loaded, focused, markRead]);
 
   // Re-pin on channel change, before paint, so a switch always lands at the
   // newest message rather than wherever the previous channel was scrolled to.
@@ -82,6 +127,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
 
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
     pinned.current = distanceFromBottom < 80;
+    if (pinned.current && newestId && focused) markRead(channel.id, newestId);
 
     if (element.scrollTop < 120 && !loadingOlder && messages.length >= 50) {
       const oldest = messages[0];
@@ -104,25 +150,36 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   }
 
   const rows = useMemo(() => {
-    const output: { message: Message; grouped: boolean; day: string | null }[] = [];
+    const output: { message: Message; grouped: boolean; day: string | null; firstNew: boolean }[] = [];
     let previous: Message | null = null;
+    let markedNew = false;
 
     for (const message of messages) {
       const at = new Date(message.createdAt);
       const previousAt = previous ? new Date(previous.createdAt) : null;
 
       const day = !previousAt || !sameDay(at, previousAt) ? dayLabel(at) : null;
+      // Only other people's messages are news. `undefined` means "not known yet".
+      const firstNew =
+        !markedNew &&
+        newAfter !== undefined &&
+        message.authorId !== selfId &&
+        (newAfter === null ? false : message.id > newAfter);
+      if (firstNew) markedNew = true;
+
       const grouped =
         !day &&
+        !firstNew &&
+        message.replyToId === null &&
         previous !== null &&
         previous.authorId === message.authorId &&
         at.getTime() - (previousAt?.getTime() ?? 0) < GROUP_WINDOW_MS;
 
-      output.push({ message, grouped, day });
+      output.push({ message, grouped, day, firstNew });
       previous = message;
     }
     return output;
-  }, [messages]);
+  }, [messages, newAfter, selfId]);
 
   if (!canReadHistory) {
     return (
@@ -158,10 +215,11 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
           </div>
         ) : null}
 
-        {rows.map(({ message, grouped, day }) => (
+        {rows.map(({ message, grouped, day, firstNew }) => (
           <div key={message.id}>
             {day ? <div className="day-divider">{day}</div> : null}
-            <MessageRow message={message} grouped={grouped} mask={mask} />
+            {firstNew ? <div className="new-divider">New</div> : null}
+            <MessageRow message={message} grouped={grouped} mask={mask} members={members} />
           </div>
         ))}
       </div>
@@ -184,25 +242,76 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   );
 }
 
+/** A message body with the people it names drawn as names. Still only ever text. */
+function MessageContent({
+  content,
+  members,
+  selfId,
+  everyone,
+}: {
+  content: string;
+  members: Member[];
+  selfId?: string;
+  /** Whether the server accepted this message's @everyone. Typing the word is not enough. */
+  everyone: boolean;
+}) {
+  return (
+    <div className="message-text">
+      {splitContent(content).map((part, index) => {
+        if (part.kind === 'text') return <span key={index}>{part.text}</span>;
+        if (part.kind === 'everyone') {
+          if (!everyone) return <span key={index}>@everyone</span>;
+          return (
+            <span key={index} className="mention me">
+              @everyone
+            </span>
+          );
+        }
+        const member = members.find((entry) => entry.userId === part.userId);
+        return (
+          <span key={index} className={part.userId === selfId ? 'mention me' : 'mention'}>
+            @{member ? nameOf(member) : 'someone who left'}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function MessageRow({
   message,
   grouped,
   mask,
+  members,
 }: {
   message: Message;
   grouped: boolean;
   mask: bigint;
+  members: Member[];
 }) {
-  const { state } = useStore();
+  const { state, replyTo } = useStore();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(message.content ?? '');
+  const [draft, setDraft] = useState('');
+  const [picking, setPicking] = useState(false);
 
-  const mine = message.authorId === state.user?.id;
+  const selfId = state.user?.id;
+  const mine = message.authorId === selfId;
   const canDelete = mine || can(mask, Permission.MANAGE_MESSAGES);
+  const canReact = can(mask, Permission.ADD_REACTIONS);
+  const canReply = can(mask, Permission.SEND_MESSAGES);
   const at = new Date(message.createdAt);
+  const reactions = message.reactions ?? [];
+  const pingsMe =
+    !mine && !message.deleted && (message.mentionsEveryone || (selfId ? (message.mentions ?? []).includes(selfId) : false));
+
+  function toggle(emoji: string) {
+    const has = reactions.find((entry) => entry.emoji === emoji)?.userIds.includes(selfId ?? '');
+    if (!has) rememberReaction(emoji);
+    void (has ? api.messages.unreact(message.id, emoji) : api.messages.react(message.id, emoji)).catch(() => undefined);
+  }
 
   async function saveEdit() {
-    const next = draft.trim();
+    const next = fromDraft(draft.trim(), members);
     if (!next || next === message.content) {
       setEditing(false);
       return;
@@ -214,8 +323,30 @@ function MessageRow({
     }
   }
 
+  const author = members.find((entry) => entry.userId === message.authorId);
+  const parent = message.replyTo;
+  const parentMember = parent ? members.find((entry) => entry.userId === parent.authorId) : undefined;
+
   return (
-    <div className={grouped ? 'message grouped' : 'message'}>
+    <div
+      id={`message-${message.id}`}
+      className={`message${grouped ? ' grouped' : ''}${pingsMe ? ' pings-me' : ''}${parent ? ' is-reply' : ''}`}
+    >
+      {parent ? (
+        <button type="button" className="reply-line" onClick={() => jumpTo(parent.id)} title="Go to that message">
+          <span className="reply-line-author">
+            {parentMember ? nameOf(parentMember) : parent.authorName}
+          </span>
+          <span className="reply-line-text">
+            {parent.deleted
+              ? 'Message deleted'
+              : parent.content
+                ? toPlainLine(parent.content, members)
+                : 'Sent a file'}
+          </span>
+        </button>
+      ) : null}
+
       {grouped ? (
         <span className="message-hover-time">{timeFormat.format(at)}</span>
       ) : (
@@ -228,7 +359,7 @@ function MessageRow({
         {grouped ? null : (
           <div className="message-meta">
             <span className="message-author" style={{ color: message.author.accent }}>
-              {message.author.displayName}
+              {author ? nameOf(author) : message.author.displayName}
             </span>
             <time className="message-time" dateTime={message.createdAt}>
               {timeFormat.format(at)}
@@ -260,7 +391,12 @@ function MessageRow({
                 Encrypted message. This client cannot open it yet.
               </div>
             ) : message.content ? (
-              <div className="message-text">{message.content}</div>
+              <MessageContent
+                content={message.content}
+                members={members}
+                selfId={selfId}
+                everyone={message.mentionsEveryone ?? false}
+              />
             ) : null}
 
             {message.editedAt ? <span className="message-edited">edited</span> : null}
@@ -289,19 +425,70 @@ function MessageRow({
                 </a>
               ),
             )}
+
+            {reactions.length > 0 ? (
+              <div className="reactions">
+                {reactions.map((reaction) => {
+                  const included = reaction.userIds.includes(selfId ?? '');
+                  const who = reaction.userIds
+                    .map((userId) => {
+                      const member = members.find((entry) => entry.userId === userId);
+                      return userId === selfId ? 'You' : member ? nameOf(member) : 'Someone';
+                    })
+                    .join(', ');
+                  return (
+                    <button
+                      key={reaction.emoji}
+                      type="button"
+                      className={included ? 'reaction mine' : 'reaction'}
+                      title={who}
+                      disabled={!included && !canReact}
+                      onClick={() => toggle(reaction.emoji)}
+                    >
+                      <span className="reaction-emoji">{reaction.emoji}</span>
+                      <span className="reaction-count">{reaction.userIds.length}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </>
         )}
       </div>
 
       {message.deleted || editing ? null : (
-        <div className="message-actions">
+        <div className={picking ? 'message-actions open' : 'message-actions'}>
+          {canReact ? (
+            <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
+              &#9786;
+            </button>
+          ) : null}
+          {canReply ? (
+            <button
+              type="button"
+              className="icon-button"
+              title="Reply"
+              onClick={() => replyTo(message.channelId, message)}
+            >
+              &#8617;
+            </button>
+          ) : null}
+          {picking ? (
+            <ReactionPicker
+              onClose={() => setPicking(false)}
+              onPick={(emoji) => {
+                setPicking(false);
+                toggle(emoji);
+              }}
+            />
+          ) : null}
           {mine && message.content !== null ? (
             <button
               type="button"
               className="icon-button"
               title="Edit"
               onClick={() => {
-                setDraft(message.content ?? '');
+                setDraft(toDraft(message.content ?? '', members));
                 setEditing(true);
               }}
             >

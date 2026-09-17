@@ -12,6 +12,8 @@ import type {
   Member,
   Message,
   Presence,
+  Reaction,
+  ReadState,
   Role,
   SelfUser,
   Server,
@@ -31,11 +33,15 @@ export const HEARTBEAT_TIMEOUT_MS = 60_000;
 
 export type ServerEvent =
   /** First frame after a successful connection. Everything to paint the app. */
-  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; sessionId: string } }
+  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; sessionId: string } }
   | { t: 'heartbeat_ack'; d: { at: number } }
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }
   | { t: 'message_delete'; d: { id: Snowflake; channelId: Snowflake } }
+  /** The full set for one message after any change. Whole, so a missed event cannot leave a wrong count behind. */
+  | { t: 'reaction_update'; d: { messageId: Snowflake; channelId: Snowflake; reactions: Reaction[] } }
+  /** Sent only to the person it belongs to, on all their devices: read here, read everywhere. */
+  | { t: 'read_state_update'; d: ReadState }
   | { t: 'typing_start'; d: { channelId: Snowflake; userId: Snowflake; at: number } }
   | { t: 'presence_update'; d: Presence }
   | { t: 'server_create'; d: ServerDetail }

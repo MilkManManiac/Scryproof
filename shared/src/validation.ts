@@ -24,6 +24,51 @@ const USERNAME_RE = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
 /** Channel names follow the same shape so they stay URL-safe and predictable. */
 const CHANNEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
+/* -------------------------------- mentions --------------------------------- */
+
+/**
+ * A mention travels inside the message body as `<@user-id>`, and everyone as
+ * the literal `@everyone`. Ids, not names: a name can change or be shared, and
+ * a body that said "@alex" would ping whoever is called alex next year.
+ */
+const MENTION_RE = /<@([0-9a-fA-F-]{36})>/g;
+const EVERYONE_RE = /(^|\s)@everyone(?=$|[\s.,!?])/;
+
+export const mentionToken = (userId: string): string => `<@${userId}>`;
+
+export function parseMentions(content: string): { userIds: string[]; everyone: boolean } {
+  const userIds = new Set<string>();
+  for (const match of content.matchAll(MENTION_RE)) {
+    if (match[1]) userIds.add(match[1].toLowerCase());
+  }
+  return { userIds: [...userIds], everyone: EVERYONE_RE.test(content) };
+}
+
+/** Body text split into plain runs and mentions, for drawing. */
+export type ContentPart =
+  | { kind: 'text'; text: string }
+  | { kind: 'mention'; userId: string }
+  | { kind: 'everyone' };
+
+export function splitContent(content: string): ContentPart[] {
+  const parts: ContentPart[] = [];
+  const pattern = /<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])/g;
+  let cursor = 0;
+  for (const match of content.matchAll(pattern)) {
+    const at = match.index ?? 0;
+    if (at > cursor) parts.push({ kind: 'text', text: content.slice(cursor, at) });
+    parts.push(match[1] ? { kind: 'mention', userId: match[1].toLowerCase() } : { kind: 'everyone' });
+    cursor = at + match[0].length;
+  }
+  if (cursor < content.length) parts.push({ kind: 'text', text: content.slice(cursor) });
+  return parts;
+}
+
+/** Reactions are one emoji each. This is a length guard, not an emoji detector. */
+export const REACTION_MAX_LENGTH = 32;
+/** Different emoji on one message. Past this it is a wall, not a reaction. */
+export const REACTIONS_PER_MESSAGE = 20;
+
 export type Validation = { ok: true } | { ok: false; error: string };
 
 const ok: Validation = { ok: true };

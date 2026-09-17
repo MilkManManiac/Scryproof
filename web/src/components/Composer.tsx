@@ -6,18 +6,22 @@
  * again, and a client that posts anyway simply gets a 403.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LIMITS, Permission } from '@gooffline/shared';
 import type { Attachment, Channel } from '@gooffline/shared';
 
 import { ApiError, api } from '../lib/api';
+import { fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { can } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
-  const { sendTyping } = useStore();
+  const { state, sendTyping, replyTo } = useStore();
   const [text, setText] = useState('');
+  const [caret, setCaret] = useState(0);
+  const [chosen, setChosen] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const [pending, setPending] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +31,49 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
   const mayPost = can(mask, Permission.SEND_MESSAGES);
   const mayAttach = can(mask, Permission.ATTACH_FILES);
+  const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
+
+  const members = state.members[channel.serverId] ?? [];
+  const replyingTo = state.replyingTo[channel.id] ?? null;
+
+  // The list under the box while an @name is being typed.
+  const asking = dismissed ? null : mentionQueryAt(text, caret);
+  const query = asking?.query;
+  const offers = useMemo(() => {
+    if (query === undefined) return [];
+    const people = members
+      .filter((member) =>
+        [nameOf(member), member.user.displayName, member.user.username].some((name) =>
+          name.toLowerCase().includes(query),
+        ),
+      )
+      // Names that start with what was typed come before names that contain it.
+      .sort((a, b) => Number(nameOf(b).toLowerCase().startsWith(query)) - Number(nameOf(a).toLowerCase().startsWith(query)))
+      .slice(0, 7)
+      .map((member) => ({ key: member.userId, label: mentionLabel(member, members), name: nameOf(member), note: member.user.username }));
+    if (mayPingEveryone && 'everyone'.startsWith(query)) {
+      people.push({ key: 'everyone', label: 'everyone', name: 'everyone', note: 'pings every person who can see this channel' });
+    }
+    return people;
+  }, [query, members, mayPingEveryone]);
+  const picked = Math.min(chosen, Math.max(0, offers.length - 1));
+
+  function complete(label: string) {
+    if (!asking) return;
+    const next = `${text.slice(0, asking.start)}@${label} ${text.slice(caret)}`;
+    const position = asking.start + label.length + 2;
+    setText(next);
+    setCaret(position);
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(position, position);
+    });
+  }
+
+  // Picking "reply" on a message should put you straight into typing it.
+  useEffect(() => {
+    if (replyingTo) input.current?.focus();
+  }, [replyingTo]);
 
   // A fresh draft per channel, and focus lands where the typing goes.
   useEffect(() => {
@@ -53,21 +100,25 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   async function send() {
     const body = text.trim();
     if ((!body && pending.length === 0) || cooldown > 0) return;
+    const answering = replyingTo;
 
     setText('');
     setPending([]);
     setError(null);
+    replyTo(channel.id, null);
     requestAnimationFrame(grow);
 
     try {
       await api.messages.send(channel.id, {
-        content: body || undefined,
+        content: body ? fromDraft(body, members) : undefined,
+        replyToId: answering?.id,
         attachmentIds: pending.length > 0 ? pending.map((file) => file.id) : undefined,
       });
     } catch (problem) {
       // Put the draft back rather than losing what someone typed.
       setText(body);
       setPending(pending);
+      replyTo(channel.id, answering);
       if (problem instanceof ApiError) {
         setError(problem.message);
         if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
@@ -133,6 +184,41 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         </div>
       ) : null}
 
+      {offers.length > 0 ? (
+        <div className="mention-offers" role="listbox" aria-label="People to mention">
+          {offers.map((offer, index) => (
+            <button
+              key={offer.key}
+              type="button"
+              role="option"
+              aria-selected={index === picked}
+              className={index === picked ? 'mention-offer active' : 'mention-offer'}
+              // mousedown, not click: a click would take focus from the box first.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                complete(offer.label);
+              }}
+              onMouseEnter={() => setChosen(index)}
+            >
+              <span className="mention-offer-name">@{offer.name}</span>
+              <span className="mention-offer-note">{offer.note}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {replyingTo ? (
+        <div className="composer-reply">
+          <span className="composer-reply-text">
+            Replying to <strong>{replyingTo.author.displayName}</strong>
+            {replyingTo.content ? <span className="composer-reply-quote">{toPlainLine(replyingTo.content, members)}</span> : null}
+          </span>
+          <button type="button" className="link-button" onClick={() => replyTo(channel.id, null)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+
       <div
         className={mayPost ? 'composer-box' : 'composer-box denied'}
         onDragOver={(event) => {
@@ -179,8 +265,12 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
                 : `Message #${channel.name}`
               : 'You do not have permission to post here.'
           }
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onChange={(event) => {
             setText(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+            setDismissed(false);
+            setChosen(0);
             grow();
             if (event.target.value.trim()) sendTyping(channel.id);
           }}
@@ -192,6 +282,29 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             }
           }}
           onKeyDown={(event) => {
+            if (offers.length > 0) {
+              const offer = offers[picked];
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const step = event.key === 'ArrowDown' ? 1 : -1;
+                setChosen((picked + step + offers.length) % offers.length);
+                return;
+              }
+              if ((event.key === 'Enter' || event.key === 'Tab') && offer) {
+                event.preventDefault();
+                complete(offer.label);
+                return;
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setDismissed(true);
+                return;
+              }
+            }
+            if (event.key === 'Escape' && replyingTo) {
+              replyTo(channel.id, null);
+              return;
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               void send();

@@ -79,6 +79,11 @@ export interface Channel {
    * always encrypted; this flag is about text, and drives Milestone 7.
    */
   encrypted: boolean;
+  /**
+   * The newest message in the channel, deleted or not. Ids sort by time, so
+   * comparing this with a reader's last-read id is the whole unread check.
+   */
+  lastMessageId: Snowflake | null;
   createdAt: Timestamp;
 }
 
@@ -117,6 +122,30 @@ export interface Attachment {
   url: string;
 }
 
+/** One emoji on one message, and everyone who put it there. */
+export interface Reaction {
+  emoji: string;
+  /** In the order they reacted. The count is this list's length. */
+  userIds: Snowflake[];
+}
+
+/** Enough of the message being replied to, to draw the line above a reply. */
+export interface ReplyPreview {
+  id: Snowflake;
+  authorId: Snowflake;
+  authorName: string;
+  /** The first stretch of the body. Null when deleted, encrypted, or only files. */
+  content: string | null;
+  deleted: boolean;
+}
+
+/** How far one person has read in one channel. Theirs alone; nobody else sees it. */
+export interface ReadState {
+  channelId: Snowflake;
+  lastReadMessageId: Snowflake | null;
+  mentionCount: number;
+}
+
 export interface Message {
   id: Snowflake;
   channelId: Snowflake;
@@ -133,6 +162,17 @@ export interface Message {
   keyEpoch: number | null;
   attachments: Attachment[];
   replyToId: Snowflake | null;
+  /** Null when this is not a reply, or the parent is gone entirely. */
+  replyTo: ReplyPreview | null;
+  reactions: Reaction[];
+  /**
+   * Who this message pings, worked out by the server from the body: members it
+   * names, plus the author of the message it replies to. Never the sender.
+   * Always empty in an encrypted channel, where the server cannot read the body.
+   */
+  mentions: Snowflake[];
+  /** True only if the body says @everyone AND the sender was allowed to. */
+  mentionsEveryone: boolean;
   createdAt: Timestamp;
   editedAt: Timestamp | null;
   /** A soft-deleted message keeps its place in the timeline as a tombstone. */

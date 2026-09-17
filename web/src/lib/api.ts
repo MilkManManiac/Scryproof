@@ -181,6 +181,10 @@ export const api = {
     edit: (id: string, content: string) =>
       patch<{ message: Message }>(`/api/messages/${id}`, { content }),
     remove: (id: string) => del<{ ok: true }>(`/api/messages/${id}`),
+    react: (id: string, emoji: string) =>
+      put<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`, {}),
+    unreact: (id: string, emoji: string) =>
+      del<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`),
     markRead: (channelId: string, messageId: string) =>
       put<{ ok: true }>(`/api/channels/${channelId}/read`, { messageId }),
   },

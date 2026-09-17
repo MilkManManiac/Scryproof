@@ -11,11 +11,11 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { LIMITS, Permission, has, validateMessageContent } from '@gooffline/shared';
-import type { Attachment, Message } from '@gooffline/shared';
+import type { Attachment, Message, Reaction, ReplyPreview } from '@gooffline/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { attachments, channels, messages, readStates, users } from '../db/schema.js';
+import { attachments, channels, messages, reactions, users } from '../db/schema.js';
 import { badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
@@ -25,23 +25,58 @@ import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { publicUrlFor } from '../services/storage.js';
 import { requireChannelPermission } from '../services/permissions.js';
+import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
+import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
+import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
 import type { MessageRow, User } from '../db/schema.js';
 
-/** Load authors and attachments for a page of messages in two queries, not 2N. */
+/** How much of a parent message rides along with a reply. */
+const REPLY_PREVIEW_LENGTH = 140;
+
+/**
+ * Load authors, attachments, reactions and reply parents for a page of
+ * messages in a fixed handful of queries, not a handful per message.
+ */
 async function hydrate(rows: MessageRow[]): Promise<Message[]> {
   if (rows.length === 0) return [];
 
   const db = getDb();
 
-  const authorIds = [...new Set(rows.map((row) => row.authorId))];
+  // Parents first, so their authors can be fetched in the same query as everyone else's.
+  const onPage = new Map(rows.map((row) => [row.id, row]));
+  const parentIds = [...new Set(rows.map((row) => row.replyToId).filter((id): id is string => id !== null))];
+  const missingParentIds = parentIds.filter((id) => !onPage.has(id));
+  const parentRows =
+    missingParentIds.length > 0
+      ? await db.select().from(messages).where(inArray(messages.id, missingParentIds))
+      : [];
+  const parents = new Map<string, MessageRow>([...onPage, ...parentRows.map((row) => [row.id, row] as const)]);
+
+  const authorIds = [...new Set([...rows, ...parentRows].map((row) => row.authorId))];
   const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
   const authors = new Map<string, User>(authorRows.map((row) => [row.id, row]));
+
+  const previewOf = (parentId: string | null): ReplyPreview | null => {
+    const parent = parentId ? parents.get(parentId) : undefined;
+    const parentAuthor = parent ? authors.get(parent.authorId) : undefined;
+    if (!parent || !parentAuthor) return null;
+    const deleted = parent.deletedAt !== null;
+    const text = deleted ? '' : (parent.content ?? '').trim();
+    return {
+      id: parent.id,
+      authorId: parent.authorId,
+      authorName: parentAuthor.displayName,
+      content: text ? text.slice(0, REPLY_PREVIEW_LENGTH) : null,
+      deleted,
+    };
+  };
 
   const messageIds = rows.map((row) => row.id);
   const attachmentRows = await db
     .select()
     .from(attachments)
     .where(inArray(attachments.messageId, messageIds));
+  const reactionsByMessage = await reactionsForMessages(messageIds);
 
   const byMessage = new Map<string, Attachment[]>();
   for (const row of attachmentRows) {
@@ -57,7 +92,10 @@ async function hydrate(rows: MessageRow[]): Promise<Message[]> {
     .map((row) => {
       const author = authors.get(row.authorId);
       if (!author) return null;
-      return serialize.message(row, author, byMessage.get(row.id) ?? []);
+      return serialize.message(row, author, byMessage.get(row.id) ?? [], {
+        reactions: reactionsByMessage.get(row.id) ?? [],
+        replyTo: previewOf(row.replyToId),
+      });
     })
     .filter((message): message is Message => message !== null);
 }
@@ -190,14 +228,30 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       }
     }
 
+    let replyAuthorId: string | null = null;
     if (body.replyToId) {
       const [parent] = await db
-        .select({ id: messages.id })
+        .select({ id: messages.id, authorId: messages.authorId })
         .from(messages)
         .where(and(eq(messages.id, body.replyToId), eq(messages.channelId, channelId)))
         .limit(1);
       if (!parent) throw badRequest('That message is not in this channel.', 'unknown_message');
+      replyAuthorId = parent.authorId;
     }
+
+    // In an encrypted channel the server cannot read the body, so it pings
+    // nobody, including the person replied to: a count it cannot explain would
+    // be a claim about content it has never seen.
+    const memberIds = channel.encrypted ? new Set<string>() : await serverMemberIds(ctx.serverId);
+    const mentions = channel.encrypted
+      ? NO_MENTIONS
+      : resolveMentions({
+          content,
+          senderId: user.id,
+          memberIds,
+          canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+          replyAuthorId,
+        });
 
     const messageId = uuidv7();
 
@@ -212,10 +266,14 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         nonce: body.nonce ? Buffer.from(body.nonce, 'base64') : null,
         keyEpoch: channel.encrypted ? (body.keyEpoch ?? channel.keyEpoch) : null,
         replyToId: body.replyToId ?? null,
+        mentions: mentions.userIds,
+        mentionsEveryone: mentions.everyone,
       })
       .returning();
 
     if (!created) throw badRequest('Could not send the message.', 'send_failed');
+
+    await db.update(channels).set({ lastMessageId: messageId }).where(eq(channels.id, channelId));
 
     // Attach only files this user uploaded and has not already attached, so an
     // id guessed from someone else's message cannot be re-posted here.
@@ -241,6 +299,20 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       { t: 'message_create', d: hydrated },
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
     );
+
+    // After the message itself, so a badge never arrives for something that
+    // is not on screen yet.
+    const pinged = await pingTargets({
+      serverId: ctx.serverId,
+      channelId,
+      categoryId: channel.categoryId,
+      senderId: user.id,
+      mentions,
+      memberIds,
+    });
+    for (const [userId, state] of await bumpMentions(pinged, channelId)) {
+      hub.sendToUser(userId, { t: 'read_state_update', d: state });
+    }
 
     return { message: hydrated };
   });
@@ -279,9 +351,32 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       if (!check.ok) throw badRequest(check.error, 'message_too_long');
     }
 
+    // An edit changes who the message is drawn as mentioning. It does not ping
+    // anyone again: nobody should be able to ring a bell by editing in a loop.
+    let replyAuthorId: string | null = null;
+    if (existing.replyToId) {
+      const [parent] = await db
+        .select({ authorId: messages.authorId })
+        .from(messages)
+        .where(eq(messages.id, existing.replyToId))
+        .limit(1);
+      replyAuthorId = parent?.authorId ?? null;
+    }
+    const mentions = body.ciphertext
+      ? NO_MENTIONS
+      : resolveMentions({
+          content,
+          senderId: user.id,
+          memberIds: await serverMemberIds(ctx.serverId),
+          canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+          replyAuthorId,
+        });
+
     const [updated] = await db
       .update(messages)
       .set({
+        mentions: mentions.userIds,
+        mentionsEveryone: mentions.everyone,
         ...(body.ciphertext
           ? {
               ciphertext: Buffer.from(body.ciphertext, 'base64'),
@@ -337,6 +432,8 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       })
       .where(eq(messages.id, messageId));
 
+    await db.delete(reactions).where(eq(reactions.messageId, messageId));
+
     const attachmentRows = await db
       .select()
       .from(attachments)
@@ -369,6 +466,72 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     return { ok: true };
   });
 
+  /* -------------------------------- reactions ------------------------------- */
+
+  async function reactionTarget(request: { params: unknown }) {
+    const params = z
+      .object({ messageId: z.string(), emoji: z.string().min(1).max(256) })
+      .parse(request.params);
+
+    const [existing] = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.id, params.messageId))
+      .limit(1);
+    if (!existing) throw notFound('That message does not exist.', 'unknown_message');
+
+    // Fastify has already percent-decoded the path, so this is the emoji itself.
+    return { existing, emoji: params.emoji };
+  }
+
+  async function announceReactions(serverId: string, existing: MessageRow, current: Reaction[]) {
+    await hub.broadcastToChannel(
+      serverId,
+      existing.channelId,
+      {
+        t: 'reaction_update',
+        d: { messageId: existing.id, channelId: existing.channelId, reactions: current },
+      },
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+  }
+
+  app.put('/api/messages/:messageId/reactions/:emoji', async (request) => {
+    const user = requireUser(request);
+    const { existing, emoji } = await reactionTarget(request);
+
+    const ctx = await requireChannelPermission(
+      existing.channelId,
+      user.id,
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY | Permission.ADD_REACTIONS,
+    );
+    if (existing.deletedAt) throw badRequest('That message was deleted.', 'message_deleted');
+
+    const limit = consume(`reactions:${user.id}`, config.rateLimits.messagesPerMinute * 2, 60_000);
+    if (!limit.allowed) {
+      throw tooManyRequests('You are reacting too quickly.', limit.retryAfterSeconds);
+    }
+
+    const current = await addReaction(existing.id, user.id, emoji);
+    await announceReactions(ctx.serverId, existing, current);
+    return { reactions: current };
+  });
+
+  app.delete('/api/messages/:messageId/reactions/:emoji', async (request) => {
+    const user = requireUser(request);
+    const { existing, emoji } = await reactionTarget(request);
+
+    // Taking your own reaction back needs nothing but being able to see it.
+    // Losing ADD_REACTIONS must not trap what you already added.
+    const ctx = await requireChannelPermission(existing.channelId, user.id, Permission.VIEW_CHANNEL);
+
+    const current = await removeReaction(existing.id, user.id, emoji);
+    await announceReactions(ctx.serverId, existing, current);
+    return { reactions: current };
+  });
+
+  /* ------------------------------- read state ------------------------------- */
+
   /** Mark a channel read up to a message. Drives unread badges across devices. */
   app.put('/api/channels/:channelId/read', async (request) => {
     const user = requireUser(request);
@@ -377,32 +540,22 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
 
     await requireChannelPermission(channelId, user.id, Permission.VIEW_CHANNEL);
 
-    await getDb()
-      .insert(readStates)
-      .values({
-        userId: user.id,
-        channelId,
-        lastReadMessageId: body.messageId,
-        mentionCount: 0,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [readStates.userId, readStates.channelId],
-        set: { lastReadMessageId: body.messageId, mentionCount: 0, updatedAt: new Date() },
-      });
+    const [target] = await getDb()
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.id, body.messageId), eq(messages.channelId, channelId)))
+      .limit(1);
+    if (!target) throw badRequest('That message is not in this channel.', 'unknown_message');
 
-    return { ok: true };
+    const state = await markRead(user.id, channelId, body.messageId);
+    // Every device this person has open, including the one that asked.
+    hub.sendToUser(user.id, { t: 'read_state_update', d: state });
+
+    return { ok: true, readState: state };
   });
 
   app.get('/api/read-states', async (request) => {
     const user = requireUser(request);
-    const rows = await getDb().select().from(readStates).where(eq(readStates.userId, user.id));
-    return {
-      readStates: rows.map((row) => ({
-        channelId: row.channelId,
-        lastReadMessageId: row.lastReadMessageId,
-        mentionCount: row.mentionCount,
-      })),
-    };
+    return { readStates: await readStatesFor(user.id) };
   });
 }

@@ -23,6 +23,7 @@ import type { ClientEvent, Presence, ServerEvent } from '@gooffline/shared';
 import { config } from '../config.js';
 import { resolveSession } from '../services/auth.js';
 import { loadAllServerDetails, memberIdsForServers } from '../services/server-detail.js';
+import { readStatesFor } from '../services/read-state.js';
 import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
@@ -194,6 +195,7 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       servers: serverDetails,
       presences,
       voiceStates: hub.allVoiceStatesFor(serverIds),
+      readStates: await readStatesFor(connection.userId),
       sessionId: connection.sessionId,
     },
   };

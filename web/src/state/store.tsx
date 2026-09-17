@@ -26,6 +26,7 @@ import type {
   Message,
   Presence,
   PresenceStatus,
+  ReadState,
   SelfUser,
   ServerDetail,
   ServerEvent,
@@ -53,6 +54,10 @@ export interface State {
   voiceStates: Record<string, VoiceState>;
   /** channelId -> userId -> last typed at (ms). */
   typing: Record<string, Record<string, number>>;
+  /** How far this person has read, per channel. Drives every unread mark. */
+  readStates: Record<string, ReadState>;
+  /** The message being replied to, per channel, so a half-written reply survives a channel switch. */
+  replyingTo: Record<string, Message>;
 
   selectedServerId: string | null;
   selectedChannelId: string | null;
@@ -72,6 +77,8 @@ const initialState: State = {
   presences: {},
   voiceStates: {},
   typing: {},
+  readStates: {},
+  replyingTo: {},
   selectedServerId: null,
   selectedChannelId: null,
   lastChannelByServer: {},
@@ -85,6 +92,8 @@ type Action =
   | { type: 'messages-loaded'; channelId: string; messages: Message[]; prepend?: boolean }
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
+  | { type: 'marked-read'; channelId: string; messageId: string }
+  | { type: 'reply-to'; channelId: string; message: Message | null }
   | { type: 'signed-out' };
 
 const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
@@ -95,6 +104,33 @@ function firstVisibleChannel(server: ServerDetail | undefined): string | null {
   const text = server.channels.filter((channel) => channel.type === 'text');
   const sorted = [...text].sort((a, b) => a.position - b.position);
   return sorted[0]?.id ?? null;
+}
+
+/** Record a channel's newest message, wherever that channel lives. */
+function touchChannel(state: State, channelId: string, messageId: string): State['servers'] {
+  for (const server of Object.values(state.servers)) {
+    const channel = server.channels.find((entry) => entry.id === channelId);
+    if (!channel) continue;
+    if (channel.lastMessageId && channel.lastMessageId >= messageId) return state.servers;
+    return {
+      ...state.servers,
+      [server.id]: {
+        ...server,
+        channels: server.channels.map((entry) =>
+          entry.id === channelId ? { ...entry, lastMessageId: messageId } : entry,
+        ),
+      },
+    };
+  }
+  return state.servers;
+}
+
+/** Reading only ever moves forward. Ids sort by time, so this is a string compare. */
+function readUpTo(state: State, channelId: string, messageId: string, mentionCount = 0): State['readStates'] {
+  const current = state.readStates[channelId];
+  const lastReadMessageId =
+    current?.lastReadMessageId && current.lastReadMessageId > messageId ? current.lastReadMessageId : messageId;
+  return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount } };
 }
 
 function upsertServer(state: State, server: ServerDetail): State {
@@ -165,6 +201,15 @@ function reducer(state: State, action: Action): State {
     case 'server-refreshed':
       return upsertServer(state, action.server);
 
+    case 'marked-read':
+      return { ...state, readStates: readUpTo(state, action.channelId, action.messageId) };
+
+    case 'reply-to': {
+      const { [action.channelId]: removed, ...rest } = state.replyingTo;
+      void removed;
+      return { ...state, replyingTo: action.message ? { ...rest, [action.channelId]: action.message } : rest };
+    }
+
     case 'gateway':
       return applyGatewayEvent(state, action.event);
 
@@ -186,6 +231,9 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       for (const voice of event.d.voiceStates) {
         voiceStates[voiceKey(voice.serverId, voice.userId)] = voice;
       }
+
+      const readStates: Record<string, ReadState> = {};
+      for (const entry of event.d.readStates ?? []) readStates[entry.channelId] = entry;
 
       const order = event.d.servers.map((server) => server.id);
 
@@ -210,6 +258,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         serverOrder: order,
         presences,
         voiceStates,
+        readStates,
         selectedServerId,
         selectedChannelId,
       };
@@ -221,6 +270,12 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
 
       return {
         ...state,
+        servers: touchChannel(state, event.d.channelId, event.d.id),
+        // Your own message is never news to you, on this device or another.
+        readStates:
+          event.d.authorId === state.user?.id
+            ? readUpTo(state, event.d.channelId, event.d.id, state.readStates[event.d.channelId]?.mentionCount ?? 0)
+            : state.readStates,
         messages: { ...state.messages, [event.d.channelId]: [...existing, event.d] },
         // Whoever just spoke has clearly stopped typing.
         typing: {
@@ -260,6 +315,37 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
               ? { ...message, deleted: true, content: null, ciphertext: null, attachments: [] }
               : message,
           ),
+        },
+      };
+    }
+
+    case 'reaction_update': {
+      const existing = state.messages[event.d.channelId];
+      if (!existing) return state;
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [event.d.channelId]: existing.map((message) =>
+            message.id === event.d.messageId ? { ...message, reactions: event.d.reactions } : message,
+          ),
+        },
+      };
+    }
+
+    case 'read_state_update': {
+      const current = state.readStates[event.d.channelId];
+      // A count for a channel we have read past since is already stale.
+      const ahead =
+        current?.lastReadMessageId &&
+        (!event.d.lastReadMessageId || current.lastReadMessageId > event.d.lastReadMessageId);
+      return {
+        ...state,
+        readStates: {
+          ...state.readStates,
+          [event.d.channelId]: ahead
+            ? { ...event.d, lastReadMessageId: current.lastReadMessageId }
+            : event.d,
         },
       };
     }
@@ -470,6 +556,9 @@ interface StoreValue {
   /** The live call, if any: media, keys, and the numbers the connection panel shows. */
   voice: VoiceSession;
   loadMessages: (channelId: string, before?: string) => Promise<void>;
+  /** Tell the server this channel has been read up to a message. Safe to call often. */
+  markRead: (channelId: string, messageId: string) => void;
+  replyTo: (channelId: string, message: Message | null) => void;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -640,6 +729,22 @@ export function StoreProvider({
     dispatch({ type: 'messages-loaded', channelId, messages, prepend: Boolean(before) });
   }, []);
 
+  // The ref keeps this callback stable while still seeing the latest state,
+  // so the message list can call it on every scroll without re-rendering.
+  const readStatesRef = useRef(state.readStates);
+  readStatesRef.current = state.readStates;
+  const markRead = useCallback((channelId: string, messageId: string) => {
+    const current = readStatesRef.current[channelId];
+    const caughtUp = current?.lastReadMessageId && current.lastReadMessageId >= messageId;
+    if (caughtUp && current.mentionCount === 0) return;
+    dispatch({ type: 'marked-read', channelId, messageId });
+    void api.messages.markRead(channelId, messageId).catch(() => undefined);
+  }, []);
+
+  const replyTo = useCallback((channelId: string, message: Message | null) => {
+    dispatch({ type: 'reply-to', channelId, message });
+  }, []);
+
   const loadMembers = useCallback(async (serverId: string) => {
     const { members } = await api.servers.members(serverId);
     dispatch({ type: 'members-loaded', serverId, members });
@@ -672,6 +777,8 @@ export function StoreProvider({
       updateVoice,
       voice,
       loadMessages,
+      markRead,
+      replyTo,
       loadMembers,
       refreshServer,
       signOut,
@@ -687,6 +794,8 @@ export function StoreProvider({
       updateVoice,
       voice,
       loadMessages,
+      markRead,
+      replyTo,
       loadMembers,
       refreshServer,
       signOut,
@@ -743,3 +852,31 @@ export function useTypingUsers(channelId: string | null): string[] {
 }
 
 export type { Presence };
+
+/* --------------------------------- unread ---------------------------------- */
+
+export interface Unread {
+  unread: boolean;
+  mentions: number;
+}
+
+/** Whether a channel holds anything newer than what this person has read. */
+export function unreadFor(state: State, channel: { id: string; type: string; lastMessageId: string | null }): Unread {
+  if (channel.type !== 'text') return { unread: false, mentions: 0 };
+  const read = state.readStates[channel.id];
+  const unread = Boolean(
+    channel.lastMessageId && (!read?.lastReadMessageId || channel.lastMessageId > read.lastReadMessageId),
+  );
+  return { unread, mentions: read?.mentionCount ?? 0 };
+}
+
+export function unreadForServer(state: State, serverId: string): Unread {
+  let unread = false;
+  let mentions = 0;
+  for (const channel of state.servers[serverId]?.channels ?? []) {
+    const one = unreadFor(state, channel);
+    unread = unread || one.unread;
+    mentions += one.mentions;
+  }
+  return { unread, mentions };
+}

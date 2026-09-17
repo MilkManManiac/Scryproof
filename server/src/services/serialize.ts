@@ -16,6 +16,8 @@ import type {
   Member,
   Message,
   PublicUser,
+  Reaction,
+  ReplyPreview,
   Role,
   SelfUser,
   Server,
@@ -101,6 +103,7 @@ export function channel(row: ChannelRow): Channel {
     position: row.position,
     slowmodeSeconds: row.slowmodeSeconds,
     encrypted: row.encrypted,
+    lastMessageId: row.lastMessageId,
     createdAt: isoRequired(row.createdAt),
   };
 }
@@ -132,6 +135,7 @@ export function message(
   row: MessageRow,
   author: User,
   attachments: Attachment[] = [],
+  extras: { reactions?: Reaction[]; replyTo?: ReplyPreview | null } = {},
 ): Message {
   const deleted = row.deletedAt !== null;
 
@@ -147,6 +151,11 @@ export function message(
     keyEpoch: row.keyEpoch,
     attachments: deleted ? [] : attachments,
     replyToId: row.replyToId,
+    replyTo: extras.replyTo ?? null,
+    // A tombstone pings nobody and carries nobody's reactions.
+    reactions: deleted ? [] : (extras.reactions ?? []),
+    mentions: deleted ? [] : row.mentions,
+    mentionsEveryone: deleted ? false : row.mentionsEveryone,
     createdAt: isoRequired(row.createdAt),
     editedAt: iso(row.editedAt),
     deleted,
