@@ -155,7 +155,7 @@ async function onConnection(
 
   ws.on('close', () => {
     hub.removeConnection(connection);
-    announceDeparture(connection);
+    void announceDeparture(connection);
   });
 
   ws.on('error', () => {
@@ -182,6 +182,9 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
   for (const detail of serverDetails) connection.servers.add(detail.id);
 
   const serverIds = serverDetails.map((detail) => detail.id);
+  const visibleChannelIds = new Set(
+    serverDetails.flatMap((detail) => detail.channels.map((channel) => channel.id)),
+  );
   const peerIds = await memberIdsForServers(serverIds);
 
   const presences: Presence[] = peerIds
@@ -194,7 +197,12 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       user: serialize.selfUser(user),
       servers: serverDetails,
       presences,
-      voiceStates: hub.allVoiceStatesFor(serverIds),
+      // Scoped to what this member can see. `serverDetails` has already had
+      // the hidden channels taken out of it, so reusing that set is the same
+      // answer the rest of the frame gives rather than a second one.
+      voiceStates: hub
+        .allVoiceStatesFor(serverIds)
+        .filter((state) => visibleChannelIds.has(state.channelId ?? '')),
       readStates: await readStatesFor(connection.userId),
       sessionId: connection.sessionId,
     },
@@ -213,7 +221,7 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
   }
 }
 
-function announceDeparture(connection: hub.Connection): void {
+async function announceDeparture(connection: hub.Connection): Promise<void> {
   // Other devices may still be connected; only announce a real disconnect.
   if (hub.connectionsForUser(connection.userId).length > 0) return;
 
@@ -223,8 +231,8 @@ function announceDeparture(connection: hub.Connection): void {
   }
 
   // Someone whose browser died should not be left standing in a voice channel.
-  for (const state of hub.clearVoiceStatesForUser(connection.userId)) {
-    hub.broadcastToServer(state.serverId, { t: 'voice_state_update', d: state });
+  for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(connection.userId)) {
+    await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
   }
 }
 

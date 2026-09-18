@@ -235,3 +235,77 @@ describe('the voice relay', () => {
     assert.equal(signals(alex).length, 0);
   });
 });
+
+/**
+ * Who is standing in a voice channel is news only to the people who can see
+ * that channel.
+ *
+ * This went out to the whole server, so a member who could not see a private
+ * voice channel still learned its id existed, who was sitting in it, and
+ * whether their camera was on. That is the 404-not-403 rule broken at the
+ * gateway, and it is call metadata besides.
+ *
+ * `broadcastToChannel` reads each connection's permission cache before it
+ * touches the database, so seating the cache is enough to drive it here.
+ */
+describe('voice presence reaches only the people who can see the channel', () => {
+  const VIEW_CHANNEL = 1n;
+
+  const states = (seat: Seat) =>
+    seat.inbox.flatMap((event) => (event.t === 'voice_state_update' ? [event.d] : []));
+
+  /**
+   * Seats every open connection's permissions for this room, so the broadcast
+   * answers from cache and never reaches for a database. Connections made by
+   * earlier tests are still registered, and they are given nothing, which is
+   * also the honest default: unless a test says otherwise, you cannot see it.
+   */
+  const seatAll = (grants: [Seat, bigint][]) => {
+    for (const connection of hub.allConnections()) {
+      connection.permissionCache.set('srv', new Map([[room, 0n]]));
+    }
+    for (const [seat, mask] of grants) {
+      seat.connection.permissionCache.set('srv', new Map([[room, mask]]));
+    }
+  };
+
+  it('tells someone who can see the channel', async () => {
+    seatAll([[wes, VIEW_CHANNEL]]);
+    await hub.announceVoiceState('srv', room, voiceState(wes.connection.userId, room));
+    assert.equal(states(wes).length, 1);
+    assert.equal(states(wes)[0]?.channelId, room);
+  });
+
+  it('tells nobody who cannot', async () => {
+    seatAll([[wes, VIEW_CHANNEL]]);
+    await hub.announceVoiceState('srv', room, voiceState(wes.connection.userId, room));
+    assert.equal(states(mara).length, 0);
+  });
+
+  it('scopes a departure by the channel that was left, not the empty one on the wire', async () => {
+    seatAll([[wes, VIEW_CHANNEL]]);
+    // The announcement says channelId: null, which names no channel at all. If
+    // the scope came from the payload there would be nothing to scope by and
+    // the leak would reopen on the way out of the room.
+    await hub.announceVoiceState('srv', room, voiceState(wes.connection.userId, null));
+    assert.equal(states(wes).length, 1);
+    assert.equal(states(wes)[0]?.channelId, null);
+    assert.equal(states(mara).length, 0);
+  });
+
+  it('keeps the camera and screen flags inside the channel too', async () => {
+    seatAll([]);
+    await hub.announceVoiceState(
+      'srv',
+      room,
+      voiceState(wes.connection.userId, room, { cameraOn: true, sharingScreen: true }),
+    );
+    assert.equal(states(mara).length, 0);
+  });
+
+  it('says nothing at all when there is no channel to scope by', async () => {
+    seatAll([[wes, VIEW_CHANNEL]]);
+    await hub.announceVoiceState('srv', null, voiceState(wes.connection.userId, null));
+    assert.equal(states(wes).length, 0);
+  });
+});

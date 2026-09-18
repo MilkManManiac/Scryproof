@@ -43,6 +43,22 @@ export function canSeeCategory(
   return visibleChannels.some((channel) => channel.categoryId === categoryId);
 }
 
+/**
+ * The channel ids this member may be told exist.
+ *
+ * One definition with more than one caller, for the reason written at the top
+ * of this file: two hand-rolled copies of "what can this person see" drift, and
+ * the day they drift is the day one of them shows a hidden channel.
+ */
+export async function visibleChannelIds(ctx: MemberContext): Promise<Set<string>> {
+  const permissions = await computePermissionsForServerChannels(ctx);
+  return new Set(
+    [...permissions.entries()]
+      .filter(([, mask]) => has(mask, Permission.VIEW_CHANNEL))
+      .map(([channelId]) => channelId),
+  );
+}
+
 export async function loadServerDetail(
   serverId: string,
   userId: string,

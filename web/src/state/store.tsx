@@ -93,6 +93,7 @@ type Action =
   | { type: 'messages-loaded'; channelId: string; messages: Message[]; prepend?: boolean }
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
+  | { type: 'voice-states-refreshed'; serverId: string; voiceStates: VoiceState[] }
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
   | { type: 'signed-out' };
@@ -201,6 +202,24 @@ function reducer(state: State, action: Action): State {
 
     case 'server-refreshed':
       return upsertServer(state, action.server);
+
+    /**
+     * Voice presence only reaches people who can see the channel it is about,
+     * so gaining access to a voice channel does not bring the people already
+     * sitting in it — no event fires for somebody who has not moved. This
+     * replaces every state for the server rather than merging, because the
+     * answer just fetched is complete and a merge would keep anyone this
+     * member has just stopped being allowed to see.
+     */
+    case 'voice-states-refreshed': {
+      const kept = Object.fromEntries(
+        Object.entries(state.voiceStates).filter(([, voice]) => voice.serverId !== action.serverId),
+      );
+      for (const voice of action.voiceStates) {
+        kept[voiceKey(voice.serverId, voice.userId)] = voice;
+      }
+      return { ...state, voiceStates: kept };
+    }
 
     case 'marked-read':
       return { ...state, readStates: readUpTo(state, action.channelId, action.messageId) };
@@ -649,13 +668,23 @@ export function StoreProvider({
         // wrong. Refetching is cheap and cannot be subtly incorrect the way a
         // client-side delta would be.
         if (event.t === 'permissions_stale') {
+          const serverId = event.d.serverId;
           void api.servers
-            .one(event.d.serverId)
+            .one(serverId)
             .then(({ server }) => dispatch({ type: 'server-refreshed', server }))
             .catch(() => {
               // Losing access entirely produces a 404; the server_delete or
               // member_leave event that accompanies it handles the cleanup.
             });
+          // And who is in a call, which the channel list does not carry. Being
+          // let into a voice channel has to show the people already in it, and
+          // nobody is going to move just to generate an event.
+          void api.voice
+            .states(serverId)
+            .then(({ voiceStates }) =>
+              dispatch({ type: 'voice-states-refreshed', serverId, voiceStates }),
+            )
+            .catch(() => undefined);
         }
       },
       onStatus: (status) => {

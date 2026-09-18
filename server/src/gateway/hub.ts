@@ -304,16 +304,55 @@ export function setVoiceState(state: VoiceState): void {
 }
 
 /** Clear every voice state for a user across all their servers. */
-export function clearVoiceStatesForUser(userId: string, exceptServerId?: string): VoiceState[] {
-  const cleared: VoiceState[] = [];
+/**
+ * The announcement carries `channelId: null`, which is what "they left" looks
+ * like on the wire — but the channel they left is what decides who is allowed
+ * to hear it, so it comes back alongside rather than being thrown away.
+ */
+export interface ClearedVoiceState {
+  announcement: VoiceState;
+  leftChannelId: string | null;
+}
+
+export function clearVoiceStatesForUser(
+  userId: string,
+  exceptServerId?: string,
+): ClearedVoiceState[] {
+  const cleared: ClearedVoiceState[] = [];
   for (const [key, state] of voiceStates) {
     if (state.userId !== userId) continue;
     if (state.serverId === exceptServerId) continue;
     voiceStates.delete(key);
-    cleared.push({ ...state, channelId: null, sharingScreen: false, cameraOn: false });
+    cleared.push({
+      announcement: { ...state, channelId: null, sharingScreen: false, cameraOn: false },
+      leftChannelId: state.channelId,
+    });
     if (state.channelId) voiceMembershipChanged(state.channelId);
   }
   return cleared;
+}
+
+/**
+ * Who is standing in a voice channel is only news to the people who can see
+ * that channel.
+ *
+ * Broadcasting it to the whole server told everybody that a channel id exists,
+ * that somebody is sitting in it, and whether their camera is on — for a
+ * channel the permissions were hiding. That is the 404-not-403 rule broken at
+ * the gateway, and it is call metadata besides (GAMEPLAN 1b, finding 4).
+ *
+ * `aboutChannelId` is the channel the state concerns: the one being joined, or
+ * the one just left, which is not the same as the `channelId` on the wire.
+ */
+export async function announceVoiceState(
+  serverId: string,
+  aboutChannelId: string | null,
+  state: VoiceState,
+): Promise<void> {
+  // No channel means there is nothing to scope to and nothing to reveal; this
+  // only happens for a state that was never in a channel to begin with.
+  if (!aboutChannelId) return;
+  await broadcastToChannel(serverId, aboutChannelId, { t: 'voice_state_update', d: state });
 }
 
 /*

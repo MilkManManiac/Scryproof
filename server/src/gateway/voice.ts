@@ -34,8 +34,8 @@ export async function handleVoiceStateIntent(
 ): Promise<void> {
   // Leaving: clear every voice state this user holds and tell their servers.
   if (intent.channelId === null) {
-    for (const state of hub.clearVoiceStatesForUser(connection.userId)) {
-      hub.broadcastToServer(state.serverId, { t: 'voice_state_update', d: state });
+    for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(connection.userId)) {
+      await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
     }
     return;
   }
@@ -68,8 +68,11 @@ export async function handleVoiceStateIntent(
   // One call at a time. A person has one microphone, and their device holds
   // one set of call keys; standing in two servers' voice channels at once
   // would leave a ghost in whichever one the client is not actually connected to.
-  for (const elsewhere of hub.clearVoiceStatesForUser(connection.userId, channel.serverId)) {
-    hub.broadcastToServer(elsewhere.serverId, { t: 'voice_state_update', d: elsewhere });
+  for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(
+    connection.userId,
+    channel.serverId,
+  )) {
+    await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
   }
 
   const previous = hub.getVoiceState(channel.serverId, connection.userId);
@@ -77,9 +80,11 @@ export async function handleVoiceStateIntent(
   // Moving between channels leaves the old one first, so nobody appears in two
   // places at once.
   if (previous && previous.channelId !== channel.id) {
-    hub.broadcastToServer(channel.serverId, {
-      t: 'voice_state_update',
-      d: { ...previous, channelId: null, sharingScreen: false, cameraOn: false },
+    await hub.announceVoiceState(channel.serverId, previous.channelId, {
+      ...previous,
+      channelId: null,
+      sharingScreen: false,
+      cameraOn: false,
     });
   }
 
@@ -103,7 +108,7 @@ export async function handleVoiceStateIntent(
   };
 
   hub.setVoiceState(state);
-  hub.broadcastToServer(channel.serverId, { t: 'voice_state_update', d: state });
+  await hub.announceVoiceState(channel.serverId, channel.id, state);
 
   logger.debug(
     { userId: connection.userId, channelId: channel.id },
@@ -112,14 +117,16 @@ export async function handleVoiceStateIntent(
 }
 
 /** Force someone out of voice. Used by MUTE_MEMBERS and MOVE_MEMBERS. */
-export function disconnectFromVoice(serverId: string, userId: string): void {
+export async function disconnectFromVoice(serverId: string, userId: string): Promise<void> {
   const state = hub.getVoiceState(serverId, userId);
   if (!state) return;
 
   hub.setVoiceState({ ...state, channelId: null });
-  hub.broadcastToServer(serverId, {
-    t: 'voice_state_update',
-    d: { ...state, channelId: null, sharingScreen: false, cameraOn: false },
+  await hub.announceVoiceState(serverId, state.channelId, {
+    ...state,
+    channelId: null,
+    sharingScreen: false,
+    cameraOn: false,
   });
 }
 

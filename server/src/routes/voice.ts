@@ -21,6 +21,7 @@ import { HttpError, badRequest, notFound } from '../lib/http-error.js';
 import { logger } from '../lib/logger.js';
 import * as hub from '../gateway/hub.js';
 import { disconnectFromVoice } from '../gateway/voice.js';
+import { visibleChannelIds } from '../services/server-detail.js';
 import {
   createAccessToken,
   isLivekitConfigured,
@@ -99,9 +100,18 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
 
     const { requireMember } = await import('../services/permissions.js');
-    await requireMember(serverId, user.id);
+    const ctx = await requireMember(serverId, user.id);
 
-    return { voiceStates: hub.allVoiceStatesFor([serverId]) };
+    // Who is in a call is only news about a channel you can see. Returning the
+    // lot would name a hidden voice channel and say who is sitting in it, which
+    // is the same leak the gateway had.
+    const visible = await visibleChannelIds(ctx);
+
+    return {
+      voiceStates: hub
+        .allVoiceStatesFor([serverId])
+        .filter((state) => visible.has(state.channelId ?? '')),
+    };
   });
 
   /** Moderator action: pull someone out of voice. */
@@ -114,7 +124,7 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const ctx = await requireServerPermission(serverId, actor.id, Permission.MOVE_MEMBERS);
     await requireHigherThan(ctx, userId);
 
-    disconnectFromVoice(serverId, userId);
+    await disconnectFromVoice(serverId, userId);
     return { ok: true };
   });
 
@@ -151,7 +161,7 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     };
 
     hub.setVoiceState(updated);
-    hub.broadcastToServer(serverId, { t: 'voice_state_update', d: updated });
+    await hub.announceVoiceState(serverId, updated.channelId, updated);
 
     return { ok: true };
   });
