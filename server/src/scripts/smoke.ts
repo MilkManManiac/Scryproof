@@ -11,6 +11,8 @@
  *   npx tsx src/scripts/smoke.ts
  */
 
+import { WebSocket } from 'ws';
+
 const BASE = process.env.SMOKE_BASE ?? 'http://127.0.0.1:8787';
 // Production only accepts its own PUBLIC_URL as an origin, so a run against a
 // production build has to say which origin it is pretending to be.
@@ -83,7 +85,50 @@ class Actor {
   del(path: string) {
     return this.request('DELETE', path);
   }
+
+  /**
+   * A gateway socket for this actor, with the same cookie. Events pile up in
+   * `events`; `ready` is the ready frame. Voice presence is the one thing the
+   * REST surface cannot drive, and it is the thing the permission scoping is
+   * most likely to get wrong, so the socket is here for that.
+   */
+  async socket(): Promise<Socket> {
+    const ws = new WebSocket(`${BASE.replace(/^http/, 'ws')}/gateway`, {
+      headers: { origin: ORIGIN, cookie: this.cookie },
+    });
+    const events: any[] = [];
+    let readyFrame: any = null;
+    await new Promise<void>((resolve, reject) => {
+      ws.on('message', (raw) => {
+        const event = JSON.parse(raw.toString());
+        events.push(event);
+        if (event.t === 'ready') {
+          readyFrame = event.d;
+          resolve();
+        }
+      });
+      ws.on('error', reject);
+      ws.on('close', () => reject(new Error(`${this.label}'s socket closed before ready`)));
+    });
+    return {
+      events,
+      get ready() {
+        return readyFrame;
+      },
+      send: (event: unknown) => ws.send(JSON.stringify(event)),
+      close: () => ws.close(),
+    };
+  }
 }
+
+interface Socket {
+  events: any[];
+  readonly ready: any;
+  send: (event: unknown) => void;
+  close: () => void;
+}
+
+const settle = (ms = 250) => new Promise((done) => setTimeout(done, ms));
 
 async function main(): Promise<void> {
   const stamp = Date.now().toString(36);
@@ -501,6 +546,108 @@ async function main(): Promise<void> {
     tokenForTextChannel.status === 400 || tokenForTextChannel.status === 503,
     tokenForTextChannel.json,
   );
+
+  /* ----------------------------- voice presence -------------------------- */
+  console.log('\nvoice presence');
+
+  // Who is standing in a voice channel is only news to the people who can see
+  // that channel. This once went to the whole server, and to every reconnect,
+  // and out of the voice-states endpoint. Presence needs no media server, so
+  // it is provable here with a socket and no LiveKit.
+  const warRoom = await owner.post(`/api/servers/${serverId}/channels`, {
+    name: 'war-room',
+    type: 'voice',
+  });
+  check('owner can create a private voice channel', warRoom.status === 200, warRoom.json);
+  const warRoomId = warRoom.json?.channel?.id;
+
+  const lockWarRoom = await owner.put(
+    `/api/channels/${warRoomId}/permissions/${everyoneRole.id}`,
+    { targetType: 'role', allow: '0', deny: VIEW_CHANNEL },
+  );
+  check('owner can hide it from @everyone', lockWarRoom.status === 200, lockWarRoom.json);
+
+  const ownerSocket = await owner.socket();
+  const friendSocket = await friend.socket();
+
+  ownerSocket.send({ t: 'voice_state', d: { channelId: warRoomId, cameraOn: true } });
+  await settle();
+
+  const voiceEvents = (socket: Socket) =>
+    socket.events.filter((e) => e.t === 'voice_state_update');
+  check(
+    'the owner is told they joined',
+    voiceEvents(ownerSocket).some((e) => e.d.channelId === warRoomId),
+    voiceEvents(ownerSocket),
+  );
+  check(
+    'a member who cannot see the channel is told nothing, camera and all',
+    voiceEvents(friendSocket).length === 0,
+    voiceEvents(friendSocket),
+  );
+
+  // The ready frame on a fresh connect is the second place this leaked.
+  const friendAgain = await friend.socket();
+  check(
+    'a fresh connect does not carry the hidden call either',
+    !(friendAgain.ready.voiceStates ?? []).some((v: any) => v.channelId === warRoomId),
+    friendAgain.ready.voiceStates,
+  );
+  friendAgain.close();
+
+  // And the REST endpoint is the third.
+  const friendStates = await friend.get(`/api/servers/${serverId}/voice-states`);
+  check(
+    'the voice-states endpoint keeps it out too',
+    friendStates.status === 200 &&
+      !(friendStates.json?.voiceStates ?? []).some((v: any) => v.channelId === warRoomId),
+    friendStates.json,
+  );
+  const ownerStates = await owner.get(`/api/servers/${serverId}/voice-states`);
+  check(
+    'while the owner sees themself in it',
+    (ownerStates.json?.voiceStates ?? []).some((v: any) => v.channelId === warRoomId),
+    ownerStates.json,
+  );
+
+  // Open the channel, and the person already in it has to become visible:
+  // nobody moved, so no event fires, which is why the client refetches.
+  const clearWarRoom = await owner.del(
+    `/api/channels/${warRoomId}/permissions/${everyoneRole.id}`,
+  );
+  check('owner can open it again', clearWarRoom.status === 200, clearWarRoom.json);
+  const friendStatesAfter = await friend.get(`/api/servers/${serverId}/voice-states`);
+  check(
+    'once the channel is visible, the person already in it is too',
+    (friendStatesAfter.json?.voiceStates ?? []).some((v: any) => v.channelId === warRoomId),
+    friendStatesAfter.json,
+  );
+
+  // Leaving says channelId: null, which names no channel, so the scope has to
+  // come from the channel being left. Lock it again first: if the departure
+  // were scoped by its payload, the friend would hear about it.
+  await owner.put(`/api/channels/${warRoomId}/permissions/${everyoneRole.id}`, {
+    targetType: 'role',
+    allow: '0',
+    deny: VIEW_CHANNEL,
+  });
+  await settle();
+  const friendBeforeLeave = voiceEvents(friendSocket).length;
+  ownerSocket.send({ t: 'voice_state', d: { channelId: null } });
+  await settle();
+  check(
+    'a departure from a hidden channel is not announced to someone who cannot see it',
+    voiceEvents(friendSocket).length === friendBeforeLeave,
+    voiceEvents(friendSocket),
+  );
+  check(
+    'but the people who can see it are told',
+    voiceEvents(ownerSocket).some((e) => e.d.channelId === null),
+    voiceEvents(ownerSocket),
+  );
+
+  ownerSocket.close();
+  friendSocket.close();
 
   /* --------------------------------- audit ------------------------------- */
   console.log('\naudit log');

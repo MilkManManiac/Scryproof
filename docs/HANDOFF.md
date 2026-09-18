@@ -65,7 +65,7 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 ```bash
 npm test            # 108 server + 83 web assertions. No server needed, about a second.
-npm run test:smoke  # 64 assertions over the real HTTP surface
+npm run test:smoke  # 75 assertions over the real HTTP surface, and the gateway socket
 npm run test:exif   # a real headless browser; needs the web dev server on :5173
 npm run test:prod   # builds the production bundle and drives it through a stand-in for nginx
 npm run test:voice  # two headless browsers in a real encrypted call
@@ -165,10 +165,16 @@ states on `permissions_stale` now, the way it already refetches the server.
 The rest of the sweep found nothing. Roles, members and presence go to the whole
 server by design and match what the ready frame already sends.
 
-**Not proven:** nobody has been in a call since this changed. The scoping is
-covered by unit tests over the hub, but `npm run test:voice` does not assert on
-who receives a voice state, and the REST endpoint's filter is exercised by no
-test at all. Both use the same rule as the tested path. Check it on the box.
+**Proven over the wire, not only in the hub harness.** The smoke test opens
+real gateway sockets now (`Actor.socket()`), which is the one thing the REST
+surface could not drive. Presence needs no media server, so this runs without
+LiveKit: the owner joins a hidden voice channel with the camera on, and the
+friend's socket hears nothing, the friend's fresh connect carries nothing, and
+the voice-states endpoint returns nothing — then opening the channel makes the
+person already in it appear, and a departure from a re-hidden channel reaches
+the owner and not the friend. Eleven checks; two of them fail when the old
+broadcast is put back. What is still untested is a **real call** on the real
+box with three people, which was true before this and is M3's exit.
 
 ## Done on 2026-09-18: categories, and getting to the unread line
 
