@@ -2723,3 +2723,47 @@ kbd {
 .field select:focus {
   border-color: var(--accent-dim);
 }
+
+/* The bar that says the "New" line is above you.
+ *
+ * It takes its own row rather than floating over the timeline. Floating cost a
+ * message: the top one sat behind it, unreadable, which is a strange thing for
+ * a bar about not missing messages to do. Accent, like every other "there is
+ * something here" mark in this app. */
+.unread-bar {
+  flex: 0 0 auto;
+  margin: 0 16px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 10px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--accent-dim);
+  color: #12100b;
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.unread-bar-jump {
+  flex: 1 1 auto;
+  text-align: left;
+  color: inherit;
+  font-weight: inherit;
+  padding: 0;
+}
+.unread-bar-jump:hover {
+  text-decoration: underline;
+}
+
+.unread-bar-dismiss {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 620;
+}
+.unread-bar-dismiss:hover {
+  background: #0000001f;
+}

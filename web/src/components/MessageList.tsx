@@ -18,6 +18,7 @@ import type { Channel, Member, Message } from '@gooffline/shared';
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { EDIT_LAST, on } from '../lib/signals';
+import { unreadLine } from '../lib/unread-line';
 import { can } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
@@ -161,6 +162,20 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
     }
   }
 
+  // Where the "New" line is, and whether it is on screen. Landing at the newest
+  // message is right — that is what people came for — but it means the line
+  // marking where they stopped reading can be forty messages up with nothing
+  // saying so. The bar is that something.
+  const divider = useRef<HTMLDivElement | null>(null);
+  const [dividerSeen, setDividerSeen] = useState(true);
+
+  // The line and the count come from one rule, tested on its own, so the
+  // timeline and the sidebar badge can never end up saying different things.
+  const newLine = useMemo(() => {
+    const line = unreadLine({ messages, selfId, lastReadMessageId: newAfter });
+    return { ...line, newestUnreadId: line.index === -1 ? null : messages[line.index]?.id ?? null };
+  }, [messages, selfId, newAfter]);
+
   const rows = useMemo(() => {
     const output: { message: Message; grouped: boolean; day: string | null; firstNew: boolean }[] = [];
     let previous: Message | null = null;
@@ -171,12 +186,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
       const previousAt = previous ? new Date(previous.createdAt) : null;
 
       const day = !previousAt || !sameDay(at, previousAt) ? dayLabel(at) : null;
-      // Only other people's messages are news. `undefined` means "not known yet".
-      const firstNew =
-        !markedNew &&
-        newAfter !== undefined &&
-        message.authorId !== selfId &&
-        (newAfter === null ? false : message.id > newAfter);
+      const firstNew = !markedNew && message.id === newLine.newestUnreadId;
       if (firstNew) markedNew = true;
 
       const grouped =
@@ -191,7 +201,36 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
       previous = message;
     }
     return output;
-  }, [messages, newAfter, selfId]);
+  }, [messages, newLine.newestUnreadId]);
+
+  const newCount = newLine.count;
+
+  // The line sits on the first row we hold, and there is more above it we have
+  // not fetched. The count is a floor, so it is written as one rather than
+  // stated as a fact we cannot check.
+  const countIsFloor = newLine.index === 0 && messages.length >= 50;
+
+  useEffect(() => {
+    const element = divider.current;
+    const root = scroller.current;
+    if (!element || !root) {
+      setDividerSeen(true);
+      return;
+    }
+    // Watched rather than computed on every scroll: the answer only changes
+    // when the line crosses the edge, and a scroll handler that measures the
+    // DOM on every frame is how a long channel starts to stutter.
+    const observer = new IntersectionObserver(
+      ([entry]) => setDividerSeen(entry?.isIntersecting ?? true),
+      { root },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [newLine.newestUnreadId, channel.id]);
+
+  const jumpToNew = () => {
+    divider.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
 
   if (!canReadHistory) {
     return (
@@ -211,6 +250,26 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
 
   return (
     <>
+      {newCount > 0 && !dividerSeen ? (
+        <div className="unread-bar">
+          <button type="button" className="unread-bar-jump" onClick={jumpToNew}>
+            {newCount === 1 ? '1 new message' : `${newCount}${countIsFloor ? '+' : ''} new messages`}
+            {/* "Where you stopped" is only true if you ever started. */}
+            {newAfter === null ? ' — jump to the first one' : ' — jump to where you stopped'}
+          </button>
+          <button
+            type="button"
+            className="unread-bar-dismiss"
+            onClick={() => {
+              if (newestId) markRead(channel.id, newestId);
+              setNewAfter(newestId ?? null);
+            }}
+          >
+            Mark read
+          </button>
+        </div>
+      ) : null}
+
       <div className="messages" ref={scroller} onScroll={() => void onScroll()}>
         {loadingOlder ? (
           <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
@@ -230,7 +289,11 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
         {rows.map(({ message, grouped, day, firstNew }) => (
           <div key={message.id}>
             {day ? <div className="day-divider">{day}</div> : null}
-            {firstNew ? <div className="new-divider">New</div> : null}
+            {firstNew ? (
+              <div className="new-divider" ref={divider}>
+                New
+              </div>
+            ) : null}
             <MessageRow
               message={message}
               grouped={grouped}

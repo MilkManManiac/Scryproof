@@ -195,6 +195,33 @@ async function main(): Promise<void> {
   // moment he signs in.
   await say(mara, planning.channel.id, `${at(wes)} that was not an answer`);
 
+  // A run long enough to fall off the top of the window, so the bar that says
+  // "22 new messages, jump to where you stopped" has something to point at.
+  // Without this the unread line exists and nobody ever sees it.
+  const backlog: [Actor, string][] = [
+    [alex, 'Reread my notes from last time and I still do not understand the amulet.'],
+    [devon, 'The amulet is fine. You are overthinking the amulet.'],
+    [alex, 'I am bringing the good dice.'],
+    [mara, 'The good dice owe us nothing.'],
+    [devon, 'Can we start at seven instead of eight? I have a thing.'],
+    [alex, 'Seven works.'],
+    [mara, 'Seven is fine, I will be late anyway.'],
+    [devon, 'Still owe you a backstory. It is coming.'],
+    [alex, 'It has been coming for four sessions.'],
+    [mara, 'Do we retcon the river crossing or just never speak of it.'],
+    [devon, 'Never speak of it.'],
+    [alex, 'I made a playlist for the swamp. It is mostly one long drone.'],
+    [mara, 'That is the swamp, yes.'],
+    [devon, 'Reminder that nobody has healing left.'],
+    [alex, 'Nobody has healing left and Devon wants to fight the thing under the river.'],
+    [mara, 'Correct on both counts.'],
+    [devon, 'Last session ran long, sorry. Snacks are on me.'],
+    [alex, 'Bringing snacks, do not eat before.'],
+    [mara, 'Three sessions to the solstice, if we are counting.'],
+    [devon, 'We are counting.'],
+  ];
+  for (const [actor, line] of backlog) await say(actor, planning.channel.id, line);
+
   await say(wes, maps.channel.id, 'Started the marshes. The rivers take longer than the whole coastline.');
   const handMade = await say(
     devon,
