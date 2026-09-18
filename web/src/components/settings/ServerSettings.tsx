@@ -19,12 +19,13 @@ import { ApiError, api } from '../../lib/api';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
+import { LayoutPane } from './LayoutPane';
 import { OverwritePane } from './OverwritePane';
 import { RolesPane } from './RolesPane';
 import { authorityFor } from './authority';
 import type { Authority } from './authority';
 
-type Section = 'overview' | 'roles' | 'categories' | 'members' | 'invites' | 'bans' | 'audit';
+type Section = 'overview' | 'layout' | 'roles' | 'categories' | 'members' | 'invites' | 'bans' | 'audit';
 
 export function ServerSettings({
   server,
@@ -52,6 +53,7 @@ export function ServerSettings({
 
   const sections: { id: Section; label: string; visible: boolean }[] = [
     { id: 'overview', label: 'Overview', visible: true },
+    { id: 'layout', label: 'Layout', visible: authority.can(Permission.MANAGE_CHANNELS) },
     { id: 'roles', label: 'Roles', visible: authority.can(Permission.MANAGE_ROLES) },
     {
       id: 'categories',
@@ -95,6 +97,7 @@ export function ServerSettings({
           {section === 'overview' ? (
             <Overview server={server} authority={authority} onClose={onClose} />
           ) : null}
+          {section === 'layout' ? <LayoutPane server={server} authority={authority} /> : null}
           {section === 'roles' ? (
             <RolesPane server={server} members={members} authority={authority} />
           ) : null}
@@ -820,6 +823,8 @@ function AuditPane({ server, members }: { server: ServerDetail; members: Member[
         return `edited the role ${target}`;
       case 'role.reorder':
         return 'reordered the roles';
+      case 'server.layout':
+        return 'rearranged the channels and categories';
       case 'role.delete':
         return `deleted the role ${changedName ?? ''}`.trim();
       case 'member.roles':

@@ -29,6 +29,7 @@ export type AuditAction =
   | 'category.update'
   | 'category.delete'
   | 'category.permissions'
+  | 'server.layout'
   | 'role.create'
   | 'role.update'
   | 'role.reorder'

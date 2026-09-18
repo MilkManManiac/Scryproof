@@ -35,6 +35,7 @@ import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import {
+  computePermissionsForServerChannels,
   computePermissionsInChannel,
   requireChannelPermission,
   requireMember,
@@ -360,6 +361,115 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     }
 
     return { permissions: encodeMask(permissions) };
+  });
+
+  /* -------------------------------- layout ------------------------------- */
+
+  /**
+   * The order of everything in the sidebar, in one request.
+   *
+   * Same shape as the role reorder, for the same reason: a drag past four
+   * rows is one gesture, not four PATCHes, four audit entries and three
+   * orderings on the wire that nobody asked for. The whole layout arrives,
+   * positions are renumbered densely underneath it, and one event goes out.
+   *
+   * Two things this has to be careful about. Moving a channel into a
+   * different category changes who can see it, because the category is a
+   * permission layer — so any category change invalidates the permission
+   * cache, exactly as PATCH /api/channels/:id does. And the actor may not be
+   * able to see every channel in the server: those are not theirs to arrange,
+   * so they keep their numbers and their category, and naming one of them in
+   * the request is answered with "does not exist" like everywhere else.
+   */
+  app.put('/api/servers/:serverId/layout', async (request) => {
+    const user = requireUser(request);
+    const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        categories: z.array(z.string()).max(250),
+        channels: z
+          .array(z.object({ id: z.string(), categoryId: z.string().nullable() }))
+          .max(1000),
+      })
+      .parse(request.body);
+
+    const ctx = await requireServerPermission(serverId, user.id, Permission.MANAGE_CHANNELS);
+
+    const db = getDb();
+    const [allCategories, allChannels, permissions] = await Promise.all([
+      db.select().from(categories).where(eq(categories.serverId, serverId)),
+      db.select().from(channels).where(eq(channels.serverId, serverId)),
+      computePermissionsForServerChannels(ctx),
+    ]);
+
+    const categoryById = new Map(allCategories.map((entry) => [entry.id, entry]));
+    const visibleById = new Map(
+      allChannels
+        .filter((channel) => has(permissions.get(channel.id) ?? 0n, Permission.VIEW_CHANNEL))
+        .map((channel) => [channel.id, channel]),
+    );
+
+    const categoryIds = body.categories;
+    if (new Set(categoryIds).size !== categoryIds.length) {
+      throw badRequest('A category is listed twice.', 'duplicate_category');
+    }
+    if (categoryIds.some((id) => !categoryById.has(id))) {
+      throw notFound('That category does not exist.', 'unknown_category');
+    }
+
+    const channelIds = body.channels.map((entry) => entry.id);
+    if (new Set(channelIds).size !== channelIds.length) {
+      throw badRequest('A channel is listed twice.', 'duplicate_channel');
+    }
+    if (channelIds.some((id) => !visibleById.has(id))) {
+      throw notFound('That channel does not exist.', 'unknown_channel');
+    }
+    if (body.channels.some((entry) => entry.categoryId !== null && !categoryById.has(entry.categoryId))) {
+      throw notFound('That category does not exist.', 'unknown_category');
+    }
+
+    // Positions are per list: categories among themselves, channels among
+    // the ones this actor could see. Anything not named keeps its number.
+    const categoryMoves = categoryIds
+      .map((id, position) => ({ id, position }))
+      .filter(({ id, position }) => categoryById.get(id)?.position !== position);
+
+    const recategorised: string[] = [];
+    const channelMoves = body.channels
+      .map(({ id, categoryId }, position) => ({ id, categoryId, position }))
+      .filter(({ id, categoryId, position }) => {
+        const current = visibleById.get(id)!;
+        if (current.categoryId !== categoryId) recategorised.push(id);
+        return current.categoryId !== categoryId || current.position !== position;
+      });
+
+    if (categoryMoves.length === 0 && channelMoves.length === 0) return { ok: true };
+
+    await db.transaction(async (tx) => {
+      for (const { id, position } of categoryMoves) {
+        await tx.update(categories).set({ position }).where(eq(categories.id, id));
+      }
+      for (const { id, categoryId, position } of channelMoves) {
+        await tx.update(channels).set({ categoryId, position }).where(eq(channels.id, id));
+      }
+    });
+
+    await audit.record({
+      serverId,
+      actorId: user.id,
+      action: 'server.layout',
+      targetType: 'server',
+      targetId: serverId,
+      changes: { categories: categoryMoves.length, channels: channelMoves.length, recategorised },
+    });
+
+    // One event for the whole gesture. A recategorised channel may have just
+    // become visible or invisible to somebody, and the blunt refetch is the
+    // one that cannot be subtly wrong about that; a pure reorder rides the
+    // same path because it is rare and the cost is one cheap request.
+    hub.invalidateServerPermissions(serverId);
+
+    return { ok: true };
   });
 
   /* ------------------------------ categories ----------------------------- */

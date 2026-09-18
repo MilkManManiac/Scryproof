@@ -119,6 +119,11 @@ export const api = {
     setMemberRoles: (serverId: string, userId: string, roleIds: string[]) =>
       put<{ roleIds: string[] }>(`/api/servers/${serverId}/members/${userId}/roles`, { roleIds }),
     auditLog: (id: string) => get<{ entries: AuditLogEntry[] }>(`/api/servers/${id}/audit-log`),
+    /** The whole sidebar order in one request; positions are renumbered underneath it. */
+    setLayout: (
+      id: string,
+      layout: { categories: string[]; channels: { id: string; categoryId: string | null }[] },
+    ) => put<{ ok: true }>(`/api/servers/${id}/layout`, layout),
   },
 
   channels: {

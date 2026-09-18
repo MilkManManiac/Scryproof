@@ -125,14 +125,27 @@ try {
     await sleep(400);
   }
 
+  // e.g. --focus 'button[aria-label="Reorder maps"]', so that --press lands on
+  // an element's own key handler rather than on the window.
+  const focus = flag('focus', null);
+  if (focus) {
+    const hit = await run(
+      `(() => { const el = document.querySelector(${JSON.stringify(focus)}); if (!el) return false; el.focus(); return document.activeElement === el; })()`,
+    );
+    if (!hit) throw new Error(`could not focus ${focus}`);
+  }
+
   // e.g. --press ctrl+k, to photograph something only a shortcut opens.
-  const press = flag('press', null);
-  if (press) {
+  // Repeatable. Goes to the focused element if --focus was given.
+  for (const press of flags('press')) {
     const parts = press.toLowerCase().split('+');
     const key = parts.pop();
+    const target = focus ? 'document.activeElement' : 'window';
+    // Arrow keys are spelt the way KeyboardEvent spells them.
+    const named = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', esc: 'Escape' };
     await run(
-      `window.dispatchEvent(new KeyboardEvent('keydown', {
-        key: ${JSON.stringify(key)},
+      `${target}.dispatchEvent(new KeyboardEvent('keydown', {
+        key: ${JSON.stringify(named[key] ?? key)},
         ctrlKey: ${parts.includes('ctrl')},
         metaKey: ${parts.includes('meta')},
         shiftKey: ${parts.includes('shift')},
@@ -142,6 +155,16 @@ try {
       })) || true`,
     );
     await sleep(600);
+  }
+
+  // e.g. --then '.settings-nav-item:last-child'. A click after the presses,
+  // for photographing what the presses did once the dialog is out of the way.
+  for (const then of flags('then')) {
+    const hit = await run(
+      `(() => { const el = document.querySelector(${JSON.stringify(then)}); if (!el) return false; el.click(); return true; })()`,
+    );
+    if (!hit) throw new Error(`nothing on the page matches ${then}`);
+    await sleep(700);
   }
 
   const type = flag('type', null);

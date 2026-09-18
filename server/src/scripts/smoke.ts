@@ -436,6 +436,70 @@ async function main(): Promise<void> {
     afterMove.json,
   );
 
+  /* ---------------------------------- layout ----------------------------- */
+  console.log('\nlayout');
+
+  // The whole order in one request. The part that matters is that moving a
+  // channel under a heading is a permission change, and the endpoint has to
+  // treat it as one: the category is still locked here.
+  const ownerView = (await owner.get(`/api/servers/${serverId}`)).json?.server;
+  const layoutOf = (view: any, place: (channel: any) => string | null) => ({
+    categories: [...view.categories]
+      .sort((a: any, b: any) => a.position - b.position)
+      .map((c: any) => c.id),
+    channels: view.channels.map((c: any) => ({ id: c.id, categoryId: place(c) })),
+  });
+
+  const backIn = await owner.put(
+    `/api/servers/${serverId}/layout`,
+    layoutOf(ownerView, (c) => (c.id === secondId ? categoryId : c.categoryId)),
+  );
+  check('owner can move a channel into a category through the layout', backIn.status === 200, backIn.json);
+  const hiddenAgain = await friend.get(`/api/channels/${secondId}`);
+  check(
+    'a channel moved into a locked category through the layout is hidden',
+    hiddenAgain.status === 404,
+    hiddenAgain.json,
+  );
+
+  const reversed = await owner.put(`/api/servers/${serverId}/layout`, {
+    categories: layoutOf(ownerView, () => null).categories,
+    channels: [...ownerView.channels]
+      .reverse()
+      .map((c: any) => ({ id: c.id, categoryId: c.id === secondId ? null : c.categoryId })),
+  });
+  check('owner can reverse the channel order and move it out in the same request', reversed.status === 200, reversed.json);
+  const afterReverse = (await owner.get(`/api/servers/${serverId}`)).json?.server;
+  const firstBefore = ownerView.channels[0]?.id;
+  const positionOf = (id: string) => afterReverse.channels.find((c: any) => c.id === id)?.position;
+  check(
+    'positions are renumbered underneath the order sent',
+    positionOf(firstBefore) === ownerView.channels.length - 1,
+    afterReverse.channels.map((c: any) => [c.name, c.position]),
+  );
+  const revealedAgain = await friend.get(`/api/channels/${secondId}`);
+  check('and the channel moved out is visible again', revealedAgain.status === 200, revealedAgain.json);
+
+  const twice = await owner.put(`/api/servers/${serverId}/layout`, {
+    categories: [],
+    channels: [
+      { id: secondId, categoryId: null },
+      { id: secondId, categoryId: null },
+    ],
+  });
+  check('a channel listed twice is refused', twice.status === 400, twice.json);
+
+  const friendArranges = await friend.put(
+    `/api/servers/${serverId}/layout`,
+    layoutOf(ownerView, (c) => c.categoryId),
+  );
+  check('a member without MANAGE_CHANNELS cannot rearrange', friendArranges.status === 403, friendArranges.json);
+
+  const layoutEntry = (await owner.get(`/api/servers/${serverId}/audit-log`)).json?.entries?.find(
+    (e: any) => e.action === 'server.layout',
+  );
+  check('the audit log records the rearrangement once per gesture', Boolean(layoutEntry), layoutEntry);
+
   const clearedCategory = await owner.del(
     `/api/categories/${categoryId}/permissions/${everyoneRole.id}`,
   );

@@ -2767,3 +2767,33 @@ kbd {
 .unread-bar-dismiss:hover {
   background: #0000001f;
 }
+
+/* --------------------------------- layout pane ---------------------------------- */
+
+/* Reuses the role rows: same grip, same drag state. Headings read like the
+ * sidebar's, channels sit in under them. */
+.layout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 520px;
+}
+.layout-heading {
+  margin-top: 10px;
+}
+.layout-heading:first-child {
+  margin-top: 0;
+}
+.layout-heading-name .role-entry-name {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.layout-channel {
+  padding-left: 18px;
+}
+.layout-channel .channel-sigil {
+  width: 14px;
+}

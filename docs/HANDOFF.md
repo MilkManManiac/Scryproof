@@ -65,7 +65,7 @@ local PGlite database, which `dev-restart.sh` wipes.
 
 ```bash
 npm test            # 108 server + 83 web assertions. No server needed, about a second.
-npm run test:smoke  # 75 assertions over the real HTTP surface, and the gateway socket
+npm run test:smoke  # 83 assertions over the real HTTP surface, and the gateway socket
 npm run test:exif   # a real headless browser; needs the web dev server on :5173
 npm run test:prod   # builds the production bundle and drives it through a stand-in for nginx
 npm run test:voice  # two headless browsers in a real encrypted call
@@ -97,8 +97,12 @@ seed's four against it.
 
 `node scripts/shot.mjs docs/shots/x.png --as wes --channel maps` signs in and
 photographs the app; `--click <selector>` (repeatable, in order), `--hover
-<selector>` and `--press ctrl+k` reach a screen that only opens on an action or
-under the pointer. Needs the API, the web dev server and a seeded database.
+<selector>`, `--focus <selector>` then `--press up` (repeatable; goes to the
+focused element), and `--then <selector>` for a click after the presses, reach
+a screen that only opens on an action or under the pointer. Needs the API, the
+web dev server and a seeded database. **The API does not reload on edit**:
+restart it before photographing a server change, or you photograph the old
+process — that cost twenty minutes on 2026-09-18.
 
 ## Screenshots
 
@@ -135,6 +139,26 @@ under the pointer. Needs the API, the web dev server and a seeded database.
 ![Categories are something you can make now](shots/m5-categories.png)
 
 ![A category's permissions, reached from its own heading](shots/m5-category-permissions.png)
+
+![Server settings → Layout: the sidebar's order, with a handle on every row](shots/m5-layout.png)
+
+## Done on 2026-09-18, later still: the sidebar can be rearranged
+
+Server settings → **Layout**. One list in the order the sidebar draws it, a
+handle on every category and channel, drag or arrow keys — the role list's
+pattern, because two ways of reordering things in one app is one too many.
+Moving a channel past a heading moves it into that category, and the note says
+what that means: the category's permissions come with it.
+
+`PUT /api/servers/:id/layout` takes the whole order and renumbers underneath
+it, like the role reorder and for the same reason (one gesture, one request,
+one audit entry). Two rules in it worth knowing: a channel the actor cannot see
+is not theirs to arrange, keeps its place, and naming it is answered 404; and
+any category change invalidates the permission cache, exactly as
+`PATCH /api/channels/:id` does — the pure-reorder case rides the same blunt
+refetch because it is rare and the refetch cannot be subtly wrong. Eight smoke
+checks, including that a channel moved into a locked category through the
+layout disappears for a member, and reappears when moved out.
 
 ## Found on 2026-09-18, later: voice presence went to everyone
 
@@ -555,10 +579,9 @@ as small uppercase captions, which turned a role name into a heading. It is
 3. **M3 on the real box.** The TURN path has never carried a call, nothing has
    been tried with three people, and a `device_keys` table still has to replace
    `users.identity_key`. Then video and screen share (M4).
-4. **Reordering.** Categories and channels both carry a `position` the server
-   will accept a change to, and there is no way to change it from the client.
-   New ones go to the bottom. The role list already has a drag-and-arrow-key
-   reorder to copy from.
+4. **Reordering from the sidebar itself.** Today it lives under server
+   settings → Layout, which is one screen away from where the channels are.
+   Whether that is fine or annoying is Wes's call after using it.
 
 ## Decisions made this session
 
