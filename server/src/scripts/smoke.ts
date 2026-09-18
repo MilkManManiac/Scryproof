@@ -336,6 +336,27 @@ async function main(): Promise<void> {
     namesAfterLock,
   );
 
+  // The heading is information as much as the channel is. "Staff" holds
+  // nothing this member may see, so they are not told it exists.
+  const categoriesAfterLock: string[] = (afterLockList.json?.server?.categories ?? []).map(
+    (c: any) => c.name,
+  );
+  check(
+    'a category holding nothing visible is absent from the sidebar',
+    !categoriesAfterLock.includes('Staff'),
+    categoriesAfterLock,
+  );
+
+  const ownerSees = await owner.get(`/api/servers/${serverId}`);
+  const ownerCategories: string[] = (ownerSees.json?.server?.categories ?? []).map(
+    (c: any) => c.name,
+  );
+  check(
+    'someone who may manage channels still sees the category',
+    ownerCategories.includes('Staff'),
+    ownerCategories,
+  );
+
   // The category sets the default; the channel gets the final word.
   const reopen = await owner.put(
     `/api/channels/${inCategoryId}/permissions/${everyoneRole.id}`,

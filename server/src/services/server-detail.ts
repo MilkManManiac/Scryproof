@@ -20,6 +20,29 @@ import {
 } from './permissions.js';
 import * as serialize from './serialize.js';
 
+/**
+ * Whether a member may be told a category exists.
+ *
+ * The same rule channels get, one level up: a category name is information in
+ * its own right, and "staff-only" or "surprise-for-mara" gives away exactly
+ * what hiding the channels inside it was for. So a category is sent only when
+ * the member can see something in it.
+ *
+ * The exception is anyone who may manage channels. They can create, rename and
+ * delete categories, and a category they just made is empty by definition — if
+ * it vanished until the first channel landed in it, the button would look
+ * broken. This is the same shape as the settings screen, which has always
+ * listed every category to the people who administer them.
+ */
+export function canSeeCategory(
+  categoryId: string,
+  basePermissions: bigint,
+  visibleChannels: readonly { categoryId: string | null }[],
+): boolean {
+  if (has(basePermissions, Permission.MANAGE_CHANNELS)) return true;
+  return visibleChannels.some((channel) => channel.categoryId === categoryId);
+}
+
 export async function loadServerDetail(
   serverId: string,
   userId: string,
@@ -61,6 +84,10 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     return has(permissions, Permission.VIEW_CHANNEL);
   });
 
+  const visibleCategories = serverCategories.filter((category) =>
+    canSeeCategory(category.id, ctx.basePermissions, visibleChannels),
+  );
+
   const memberRows = await db
     .select({ userId: members.userId })
     .from(members)
@@ -68,7 +95,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
 
   return {
     ...serialize.server(serverRow),
-    categories: serverCategories.map(serialize.category),
+    categories: visibleCategories.map(serialize.category),
     channels: visibleChannels.map(serialize.channel),
     roles: serverRoles.map(serialize.role),
     memberCount: memberRows.length,

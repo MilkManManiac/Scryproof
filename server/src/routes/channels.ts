@@ -394,7 +394,12 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       changes: { name: created.name },
     });
 
-    hub.broadcastToServer(serverId, { t: 'category_create', d: serialize.category(created) });
+    // A new category is empty, so only people who may manage channels can see
+    // it yet. That is the same answer a reconnect would give.
+    await hub.broadcastToCategory(serverId, created.id, {
+      t: 'category_create',
+      d: serialize.category(created),
+    });
     return { category: serialize.category(created) };
   });
 
@@ -429,7 +434,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 
     if (!updated) throw notFound('That category does not exist.', 'unknown_category');
 
-    hub.broadcastToServer(existing.serverId, {
+    await hub.broadcastToCategory(existing.serverId, categoryId, {
       t: 'category_update',
       d: serialize.category(updated),
     });
@@ -462,6 +467,9 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       targetId: categoryId,
     });
 
+    // Sent to the whole server, like a deleted channel: this carries an id and
+    // no name, and anyone who never held the category simply has nothing to
+    // drop.
     hub.broadcastToServer(existing.serverId, {
       t: 'category_delete',
       d: { id: categoryId, serverId: existing.serverId },
@@ -473,17 +481,21 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       .where(and(eq(channels.serverId, existing.serverId), eq(channels.categoryId, categoryId)))
       .orderBy(asc(channels.position));
 
+    // The category's overwrites went with it, so every channel that was inside
+    // it now resolves against the server alone. A category used to hide things
+    // is a category whose deletion reveals them. Invalidate first: the updates
+    // below have to be addressed by who can see these channels *now*, not by a
+    // cache still applying a layer that no longer exists.
+    if (orphaned.length > 0) hub.invalidateServerPermissions(existing.serverId);
+
     for (const channel of orphaned) {
-      hub.broadcastToServer(existing.serverId, {
+      // Permission-aware, because this event carries the channel's name and
+      // some of these channels were only ever visible through the category.
+      await hub.broadcastToChannel(existing.serverId, channel.id, {
         t: 'channel_update',
         d: serialize.channel({ ...channel, categoryId: null }),
       });
     }
-
-    // The category's overwrites went with it, so every channel that was inside
-    // it now resolves against the server alone. A category used to hide things
-    // is a category whose deletion reveals them.
-    if (orphaned.length > 0) hub.invalidateServerPermissions(existing.serverId);
 
     return { ok: true };
   });

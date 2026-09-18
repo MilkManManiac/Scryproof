@@ -128,7 +128,7 @@ export const api = {
     ) => post<{ channel: Channel }>(`/api/servers/${serverId}/channels`, body),
     update: (
       id: string,
-      body: { name?: string; topic?: string | null; slowmodeSeconds?: number },
+      body: { name?: string; topic?: string | null; slowmodeSeconds?: number; categoryId?: string | null },
     ) => patch<{ channel: Channel }>(`/api/channels/${id}`, body),
     remove: (id: string) => del<{ ok: true }>(`/api/channels/${id}`),
     permissions: (id: string) =>
@@ -148,6 +148,8 @@ export const api = {
   categories: {
     create: (serverId: string, name: string) =>
       post<{ category: Category }>(`/api/servers/${serverId}/categories`, { name }),
+    rename: (id: string, name: string) =>
+      patch<{ category: Category }>(`/api/categories/${id}`, { name }),
     remove: (id: string) => del<{ ok: true }>(`/api/categories/${id}`),
     /**
      * A category's overwrites apply to every channel inside it, underneath

@@ -15,20 +15,34 @@ import { groupChannels } from '../lib/channel-order';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
+import { CategorySettings } from './settings/CategorySettings';
 import { ServerSettings } from './settings/ServerSettings';
+import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
 
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [dialog, setDialog] = useState<'channel' | 'invite' | 'settings' | null>(null);
+  const [dialog, setDialog] = useState<'channel' | 'category' | 'invite' | 'settings' | null>(null);
+  const [addMenu, setAddMenu] = useState(false);
+  // Which category the New channel dialog should start on, when it was opened
+  // from a heading rather than from the top of the sidebar.
+  const [newChannelIn, setNewChannelIn] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupChannels(server), [server]);
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
   const canInvite = canOnServer(server, Permission.CREATE_INVITE);
+  // An empty category is only ever sent to someone who may manage channels, and
+  // they need to see the one they just made.
+  const groups = useMemo(
+    () => groupChannels(server, { keepEmpty: canManage }),
+    [server, canManage],
+  );
 
   const members = state.members[server.id] ?? [];
+  const category = server.categories.find((entry) => entry.id === editingCategory) ?? null;
   const nameFor = (userId: string) => {
     const member = members.find((entry) => entry.userId === userId);
     return member?.nickname ?? member?.user.displayName ?? 'Someone';
@@ -63,14 +77,40 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
             </button>
           ) : null}
           {canManage ? (
-            <button
-              type="button"
-              className="icon-button"
-              title="New channel"
-              onClick={() => setDialog('channel')}
-            >
-              +
-            </button>
+            <span style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="icon-button"
+                title="Add a channel or a category"
+                aria-haspopup="menu"
+                onClick={() => setAddMenu((open) => !open)}
+              >
+                +
+              </button>
+              {addMenu ? (
+                <Menu align="right" onClose={() => setAddMenu(false)}>
+                  <MenuItem
+                    note="Somewhere to talk."
+                    onClick={() => {
+                      setAddMenu(false);
+                      setNewChannelIn(null);
+                      setDialog('channel');
+                    }}
+                  >
+                    Channel
+                  </MenuItem>
+                  <MenuItem
+                    note="A heading, and a permission layer under every channel in it."
+                    onClick={() => {
+                      setAddMenu(false);
+                      setDialog('category');
+                    }}
+                  >
+                    Category
+                  </MenuItem>
+                </Menu>
+              ) : null}
+            </span>
           ) : null}
         </span>
       </div>
@@ -82,17 +122,50 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
 
           return (
             <div className="category" key={key}>
-              <button
-                type="button"
-                className="category-label"
-                onClick={() => setCollapsed((prev) => ({ ...prev, [key]: !isCollapsed }))}
-                aria-expanded={!isCollapsed}
-              >
-                <span className={isCollapsed ? 'category-caret collapsed' : 'category-caret'}>
-                  &#9660;
-                </span>
-                {entry.name}
-              </button>
+              <div className="category-row">
+                <button
+                  type="button"
+                  className="category-label"
+                  onClick={() => setCollapsed((prev) => ({ ...prev, [key]: !isCollapsed }))}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className={isCollapsed ? 'category-caret collapsed' : 'category-caret'}>
+                    &#9660;
+                  </span>
+                  {entry.name}
+                </button>
+
+                {canManage && entry.id !== null ? (
+                  <span className="category-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title={`Settings for ${entry.name}`}
+                      onClick={() => setEditingCategory(entry.id)}
+                    >
+                      &#9881;
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title={`New channel in ${entry.name}`}
+                      onClick={() => {
+                        setNewChannelIn(entry.id);
+                        setDialog('channel');
+                      }}
+                    >
+                      +
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+
+              {isCollapsed || entry.channels.length > 0 ? null : (
+                <p className="category-empty">
+                  Nothing in here yet. Only you and anyone who can manage channels sees this
+                  heading until there is.
+                </p>
+              )}
 
               {isCollapsed
                 ? null
@@ -177,7 +250,23 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
       <UserPanel />
 
       {dialog === 'channel' ? (
-        <NewChannelDialog server={server} onClose={() => setDialog(null)} />
+        <NewChannelDialog
+          server={server}
+          initialCategoryId={newChannelIn}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      {dialog === 'category' ? (
+        <NewCategoryDialog server={server} onClose={() => setDialog(null)} />
+      ) : null}
+      {category ? (
+        <CategorySettings
+          category={category}
+          server={server}
+          members={members}
+          authority={authorityFor(server, members, state.user?.id ?? null)}
+          onClose={() => setEditingCategory(null)}
+        />
       ) : null}
       {dialog === 'invite' ? (
         <InviteDialog server={server} onClose={() => setDialog(null)} />
@@ -189,13 +278,23 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   );
 }
 
-function NewChannelDialog({ server, onClose }: { server: ServerDetail; onClose: () => void }) {
+function NewChannelDialog({
+  server,
+  initialCategoryId,
+  onClose,
+}: {
+  server: ServerDetail;
+  initialCategoryId: string | null;
+  onClose: () => void;
+}) {
   const [name, setName] = useState('');
   const [type, setType] = useState<'text' | 'voice'>('text');
+  const [categoryId, setCategoryId] = useState<string | null>(initialCategoryId);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const slug = slugifyChannelName(name);
+  const categories = [...server.categories].sort((a, b) => a.position - b.position);
 
   async function create() {
     const valid = validateChannelName(slug);
@@ -204,7 +303,7 @@ function NewChannelDialog({ server, onClose }: { server: ServerDetail; onClose: 
     setBusy(true);
     setError(null);
     try {
-      await api.channels.create(server.id, { name: slug, type });
+      await api.channels.create(server.id, { name: slug, type, categoryId });
       onClose();
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Could not create the channel.');
@@ -266,6 +365,97 @@ function NewChannelDialog({ server, onClose }: { server: ServerDetail; onClose: 
           }}
         />
         <p className="field-note">Will be created as {slug ? `#${slug}` : 'a lowercase slug'}.</p>
+      </div>
+
+      {categories.length > 0 ? (
+        <div className="field">
+          <label htmlFor="channel-category">Category</label>
+          <select
+            id="channel-category"
+            value={categoryId ?? ''}
+            onChange={(event) => setCategoryId(event.target.value === '' ? null : event.target.value)}
+          >
+            <option value="">No category</option>
+            {categories.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+          <p className="field-note">
+            The category&rsquo;s permissions apply to this channel before its own, so a channel
+            created in a private category is private from the moment it exists.
+          </p>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
+
+/**
+ * A category is created empty, and an empty category is only visible to people
+ * who may manage channels. That is deliberate — the heading is information, and
+ * "Staff" over nothing anyone can see gives away exactly what the permissions
+ * were for — but it does mean the thing you just made looks lonely until you
+ * put a channel in it. The sidebar says so in place of the missing channels.
+ */
+function NewCategoryDialog({ server, onClose }: { server: ServerDetail; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function create() {
+    const trimmed = name.trim();
+    if (trimmed === '') return setError('A category needs a name.');
+
+    setBusy(true);
+    setError(null);
+    try {
+      await api.categories.create(server.id, trimmed);
+      onClose();
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'Could not create the category.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="New category"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="button secondary inline" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="button inline"
+            disabled={busy}
+            onClick={() => void create()}
+          >
+            Create
+          </button>
+        </>
+      }
+    >
+      {error ? <div className="error">{error}</div> : null}
+
+      <div className="field">
+        <label htmlFor="category-name">Name</label>
+        <input
+          id="category-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={48}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') void create();
+          }}
+        />
+        <p className="field-note">
+          Kept as you type it, capitals and all. Set its permissions from the gear beside the
+          heading; everything you put inside inherits them.
+        </p>
       </div>
     </Modal>
   );

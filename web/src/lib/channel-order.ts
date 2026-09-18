@@ -14,7 +14,15 @@ export interface ChannelGroup {
   channels: Channel[];
 }
 
-export function groupChannels(server: ServerDetail): ChannelGroup[] {
+/**
+ * `keepEmpty` is for the sidebar of someone who may manage channels: the server
+ * only sends them a category with nothing in it, so dropping it here would make
+ * "New category" look like it did nothing. Everyone else never receives one.
+ */
+export function groupChannels(
+  server: ServerDetail,
+  options: { keepEmpty?: boolean } = {},
+): ChannelGroup[] {
   const groups = new Map<string | null, ChannelGroup>();
   groups.set(null, { id: null, name: 'Channels', position: -1, channels: [] });
 
@@ -34,7 +42,7 @@ export function groupChannels(server: ServerDetail): ChannelGroup[] {
   }
 
   return [...groups.values()]
-    .filter((entry) => entry.channels.length > 0)
+    .filter((entry) => entry.channels.length > 0 || (options.keepEmpty && entry.id !== null))
     .sort((a, b) => a.position - b.position)
     .map((entry) => ({
       ...entry,

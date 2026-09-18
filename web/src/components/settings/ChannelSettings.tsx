@@ -77,7 +77,12 @@ export function ChannelSettings({
 
         <div className="settings-content">
           {tab === 'overview' ? (
-            <ChannelOverview channel={channel} authority={authority} onDeleted={onClose} />
+            <ChannelOverview
+              channel={channel}
+              server={server}
+              authority={authority}
+              onDeleted={onClose}
+            />
           ) : (
             <ChannelPermissions
               channel={channel}
@@ -94,10 +99,12 @@ export function ChannelSettings({
 
 function ChannelOverview({
   channel,
+  server,
   authority,
   onDeleted,
 }: {
   channel: Channel;
+  server: ServerDetail;
   authority: Authority;
   onDeleted: () => void;
 }) {
@@ -106,13 +113,18 @@ function ChannelOverview({
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic ?? '');
   const [slowmode, setSlowmode] = useState(channel.slowmodeSeconds);
+  const [categoryId, setCategoryId] = useState<string | null>(channel.categoryId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const categories = [...server.categories].sort((a, b) => a.position - b.position);
   const slug = slugifyChannelName(name);
   const dirty =
-    slug !== channel.name || topic !== (channel.topic ?? '') || slowmode !== channel.slowmodeSeconds;
+    slug !== channel.name ||
+    topic !== (channel.topic ?? '') ||
+    slowmode !== channel.slowmodeSeconds ||
+    categoryId !== channel.categoryId;
 
   async function save() {
     const valid = validateChannelName(slug);
@@ -125,6 +137,7 @@ function ChannelOverview({
         name: slug,
         topic: topic.trim() === '' ? null : topic.trim(),
         slowmodeSeconds: slowmode,
+        categoryId,
       });
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Could not save the channel.');
@@ -161,6 +174,32 @@ function ChannelOverview({
         />
         <p className="field-note">Shown in the header. Plain text; never rendered as markup.</p>
       </div>
+
+      {categories.length > 0 ? (
+        <div className="field">
+          <label htmlFor="channel-settings-category">Category</label>
+          <select
+            id="channel-settings-category"
+            value={categoryId ?? ''}
+            disabled={!editable}
+            onChange={(event) =>
+              setCategoryId(event.target.value === '' ? null : event.target.value)
+            }
+          >
+            <option value="">No category</option>
+            {categories.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+          <p className="field-note">
+            Moving a channel changes who can see it, because the category it lands in is a
+            permission layer beneath this channel&rsquo;s own overwrites. Nothing is copied, so
+            moving it out again puts it back exactly as it was.
+          </p>
+        </div>
+      ) : null}
 
       {channel.type === 'text' ? (
         <div className="field">
@@ -246,6 +285,7 @@ function ChannelOverview({
               setName(channel.name);
               setTopic(channel.topic ?? '');
               setSlowmode(channel.slowmodeSeconds);
+              setCategoryId(channel.categoryId);
             }}
           >
             Reset

@@ -57,7 +57,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         name: 'EMBED_LINKS',
         bit: Permission.EMBED_LINKS,
         label: 'Embed links',
-        description: 'Links unfurl into previews rather than staying plain text.',
+        // It described link previews, which this app deliberately does not
+        // have: whichever end fetches a preview puts a third party in the data
+        // path. The bit stays in the mask so the wire format does not shift
+        // under stored overwrites, but the row says what it actually does.
+        description:
+          'Reserved. Nothing here unfurls a link — a preview means fetching a stranger’s address, and that is a third party in the data path. Links stay text for everyone regardless of this.',
         scope: 'text',
       },
       {

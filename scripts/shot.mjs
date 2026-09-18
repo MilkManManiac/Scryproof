@@ -3,6 +3,7 @@
  *
  *   node scripts/shot.mjs docs/shots/unread.png
  *   node scripts/shot.mjs docs/shots/unread.png --as mara --channel session-planning
+ *   node scripts/shot.mjs docs/shots/x.png --hover '.category-row' --click '.menu-item'
  *
  * Needs the API and the web dev server running, and a seeded database. Every
  * milestone has to end in something Wes can look at, so this is the cheapest
@@ -21,6 +22,9 @@ const flag = (name, fallback) => {
   const at = args.indexOf(`--${name}`);
   return at === -1 ? fallback : args[at + 1];
 };
+/** Every occurrence, so a screen two clicks deep can be photographed. */
+const flags = (name) =>
+  args.flatMap((entry, at) => (entry === `--${name}` ? [args[at + 1]] : []));
 
 const out = args[0] && !args[0].startsWith('--') ? args[0] : 'docs/shots/shot.png';
 const user = flag('as', 'wes');
@@ -96,14 +100,29 @@ try {
     await sleep(1200);
   }
 
-  // e.g. --click 'button[title="Notifications"]'
-  const click = flag('click', null);
-  if (click) {
+  // e.g. --click 'button[title="Notifications"]'. Repeatable, in order, for a
+  // screen that takes more than one press to reach.
+  for (const click of flags('click')) {
     const hit = await run(
       `(() => { const el = document.querySelector(${JSON.stringify(click)}); if (!el) return false; el.click(); return true; })()`,
     );
     if (!hit) throw new Error(`nothing on the page matches ${click}`);
     await sleep(700);
+  }
+
+  // e.g. --hover '.category-row'. A real mouse move, not a class: half the
+  // controls in this app only appear under the pointer, and a screenshot that
+  // cannot show them cannot be used to check them.
+  const hover = flag('hover', null);
+  if (hover) {
+    const box = await run(
+      `(() => { const el = document.querySelector(${JSON.stringify(hover)}); if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+    );
+    if (!box) throw new Error(`nothing on the page matches ${hover}`);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
+    await sleep(400);
   }
 
   // e.g. --press ctrl+k, to photograph something only a shortcut opens.

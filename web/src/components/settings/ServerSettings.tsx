@@ -299,8 +299,8 @@ function CategoriesPane({
 
       {selected === null ? (
         <p className="settings-note">
-          This server has no categories yet. Create one from the channel sidebar and its
-          permissions will appear here.
+          This server has no categories yet. Make one with the + at the top of the channel
+          sidebar, and its permissions appear here and on the gear beside its heading.
         </p>
       ) : (
         <div className="overwrite-layout">

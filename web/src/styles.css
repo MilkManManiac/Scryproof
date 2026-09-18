@@ -2630,3 +2630,96 @@ kbd {
 .radio-row .field-note {
   margin-top: 2px;
 }
+
+/* ------------------------------ menus and categories ---------------------------- */
+
+/* A popover of choices. It is absolutely positioned against whatever wrapper
+ * opened it, so that wrapper carries `position: relative`. */
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  /* Wide enough for the notes, and never wider than the sidebar it hangs in:
+   * a menu that overhangs onto the server rail reads as a rendering fault. */
+  width: max-content;
+  max-width: 208px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 0 #ffffff0a inset, 0 14px 36px #00000080;
+}
+.menu.align-right {
+  left: auto;
+  right: 0;
+}
+
+.menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--radius);
+  text-align: left;
+  color: var(--text);
+  font-size: 13px;
+}
+.menu-item:hover {
+  background: var(--bg-hover);
+}
+.menu-item-note {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* The heading and its buttons share a row, and the buttons only appear on
+ * hover: a sidebar that shows every control at rest is a sidebar of controls. */
+.category-row {
+  display: flex;
+  align-items: center;
+}
+.category-row .category-label {
+  min-width: 0;
+}
+.category-actions {
+  display: flex;
+  gap: 0;
+  opacity: 0;
+  flex: 0 0 auto;
+}
+.category-row:hover .category-actions,
+.category-actions:focus-within {
+  opacity: 1;
+}
+.category-actions .icon-button {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+}
+
+.category-empty {
+  margin: 2px 6px 0;
+  padding: 7px 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.45;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* Matches the voice settings' select rather than inventing a second one. */
+.field select {
+  width: 100%;
+  background: var(--bg-void);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  outline: none;
+}
+.field select:focus {
+  border-color: var(--accent-dim);
+}

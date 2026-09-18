@@ -13,15 +13,19 @@
  * driven by invalidation events, never by a timeout.
  */
 
+import { eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 
 import { Permission, encodeEvent, has } from '@gooffline/shared';
 import type { Presence, ServerEvent, VoiceState } from '@gooffline/shared';
 
+import { getDb } from '../db/index.js';
+import { channels as channelsTable } from '../db/schema.js';
 import {
   computePermissionsForServerChannels,
   loadMemberContext,
 } from '../services/permissions.js';
+import { canSeeCategory } from '../services/server-detail.js';
 
 export interface Connection {
   readonly id: string;
@@ -154,6 +158,51 @@ export async function broadcastToChannel(
       if (permissions === null) return;
       if (!has(permissions, required)) return;
 
+      for (const connection of userConnections) send(connection, event);
+    }),
+  );
+}
+
+/**
+ * Everyone in a server who may be told this category exists.
+ *
+ * A category event carries a name, and a name is information: broadcasting
+ * "category_create: staff-only" to the whole server gives away precisely what
+ * denying View channel on it was meant to hide. The rule is the one the ready
+ * frame uses, so a category cannot arrive over the socket that a reconnect
+ * would then take away.
+ */
+export async function broadcastToCategory(
+  serverId: string,
+  categoryId: string,
+  event: ServerEvent,
+): Promise<void> {
+  const targets = [...connections.values()].filter((c) => c.servers.has(serverId));
+  if (targets.length === 0) return;
+
+  // One query for the whole broadcast rather than one per recipient. Category
+  // events are rare; this runs when somebody renames a heading.
+  const serverChannels = await getDb()
+    .select({ id: channelsTable.id, categoryId: channelsTable.categoryId })
+    .from(channelsTable)
+    .where(eq(channelsTable.serverId, serverId));
+
+  const byUserId = new Map<string, Connection[]>();
+  for (const connection of targets) {
+    const list = byUserId.get(connection.userId) ?? [];
+    list.push(connection);
+    byUserId.set(connection.userId, list);
+  }
+
+  await Promise.all(
+    [...byUserId.entries()].map(async ([userId, userConnections]) => {
+      const ctx = await loadMemberContext(serverId, userId);
+      if (!ctx) return;
+      const permissions = await computePermissionsForServerChannels(ctx);
+      const visible = serverChannels.filter((channel) =>
+        has(permissions.get(channel.id) ?? 0n, Permission.VIEW_CHANNEL),
+      );
+      if (!canSeeCategory(categoryId, ctx.basePermissions, visible)) return;
       for (const connection of userConnections) send(connection, event);
     }),
   );
