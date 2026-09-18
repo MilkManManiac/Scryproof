@@ -578,7 +578,9 @@ as small uppercase captions, which turned a role name into a heading. It is
    Installing the bonesdeploy CLI needs Rust on Wes's PC. Ask him first.
 3. **M3 on the real box.** The TURN path has never carried a call, nothing has
    been tried with three people, and a `device_keys` table still has to replace
-   `users.identity_key`. Then video and screen share (M4).
+   `users.identity_key` before a second device per person (M6) can exist
+   without every sign-in looking like a changed key. Video and screen share
+   (M4) ride along: built, and equally unproven off this machine.
 4. **Reordering from the sidebar itself.** Today it lives under server
    settings → Layout, which is one screen away from where the channels are.
    Whether that is fine or annoying is Wes's call after using it.
