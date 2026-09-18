@@ -64,7 +64,7 @@ local PGlite database, which `dev-restart.sh` wipes.
 ## Test it
 
 ```bash
-npm test            # 103 server + 83 web assertions. No server needed, about a second.
+npm test            # 108 server + 83 web assertions. No server needed, about a second.
 npm run test:smoke  # 64 assertions over the real HTTP surface
 npm run test:exif   # a real headless browser; needs the web dev server on :5173
 npm run test:prod   # builds the production bundle and drives it through a stand-in for nginx
@@ -135,6 +135,40 @@ under the pointer. Needs the API, the web dev server and a seeded database.
 ![Categories are something you can make now](shots/m5-categories.png)
 
 ![A category's permissions, reached from its own heading](shots/m5-category-permissions.png)
+
+## Found on 2026-09-18, later: voice presence went to everyone
+
+Swept every broadcast for the shape of the two category leaks and found a third.
+`voice_state_update` went to the whole server carrying the channel id, so a
+member who could not see a private voice channel still learned it existed, who
+was sitting in it, whether they were muted and whether their camera was on. The
+traps list below already forbids this — a channel a member cannot view must
+report "does not exist" everywhere, including the gateway — and it is call
+metadata besides (GAMEPLAN 1b, finding 4).
+
+Three places, and the third is the one that would have been missed: the live
+event, the **ready frame on every connect**, and the **REST voice-states
+endpoint**. All scoped now. The ready frame reuses the channel list it has
+already filtered; the endpoint calls the same `visibleChannelIds` the detail
+builder uses, so there is one definition rather than two that drift.
+
+A departure is the subtle half: leaving says `channelId: null`, which names no
+channel, so the scope has to come from the channel being *left*.
+`clearVoiceStatesForUser` returns that now instead of discarding it. Five tests
+over `announceVoiceState`, three confirmed to fail when the old broadcast is put
+back.
+
+This opened one gap and closed it: presence for a channel you have just been
+given access to never arrives, because nobody moved. The client refetches voice
+states on `permissions_stale` now, the way it already refetches the server.
+
+The rest of the sweep found nothing. Roles, members and presence go to the whole
+server by design and match what the ready frame already sends.
+
+**Not proven:** nobody has been in a call since this changed. The scoping is
+covered by unit tests over the hub, but `npm run test:voice` does not assert on
+who receives a voice state, and the REST endpoint's filter is exercised by no
+test at all. Both use the same rule as the tested path. Check it on the box.
 
 ## Done on 2026-09-18: categories, and getting to the unread line
 
@@ -644,6 +678,11 @@ as small uppercase captions, which turned a role name into a heading. It is
   device ids for when it is.
 - **Do not add a "call history" table.** Voice presence is in memory and stays
   there. GAMEPLAN 1b, finding 4.
+- **Voice presence is scoped to the channel, and a departure carries no channel
+  id.** Anything new that announces a voice state must pass the channel it is
+  *about* — the one joined, or the one just left — not the `channelId` on the
+  wire, which is null on the way out. `hub.announceVoiceState` is the only way
+  in; do not reach for `broadcastToServer`.
 - **`npm audit signatures` fails with the cooldown on.** That is the cooldown
   working, not a broken lockfile. Run it as
   `npm audit signatures --min-release-age=0`.
