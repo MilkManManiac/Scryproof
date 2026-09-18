@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-17, after M5: reactions, mentions, replies, unread marks, links, the keyboard and the sounds.
+**Last updated:** 2026-09-18, after the categories-and-unread session. M5 before that: reactions, mentions, replies, unread marks, links, the keyboard and the sounds.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -22,7 +22,7 @@ Living state. Update this at the end of every working session.
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **Not done:** never on a real box; the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
-| M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. It is not done: M5 ends when Wes says it does not feel like a clone, and he has not looked at it yet. |
+| M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. It is not done: M5 ends when Wes says it does not feel like a clone, and he has not looked at it yet. |
 | M6 desktop | Not started. |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
@@ -64,8 +64,8 @@ local PGlite database, which `dev-restart.sh` wipes.
 ## Test it
 
 ```bash
-npm test            # 79 server + 59 web assertions. No server needed, about a second.
-npm run test:smoke  # 62 assertions over the real HTTP surface
+npm test            # 103 server + 83 web assertions. No server needed, about a second.
+npm run test:smoke  # 64 assertions over the real HTTP surface
 npm run test:exif   # a real headless browser; needs the web dev server on :5173
 npm run test:prod   # builds the production bundle and drives it through a stand-in for nginx
 npm run test:voice  # two headless browsers in a real encrypted call
@@ -96,9 +96,9 @@ seeded — it registers its own accounts, and the sign-up rate limiter counts th
 seed's four against it.
 
 `node scripts/shot.mjs docs/shots/x.png --as wes --channel maps` signs in and
-photographs the app; `--click <selector>` and `--press ctrl+k` reach a screen
-that only opens on an action. Needs the API, the web dev server and a seeded
-database.
+photographs the app; `--click <selector>` (repeatable, in order), `--hover
+<selector>` and `--press ctrl+k` reach a screen that only opens on an action or
+under the pointer. Needs the API, the web dev server and a seeded database.
 
 ## Screenshots
 
@@ -127,6 +127,63 @@ database.
 ![Every shortcut, in the only place they are written down](shots/m5-keyboard.png)
 
 ![What makes a sound](shots/m5-notifications.png)
+
+![The backlog you have not read, and the way up to it](shots/m5-unread-bar.png)
+
+![Jumping to the line, which then puts the bar away](shots/m5-unread-jump.png)
+
+![Categories are something you can make now](shots/m5-categories.png)
+
+![A category's permissions, reached from its own heading](shots/m5-category-permissions.png)
+
+## Done on 2026-09-18: categories, and getting to the unread line
+
+**The server told every member every category name.** Channels have always been
+filtered by VIEW_CHANNEL, with a comment saying why — the name alone is
+information — and categories sat one line above it unfiltered. A heading called
+"staff-only" announced precisely what denying the channels beneath it was for.
+They are filtered the same way now: you are told about a category when you can
+see something in it, or when you may manage channels, because the empty one you
+just made is yours to fill. `canSeeCategory` is the single rule, used by the
+ready frame and by the three gateway events, so a category cannot arrive over
+the socket that a reconnect would then take away. Deleting a category
+invalidates permissions **before** announcing the orphaned channels, not after,
+so those updates are addressed by who can see them now.
+
+Verified against the running server, not by reading it: a member is told about a
+category the moment a channel they can see lands in it, and stops being told the
+moment it is locked, while the owner sees it throughout. Two smoke checks pin it.
+
+**Categories were unreachable.** Full server API, no interface, and server
+settings told you to "create one from the channel sidebar" — which the sidebar
+could not do. Now the + is a menu, every heading carries a gear and a +, a
+category has its own settings screen using the same overwrite editor one level
+up, and a channel can be moved between categories from its own settings. An
+empty category shows a line explaining why only managers can see it.
+
+**The unread line was unreachable too.** It has been drawn since M5 and on any
+channel with more than a screenful of backlog nobody had ever seen it: opening a
+channel lands you at the newest message and leaves the line above the fold. A
+bar at the top now says how many are new, jumps to the line, and offers Mark
+read. It disappears once the line is on screen, watched with an
+IntersectionObserver rather than measured on every scroll.
+
+Two bugs found by looking at it. The line **never appeared for anyone who had
+not read the channel before** — a read mark with no id, which is the normal
+state of an unopened channel and the state of every seeded account, was read as
+"nothing is new" while the badge beside it insisted the channel was unread. And
+the bar said "jump to where you stopped" to people who had never started. The
+rule now lives in `web/src/lib/unread-line.ts` as a pure function with eight
+tests, for the same reason `soundFor` does: the badge and the line must never
+disagree.
+
+**The Embed links permission described link previews**, which this app
+deliberately does not have. The row says so now instead.
+
+**The seed has a real backlog in #session-planning**, because a feature nobody
+can see in the seeded state is a feature nobody checks. `scripts/shot.mjs` takes
+repeated `--click` and a `--hover`, because half these controls only exist under
+the pointer and a screenshot that cannot show them cannot be used to check them.
 
 ## Done in the M5 session
 
@@ -458,9 +515,10 @@ as small uppercase captions, which turned a role name into a heading. It is
 3. **M3 on the real box.** The TURN path has never carried a call, nothing has
    been tried with three people, and a `device_keys` table still has to replace
    `users.identity_key`. Then video and screen share (M4).
-4. **Category permissions in the sidebar UI.** The permissions themselves are
-   done; what is missing is a way to reach them from the channel sidebar. Today
-   they live only under server settings, and only once a category exists.
+4. **Reordering.** Categories and channels both carry a `position` the server
+   will accept a change to, and there is no way to change it from the client.
+   New ones go to the bottom. The role list already has a drag-and-arrow-key
+   reorder to copy from.
 
 ## Decisions made this session
 
