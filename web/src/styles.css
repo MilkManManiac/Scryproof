@@ -42,6 +42,25 @@
   --radius: 6px;
   --radius-lg: 10px;
 
+  /*
+   * Elevation. Several thin layers tinted with the panel blue, tight ones for
+   * the contact edge and a wide one for the lift. One black blur reads as a
+   * smudge; this reads as a thing sitting above another thing. --hi is the top
+   * edge catching light, and goes on anything that floats.
+   */
+  --shadow-1: 0 1px 1px hsl(222 45% 3% / 0.5), 0 4px 10px -3px hsl(222 45% 3% / 0.5);
+  --shadow-2: 0 1px 2px hsl(222 45% 3% / 0.5), 0 8px 18px -6px hsl(222 45% 3% / 0.6),
+    0 22px 44px -14px hsl(222 45% 3% / 0.55);
+  --shadow-3: 0 2px 4px hsl(222 45% 3% / 0.5), 0 16px 32px -8px hsl(222 45% 3% / 0.65),
+    0 40px 80px -20px hsl(222 45% 3% / 0.7);
+  --hi: inset 0 1px 0 #ffffff0d;
+
+  /* One deceleration curve for everything that moves. Hover and press are
+     fast; something arriving on screen takes a little longer. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 140ms;
+  --t-arrive: 220ms;
+
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
 
@@ -70,7 +89,24 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
+}
+
+/*
+ * Film grain over everything, barely there. Large flat dark panels band and
+ * look like a mock-up; a little noise makes them read as a surface. Inline SVG
+ * because nothing here is fetched from anywhere (img-src allows data:).
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 button {
@@ -154,7 +190,8 @@ textarea {
   font-weight: 620;
   font-size: 15px;
   letter-spacing: 0.01em;
-  transition: background 120ms ease, color 120ms ease, border-radius 160ms ease;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    border-radius var(--t-arrive) var(--ease), transform var(--t-fast) var(--ease);
   flex: 0 0 auto;
 }
 
@@ -164,9 +201,15 @@ textarea {
   border-radius: 14px;
 }
 
+.rail-item:active {
+  transform: scale(0.95);
+}
+
+/* The one warm light in the room: the server you are in glows a little. */
 .rail-item.active {
   background: var(--accent-wash);
   color: var(--accent-bright);
+  box-shadow: inset 0 0 0 1px #e0a33f2e, 0 0 22px -6px #e0a33f55;
 }
 
 /* The selected-server pip, drawn outside the tile like a tab indicator. */
@@ -178,6 +221,7 @@ textarea {
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--text);
+  transition: height var(--t-arrive) var(--ease);
 }
 .rail-item.active::before {
   height: 26px;
@@ -225,9 +269,9 @@ textarea {
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid var(--border);
-  font-weight: 620;
-  font-size: 14px;
-  letter-spacing: 0.01em;
+  font-weight: 640;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
   flex: 0 0 auto;
 }
 
@@ -281,6 +325,7 @@ textarea {
   text-align: left;
   font-size: 14px;
   line-height: 1.35;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .channel:hover {
   background: var(--bg-hover);
@@ -289,6 +334,7 @@ textarea {
 .channel.active {
   background: var(--bg-active);
   color: var(--text);
+  box-shadow: var(--hi);
 }
 .channel.unread {
   color: var(--text);
@@ -403,6 +449,11 @@ textarea {
   place-items: center;
   color: var(--text-dim);
   flex: 0 0 auto;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.icon-button:active {
+  transform: scale(0.92);
 }
 .icon-button:hover {
   background: var(--bg-hover);
@@ -423,7 +474,10 @@ textarea {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg-main);
+  /* Lit from above, faintly, so the biggest panel is not one flat fill. */
+  background:
+    radial-gradient(1100px 380px at 50% -140px, #1d222d 0%, transparent 100%),
+    var(--bg-main);
 }
 
 .main-header {
@@ -440,7 +494,8 @@ textarea {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-weight: 620;
+  font-weight: 640;
+  letter-spacing: -0.01em;
   min-width: 0;
 }
 
@@ -509,19 +564,28 @@ textarea {
 }
 
 .message-author {
-  font-weight: 620;
+  font-weight: 640;
   font-size: 14px;
+  letter-spacing: -0.005em;
 }
 
+/* Two tiers of type: words in the sans, anything the machine wrote (times,
+   counts, stats, codes) in the mono. */
 .message-time {
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-faint);
 }
 
+/* A line of chat as wide as a 27-inch monitor is unreadable; the measure is
+   capped and the last line is kept from stranding one word. */
 .message-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #d9dee7;
+  max-width: 92ch;
+  text-wrap: pretty;
 }
 
 .message-text.deleted {
@@ -541,10 +605,13 @@ textarea {
   left: 12px;
   width: 40px;
   text-align: center;
-  font-size: 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-faint);
   opacity: 0;
-  padding-top: 3px;
+  padding-top: 4px;
+  transition: opacity var(--t-fast) var(--ease);
 }
 .message.grouped:hover .message-hover-time {
   opacity: 1;
@@ -560,7 +627,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 2px;
-  box-shadow: 0 4px 14px #00000055;
+  box-shadow: var(--hi), var(--shadow-1);
 }
 .message:hover .message-actions {
   display: flex;
@@ -622,8 +689,10 @@ textarea {
 }
 .channel-intro h2 {
   margin: 0 0 6px;
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
 }
 .channel-intro p {
   margin: 0;
@@ -646,10 +715,13 @@ textarea {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  transition: border-color 120ms ease;
+  box-shadow: var(--hi), var(--shadow-1);
+  transition: border-color var(--t-arrive) var(--ease), box-shadow var(--t-arrive) var(--ease);
 }
+/* The warm light lands where you are typing. */
 .composer-box:focus-within {
-  border-color: var(--border-strong);
+  border-color: var(--accent-dim);
+  box-shadow: var(--hi), var(--shadow-1), 0 0 0 3px #e0a33f14, 0 0 28px -8px #e0a33f40;
 }
 .composer-box.denied {
   opacity: 0.6;
@@ -728,6 +800,7 @@ textarea {
   width: 100%;
   text-align: left;
   color: var(--text-muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .member:hover {
   background: var(--bg-hover);
@@ -758,6 +831,8 @@ textarea {
   flex: 0 0 auto;
   user-select: none;
   position: relative;
+  /* Lit from above like everything else, so a flat colour reads as a disc. */
+  box-shadow: inset 0 1px 0 #ffffff55, inset 0 -8px 10px -6px #00000045;
 }
 
 .avatar.small {
@@ -806,9 +881,9 @@ textarea {
 }
 
 .auth-brand {
-  font-size: 26px;
-  font-weight: 680;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   margin-bottom: 4px;
 }
 
@@ -864,7 +939,12 @@ textarea {
   font-weight: 660;
   border-radius: var(--radius);
   padding: 10px 14px;
-  transition: background 120ms ease, opacity 120ms ease;
+  box-shadow: inset 0 1px 0 #ffffff45, var(--shadow-1);
+  transition: background var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .button:hover {
   background: var(--accent-bright);
@@ -878,6 +958,7 @@ textarea {
   background: var(--bg-raised);
   color: var(--text);
   border: 1px solid var(--border-strong);
+  box-shadow: var(--hi), var(--shadow-1);
 }
 .button.secondary:hover {
   background: var(--bg-hover);
@@ -943,7 +1024,8 @@ textarea {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 460px;
-  box-shadow: 0 24px 64px #00000077;
+  box-shadow: var(--hi), var(--shadow-3);
+  animation: arrive var(--t-arrive) var(--ease);
   overflow: hidden;
   /* A tall dialog scrolls its body; the title and the buttons stay in reach. */
   max-height: calc(100vh - 48px);
@@ -953,8 +1035,10 @@ textarea {
 
 .modal-header {
   padding: 16px 18px 12px;
-  font-size: 16px;
-  font-weight: 660;
+  font-size: 17px;
+  font-weight: 670;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .modal-body {
@@ -1230,6 +1314,15 @@ textarea {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Menus, pickers and dialogs come up from slightly below and slightly small.
+   Short enough that it is felt rather than watched. */
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
   }
 }
 
@@ -1808,7 +1901,7 @@ textarea {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 10px 30px #00000055;
+  box-shadow: var(--hi), var(--shadow-2);
   font-size: 13px;
 }
 
@@ -2278,7 +2371,8 @@ video.mirrored {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 0 #ffffff0a inset, 0 14px 36px #00000080;
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
 }
 .reaction-picker-row {
   display: grid;
@@ -2365,7 +2459,8 @@ video.mirrored {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 0 #ffffff0a inset, 0 -10px 30px #00000066;
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
 }
 .mention-offer {
   display: flex;
@@ -2517,7 +2612,8 @@ kbd {
   background: var(--bg-main);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 24px 64px #00000088;
+  box-shadow: var(--hi), var(--shadow-3);
+  animation: arrive var(--t-arrive) var(--ease);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2648,7 +2744,8 @@ kbd {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 0 #ffffff0a inset, 0 14px 36px #00000080;
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
 }
 .menu.align-right {
   left: auto;

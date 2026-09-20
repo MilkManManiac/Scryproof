@@ -52,7 +52,7 @@ is not an issue.
 npm install                        # once
 bash scripts/dev-restart.sh        # clean database, API on :8787
 npm run seed --workspace server    # four accounts, a server, a real conversation
-npm run dev:web --workspace web    # client on :5173
+npm run dev:web                    # client on :5173 (root script; the web workspace has no dev:web)
 ```
 
 Then open **http://localhost:5173** and sign in as `wes` (or `alex`, `mara`,
@@ -141,6 +141,37 @@ process — that cost twenty minutes on 2026-09-18.
 ![A category's permissions, reached from its own heading](shots/m5-category-permissions.png)
 
 ![Server settings → Layout: the sidebar's order, with a handle on every row](shots/m5-layout.png)
+
+## Done on 2026-09-20: a finish pass on the whole stylesheet
+
+Wes had no complaint; he asked for the design research from the other projects
+to be applied here. The sources were Rise-Automation's
+`docs/premium-module-design-system.md` and how-it-ends'
+`docs/research-art-direction.md`. Only `web/src/styles.css` changed.
+
+![The composer takes the warm light when you type in it](shots/finish-composer.png)
+
+- **Depth has tokens now.** `--shadow-1/2/3` are layered and tinted with the
+  room's blue-black instead of one flat black drop; `--hi` is the one-pixel
+  top highlight. Every floating surface (modals, menus, pickers, the switcher,
+  the save bar) uses them, so there is one light source, above.
+- **Motion has tokens.** `--ease`, `--t-fast` (hover, press), `--t-arrive`
+  (things appearing). Floating surfaces arrive with `@keyframes arrive`.
+  Buttons and rail items press. The global reduced-motion block still wins.
+- **One warm light.** The active server glows, and the composer glows when
+  focused. Nothing else does; that is the point.
+- **Two tiers of type.** Words in `--font`, anything the machine wrote
+  (timestamps) in `--mono` with tabular figures. Message text is capped at
+  92ch and uses `text-wrap: pretty`.
+- **Grain.** `body::after` is an inline feTurbulence SVG at 5% so big flat
+  panels stop banding. It is a `data:` URI, which the CSP's `img-src` allows;
+  `test:prod` proves no violation.
+- **Fonts: tried, not shipped.** IBM Plex, Figtree and Geist were bundled
+  (self-hosted via @fontsource, nothing fetched) and photographed side by
+  side. Wes could not tell them from the system font, so the packages came
+  back out. Do not reopen this without a reason he can see.
+- Rejected on purpose, per the research: magnetic buttons, tilt, shimmer
+  headings, confetti.
 
 ## Done on 2026-09-18, later still: the sidebar can be rearranged
 
