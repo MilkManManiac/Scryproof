@@ -11,6 +11,10 @@ import type {
   AuditLogEntry,
   Category,
   Channel,
+  DeviceKey,
+  DmChannel,
+  DmMessage,
+  DmWrappedKey,
   Invite,
   MaskString,
   Member,
@@ -244,6 +248,22 @@ export const api = {
       }>(`/api/channels/${channelId}/voice/token`),
     states: (serverId: string) =>
       get<{ voiceStates: VoiceState[] }>(`/api/servers/${serverId}/voice-states`),
+  },
+
+  /** Direct messages. The bodies here are sealed before they reach this file. */
+  dms: {
+    publishDevice: (device: Omit<DeviceKey, 'userId'>) => put<{ device: DeviceKey }>('/api/devices', device),
+    list: () => get<{ dms: DmChannel[] }>('/api/dms'),
+    open: (userId: string) => post<{ dm: DmChannel }>('/api/dms', { userId }),
+    devices: (dmId: string) => get<{ devices: DeviceKey[] }>(`/api/dms/${dmId}/devices`),
+    messages: (dmId: string, before?: string) =>
+      get<{ messages: DmMessage[] }>(`/api/dms/${dmId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+    send: (
+      dmId: string,
+      sealed: { senderDeviceId: string; iv: string; ciphertext: string; keys: DmWrappedKey[] },
+    ) => post<{ message: DmMessage }>(`/api/dms/${dmId}/messages`, sealed),
+    remove: (dmId: string, messageId: string) => del<{ ok: true }>(`/api/dms/${dmId}/messages/${messageId}`),
+    markRead: (dmId: string, messageId: string) => put<{ ok: true }>(`/api/dms/${dmId}/read`, { messageId }),
   },
 
   users: {

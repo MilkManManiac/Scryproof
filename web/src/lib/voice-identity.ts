@@ -23,9 +23,11 @@ import {
 } from './voice-crypto';
 
 const DB_NAME = 'scryproof';
-const DB_VERSION = 1;
+/** 2 added the DM key store. Every store is created here, so any version can upgrade. */
+const DB_VERSION = 2;
 const IDENTITY_STORE = 'device-identity';
 const PINS_STORE = 'identity-pins';
+const DM_KEY_STORE = 'dm-key';
 
 interface StoredIdentity {
   deviceId: string;
@@ -40,6 +42,7 @@ function open(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(IDENTITY_STORE)) db.createObjectStore(IDENTITY_STORE);
       if (!db.objectStoreNames.contains(PINS_STORE)) db.createObjectStore(PINS_STORE);
+      if (!db.objectStoreNames.contains(DM_KEY_STORE)) db.createObjectStore(DM_KEY_STORE);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('IndexedDB refused to open.'));
@@ -106,6 +109,29 @@ export async function loadDeviceIdentity(
     ),
   );
   return identity;
+}
+
+/**
+ * This device's long-lived DM key, created on first use and kept the same way
+ * as the identity key: as a non-extractable `CryptoKey`, never as bytes.
+ *
+ * Generic over the keypair for the same reason `loadDeviceIdentity` takes its
+ * generator: what a DM key is belongs to `dm-crypto.ts`, not to storage.
+ */
+export async function loadDmKeypair<T extends { privateKey: CryptoKey; publicKey: CryptoKey }>(
+  create: () => Promise<T>,
+  describe: (privateKey: CryptoKey, publicKey: CryptoKey) => Promise<T>,
+): Promise<T> {
+  const existing = await withStore(DM_KEY_STORE, 'readonly', (store) =>
+    run<{ privateKey: CryptoKey; publicKey: CryptoKey } | undefined>(store.get('self')),
+  );
+  if (existing) return describe(existing.privateKey, existing.publicKey);
+
+  const pair = await create();
+  await withStore(DM_KEY_STORE, 'readwrite', (store) =>
+    run(store.put({ privateKey: pair.privateKey, publicKey: pair.publicKey }, 'self')),
+  );
+  return pair;
 }
 
 /**

@@ -2894,3 +2894,83 @@ kbd {
 .layout-channel .channel-sigil {
   width: 14px;
 }
+
+/* ------------------------------ direct messages ----------------------------- */
+
+.rail-dms {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dm-row {
+  gap: 10px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.dm-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--text);
+  flex: none;
+}
+
+.dm-note {
+  margin: 12px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dm-lock {
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.dm-warnings {
+  display: grid;
+  gap: 1px;
+  flex: none;
+}
+
+.dm-warning {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: color-mix(in srgb, #d9a441 14%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, #d9a441 35%, transparent);
+}
+
+.dm-warning > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dm-fingerprint {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.dm-unverified {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #d9a441;
+  border: 1px solid color-mix(in srgb, #d9a441 45%, transparent);
+  cursor: help;
+}
+
+.dm-failed {
+  cursor: help;
+}

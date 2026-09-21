@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { unreadDmCount, useDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
 import { Modal } from './Modal';
 
@@ -26,6 +27,8 @@ function tile(name: string): string {
 
 export function ServerRail() {
   const { state, selectServer, refreshServer } = useStore();
+  const { state: dms, showDms, hideDms } = useDms();
+  const waiting = unreadDmCount(dms);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [name, setName] = useState('');
@@ -78,10 +81,22 @@ export function ServerRail() {
 
   return (
     <nav className="rail" aria-label="Servers">
+      <button
+        type="button"
+        className={`rail-item rail-dms${dms.active ? ' active' : ''}${waiting > 0 ? ' unread' : ''}`}
+        title={waiting > 0 ? `Direct messages — ${waiting} unread` : 'Direct messages'}
+        aria-current={dms.active ? 'true' : undefined}
+        onClick={showDms}
+      >
+        @
+        {waiting > 0 ? <span className="badge">{badgeText(waiting)}</span> : null}
+      </button>
+      <div className="rail-divider" />
+
       {state.serverOrder.map((id) => {
         const server = state.servers[id];
         if (!server) return null;
-        const active = state.selectedServerId === id;
+        const active = state.selectedServerId === id && !dms.active;
         // The pip is the server's own news. Looking at it is not reading it,
         // so an open server still shows one until its channels are read.
         const { unread, mentions } = unreadForServer(state, id);
@@ -97,7 +112,10 @@ export function ServerRail() {
             className={classes.join(' ')}
             title={mentions > 0 ? `${server.name} — ${countLabel(mentions)}` : server.name}
             aria-current={active ? 'true' : undefined}
-            onClick={() => selectServer(id)}
+            onClick={() => {
+              hideDms();
+              selectServer(id);
+            }}
           >
             {tile(server.name)}
             {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}

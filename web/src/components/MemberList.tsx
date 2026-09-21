@@ -9,6 +9,7 @@
 import { useMemo } from 'react';
 import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
+import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 
@@ -21,6 +22,7 @@ interface Group {
 
 export function MemberList({ server }: { server: ServerDetail }) {
   const { state } = useStore();
+  const { openWith } = useDms();
   const members = state.members[server.id];
 
   const groups = useMemo<Group[]>(() => {
@@ -88,11 +90,23 @@ export function MemberList({ server }: { server: ServerDetail }) {
           </div>
           {entry.members.map((member) => {
             const presence = state.presences[member.userId] ?? 'offline';
+            const self = member.userId === state.user?.id;
             return (
               <div
                 className={presence === 'offline' ? 'member offline' : 'member'}
                 key={member.userId}
-                title={`@${member.user.username}`}
+                title={self ? `@${member.user.username}` : `Message @${member.user.username}`}
+                role={self ? undefined : 'button'}
+                tabIndex={self ? undefined : 0}
+                style={self ? undefined : { cursor: 'pointer' }}
+                onClick={self ? undefined : () => void openWith(member.userId).catch(() => undefined)}
+                onKeyDown={
+                  self
+                    ? undefined
+                    : (event) => {
+                        if (event.key === 'Enter') void openWith(member.userId).catch(() => undefined);
+                      }
+                }
               >
                 <Avatar user={member.user} small presence={presence} />
                 <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>

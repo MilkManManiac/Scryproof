@@ -213,3 +213,61 @@ export interface VoiceState {
   sharingScreen: boolean;
   cameraOn: boolean;
 }
+
+/* ------------------------------ direct messages ----------------------------- */
+
+/**
+ * The public half of one device, as its owner published it. The server stores
+ * and hands these out, which makes it the one place a key could be swapped:
+ * that is why `signature` exists, and why every client remembers the identity
+ * key it saw first and says so when it changes.
+ */
+export interface DeviceKey {
+  userId: Snowflake;
+  deviceId: string;
+  /** SPKI, base64. The long-lived signing key voice already uses. */
+  identityKey: string;
+  /** SPKI, base64. The long-lived ECDH key DMs are locked to. */
+  dmKey: string;
+  /** The identity key's signature over the user, the device and both keys. */
+  signature: string;
+}
+
+export interface DmChannel {
+  id: Snowflake;
+  /** Everyone in it, including the person asking. */
+  members: PublicUser[];
+  lastMessageId: Snowflake | null;
+  /** How far the person asking has read. */
+  lastReadMessageId: Snowflake | null;
+  createdAt: Timestamp;
+}
+
+/** A message key, locked for exactly one device. */
+export interface DmWrappedKey {
+  userId: Snowflake;
+  deviceId: string;
+  /** base64 */
+  iv: string;
+  /** base64 */
+  key: string;
+}
+
+/**
+ * A direct message. There is no plaintext field and there never will be: the
+ * server is handed `ciphertext` and cannot open it.
+ */
+export interface DmMessage {
+  id: Snowflake;
+  dmId: Snowflake;
+  authorId: Snowflake;
+  senderDeviceId: string;
+  /** base64. Null once deleted. */
+  iv: string | null;
+  /** base64. Null once deleted. */
+  ciphertext: string | null;
+  /** Only the copies addressed to the person receiving this. */
+  keys: DmWrappedKey[];
+  createdAt: Timestamp;
+  deleted: boolean;
+}

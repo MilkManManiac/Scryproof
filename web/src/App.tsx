@@ -19,6 +19,7 @@ import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
+import { DmPane, DmSidebar } from './components/DirectMessages';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { QuickSwitcher } from './components/QuickSwitcher';
@@ -28,6 +29,7 @@ import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
+import { DmProvider, unreadDmCount, useDms } from './state/dms';
 import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
 type Gate = { status: 'checking' } | { status: 'out' } | { status: 'in'; user: SelfUser };
@@ -58,7 +60,9 @@ export function App() {
 
   return (
     <StoreProvider onSignedOut={onSignedOut}>
-      <Shell />
+      <DmProvider>
+        <Shell />
+      </DmProvider>
     </StoreProvider>
   );
 }
@@ -67,6 +71,7 @@ function Shell() {
   const { state, loadMembers, selectChannel, selectServer, markRead } = useStore();
   const server = useSelectedServer();
   const channel = useSelectedChannel();
+  const { state: dms } = useDms();
   const [channelSettings, setChannelSettings] = useState(false);
   const [overlay, setOverlay] = useState<'switcher' | 'help' | null>(null);
 
@@ -106,9 +111,12 @@ function Shell() {
 
   // The tab title carries the count, so a window behind three others still
   // says whether anybody wanted you.
+  // An unread conversation counts like a mention: it was addressed to you.
   const pending = useMemo(
-    () => state.serverOrder.reduce((total, id) => total + unreadForServer(state, id).mentions, 0),
-    [state],
+    () =>
+      state.serverOrder.reduce((total, id) => total + unreadForServer(state, id).mentions, 0) +
+      unreadDmCount(dms),
+    [state, dms],
   );
   useEffect(() => {
     document.title = pending > 0 ? `(${pending}) Scryproof` : 'Scryproof';
@@ -151,12 +159,14 @@ function Shell() {
       ) : null}
 
       <div
-        className={server ? 'app with-members' : 'app'}
+        className={server && !dms.active ? 'app with-members' : 'app'}
         style={{ flex: '1 1 auto', minHeight: 0, height: 'auto' }}
       >
         <ServerRail />
 
-        {server ? (
+        {dms.active ? (
+          <DmSidebar />
+        ) : server ? (
           <ChannelSidebar server={server} />
         ) : (
           <aside className="sidebar">
@@ -167,7 +177,9 @@ function Shell() {
         )}
 
         <main className="main">
-          {server && channel ? (
+          {dms.active ? (
+            <DmPane />
+          ) : server && channel ? (
             <>
               <header className="main-header">
                 <div className="main-title">
@@ -217,7 +229,7 @@ function Shell() {
           {inVoice ? <ConnectionPanel /> : null}
         </main>
 
-        {server ? <MemberList server={server} /> : null}
+        {server && !dms.active ? <MemberList server={server} /> : null}
 
         {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
         {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}

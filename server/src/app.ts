@@ -28,6 +28,7 @@ import { registerRoleRoutes } from './routes/roles.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerAttachmentRoutes } from './routes/attachments.js';
 import { registerVoiceRoutes } from './routes/voice.js';
+import { registerDmRoutes } from './routes/dms.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -200,6 +201,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerInviteRoutes(app);
   await registerAttachmentRoutes(app);
   await registerVoiceRoutes(app);
+  await registerDmRoutes(app);
 
   // This process serves the API and the gateway only. The built web client is
   // served by nginx, which does static files better and keeps a file-serving

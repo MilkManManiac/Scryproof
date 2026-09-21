@@ -163,6 +163,40 @@ codes, voice, video and screen share all worked.
   `docs/discord-features.md`; it is waiting on his answers, and on one real
   decision about whether DMs are encrypted from day one.
 
+## DMs, stage 1: in progress, NOT deployed (2026-09-21, evening)
+
+Wes said go on encrypted DMs. The plan is `docs/dm-plan.md`; what he wants from
+Discord overall is `docs/discord-features.md`. Everything below is committed and
+**none of it is on the box**. Do not run `~/ship.sh` until `npm run test:dm`
+passes.
+
+- **Server:** `server/src/routes/dms.ts`, five new tables (`device_keys`,
+  `dm_channels`, `dm_members`, `dm_messages`, `dm_message_keys`), migration
+  `0003`. DMs are their own tables on purpose: every channel query starts from
+  a server id. The server never sees a body and has no column for one. You can
+  DM anyone you share a server with.
+- **Crypto:** `web/src/lib/dm-crypto.ts`, 14 tests in
+  `web/src/tests/dm-crypto.test.ts`, all passing, including a server that swaps
+  keys, moves keys between messages and misattributes authors. Each device has
+  a long-lived ECDH key signed by the identity key voice already uses; each
+  message gets a fresh key, wrapped once per trusted device, the sender's own
+  included. Pins are shared with voice. No forward secrecy yet; that is M7.
+- **Client:** `web/src/state/dms.tsx` (its own provider, fed by a new
+  `onGatewayEvent` tap in the store), `web/src/components/DirectMessages.tsx`,
+  an `@` button at the top of the rail, click a member to message them, a
+  warning with Accept when someone has a new or changed device.
+- **Browser test:** `npm run test:dm` (three real Chromes; needs `npm run dev`
+  and a seeded database). **Last run: 6 of 21 failing**, all "the text never
+  appears". Two causes found and fixed so far: React dev mode ran device setup
+  twice and published two half-matched devices (now one shared promise), and
+  PGlite returns bytea as a plain Uint8Array, so `toString('base64')` printed
+  "12,200,7" (now `b64()` in the route). **The second fix has not been run
+  yet.** Next step: `bash scripts/dev-restart.sh`, seed, `npm run test:dm`.
+- **Known gaps, by design for stage 1:** no edit, replies, reactions or files
+  in DMs (stage 2); a new device shows older DMs as locked (stage 3 adds the
+  recovery phrase); your own second device reads nothing until your first one
+  accepts it.
+
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
 With `rtc.stun_servers` unset, LiveKit tells every browser to use

@@ -419,6 +419,110 @@ export const readStates = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.channelId] })],
 );
 
+/* ------------------------------ direct messages ----------------------------- */
+
+/**
+ * Public keys, one row per browser a person has signed in on. Public halves
+ * only: the private halves are generated non-extractable in that browser and
+ * never leave it. A DM has to reach someone who is offline, so unlike voice
+ * these cannot be swapped live and have to be kept somewhere both can reach.
+ */
+export const deviceKeys = pgTable(
+  'device_keys',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Chosen by the device. Unique per person, not globally. */
+    deviceId: text('device_id').notNull(),
+    identityKey: text('identity_key').notNull(),
+    dmKey: text('dm_key').notNull(),
+    signature: text('signature').notNull(),
+    createdAt: createdAt(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.deviceId] })],
+);
+
+/**
+ * A conversation that belongs to people rather than to a server.
+ *
+ * Kept apart from `channels` on purpose. Every query, permission check and
+ * broadcast for a channel starts from its server, and a row with no server
+ * would have to be remembered as an exception in all of them. A separate table
+ * cannot be reached by that code at all.
+ */
+export const dmChannels = pgTable(
+  'dm_channels',
+  {
+    id: id(),
+    /** "userA:userB", ids sorted, for a one-to-one. Null for a group. */
+    pairKey: text('pair_key'),
+    lastMessageId: text('last_message_id'),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex('dm_channels_pair_key').on(table.pairKey)],
+);
+
+export const dmMembers = pgTable(
+  'dm_members',
+  {
+    dmId: text('dm_id')
+      .notNull()
+      .references(() => dmChannels.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    lastReadMessageId: text('last_read_message_id'),
+    joinedAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.dmId, table.userId] }),
+    index('dm_members_user_idx').on(table.userId),
+  ],
+);
+
+/** No plaintext column. There is nothing here the server could read. */
+export const dmMessages = pgTable(
+  'dm_messages',
+  {
+    id: id(),
+    dmId: text('dm_id')
+      .notNull()
+      .references(() => dmChannels.id, { onDelete: 'cascade' }),
+    authorId: text('author_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    senderDeviceId: text('sender_device_id').notNull(),
+    /** Cleared on delete, like a channel message's body. */
+    iv: bytea('iv'),
+    ciphertext: bytea('ciphertext'),
+    createdAt: createdAt(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [index('dm_messages_dm_id_idx').on(table.dmId, table.id)],
+);
+
+/** The message key, locked once for each device allowed to open it. */
+export const dmMessageKeys = pgTable(
+  'dm_message_keys',
+  {
+    messageId: text('message_id')
+      .notNull()
+      .references(() => dmMessages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    deviceId: text('device_id').notNull(),
+    iv: bytea('iv').notNull(),
+    wrapped: bytea('wrapped').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.messageId, table.userId, table.deviceId] })],
+);
+
+export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
+export type DmChannelRow = typeof dmChannels.$inferSelect;
+export type DmMessageRow = typeof dmMessages.$inferSelect;
+export type DmMessageKeyRow = typeof dmMessageKeys.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;

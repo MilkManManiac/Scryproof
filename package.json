@@ -25,7 +25,8 @@
     "test:exif": "node scripts/exif-check.mjs",
     "test:prod": "node scripts/prod-check.mjs",
     "dev:livekit": "node scripts/dev-livekit.mjs",
-    "test:voice": "node scripts/voice-check.mjs"
+    "test:voice": "node scripts/voice-check.mjs",
+    "test:dm": "node scripts/dm-check.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

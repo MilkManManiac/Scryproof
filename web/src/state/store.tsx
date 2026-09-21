@@ -581,6 +581,12 @@ interface StoreValue {
   replyTo: (channelId: string, message: Message | null) => void;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
+  /**
+   * Hear every gateway event, after the reducer has. For state that lives
+   * beside this store rather than in it; direct messages are the first.
+   * Returns the function that stops listening.
+   */
+  onGatewayEvent: (listener: (event: ServerEvent) => void) => () => void;
   signOut: () => Promise<void>;
 }
 
@@ -601,6 +607,7 @@ export function StoreProvider({
   // would otherwise be looking at whatever was selected when it was made.
   const openChannel = useRef<string | null>(null);
   openChannel.current = state.selectedChannelId;
+  const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
   // One session object for the life of the app. It is idle until a call is
   // joined, and it reaches the gateway through the ref so it never holds a
@@ -623,6 +630,7 @@ export function StoreProvider({
     const gateway = new Gateway({
       onEvent: (event) => {
         dispatch({ type: 'gateway', event });
+        for (const listener of eventListeners.current) listener(event);
 
         if (event.t === 'message_create') {
           const sound = soundFor({
@@ -803,6 +811,13 @@ export function StoreProvider({
     dispatch({ type: 'server-refreshed', server });
   }, []);
 
+  const onGatewayEvent = useCallback((listener: (event: ServerEvent) => void) => {
+    eventListeners.current.add(listener);
+    return () => {
+      eventListeners.current.delete(listener);
+    };
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await api.auth.logout();
@@ -829,6 +844,7 @@ export function StoreProvider({
       replyTo,
       loadMembers,
       refreshServer,
+      onGatewayEvent,
       signOut,
     }),
     [
@@ -846,6 +862,7 @@ export function StoreProvider({
       replyTo,
       loadMembers,
       refreshServer,
+      onGatewayEvent,
       signOut,
     ],
   );

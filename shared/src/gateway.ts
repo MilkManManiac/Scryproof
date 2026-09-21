@@ -9,6 +9,8 @@
 import type {
   Category,
   Channel,
+  DmChannel,
+  DmMessage,
   Member,
   Message,
   Presence,
@@ -87,6 +89,14 @@ export type ServerEvent =
   | { t: 'voice_membership'; d: VoiceMembership }
   /** A sealed message from another occupant, relayed unread. */
   | { t: 'voice_signal'; d: VoiceSignal & { from: Snowflake } }
+  /**
+   * Direct messages. Sent to the people in the conversation and nobody else,
+   * each copy carrying only the wrapped keys addressed to that person.
+   */
+  | { t: 'dm_create'; d: DmChannel }
+  | { t: 'dm_message_create'; d: DmMessage }
+  | { t: 'dm_message_delete'; d: { id: Snowflake; dmId: Snowflake } }
+  | { t: 'dm_read'; d: { dmId: Snowflake; lastReadMessageId: Snowflake } }
   | { t: 'error'; d: { code: string; message: string } };
 
 export type ClientEvent =
