@@ -1,9 +1,8 @@
 # Discord's features, and which ones Scryproof wants
 
 Asked for by Wes on 2026-09-21, after the first real session on scryproof.com:
-go through everything Discord has, then ask him what we care about. The
-buckets below are a first guess. He moves numbers between them; his answers get
-written back into this file and the milestones in `GAMEPLAN.md` follow from it.
+go through everything Discord has, then ask him what we care about. He
+sorted a first guess by voice the same evening; what follows is his sort.
 
 "Have" was checked against the routes and components on 2026-09-21, not
 remembered.
@@ -22,53 +21,51 @@ Video. Screen share. Two-factor sign-in. All voice and video end-to-end
 encrypted, which Discord only started doing in 2024 and does not do for text at
 all.
 
-## A. Build it (the guess is that he wants these)
+## Wes's answers (2026-09-21)
 
-1. **DMs**, one to one. Asked for on 2026-09-21.
-2. **Group DMs**, a handful of people outside any server.
-3. **Desktop app.** Asked for on 2026-09-21. See the Electron note below.
-4. **Global push-to-talk**: the key works while a game has focus. Desktop app only.
+Numbers are kept from the first draft so his answers can be traced.
+
+### Build
+
+1. **DMs**, one to one.
+2. **Group DMs.**
+3. **Desktop app** (Electron, see below).
+4. **Global push-to-talk.** Desktop app only.
 5. **Share a game window with its sound.** Desktop app only.
-6. **Desktop notifications**: a popup when someone mentions or DMs you.
+6. **Desktop notifications** for mentions and DMs.
 7. **Profile picture and a short bio.** The column exists; there is no way to set it.
-8. **Status**: online, idle, do not disturb, invisible, and a custom line of text.
+8. **Status**: online, idle, do not disturb, invisible, and a custom line.
 9. **Pinned messages.**
 10. **Search** through messages.
 11. **Custom emoji** the server uploads itself.
-12. **Timeout** a member (mute them for ten minutes without banning).
-13. **Stream quality choice** on screen share: 720p / 1080p, 30 / 60 fps.
-14. **Phone**: installable from the browser, with push notifications that carry no message content.
-15. **`/roll` and a few built-in slash commands.** For the D&D group. Not a bot platform.
+13. **Stream quality choice** on screen share.
+14. **Phone**: installable, with push that carries no message content. "Phone version is a yes."
+18. **Soundboard.** Moved up from maybe: "soundboard yes."
 
-## B. Maybe (he decides)
+### Later (wanted, not now)
 
-16. **Threads** off a message.
-17. **Polls.**
-18. **Soundboard** in voice.
-19. **Events**: schedule a session, people mark themselves in.
-20. **AFK channel**: idle people get moved out of the voice room.
-21. **Voice messages** in text channels.
-22. **Background blur** on camera. Possible with a model we host ourselves.
-23. **Spoiler tags** on text and images.
-24. **Saved GIFs.** Discord's GIF picker is Tenor, which is Google, which breaks rule 1. What we can do: upload a GIF once, star it, reuse it from a picker of your own.
-25. **Block a user.**
-26. **Bookmarks / forwarding** a message to another channel.
-27. **"Playing X" game activity.** Desktop app only, and it is metadata we would be choosing to collect.
-28. **Webhooks**, so something outside can post into a channel.
+17. **Polls.** "I really care about polls", for later. First in line from this pile.
+12. Timeout a member. "Not super worried."
+15. `/roll` and built-in commands. "Not crazy important right now."
+16. Threads.
+19. Events.
+20. AFK channel.
+21. Voice messages.
+22. Camera background blur.
+23. Spoiler tags.
+24. Saved GIFs. "Not right now."
+25. Block a user.
+26. Bookmarks and forwarding.
+27. "Playing X" game activity.
+28. Webhooks.
+29. Friends list. "Doesn't really matter I don't think", so a maybe rather than a no.
 
-## C. Skip (the guess is that nobody here misses these)
+### Skip
 
-29. Friends list. He said no on 2026-09-21: DM anyone you share a server with.
-30. Link previews. Already decided: fetching the preview puts a third party in the path whichever end does it.
-31. Stickers.
-32. Forum channels.
-33. Stage channels.
-34. Bots and an app directory.
-35. In-game overlay.
-36. Activities (games and watch-together inside a call).
-37. Server folders, discovery, templates, onboarding screens, vanity URLs, announcement channels other servers follow.
-38. AutoMod. Nine friends do not need a word filter.
-39. Nitro, boosts, shop, quests, avatar decorations, connected accounts.
+30. Link previews. "Who cares."
+31. Stickers. 32. Forum channels. 33. Stage channels. 34. Bots and an app
+directory. 35. In-game overlay. 36. Activities. 37. Server folders, discovery,
+templates, onboarding. 38. AutoMod. 39. Nitro, boosts, shop, quests.
 
 ## Electron or Tauri
 
@@ -95,6 +92,7 @@ while it is unlocked.
 - **Plain first, encrypted later.** Faster to build, history follows you
   everywhere, and the app must not call DMs private until that changes.
 
-Recommendation: encrypted from day one. It is the point of the project, and
+Recommendation, which Wes was shown and did not argue with, so it stands unless
+he says otherwise: encrypted from day one. It is the point of the project, and
 moving people's existing plain DMs to encrypted later is worse than never having
 had them.
