@@ -13,6 +13,8 @@ server {
     listen 80;
     listen [::]:80;
     server_name {{ preview_domain }};
+    # Scryproof: no record of who connected and when.
+    access_log off;
     return 301 https://{{ ssl_domain }}$request_uri;
 }
 
@@ -21,6 +23,8 @@ server {
     listen 80;
     listen [::]:80;
     server_name {{ nginx_server_name }};
+    # Scryproof: no record of who connected and when.
+    access_log off;
 
 {% if nginx_ssl_enabled %}
     # Scryproof: once there is a certificate, plain HTTP only redirects.
@@ -56,6 +60,8 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name {{ nginx_server_name }};
+    # Scryproof: no record of who connected and when.
+    access_log off;
 
     ssl_certificate {{ nginx_ssl_certificate_path }};
     ssl_certificate_key {{ nginx_ssl_certificate_key_path }};

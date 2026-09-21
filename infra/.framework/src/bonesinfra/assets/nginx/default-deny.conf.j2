@@ -2,6 +2,8 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
+    # Scryproof: no record of who connected and when.
+    access_log off;
 
     return 444;
 }
@@ -10,6 +12,8 @@ server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
     server_name _;
+    # Scryproof: no record of who connected and when.
+    access_log off;
 
     ssl_certificate {{ paths.nginx_default_deny_ssl_certificate }};
     ssl_certificate_key {{ paths.nginx_default_deny_ssl_certificate_key }};
