@@ -9,12 +9,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if [ -n "$(git status --porcelain)" ]; then
+signed='web/public/desktop-update/|desktop/src/client-version.json|desktop/src/update-key.pub.pem'
+if [ -n "$(git status --porcelain | grep -Ev "$signed" || true)" ]; then
   echo "There are uncommitted changes. Commit them first, so the update matches a commit." >&2
   exit 1
 fi
 
-npm run release:client
+# Building an installer signs a client too. Straight after one, release that client, so the two match.
+if [ -n "$(git status --porcelain | grep -E "$signed" || true)" ]; then
+  echo "Releasing the client that was already signed (by an installer build)."
+else
+  npm run release:client
+fi
 git add web/public/desktop-update desktop/src/client-version.json desktop/src/update-key.pub.pem
 version=$(node -p "require('./desktop/src/client-version.json').version")
 git commit -q -m "Signed desktop client $version"
