@@ -881,8 +881,8 @@ Wes asked whether every change needs a reinstall. It did. Now it does not.
   first time `npm run release:client` ran. Never printed, never committed,
   never on the box. The public half is `desktop/src/update-key.pub.pem`, baked
   into the installer. Lose the private key and everyone reinstalls once from an
-  installer built with a new one (delete the `.pub.pem`, run again). **Wes
-  should put a copy of the private key file in his password manager.** Anyone
+  installer built with a new one (delete the `.pub.pem`, run again). Wes
+  saved a copy in Bitwarden as a secure note, 2026-09-21. Anyone
   who copies it can ship code to every installed app.
 - The app (`desktop/src/main.js`, "updates"; `update-core.js` is the verifying
   part with no Electron in it): checks at start and every 10 minutes, verifies
