@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-21, night. **https://scryproof.com is live**: the app, Postgres, TLS, LiveKit, all gated behind the vault. The project was renamed from GoOffline to Scryproof the same day. What is left of M0 is the reboot test and Wes making the owner account; see "M0 so far" below.
+**Last updated:** 2026-09-21, night. **M0 is done: https://scryproof.com is live and the reboot-stays-locked test passed, twice.** The project was renamed from GoOffline to Scryproof the same day. The one thing outstanding is Wes creating the owner account; see "M0 so far" below.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -17,7 +17,7 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Live at https://scryproof.com, one test short of done.** Every runbook script has now run for real. Deployed with bonesdeploy from WSL, TLS from Let's Encrypt, LiveKit up with TURN over TLS, every secret-holding service gated behind the vault, firewall default-deny both ways. Left: the reboot-stays-locked test (needs Wes and the passphrase), and Wes creating the owner account. |
+| M0 infra | **Done.** Live at https://scryproof.com. Every runbook script has run for real, including unlock after a reboot. bonesdeploy from WSL, TLS from Let's Encrypt, LiveKit with TURN over TLS, every secret-holding service gated behind the vault, firewall default-deny both ways. Outstanding: Wes creates the owner account. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
@@ -111,17 +111,42 @@ note as sent.
   `error.log`, which can hold client IPs. Looked at, nothing secret found;
   `error.log` is worth a second thought.
 
-### What is left of M0
+### The reboot test (2026-09-21), passed on the second run
+
+![Unlock after a reboot](shots/m0-unlock.png)
+
+Rebooted twice. Locked, the box is what it should be: SSH answers in about 30
+seconds, `/dev/mapper/vault` does not exist, every gated unit is inactive,
+port 22 is the only listener, HTTPS gets no answer from outside, and nothing
+is written under the five bind points. Wes unlocked it from his own Git Bash
+with `bash scripts/unlock.sh`; the passphrase never passed through a session.
+
+The first run found two bugs, both fixed and proven by the second:
+
+- **Ubuntu's `ssl-cert.service` regenerates the snakeoil key pair at boot when
+  the key is missing**, and on a locked box `/etc/ssl/private` is the bare
+  root-disk directory, so it always is. That left a key where the vault binds
+  (unlock refuses a non-empty directory), and a new certificate in
+  `/etc/ssl/certs` that no longer matched the key on the vault, so Postgres
+  would not start: "key values mismatch". Now masked by `30-gate-services.sh`.
+  If it ever recurs: `make-ssl-cert generate-default-snakeoil --force-overwrite`
+  with the vault open.
+- **`scryproof-unlock` asked the API for its health once, immediately**, and
+  reported failure on a box that was fine five seconds later. It now waits up
+  to 30 seconds.
+
+`scryproof-lock` has still never been run.
+
+### What is left
 
 1. **Wes makes the owner account** at https://scryproof.com. The first account
    needs no invite and owns the instance, so until he does, anyone who finds
    the address could. His password is his; it never goes through a session.
-2. **The reboot-stays-locked test.** Reboot the box, confirm SSH works and
-   nothing else answers, then Wes runs `bash scripts/unlock.sh` in his own Git
-   Bash window and pastes the passphrase. First real run of `scryproof-unlock`,
-   so expect to fix something.
-3. **A call between two real machines**, which is M3's proof rather than M0's:
+2. **A call between two real machines**, which is M3's proof rather than M0's:
    TURN has still never carried one.
+3. **After any reboot the site is down until Wes unlocks it.** That is the
+   design. DigitalOcean reboots droplets for maintenance now and then, with
+   notice by email.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
