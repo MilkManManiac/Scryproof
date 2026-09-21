@@ -58,7 +58,15 @@ while read -r unit; do
 done < "$UNITS_FILE"
 
 say "Health"
-if curl -fsS --max-time 5 http://127.0.0.1:8787/api/health; then
+# The API needs a few seconds to boot and run migrations. Asking once, at once,
+# reported a failure on a box that was fine five seconds later (first reboot
+# test, 2026-09-21).
+healthy=0
+for _ in $(seq 1 15); do
+  if curl -fsS --max-time 5 http://127.0.0.1:8787/api/health 2>/dev/null; then healthy=1; break; fi
+  sleep 2
+done
+if [ "$healthy" -eq 1 ]; then
   printf '\n'
 else
   note "the API did not answer on 127.0.0.1:8787"
