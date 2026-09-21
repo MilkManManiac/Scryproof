@@ -17,13 +17,13 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Done.** Live at https://scryproof.com. Every runbook script has run for real, including unlock after a reboot. bonesdeploy from WSL, TLS from Let's Encrypt, LiveKit with TURN over TLS, every secret-holding service gated behind the vault, firewall default-deny both ways. Outstanding: Wes creates the owner account. |
+| M0 infra | **Done.** Live at https://scryproof.com. Every runbook script has run for real, including unlock after a reboot. bonesdeploy from WSL, TLS from Let's Encrypt, LiveKit with TURN over TLS, every secret-holding service gated behind the vault, firewall default-deny both ways. The owner account exists (Wes, 2026-09-21). |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
-| M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
-| M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **Not done:** never on a real box; the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
-| M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. It is not done: M5 ends when Wes says it does not feel like a clone, and he has not looked at it yet. |
-| M6 desktop | Not started. |
+| M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **First real use, 2026-09-21:** Wes and a friend on scryproof.com, voice "works great". **Not done:** nobody looked at the connection panel, so whether that call went direct or over TURN is unknown; three participants at most. |
+| M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **First real use, 2026-09-21:** camera and screen share both worked for Wes and a friend on the box. **Not done:** the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
+| M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. **Judged on 2026-09-21: not done.** Wes used it for real and said "some of the UI is kind of funky" and "we'll definitely need a good UI pass". No specifics yet; he offered screenshots. Read `references/the-wall.md` in the milk-project skill before starting that pass. |
+| M6 desktop | Not started. Wes asked for it on 2026-09-21 and said Electron; `docs/discord-features.md` argues he is right and GAMEPLAN's Tauri should change. |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
 **Repo:** https://github.com/MilkManManiac/Scryproof (private)
@@ -139,14 +139,29 @@ The first run found two bugs, both fixed and proven by the second:
 
 ### What is left
 
-1. **Wes makes the owner account** at https://scryproof.com. The first account
-   needs no invite and owns the instance, so until he does, anyone who finds
-   the address could. His password is his; it never goes through a session.
-2. **A call between two real machines**, which is M3's proof rather than M0's:
-   TURN has still never carried one.
-3. **After any reboot the site is down until Wes unlocks it.** That is the
+1. **Look at the connection panel during a call** and note direct or TURN.
+   The first real call happened on 2026-09-21 and nobody checked.
+2. **After any reboot the site is down until Wes unlocks it.** That is the
    design. DigitalOcean reboots droplets for maintenance now and then, with
    notice by email.
+
+## First real session on the box (2026-09-21)
+
+Wes made the owner account, invited a friend with a server invite link, and
+they used it: "Seems to be working very well." Text, adding channels, invite
+codes, voice, video and screen share all worked.
+
+- **Fixed just before:** registering from a server's invite link made the
+  account but did not join the server. `AuthScreen.tsx` now accepts the invite
+  after registering. Shipped; the friend's sign-up was its first real test.
+- **Still missing:** nothing in the UI mints an account-only invite
+  (`api.invites.createInstance` has no caller). A server invite link does the
+  job, so nobody is blocked.
+- **What he asked for, down the road:** a desktop app (Electron), a UI pass,
+  DMs between people who share a server (no friends list), and a full review of
+  Discord's features so he can say what matters. That review is
+  `docs/discord-features.md`; it is waiting on his answers, and on one real
+  decision about whether DMs are encrypted from day one.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
