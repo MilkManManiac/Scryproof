@@ -442,6 +442,27 @@ try {
   await wes.act(THIRD, 'Delete');
   check('a deleted message goes from the other screen', Boolean(await alex.until(`!document.querySelector('.main').innerText.includes(${JSON.stringify(THIRD)})`)));
 
+  /* 10: the bell. Wes is off in a server when Alex writes. */
+  {
+    const BELL = `bell-${stamp}`;
+    await wes.evaluate(`document.querySelector('.rail-item:not(.rail-dms):not(.rail-bell):not(.rail-add)').click()`);
+    await wes.until(`document.querySelector('.rail-dms.active') === null`);
+    await alex.say(BELL);
+    check('a DM that arrives while Wes is elsewhere lights the bell', Boolean(await wes.until(`document.querySelector('.rail-bell .badge') !== null`)));
+    await wes.evaluate(`document.querySelector('.rail-bell').click()`);
+    const row = await wes.until(`document.querySelector('.notice.unread')?.textContent`);
+    check('the list says who and where', Boolean(row) && row.includes('Alex') && row.includes('Direct message'), String(row));
+    check('and never what: not on screen, not in storage', await wes.evaluate(`
+      !document.querySelector('.notices').textContent.includes(${JSON.stringify(BELL)}) &&
+      !Object.keys(localStorage).some((key) => localStorage.getItem(key).includes(${JSON.stringify(BELL)}))
+    `));
+    await sleep(400);
+    if (process.env.DM_CHECK_BELL_SHOT) await wes.shot(process.env.DM_CHECK_BELL_SHOT);
+    await wes.evaluate(`document.querySelector('.notice.unread').click()`);
+    check('clicking it goes to the conversation', Boolean(await wes.until(`document.querySelector('.main').innerText.includes(${JSON.stringify(BELL)})`)));
+    check('and reading the conversation clears the bell', Boolean(await wes.until(`document.querySelector('.rail-bell .badge') === null`)));
+  }
+
   for (const device of everyone) {
     check(`${device.label}: no uncaught errors`, device.complaints.length === 0, device.complaints.join('\n      '));
   }

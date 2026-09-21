@@ -23,7 +23,7 @@ Living state. Update this at the end of every working session.
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **First real use, 2026-09-21:** Wes and a friend on scryproof.com, voice "works great". **Not done:** nobody looked at the connection panel, so whether that call went direct or over TURN is unknown; three participants at most. |
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **First real use, 2026-09-21:** camera and screen share both worked for Wes and a friend on the box. **Not done:** the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
 | M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. **Judged on 2026-09-21: not done.** Wes used it for real and said "some of the UI is kind of funky" and "we'll definitely need a good UI pass". No specifics yet; he offered screenshots. Read `references/the-wall.md` in the milk-project skill before starting that pass. |
-| M6 desktop | Not started. Wes asked for it on 2026-09-21 and said Electron; `docs/discord-features.md` argues he is right and GAMEPLAN's Tauri should change. |
+| M6 desktop | **A working shell with an installer, 2026-09-21.** Electron. Signs in, connects, uploads; `npm run test:desktop`. Not yet: tray, push-to-talk, notifications, signed updates. See "The desktop app, moved up". |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
 **Repo:** https://github.com/MilkManManiac/Scryproof (private)
@@ -265,6 +265,37 @@ until it is a problem), recovery phrase -> quick four -> UI pass.
   stage 3 (recovery phrase). Expected, and the reason stage 3 moved up.
 - Trap: an invite link opened in the app does nothing yet (`/invite/<code>`
   is a browser path). Joining by invite still happens in the browser.
+
+## Notifications and the timeline: built 2026-09-21, NOT deployed
+
+**Wes was testing on the live site and said not to push anything live. The
+commits from here on are in git but `ship.sh` has not been run. Ask before
+deploying.**
+
+- `web/src/lib/notices.ts`: the rules (`noticeFor`), the list, the pop-up.
+  Mentions and DMs that arrive while you are not watching go on a list kept in
+  this browser only (localStorage, per user, newest 200). With the window in
+  the background they also raise an OS pop-up, if switched on in Notifications
+  settings (off by default, because the browser has to be asked from a click).
+- **DMs: who and when, never what**, in the pop-up and in the list. The list
+  sits in plain storage and the OS keeps notification history; neither is a
+  place for end-to-end encrypted text. `npm run test:dm` checks the text is
+  not on screen and not in storage. Channel previews can be switched off too.
+- The timeline (Wes's idea): bell on the rail under the DM button, badge with
+  the unread count, list grouped by day with time, server > #channel, who, and
+  a row of filters across the top counting how many came from each server.
+  Click goes to the message and flashes it. Reading a conversation any other
+  way marks its notices read. `web/src/components/NoticeTimeline.tsx`.
+  Shot: `docs/shots/notice-timeline.png`.
+- Not done: per-server or per-channel mute; replies-to-you are covered only
+  because the server already counts them as mentions.
+- Desktop app gained a tray icon (closing the window hides to tray; Quit is in
+  the tray menu) and the AppUserModelId Windows needs before it shows pop-ups.
+  **Pop-ups inside the desktop app are untested by a person.** The installer in
+  Wes's Downloads predates this: rebuild with `cd desktop && npm run dist`.
+- **Global push-to-talk is not started.** Electron's `globalShortcut` has no
+  key-up event, so hold-to-talk needs a native key hook (uiohook-napi or
+  similar): a native dependency, to be vetted for phoning home before it ships.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
@@ -827,32 +858,37 @@ as small uppercase captions, which turned a role name into a heading. It is
 
 ## Next, in order
 
-1. **Wes buys the droplet and a domain.** 2 GB / 1 vCPU, a 10 GB volume,
-   ATL1, Ubuntu 24.04, the SSH key named `scryproof`, no backups and no
-   monitoring agent. Resize later with "CPU and RAM only" so it stays
-   reversible. Domain from Porkbun or Namecheap. He sends a screenshot of the
-   droplet page for the address.
-2. **M0 infra, by the runbook** (`infra/box/README.md`). Every script in it is
-   unverified, so expect to fix them as they run. Four things the runbook says
-   that are easy to lose:
-   - rerun `40-firewall.sh` after `bonesdeploy server setup`, which sets ufw
-     back to allowing all outbound;
-   - run `git checkout infra/custom` after `bonesdeploy init`, which overwrites
-     `runtime.py` and `manifest.py` with stubs;
-   - `web_root` must be `web/dist`, the only part of the release nginx's
-     AppArmor profile may read;
-   - a 2 GB box with swap off may run out of memory during the build. The
-     runbook lists the ways out.
+Rewritten 2026-09-21, after the desktop shell. The droplet, domain and M0 are
+done; the old list here was about getting onto the box.
 
-   Installing the bonesdeploy CLI needs Rust on Wes's PC. Ask him first.
-3. **M3 on the real box.** The TURN path has never carried a call, nothing has
-   been tried with three people, and a `device_keys` table still has to replace
-   `users.identity_key` before a second device per person (M6) can exist
-   without every sign-in looking like a changed key. Video and screen share
-   (M4) ride along: built, and equally unproven off this machine.
-4. **Reordering from the sidebar itself.** Today it lives under server
-   settings → Layout, which is one screen away from where the channels are.
-   Whether that is fine or annoying is Wes's call after using it.
+1. **Notifications, with a timeline.** Desktop pop-ups for mentions and DMs
+   ("who, not what" for DMs), plus Wes's idea: an inbox that lists what you
+   got, when, and from which server and channel, so a busy day can be traced.
+   Built once for browser and desktop app.
+2. **Desktop basics:** tray icon, start with Windows, global push-to-talk.
+3. **Stream quality picker.** The streamer picks resolution and frame rate. No
+   cap from us (Wes, 2026-09-21); add one only if bandwidth becomes a problem.
+4. **DM stage 3: recovery phrase.** Moved up because the desktop app is a new
+   device for everybody and shows old DMs locked.
+5. **The quick four:** profile picture, status, pins (stream quality is 3).
+6. **Private channels in one click.** Hidden text and voice channels already
+   work through permission overwrites (deny View Channel to @everyone, allow a
+   role), and the server enforces it. What is missing is the Discord-style
+   "Private channel" switch when creating one, with a picker for who gets in.
+   Wes asked for this 2026-09-21.
+7. **UI pass** (waiting on Wes's screenshots; read the-wall.md first).
+8. Signed updates and Electron fuses for the desktop app. Then search, custom
+   emoji, soundboard, phone, group DMs, safety number.
+
+**Later, and flagged: Cloudflare R2 for file storage** (suggested by Wes's
+friend, 2026-09-21). As asked it breaks non-negotiable 1: channel attachments
+are not end-to-end encrypted, so R2 would hold members' files readable by
+Cloudflare. Ways it could be made to fit: only ever store bytes that were
+locked in the browser first (DM files already are; channel files would need
+the same treatment, which means per-channel keys, which is M7 territory), or
+use it only for encrypted restic backups, which is already allowed. Disk is
+not a problem yet: the volume is 10 GB and can be grown. Talk it through with
+Wes before building anything.
 
 ## Decisions made this session
 

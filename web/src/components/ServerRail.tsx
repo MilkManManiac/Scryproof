@@ -14,6 +14,7 @@ import { ApiError, api } from '../lib/api';
 import { unreadDmCount, useDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
 import { Modal } from './Modal';
+import { NoticeBell } from './NoticeTimeline';
 
 function tile(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -91,6 +92,7 @@ export function ServerRail() {
         @
         {waiting > 0 ? <span className="badge">{badgeText(waiting)}</span> : null}
       </button>
+      <NoticeBell />
       <div className="rail-divider" />
 
       {state.serverOrder.map((id) => {

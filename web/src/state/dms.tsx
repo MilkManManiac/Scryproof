@@ -39,6 +39,7 @@ import {
   openMessage,
   sealMessage,
 } from '../lib/dm-crypto';
+import { noticeFor, notices } from '../lib/notices';
 import { notifyPrefs, play, soundFor } from '../lib/notify';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
 import { IndexedDbIdentityStore, loadDeviceIdentity, loadDmKeypair } from '../lib/voice-identity';
@@ -476,6 +477,36 @@ export function DmProvider({ children }: { children: ReactNode }) {
         });
         if (sound) play(sound);
 
+        const focused = document.hasFocus();
+        const verdict = noticeFor({
+          authorId: message.authorId,
+          selfId,
+          addressedToMe: true,
+          watching: focused && looking,
+          windowFocused: focused,
+        });
+        if (verdict.list) {
+          const author = stateRef.current.dms[message.dmId]?.members.find((member) => member.id === message.authorId);
+          // Who and when. Never what: see the note at the top of notices.ts.
+          notices.arrived(
+            {
+              id: message.id,
+              at: Date.now(),
+              kind: 'dm',
+              authorId: message.authorId,
+              authorName: author?.displayName ?? 'Someone',
+              serverId: null,
+              serverName: null,
+              channelId: null,
+              channelName: null,
+              dmId: message.dmId,
+              preview: null,
+              read: false,
+            },
+            verdict.popup,
+          );
+        }
+
         // Only conversations that have been opened hold text. The rest decrypt
         // when somebody looks.
         if (!stateRef.current.loaded[message.dmId]) return;
@@ -613,6 +644,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     if (!dm || !newest) return;
     if (dm.lastReadMessageId && dm.lastReadMessageId >= newest) return;
     dispatch({ type: 'read', dmId, messageId: newest });
+    notices.readWhere({ dmId });
     void api.dms.markRead(dmId, newest).catch(() => undefined);
   }, []);
 

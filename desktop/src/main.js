@@ -16,7 +16,7 @@
  *   - voice, which goes to LiveKit with a token and needs nothing from us.
  */
 
-import { app, BrowserWindow, desktopCapturer, Menu, net, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -197,6 +197,36 @@ function armPermissions(ses) {
 /* ---------------------------------- window --------------------------------- */
 
 let win = null;
+let tray = null;
+/** Closing the window leaves the app in the tray, so a call or a pop-up survives it. Quit is in the tray menu. */
+let quitting = false;
+
+function show() {
+  if (!win) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(join(here, '..', 'assets', 'icon.png')).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip('Scryproof');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Open Scryproof', click: show },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          quitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  tray.on('click', show);
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -234,6 +264,11 @@ function createWindow() {
     outside(url);
   });
   win.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  win.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    win.hide();
+  });
   win.on('closed', () => {
     win = null;
   });
@@ -241,16 +276,17 @@ function createWindow() {
   void win.loadURL(`${APP_ORIGIN}/`);
 }
 
-app.on('second-instance', () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.focus();
+app.on('second-instance', show);
+app.on('before-quit', () => {
+  quitting = true;
 });
-
 app.on('window-all-closed', () => app.quit());
 
 void app.whenReady().then(() => {
+  // Windows files pop-ups under this name, and shows none at all without it.
+  app.setAppUserModelId('com.scryproof.desktop');
   Menu.setApplicationMenu(null);
+  createTray();
   protocol.handle('app', handle);
   armGateway(session.defaultSession);
   armPermissions(session.defaultSession);

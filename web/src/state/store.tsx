@@ -34,6 +34,7 @@ import type {
 } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { noticeFor, notices, previewOf } from '../lib/notices';
 import { notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { VoiceSession } from '../lib/voice-session';
@@ -607,6 +608,9 @@ export function StoreProvider({
   // would otherwise be looking at whatever was selected when it was made.
   const openChannel = useRef<string | null>(null);
   openChannel.current = state.selectedChannelId;
+  // Same reason: a notice names the server and channel a message came from.
+  const serversRef = useRef(state.servers);
+  serversRef.current = state.servers;
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
   // One session object for the life of the app. It is idle until a call is
@@ -644,10 +648,45 @@ export function StoreProvider({
             prefs: notifyPrefs.get(),
           });
           if (sound) play(sound);
+
+          const message = event.d;
+          const focused = document.hasFocus();
+          const verdict = noticeFor({
+            authorId: message.authorId,
+            selfId: selfId.current,
+            addressedToMe:
+              (message.mentionsEveryone ?? false) || (message.mentions ?? []).includes(selfId.current ?? ''),
+            watching: focused && message.channelId === openChannel.current,
+            windowFocused: focused,
+          });
+          if (verdict.list) {
+            const server = Object.values(serversRef.current).find((entry) =>
+              entry.channels.some((channel) => channel.id === message.channelId),
+            );
+            const channel = server?.channels.find((entry) => entry.id === message.channelId);
+            notices.arrived(
+              {
+                id: message.id,
+                at: Date.now(),
+                kind: 'mention',
+                authorId: message.authorId,
+                authorName: message.author.displayName,
+                serverId: server?.id ?? null,
+                serverName: server?.name ?? null,
+                channelId: message.channelId,
+                channelName: channel?.name ?? null,
+                dmId: null,
+                preview: previewOf(message.content),
+                read: false,
+              },
+              verdict.popup,
+            );
+          }
         }
 
         if (event.t === 'ready') {
           selfId.current = event.d.user.id;
+          notices.use(event.d.user.id);
           // A fresh gateway connection means the server forgot we were in a
           // call when the old one dropped. Rejoin rather than sit in a room
           // the server no longer thinks we are in.
@@ -794,6 +833,7 @@ export function StoreProvider({
     const caughtUp = current?.lastReadMessageId && current.lastReadMessageId >= messageId;
     if (caughtUp && current.mentionCount === 0) return;
     dispatch({ type: 'marked-read', channelId, messageId });
+    notices.readWhere({ channelId });
     void api.messages.markRead(channelId, messageId).catch(() => undefined);
   }, []);
 

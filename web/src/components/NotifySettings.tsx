@@ -7,8 +7,9 @@
  * your machine does when a message arrives is not the server's business.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { notices } from '../lib/notices';
 import { notifyPrefs, play } from '../lib/notify';
 import type { MessageSound } from '../lib/notify';
 import { Modal } from './Modal';
@@ -22,6 +23,8 @@ const MESSAGE_CHOICES: [value: MessageSound, label: string, note: string][] = [
 export function NotifySettings({ onClose }: { onClose: () => void }) {
   const [prefs, setPrefs] = useState(notifyPrefs.get());
   useEffect(() => notifyPrefs.subscribe(() => setPrefs(notifyPrefs.get())), []);
+  const popups = useSyncExternalStore(notices.subscribe, notices.prefs);
+  const [refused, setRefused] = useState(false);
 
   return (
     <Modal
@@ -58,7 +61,40 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         />
       </label>
 
-      <div className="settings-subhead">Everything else</div>
+      <div className="settings-subhead">Pop-ups</div>
+      <label className="toggle-row">
+        <span>
+          Show a pop-up when I am somewhere else
+          <span className="field-note">
+            For mentions and direct messages. A direct message pop-up says who wrote, never what: that text is
+            encrypted, and your computer&rsquo;s notification history is not.
+            {refused ? ' The browser said no. Allow notifications for this site in its settings, then try again.' : ''}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          className="perm-switch"
+          checked={popups.popups}
+          onChange={(event) => {
+            if (!event.target.checked) return notices.setPrefs({ popups: false });
+            void notices.enablePopups().then((allowed) => setRefused(!allowed));
+          }}
+        />
+      </label>
+      <label className="toggle-row">
+        <span>
+          Show what a channel message says
+          <span className="field-note">In the pop-up and in the list behind the bell. Off means only who and where.</span>
+        </span>
+        <input
+          type="checkbox"
+          className="perm-switch"
+          checked={popups.previews}
+          onChange={(event) => notices.setPrefs({ previews: event.target.checked })}
+        />
+      </label>
+
+      <div className="settings-subhead">Sounds for everything else</div>
       <div className="radio-group">
         {MESSAGE_CHOICES.map(([value, label, note]) => (
           <label className="radio-row" key={value}>
