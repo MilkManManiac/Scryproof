@@ -21,3 +21,7 @@ desktop/target/
 
 # Local-only binaries (the LiveKit dev server). Downloaded, checksum-verified, never committed.
 .tools/
+
+# Python bytecode from the deploy tool
+__pycache__/
+*.pyc

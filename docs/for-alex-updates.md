@@ -67,7 +67,59 @@ All of this was run, not read. WSL2, Ubuntu 26.04, rustc 1.98.1.
 - `bonesdeploy skill` (docs for AI agents, plus `skill next`) exists and is
   good. The note never mentions it because I had not found it.
 
-Not yet run: `server setup`, `site setup`, `site ssl`, `deploy`.
+Not yet run at that point: `server setup`, `site setup`, `site ssl`, `deploy`.
+
+### Evening: `server setup` and `site setup` both pass, after three fixes
+
+All run against the real box (Ubuntu 24.04, 1 GB, swap off). The placeholder
+page answers at http://scryproof.com/.
+
+- **Both open questions answered: yes.** 1 GB with swap off was enough for
+  `server setup` and `site setup` (about 450 MB used afterwards). And neither
+  minded `/srv/sites` and `/srv/conf` already existing as bind mounts. The
+  build has not been tried yet.
+- **The CLI needs `python3-venv` locally** and says so clearly. Not a bug. On a
+  fresh WSL Ubuntu it is one more apt package.
+- **It installs pyinfra with pip and ignores its own `uv.lock`.** The lock pins
+  3.8.0; we got 3.10.0. Made no difference to anything below; tried both.
+
+Three changes to the managed copy in `infra/.framework/`. All three are bugs
+for anyone on this setup, not preferences of ours, and each is the smallest
+edit that worked. `bonesdeploy update` will replace them, so they need
+reapplying, or fixing upstream:
+
+1. **Postgres, `services/runtime/postgres.py` line 22.** `user=f"{project}_postgres"`
+   is passed to `server.script_template`, which hands `**data` to
+   `files.template`, and `files.template` has its own `user` parameter (the
+   file owner). So the value never reaches the template and rendering fails:
+   `configure-postgres-project.sh.j2 (L4): 'user' is undefined`. The script
+   never uses `$USER` anyway. Removed the kwarg and line 4 of the template.
+2. **Postgres, same template, the CREATE DATABASE line.** It runs
+   `psql -v database=... -c "SELECT format(..., :'database', :'user') ... \gexec"`.
+   psql does not expand variables or run backslash commands in a `-c` string, so
+   the server sees a literal `:` and errors: `syntax error at or near ":"`.
+   Changed to feed the same statement on stdin with a heredoc. The mysql
+   template has the same `USER="{{ user }}"` line; not tested.
+   Taken together: I do not think `--service postgres` can have worked on
+   0.8.7. Worth asking him whether it is new.
+3. **`aa-enforce` on Ubuntu 24.04**, `services/linux/apparmor/nginx.py` and
+   `app.py`. `aa-enforce` parses every file in `/etc/apparmor.d`, and
+   apparmor-utils 4.0.1 cannot parse `abstractions/passt`, which arrives with
+   Podman: `Operation {'runbindable'} cannot have a source`, and after that
+   `Can't parse mount rule mount "" -> "/tmp/"`. This is Ubuntu's bug, not his,
+   but it stops `site setup` dead on 24.04. `apparmor_parser -r` has already
+   loaded the profile in enforce mode, so the step is now a check instead:
+   `grep -qxF "<profile> (enforce)" /sys/kernel/security/apparmor/profiles`.
+   We briefly edited the passt file on the box, then put it back byte for byte.
+
+Also seen:
+
+- `site setup` does not touch ufw. Only `server setup` resets outbound to
+  allow. Item 8 stands, narrowed to that one command.
+- Our `infra/custom/runtime.py` and templates ran without changes. The
+  `custom` hook did what the docs say.
+
+Still not run: `git push production`, `deploy`, `site ssl`.
 
 ## Still to find out, and report back
 
