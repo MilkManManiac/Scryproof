@@ -14,3 +14,4 @@ infra/box/remote/* text eol=lf
 *.template text eol=lf
 *.patch text eol=lf
 .env.example text eol=lf
+web/public/desktop-update/client.bin binary

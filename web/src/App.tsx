@@ -13,6 +13,7 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
+import { applyClientUpdate, onClientUpdate } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
@@ -64,6 +65,30 @@ export function App() {
         <Shell />
       </DmProvider>
     </StoreProvider>
+  );
+}
+
+/**
+ * Desktop app only: a newer client has been fetched and checked, and is
+ * waiting. Switching to it is a reload, which would hang up a call, so the
+ * person picks the moment. Left alone, it is simply there next time the app
+ * starts.
+ */
+function UpdateBanner({ inVoice }: { inVoice: boolean }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => onClientUpdate(() => setReady(true)), []);
+  if (!ready) return null;
+  return (
+    <div className="banner update">
+      A newer Scryproof is ready.{' '}
+      {inVoice ? (
+        'Reload when your call is over.'
+      ) : (
+        <button type="button" className="link-button" onClick={applyClientUpdate}>
+          Reload now
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -150,6 +175,7 @@ function Shell() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <UpdateBanner inVoice={inVoice} />
       {state.connection !== 'open' ? (
         <div className={state.connection === 'closed' ? 'banner bad' : 'banner'}>
           {state.connection === 'closed'

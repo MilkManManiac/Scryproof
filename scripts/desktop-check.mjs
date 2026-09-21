@@ -11,8 +11,9 @@
  *   npm run test:desktop
  */
 
-import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,8 +37,42 @@ const check = (name, ok, detail = '') => {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const profile = mkdtempSync(join(tmpdir(), 'scryproof-desktop-'));
+/*
+ * A stand-in for /desktop-update/ on the box. It serves whichever folder
+ * `serving` points at, so the test can play a server that tampers, one that is
+ * honest, and one that replays something old.
+ */
+const UPDATE_PORT = 9352;
+const updates = mkdtempSync(join(tmpdir(), 'scryproof-updates-'));
+let serving = null;
+const updateServer = createServer((request, reply) => {
+  const name = (request.url ?? '').split('/').pop();
+  if (!serving || !['client.json', 'client.bin'].includes(name)) return reply.writeHead(404).end();
+  try {
+    reply.writeHead(200).end(readFileSync(join(serving, name)));
+  } catch {
+    reply.writeHead(404).end();
+  }
+});
+await new Promise((listening) => updateServer.listen(UPDATE_PORT, '127.0.0.1', listening));
+
+/** A signed update of the client as built, made the way a release makes one. */
+function makeUpdate(name, version) {
+  const out = join(updates, name);
+  const made = spawnSync(process.execPath, [join(root, 'desktop', 'scripts', 'make-update.mjs')], {
+    env: { ...process.env, SCRYPROOF_UPDATE_OUT: out, SCRYPROOF_UPDATE_SKIP_BUILD: '1', SCRYPROOF_UPDATE_VERSION: String(version) },
+  });
+  if (made.status !== 0) throw new Error(`make-update failed: ${made.stderr}`);
+  return out;
+}
+
 const child = spawn(electron, [desktop, `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`], {
-  env: { ...process.env, SCRYPROOF_SERVER: SERVER },
+  env: {
+    ...process.env,
+    SCRYPROOF_SERVER: SERVER,
+    SCRYPROOF_UPDATE_URL: `http://127.0.0.1:${UPDATE_PORT}/desktop-update/`,
+    SCRYPROOF_UPDATE_EVERY_MS: '700',
+  },
   stdio: 'ignore',
 });
 
@@ -152,6 +187,43 @@ try {
   await sleep(800);
   check('it refuses to navigate to the server, or anywhere', (await evaluate('location.origin').catch(() => 'gone')) === 'app://scryproof');
 
+  /* Updates: only what Wes's key signed, only forwards. */
+  {
+    const waiting = () => evaluate('window.scryproofDesktop.updateState()');
+    const genuine = makeUpdate('genuine', Date.now() + 1_000_000);
+
+    const tampered = join(updates, 'tampered');
+    mkdirSync(tampered);
+    writeFileSync(join(tampered, 'client.json'), readFileSync(join(genuine, 'client.json')));
+    const bytes = readFileSync(join(genuine, 'client.bin'));
+    bytes[bytes.length >> 1] ^= 1;
+    writeFileSync(join(tampered, 'client.bin'), bytes);
+    serving = tampered;
+    await sleep(2500);
+    check('an update with one bit changed is not offered', (await waiting()) === null);
+
+    const forged = join(updates, 'forged');
+    mkdirSync(forged);
+    const manifest = JSON.parse(readFileSync(join(genuine, 'client.json'), 'utf8'));
+    writeFileSync(join(forged, 'client.json'), JSON.stringify({ ...manifest, version: manifest.version + 5 }));
+    writeFileSync(join(forged, 'client.bin'), readFileSync(join(genuine, 'client.bin')));
+    serving = forged;
+    await sleep(2500);
+    check('nor is one whose version the server changed', (await waiting()) === null);
+
+    serving = genuine;
+    check('a genuine one is fetched, checked and offered', Boolean(await until(`window.scryproofDesktop.updateState().then((v) => v !== null)`)));
+    check('the page says so', Boolean(await until(`document.querySelector('.banner.update') !== null`)));
+    await evaluate(`window.__before = true; document.querySelector('.banner.update button').click()`);
+    check('Reload moves to the new client', Boolean(await until(`window.__before === undefined && document.querySelector('.rail-dms') !== null`)));
+    check('still signed in afterwards', (await evaluate(`fetch('/api/auth/me').then((r) => r.status)`)) === 200);
+    check('and nothing is left waiting', (await waiting()) === null);
+
+    serving = makeUpdate('old', 5);
+    await sleep(2500);
+    check('an older client, genuinely signed, is not an update', (await waiting()) === null);
+  }
+
   if (process.env.DESKTOP_CHECK_SHOT) {
     const { data } = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(process.env.DESKTOP_CHECK_SHOT, Buffer.from(data, 'base64'));
@@ -162,7 +234,9 @@ try {
 } finally {
   socket?.close();
   child.kill();
+  updateServer.close();
   await sleep(500);
+  try { rmSync(updates, { recursive: true, force: true }); } catch {}
   try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }
 

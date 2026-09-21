@@ -9,7 +9,9 @@
   "scripts": {
     "client": "cd .. && npm run build --workspace web",
     "start": "electron .",
-    "dist": "npm run client && electron-builder --win nsis --publish never"
+    "release": "node scripts/make-update.mjs",
+    "test": "node --test test/update.test.mjs",
+    "dist": "npm run release && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "44.4.3",
@@ -20,7 +22,7 @@
     "productName": "Scryproof",
     "directories": { "output": "release" },
     "files": ["src/**", "assets/icon.png", "package.json"],
-    "extraResources": [{ "from": "../web/dist", "to": "client" }],
+    "extraResources": [{ "from": "../web/dist", "to": "client", "filter": ["**/*", "!desktop-update/**"] }],
     "win": { "icon": "assets/icon.png", "target": "nsis" },
     "nsis": { "oneClick": true, "perMachine": false, "artifactName": "Scryproof-Setup-${version}.exe" }
   }

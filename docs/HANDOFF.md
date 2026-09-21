@@ -863,6 +863,48 @@ sections and the channel gear are all absent for him.
 as small uppercase captions, which turned a role name into a heading. It is
 `.field > label` now.
 
+## Desktop app updates itself: signed client updates, 2026-09-21
+
+Wes asked whether every change needs a reinstall. It did. Now it does not.
+
+- **Deploy with `bash scripts/release.sh`**, not `ship.sh` directly. It signs
+  the client built from the current commit, commits the two signed files,
+  pushes, deploys, and checks the box serves the version just signed. The tree
+  must be clean first. `ship.sh` alone still updates the website, but installed
+  apps would stay on the old client.
+- An update is `web/public/desktop-update/client.bin` (every built client file,
+  gzipped JSON, about 500 KB) and `client.json` (version, sha256, size, Ed25519
+  signature over version + hash). Vite copies `public/` into the build, so the
+  box serves them at `/desktop-update/` with no nginx change. The client the
+  desktop app runs is the one built **on the PC**, not the one built on the box.
+- **The signing key is `~/.scryproof/update-key.pem` on Wes's PC**, made the
+  first time `npm run release:client` ran. Never printed, never committed,
+  never on the box. The public half is `desktop/src/update-key.pub.pem`, baked
+  into the installer. Lose the private key and everyone reinstalls once from an
+  installer built with a new one (delete the `.pub.pem`, run again). **Wes
+  should put a copy of the private key file in his password manager.** Anyone
+  who copies it can ship code to every installed app.
+- The app (`desktop/src/main.js`, "updates"; `update-core.js` is the verifying
+  part with no Electron in it): checks at start and every 10 minutes, verifies
+  signature then hash, refuses anything not newer than what it runs (no
+  replaying an old signed client), keeps the verified bundle in memory and
+  serves from there, caches it in `userData/client-update/` and re-verifies it
+  from scratch on every start. The page gets a banner, "A newer Scryproof is
+  ready. Reload now", or "Reload when your call is over" in voice. Left alone,
+  the update is simply in use next launch.
+- `npm run dist` in `desktop/` signs a client too and writes
+  `desktop/src/client-version.json`, so a fresh installer knows how new its own
+  client is. Release right after building an installer so the two match.
+- A reinstall is now needed only when the shell changes (`desktop/src/*`,
+  Electron version). Shell auto-update is not built; it needs a code-signing
+  decision first (money, Wes's call).
+- Tests: `desktop/test/update.test.mjs` (8: forged key, changed bytes, changed
+  version, moved signature, nonsense, climbing paths, wrong key type) and the
+  end of `npm run test:desktop`, where a fake update server tampers, forges,
+  serves the real thing, then replays an old one.
+- Cost: about 500 KB added to git per release. If that ever matters, move the
+  two files to an scp step.
+
 ## DM stage 3, the recovery phrase: built 2026-09-21
 
 Twelve words that are a device. `web/src/lib/dm-recovery.ts` has the long
@@ -936,7 +978,7 @@ done; the old list here was about getting onto the box.
    "Private channel" switch when creating one, with a picker for who gets in.
    Wes asked for this 2026-09-21.
 7. **UI pass** (waiting on Wes's screenshots; read the-wall.md first).
-8. Signed updates and Electron fuses for the desktop app. Then search, custom
+8. Electron fuses, and updating the shell itself (client updates are done, see above). Then search, custom
    emoji, soundboard, phone, group DMs, safety number.
 
 **Later, and flagged: Cloudflare R2 for file storage** (suggested by Wes's

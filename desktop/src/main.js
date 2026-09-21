@@ -14,12 +14,19 @@
  *     to the handshake here, because the page cannot see it (httpOnly) and the
  *     browser would not send it across origins.
  *   - voice, which goes to LiveKit with a token and needs nothing from us.
+ *
+ * One thing arrives that is code: a newer client, from /desktop-update/. It is
+ * used only if it was signed by the key this build was made with, which is on
+ * Wes's PC and not on the server. `update-core.js`.
  */
 
-import { app, BrowserWindow, desktopCapturer, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
-import { readFile } from 'node:fs/promises';
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +38,19 @@ const DEV_MEDIA = app.isPackaged ? '' : (process.env.SCRYPROOF_DEV_MEDIA ?? '');
 const APP_ORIGIN = 'app://scryproof';
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
+
+/** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
+const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (process.env.SCRYPROOF_UPDATE_URL ?? '');
+const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
+const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
+const UPDATE_EVERY_MS = app.isPackaged ? 10 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 10 * 60_000);
+const BUNDLED_VERSION = (() => {
+  try {
+    return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
+  } catch {
+    return 0;
+  }
+})();
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -81,11 +101,32 @@ if (debugged || !app.requestSingleInstanceLock()) app.exit(0);
 
 /* --------------------------------- serving --------------------------------- */
 
-/** A file from the bundled client. Anything that is not a file is the app itself. */
+/**
+ * The client being shown. `files` is null for the one inside the installer,
+ * which is read from disk, and a Map for an update, which is held in memory:
+ * it was verified as one piece, so it is served from that piece, and nothing
+ * on disk can be edited between the check and the use.
+ */
+let client = { version: BUNDLED_VERSION, files: null };
+/** A verified update that is waiting for the person to say reload. */
+let pending = null;
+
+function serveUpdate(pathname, headers) {
+  const path = decodeURIComponent(pathname).replace(/^\/+/, '');
+  const asFile = extname(path) ? client.files.get(path) : undefined;
+  if (extname(path) && !asFile) return new Response('Not found', { status: 404, headers });
+  const body = asFile ?? client.files.get('index.html');
+  const type = asFile ? (TYPES[extname(path)] ?? 'application/octet-stream') : TYPES['.html'];
+  return new Response(body, { headers: { ...headers, 'Content-Type': type, 'Cache-Control': 'no-store' } });
+}
+
+/** A file from the client. Anything that is not a file is the app itself. */
 async function serveClient(pathname) {
+  const headers = { 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP };
+  if (client.files) return serveUpdate(pathname, headers);
+
   const wanted = normalize(join(CLIENT_DIR, decodeURIComponent(pathname)));
   const inside = wanted === CLIENT_DIR || wanted.startsWith(CLIENT_DIR + sep);
-  const headers = { 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP };
 
   if (inside && extname(wanted)) {
     try {
@@ -132,6 +173,62 @@ function handle(request) {
   if (url.pathname.startsWith('/api/')) return forward(request, url);
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Not allowed', { status: 405 });
   return serveClient(url.pathname);
+}
+
+/* --------------------------------- updates --------------------------------- */
+
+const updateDir = () => join(app.getPath('userData'), 'client-update');
+
+/** An update fetched on an earlier run. Checked again from scratch: the folder is only a cache. */
+async function loadStoredUpdate() {
+  if (!UPDATE_KEY) return;
+  try {
+    const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEY);
+    if (!manifest || manifest.version <= client.version) return;
+    const files = openBundle(await readFile(join(updateDir(), 'client.bin')), manifest);
+    if (files) client = { version: manifest.version, files };
+  } catch { /* nothing stored, or not readable: the bundled client is fine */ }
+}
+
+async function checkForUpdate() {
+  if (!UPDATE_URL || !UPDATE_KEY) return;
+  try {
+    const get = (name) => net.fetch(new URL(name, UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
+    const reply = await get('client.json');
+    if (!reply.ok) return;
+    const manifest = readManifest(await reply.text(), UPDATE_KEY);
+    // Forward only. An older client, however genuinely signed, is not an update.
+    if (!manifest || manifest.version <= Math.max(client.version, pending?.version ?? 0)) return;
+
+    const download = await get('client.bin');
+    if (!download.ok || Number(download.headers.get('content-length') ?? 0) > MAX_BUNDLE_BYTES) return;
+    const bundle = Buffer.from(await download.arrayBuffer());
+    const files = openBundle(bundle, manifest);
+    if (!files) return;
+
+    await mkdir(updateDir(), { recursive: true });
+    for (const [name, body] of [['client.bin', bundle], ['client.json', JSON.stringify(manifest)]]) {
+      await writeFile(join(updateDir(), `${name}.part`), body);
+      await rename(join(updateDir(), `${name}.part`), join(updateDir(), name));
+    }
+    pending = { version: manifest.version, files };
+    win?.webContents.send('scryproof:update-ready', manifest.version);
+  } catch { /* offline, or the server is down. Ask again later. */ }
+}
+
+/** The page asks whether anything is waiting, and says when to switch. Only our own page is listened to. */
+function armUpdates() {
+  const ours = (event) => event.senderFrame?.url.startsWith(`${APP_ORIGIN}/`) ?? false;
+  ipcMain.handle('scryproof:update-state', (event) => (ours(event) ? (pending?.version ?? null) : null));
+  ipcMain.handle('scryproof:update-apply', (event) => {
+    if (!ours(event) || !pending) return false;
+    client = pending;
+    pending = null;
+    win?.reload();
+    return true;
+  });
+  void checkForUpdate();
+  setInterval(() => void checkForUpdate(), UPDATE_EVERY_MS).unref();
 }
 
 /* --------------------------------- gateway --------------------------------- */
@@ -282,7 +379,8 @@ app.on('before-quit', () => {
 });
 app.on('window-all-closed', () => app.quit());
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  await loadStoredUpdate();
   // Windows files pop-ups under this name, and shows none at all without it.
   app.setAppUserModelId('com.scryproof.desktop');
   Menu.setApplicationMenu(null);
@@ -291,4 +389,5 @@ void app.whenReady().then(() => {
   armGateway(session.defaultSession);
   armPermissions(session.defaultSession);
   createWindow();
+  armUpdates();
 });

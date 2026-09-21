@@ -1297,6 +1297,12 @@ textarea {
   font-weight: 560;
 }
 
+.banner.update {
+  background: var(--bg-raised);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
 .banner.bad {
   background: var(--bad);
   color: #fff;
