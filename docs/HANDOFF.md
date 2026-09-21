@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-18, after the categories-and-unread session. M5 before that: reactions, mentions, replies, unread marks, links, the keyboard and the sounds.
+**Last updated:** 2026-09-21, the day the box came to exist. M0 is half done and stopped at bonesdeploy; see "M0 so far" below.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -17,7 +17,7 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Not started, but prepared.** Needs a droplet, which needs Wes to buy one. The production build is rehearsed locally; the box scripts, bonesdeploy runtime and runbook are written and **unverified**, because none of them has run on a box. |
+| M0 infra | **Half done, blocked at bonesdeploy.** The box exists, the vault is made and the secret-holding folders are on it (runbook steps 1 to 5, each now run for real). Step 6 cannot start: the bonesdeploy CLI does not build on Windows. Waiting on Alex, or on Wes allowing WSL. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
@@ -27,6 +27,39 @@ Living state. Update this at the end of every working session.
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
 **Repo:** https://github.com/MilkManManiac/GoOffline (private)
+
+## M0 so far (2026-09-21)
+
+- **The box:** DigitalOcean droplet `GoOffline`, **NYC1** (ATL1 had no Basic
+  plans to sell), Ubuntu 24.04, **1 GB / 1 vCPU, $6** — Wes's choice, smaller
+  than the 2 GB planned. IPv4 `68.183.16.145`, in the gitignored `.env.box`.
+  Expect the first build to need a temporary resize ("CPU and RAM only").
+- **The domain: `scryproof.com`**, bought at Cloudflare Registrar, which forces
+  Cloudflare DNS. One A record, **DNS only (grey cloud)**, verified from here to
+  resolve straight to the droplet. If it ever resolves to a Cloudflare address,
+  someone turned the proxy on and non-negotiable 1 is broken. The project may
+  be renamed to match; the box, volume, key and vault labels say `gooffline`
+  and can stay that way.
+- **Vault:** LUKS2 on the 10 GB volume `gooffline-vault`, argon2id capped at
+  256 MB (it settled near 103 MB). Passphrase is in Wes's Bitwarden and nowhere
+  else. Header backup is at `Documents\GoOffline-keep\` on his PC, checksum
+  matched, deleted from the box. cryptsetup's "requires more than available
+  memory" warning at open is harmless at this size.
+- **Bound onto the vault before anything was installed:** `/srv/sites`,
+  `/srv/conf`, `/var/lib/postgresql`, `/etc/ssl/private`, `/etc/letsencrypt`.
+- **Scripts that have now really run:** `00-facts`, `50-host-hygiene`,
+  `10-vault-create`, `20-vault-adopt`. Two needed fixes (a missing `mkdir`, and
+  a chmod that ran before the mount). Everything from `30-` on is still
+  unverified. `docs/box/facts-before.txt` is the "before".
+- **Not done yet on the box:** the firewall is still off (step 7 comes after
+  `server setup`), and nothing is gated.
+- **The blocker:** bonesdeploy's CLI depends on the `openssh` crate, which has
+  `compile_error!` on anything but unix. Wes's PC has no WSL, and turning it on
+  is a system change he has to allow. `bonesremote` has a prebuilt musl binary,
+  so the box needs no Rust. `docs/for-alex.md` (item 9 and the opening) is
+  ready for Wes to send; whether he has is his business.
+- **Passphrase steps run in Wes's own Git Bash window**, never through the
+  session: `cd /c/Users/weshu/CodeProjects/GoOffline && bash scripts/box.sh ...`.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
