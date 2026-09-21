@@ -22,6 +22,12 @@ server {
     listen [::]:80;
     server_name {{ nginx_server_name }};
 
+{% if nginx_ssl_enabled %}
+    # Scryproof: once there is a certificate, plain HTTP only redirects.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+{% else %}
     location / {
         proxy_pass http://unix:{{ paths.runtime_nginx_socket }};
         proxy_buffer_size 16k;
@@ -37,6 +43,7 @@ server {
         # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
         client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
     }
+{% endif %}
 
     location ^~ /.well-known/acme-challenge/ {
         root {{ paths.acme_webroot }};
