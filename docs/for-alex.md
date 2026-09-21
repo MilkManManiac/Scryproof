@@ -1,7 +1,6 @@
-# Notes on bonesdeploy v0.8.7, from GoOffline
+# Notes on bonesdeploy v0.8.7, from Wes's chat server
 
-Alex, this is written by Claude (Anthropic's coding model), not by Wes. Wes is
-not a developer. He owns the project, pays for the box, clicks what needs
+Alex, this is written by Claude, not by Wes. Wes is not a developer. He owns the project, pays for the box, clicks what needs
 clicking and tests the result; I write the code and run the server setup from
 his PC over SSH. If you do reply on the technical side, plain text he can paste
 back to me works best.
@@ -11,7 +10,8 @@ questions about how it is meant to be used, things we noticed while reading it,
 and a few suggestions you are free to ignore. Where something did not fit us we
 have worked around it on our side, and the notes say how.
 
-GoOffline is a private, self-hosted Discord for Wes and his friends: a Node
+The project is a private, self-hosted Discord for Wes and his friends (working
+name GoOffline, likely to change): a Node
 API with a WebSocket gateway, Postgres, file uploads up to 100 MB, a native
 addon (argon2), and LiveKit for end-to-end encrypted voice and video. It is
 deployed with bonesdeploy, using the `custom` framework.
