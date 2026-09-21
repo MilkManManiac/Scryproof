@@ -2272,11 +2272,10 @@ video.mirrored {
   animation: message-flash 1.4s cubic-bezier(.22, 1, .36, 1);
 }
 
-.message.is-reply {
-  flex-wrap: wrap;
-}
+/* The row is a grid of avatar and body. The quote sits across both, above them:
+   left to place itself it took the avatar's 40px column and showed no text. */
 .reply-line {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   display: flex;
   align-items: baseline;
   gap: 6px;

@@ -95,7 +95,9 @@ export type ServerEvent =
    */
   | { t: 'dm_create'; d: DmChannel }
   | { t: 'dm_message_create'; d: DmMessage }
-  | { t: 'dm_message_delete'; d: { id: Snowflake; dmId: Snowflake } }
+  /** The same message sealed again by its author: an edit. */
+  | { t: 'dm_message_update'; d: DmMessage }
+  | { t: 'dm_message_delete'; d: { id: Snowflake; dmId: Snowflake; reactionTo: Snowflake | null } }
   | { t: 'dm_read'; d: { dmId: Snowflake; lastReadMessageId: Snowflake } }
   | { t: 'error'; d: { code: string; message: string } };
 

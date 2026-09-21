@@ -257,11 +257,18 @@ export const api = {
     open: (userId: string) => post<{ dm: DmChannel }>('/api/dms', { userId }),
     devices: (dmId: string) => get<{ devices: DeviceKey[] }>(`/api/dms/${dmId}/devices`),
     messages: (dmId: string, before?: string) =>
-      get<{ messages: DmMessage[] }>(`/api/dms/${dmId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+      get<{ messages: DmMessage[]; reactions: DmMessage[] }>(
+        `/api/dms/${dmId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`,
+      ),
     send: (
       dmId: string,
-      sealed: { senderDeviceId: string; iv: string; ciphertext: string; keys: DmWrappedKey[] },
+      sealed: { senderDeviceId: string; iv: string; ciphertext: string; keys: DmWrappedKey[]; reactionTo?: string },
     ) => post<{ message: DmMessage }>(`/api/dms/${dmId}/messages`, sealed),
+    edit: (
+      dmId: string,
+      messageId: string,
+      sealed: { senderDeviceId: string; iv: string; ciphertext: string; keys: DmWrappedKey[] },
+    ) => patch<{ message: DmMessage }>(`/api/dms/${dmId}/messages/${messageId}`, sealed),
     remove: (dmId: string, messageId: string) => del<{ ok: true }>(`/api/dms/${dmId}/messages/${messageId}`),
     markRead: (dmId: string, messageId: string) => put<{ ok: true }>(`/api/dms/${dmId}/read`, { messageId }),
   },

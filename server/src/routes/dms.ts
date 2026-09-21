@@ -17,7 +17,7 @@
 import { webcrypto } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { DeviceKey, DmChannel, DmMessage, DmWrappedKey } from '@scryproof/shared';
@@ -188,10 +188,77 @@ function toDmMessage(row: DmMessageRow, keys: DmMessageKeyRow[], forUserId: stri
               key: b64(key.wrapped),
             }),
           ),
+    reactionTo: row.reactionTo,
     createdAt: row.createdAt.toISOString(),
+    editedAt: row.editedAt ? row.editedAt.toISOString() : null,
     deleted,
   };
 }
+
+/** What a sealed message looks like on the way in, new or edited. */
+const sealedShape = {
+  senderDeviceId: deviceIdShape,
+  iv: base64.max(64),
+  ciphertext: base64.max(64_000),
+  keys: z
+    .array(z.object({ userId: z.string().max(64), deviceId: deviceIdShape, iv: base64.max(64), key: base64.max(256) }))
+    .min(1)
+    .max(MAX_DEVICES_PER_USER * 10),
+};
+
+type SealedKeys = { userId: string; deviceId: string; iv: string; key: string }[];
+
+/**
+ * A copy of the key may only be addressed to somebody in the conversation.
+ * Anything else would be a way to hand a third person a readable copy that
+ * neither of the two could see had been made.
+ */
+function checkRecipients(keys: SealedKeys, memberIds: string[]): void {
+  const allowed = new Set(memberIds);
+  if (keys.some((key) => !allowed.has(key.userId))) {
+    throw badRequest('A key was addressed to someone outside this conversation.', 'invalid_recipient');
+  }
+  const seen = new Set<string>();
+  for (const key of keys) {
+    const slot = `${key.userId}:${key.deviceId}`;
+    if (seen.has(slot)) throw badRequest('A device was addressed twice.', 'invalid_recipient');
+    seen.add(slot);
+  }
+}
+
+/**
+ * The other side opens a message with the sender device's public key, so a
+ * device nobody has heard of would produce a message nobody can read.
+ */
+async function requirePublishedDevice(userId: string, deviceId: string): Promise<void> {
+  const [sender] = await getDb()
+    .select({ deviceId: deviceKeys.deviceId })
+    .from(deviceKeys)
+    .where(and(eq(deviceKeys.userId, userId), eq(deviceKeys.deviceId, deviceId)))
+    .limit(1);
+  if (!sender) throw badRequest('This device has not published its keys.', 'unknown_device');
+}
+
+/**
+ * Leaving every server you share with someone, or being removed from it, ends
+ * your ability to write to them. The history stays readable.
+ */
+async function requireStillConnected(userId: string, memberIds: string[]): Promise<void> {
+  for (const memberId of memberIds) {
+    if (memberId !== userId && !(await sharesAServer(userId, memberId))) {
+      throw forbidden('You no longer share a server with this person.');
+    }
+  }
+}
+
+const keyValues = (messageId: string, keys: SealedKeys) =>
+  keys.map((key) => ({
+    messageId,
+    userId: key.userId,
+    deviceId: key.deviceId,
+    iv: Buffer.from(key.iv, 'base64'),
+    wrapped: Buffer.from(key.key, 'base64'),
+  }));
 
 export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   /* --------------------------------- devices -------------------------------- */
@@ -326,73 +393,62 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     await requireDmMember(dmId, user.id);
 
     const db = getDb();
-    const conditions = [eq(dmMessages.dmId, dmId)];
+    // Reactions ride along with the messages they belong to, never as rows of their own.
+    const conditions = [eq(dmMessages.dmId, dmId), isNull(dmMessages.reactionTo)];
     if (query.before) conditions.push(lt(dmMessages.id, query.before));
     const rows = (
       await db.select().from(dmMessages).where(and(...conditions)).orderBy(desc(dmMessages.id)).limit(query.limit)
     ).reverse();
-    if (rows.length === 0) return { messages: [] };
+    if (rows.length === 0) return { messages: [], reactions: [] };
+
+    const reactionRows = await db
+      .select()
+      .from(dmMessages)
+      .where(and(eq(dmMessages.dmId, dmId), inArray(dmMessages.reactionTo, rows.map((row) => row.id))))
+      .orderBy(dmMessages.id);
 
     const keys = await db
       .select()
       .from(dmMessageKeys)
-      .where(and(inArray(dmMessageKeys.messageId, rows.map((row) => row.id)), eq(dmMessageKeys.userId, user.id)));
+      .where(
+        and(
+          inArray(dmMessageKeys.messageId, [...rows, ...reactionRows].map((row) => row.id)),
+          eq(dmMessageKeys.userId, user.id),
+        ),
+      );
 
-    return { messages: rows.map((row) => toDmMessage(row, keys, user.id)) };
+    return {
+      messages: rows.map((row) => toDmMessage(row, keys, user.id)),
+      reactions: reactionRows.map((row) => toDmMessage(row, keys, user.id)),
+    };
   });
 
   app.post('/api/dms/:dmId/messages', async (request) => {
     const user = requireUser(request);
     const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
-    const body = z
-      .object({
-        senderDeviceId: deviceIdShape,
-        iv: base64.max(64),
-        ciphertext: base64.max(64_000),
-        keys: z
-          .array(z.object({ userId: z.string().max(64), deviceId: deviceIdShape, iv: base64.max(64), key: base64.max(256) }))
-          .min(1)
-          .max(MAX_DEVICES_PER_USER * 10),
-      })
-      .parse(request.body);
+    const body = z.object({ ...sealedShape, reactionTo: z.string().max(64).optional() }).parse(request.body);
 
     const { memberIds } = await requireDmMember(dmId, user.id);
 
     const limit = consume(`messages:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
     if (!limit.allowed) throw tooManyRequests('You are sending messages too quickly.', limit.retryAfterSeconds);
 
-    // Leaving every server you share with someone, or being removed from it,
-    // ends your ability to write to them. The history stays readable.
-    for (const memberId of memberIds) {
-      if (memberId !== user.id && !(await sharesAServer(user.id, memberId))) {
-        throw forbidden('You no longer share a server with this person.');
-      }
-    }
-
-    // A copy of the key may only be addressed to somebody in the conversation.
-    // Anything else would be a way to hand a third person a readable copy that
-    // neither of the two could see had been made.
-    const allowed = new Set(memberIds);
-    if (body.keys.some((key) => !allowed.has(key.userId))) {
-      throw badRequest('A key was addressed to someone outside this conversation.', 'invalid_recipient');
-    }
-    const seen = new Set<string>();
-    for (const key of body.keys) {
-      const slot = `${key.userId}:${key.deviceId}`;
-      if (seen.has(slot)) throw badRequest('A device was addressed twice.', 'invalid_recipient');
-      seen.add(slot);
-    }
+    await requireStillConnected(user.id, memberIds);
+    checkRecipients(body.keys, memberIds);
+    await requirePublishedDevice(user.id, body.senderDeviceId);
 
     const db = getDb();
 
-    // The other side opens a message with the sender device's public key, so a
-    // device nobody has heard of would produce a message nobody can read.
-    const [sender] = await db
-      .select({ deviceId: deviceKeys.deviceId })
-      .from(deviceKeys)
-      .where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, body.senderDeviceId)))
-      .limit(1);
-    if (!sender) throw badRequest('This device has not published its keys.', 'unknown_device');
+    if (body.reactionTo) {
+      const [target] = await db
+        .select()
+        .from(dmMessages)
+        .where(and(eq(dmMessages.id, body.reactionTo), eq(dmMessages.dmId, dmId)))
+        .limit(1);
+      if (!target || target.deletedAt || target.reactionTo) {
+        throw badRequest('There is no message there to react to.', 'unknown_message');
+      }
+    }
 
     const messageId = uuidv7();
     const [created] = await db
@@ -404,35 +460,77 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
         senderDeviceId: body.senderDeviceId,
         iv: Buffer.from(body.iv, 'base64'),
         ciphertext: Buffer.from(body.ciphertext, 'base64'),
+        reactionTo: body.reactionTo ?? null,
       })
       .returning();
     if (!created) throw badRequest('Could not send the message.', 'send_failed');
 
-    const keyRows = await db
-      .insert(dmMessageKeys)
-      .values(
-        body.keys.map((key) => ({
-          messageId,
-          userId: key.userId,
-          deviceId: key.deviceId,
-          iv: Buffer.from(key.iv, 'base64'),
-          wrapped: Buffer.from(key.key, 'base64'),
-        })),
-      )
-      .returning();
+    const keyRows = await db.insert(dmMessageKeys).values(keyValues(messageId, body.keys)).returning();
 
-    await db.update(dmChannels).set({ lastMessageId: messageId }).where(eq(dmChannels.id, dmId));
-    // Your own message is never unread to you.
-    await db
-      .update(dmMembers)
-      .set({ lastReadMessageId: messageId })
-      .where(and(eq(dmMembers.dmId, dmId), eq(dmMembers.userId, user.id)));
+    // A reaction does not make a conversation unread.
+    if (!body.reactionTo) {
+      await db.update(dmChannels).set({ lastMessageId: messageId }).where(eq(dmChannels.id, dmId));
+      // Your own message is never unread to you.
+      await db
+        .update(dmMembers)
+        .set({ lastReadMessageId: messageId })
+        .where(and(eq(dmMembers.dmId, dmId), eq(dmMembers.userId, user.id)));
+    }
 
     for (const memberId of memberIds) {
       hub.sendToUser(memberId, { t: 'dm_message_create', d: toDmMessage(created, keyRows, memberId) });
     }
 
     return { message: toDmMessage(created, keyRows, user.id) };
+  });
+
+  /**
+   * An edit is the author sealing the message again. The old sealed bytes and
+   * every old copy of the key are replaced, not kept beside the new ones.
+   */
+  app.patch('/api/dms/:dmId/messages/:messageId', async (request) => {
+    const user = requireUser(request);
+    const { dmId, messageId } = z.object({ dmId: z.string(), messageId: z.string() }).parse(request.params);
+    const body = z.object(sealedShape).parse(request.body);
+    const { memberIds } = await requireDmMember(dmId, user.id);
+
+    const limit = consume(`messages:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
+    if (!limit.allowed) throw tooManyRequests('You are editing too quickly.', limit.retryAfterSeconds);
+
+    const db = getDb();
+    const [existing] = await db
+      .select()
+      .from(dmMessages)
+      .where(and(eq(dmMessages.id, messageId), eq(dmMessages.dmId, dmId)))
+      .limit(1);
+    if (!existing || existing.deletedAt || existing.reactionTo) {
+      throw notFound('That message does not exist.', 'unknown_message');
+    }
+    if (existing.authorId !== user.id) throw forbidden('You can only edit your own messages.');
+
+    await requireStillConnected(user.id, memberIds);
+    checkRecipients(body.keys, memberIds);
+    await requirePublishedDevice(user.id, body.senderDeviceId);
+
+    const [updated] = await db
+      .update(dmMessages)
+      .set({
+        senderDeviceId: body.senderDeviceId,
+        iv: Buffer.from(body.iv, 'base64'),
+        ciphertext: Buffer.from(body.ciphertext, 'base64'),
+        editedAt: new Date(),
+      })
+      .where(eq(dmMessages.id, messageId))
+      .returning();
+    if (!updated) throw badRequest('Could not save that edit.', 'edit_failed');
+
+    await db.delete(dmMessageKeys).where(eq(dmMessageKeys.messageId, messageId));
+    const keyRows = await db.insert(dmMessageKeys).values(keyValues(messageId, body.keys)).returning();
+
+    for (const memberId of memberIds) {
+      hub.sendToUser(memberId, { t: 'dm_message_update', d: toDmMessage(updated, keyRows, memberId) });
+    }
+    return { message: toDmMessage(updated, keyRows, user.id) };
   });
 
   app.delete('/api/dms/:dmId/messages/:messageId', async (request) => {
@@ -450,15 +548,25 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     // There is no moderator in a conversation between two people.
     if (existing.authorId !== user.id) throw forbidden('You can only delete your own messages.');
 
-    // The sealed bytes and every copy of the key go, not just a flag.
-    await db
-      .update(dmMessages)
-      .set({ deletedAt: new Date(), iv: null, ciphertext: null })
-      .where(eq(dmMessages.id, messageId));
-    await db.delete(dmMessageKeys).where(eq(dmMessageKeys.messageId, messageId));
+    if (existing.reactionTo) {
+      // Taking a reaction back leaves nothing behind. Its keys go with the row.
+      await db.delete(dmMessages).where(eq(dmMessages.id, messageId));
+    } else {
+      // The sealed bytes and every copy of the key go, not just a flag. So do
+      // the reactions to it.
+      await db
+        .update(dmMessages)
+        .set({ deletedAt: new Date(), iv: null, ciphertext: null })
+        .where(eq(dmMessages.id, messageId));
+      await db.delete(dmMessageKeys).where(eq(dmMessageKeys.messageId, messageId));
+      await db.delete(dmMessages).where(and(eq(dmMessages.dmId, dmId), eq(dmMessages.reactionTo, messageId)));
+    }
 
     for (const memberId of memberIds) {
-      hub.sendToUser(memberId, { t: 'dm_message_delete', d: { id: messageId, dmId } });
+      hub.sendToUser(memberId, {
+        t: 'dm_message_delete',
+        d: { id: messageId, dmId, reactionTo: existing.reactionTo },
+      });
     }
     return { ok: true };
   });

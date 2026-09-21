@@ -29,6 +29,13 @@
       "when": 1790017652974,
       "tag": "0003_swift_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790024429912,
+      "tag": "0004_solid_surge",
+      "breakpoints": true
     }
   ]
 }

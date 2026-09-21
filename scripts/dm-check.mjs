@@ -16,7 +16,9 @@
  *   5. Wes is warned about the new device, and until he accepts it, it gets
  *      no copy of what he sends
  *   6. Wes accepts it. The next message opens there
- *   7. Wes deletes a message and it goes from Alex's screen
+ *   7. Wes edits a message, Alex replies to one, Wes reacts to the reply and
+ *      takes it back; the server is never shown the emoji
+ *   8. Wes deletes a message and it goes from Alex's screen
  *
  * Needs `npm run dev` and a seeded database (`npm run seed --workspace server`).
  *
@@ -186,6 +188,23 @@ class Device {
     }
   }
 
+  /** Press a button in the hover bar of the message containing some text. */
+  act(text, title) {
+    return this.evaluate(`(() => {
+      const row = Array.from(document.querySelectorAll('.message')).find((el) => el.textContent.includes(${JSON.stringify(text)}));
+      const button = row?.querySelector('.message-actions button[title="${title}"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+  }
+
+  async pressEnter() {
+    for (const type of ['keyDown', 'keyUp']) {
+      await this.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
+    }
+  }
+
   sees(text, ms) {
     return this.until(`Array.from(document.querySelectorAll('.message-text')).some((el) => el.textContent.includes(${JSON.stringify(text)}))`, ms);
   }
@@ -218,6 +237,8 @@ const stamp = Date.now().toString(36);
 const FIRST = `first-${stamp} the word is heliotrope`;
 const SECOND = `second-${stamp} while the new device waits`;
 const THIRD = `third-${stamp} after accepting`;
+const EDITED = `edited-${stamp} said better`;
+const REPLY = `reply-${stamp} what is a heliotrope`;
 
 const wes = new Device('wes', 'wes', 9341);
 const alex = new Device('alex', 'alex', 9342);
@@ -278,14 +299,51 @@ try {
   check('the accepted device reads the next message', Boolean(await alexPhone.sees(THIRD)));
   check('and so does the first one', Boolean(await alex.sees(THIRD)));
 
-  if (process.env.DM_CHECK_SHOT) await alex.shot(process.env.DM_CHECK_SHOT);
-
   /* 7 */
-  await wes.evaluate(`(() => {
-    const rows = Array.from(document.querySelectorAll('.message'));
-    const row = rows.find((el) => el.textContent.includes(${JSON.stringify(THIRD)}));
-    row?.querySelector('.message-actions button')?.click();
-  })()`);
+  await wes.act(SECOND, 'Edit');
+  await wes.until(`document.activeElement?.tagName === 'TEXTAREA' && document.activeElement.value.includes('second-')`);
+  await wes.evaluate(`document.activeElement.select()`);
+  await wes.send('Input.insertText', { text: EDITED });
+  await wes.pressEnter();
+  check('Alex sees the edit', Boolean(await alex.sees(EDITED)));
+  check('marked as edited', Boolean(await alex.until(`document.querySelector('.message-edited') !== null`)));
+  check('and the old wording is gone', !(await alex.screenText()).includes(SECOND));
+
+  await alex.act(FIRST, 'Reply');
+  check('Alex is shown what he is replying to', Boolean(await alex.until(`document.querySelector('.composer-reply')?.textContent.includes('heliotrope')`)));
+  await alex.say(REPLY);
+  check('Wes sees the reply', Boolean(await wes.sees(REPLY)));
+  check('with the message it answers quoted above it', Boolean(await wes.until(`Array.from(document.querySelectorAll('.reply-line')).some((el) => el.textContent.includes('the word is heliotrope'))`)));
+
+  {
+    const seen = await alex.evaluate(`(() => {
+      const line = document.querySelector('.reply-line');
+      const text = line?.querySelector('.reply-line-text');
+      return JSON.stringify({ html: line?.outerHTML, width: text?.getBoundingClientRect().width ?? 0 });
+    })()`);
+    check('and the quote can actually be seen, not just found', JSON.parse(seen).width > 20, seen);
+  }
+
+  await wes.act(REPLY, 'React');
+  await wes.until(`document.querySelector('.reaction-picker-emoji') !== null`);
+  const emoji = await wes.evaluate(`(() => { const el = document.querySelector('.reaction-picker-emoji'); el.click(); return el.textContent; })()`);
+  check('Alex sees the reaction', Boolean(await alex.until(`Array.from(document.querySelectorAll('.reaction')).some((el) => el.textContent.includes(${JSON.stringify(emoji)}))`)));
+  check('a reaction does not mark the conversation unread', await alex.evaluate(`fetch('/api/dms', { credentials: 'include' }).then((r) => r.json()).then((body) => body.dms[0].lastMessageId === body.dms[0].lastReadMessageId)`));
+  {
+    const held = await alex.evaluate(`
+      fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
+        .then((body) => fetch('/api/dms/' + body.dms[0].id + '/messages', { credentials: 'include' }))
+        .then((r) => r.text())
+    `);
+    check('the server holds the reaction', JSON.parse(held).reactions.length === 1);
+    check('and was never shown which emoji, the edit or the reply', !held.includes(emoji) && !held.includes(stamp));
+  }
+  if (process.env.DM_CHECK_SHOT) await alex.shot(process.env.DM_CHECK_SHOT);
+  await wes.click('.reaction', emoji);
+  check('taking the reaction back removes it for Alex', Boolean(await alex.until(`document.querySelector('.reaction') === null`)));
+
+  /* 8 */
+  await wes.act(THIRD, 'Delete');
   check('a deleted message goes from the other screen', Boolean(await alex.until(`!document.querySelector('.main').innerText.includes(${JSON.stringify(THIRD)})`)));
 
   for (const device of everyone) {

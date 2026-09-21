@@ -28,6 +28,7 @@ import type { DeviceKey, DmChannel, DmMessage, PublicUser, ServerEvent } from '@
 import { api, ApiError } from '../lib/api';
 import {
   type AssessedDevice,
+  type DmBody,
   type DmDevice,
   assessDevices,
   createDmKeypair,
@@ -58,6 +59,17 @@ export interface DmView {
   problem: null | 'no-key' | 'failed';
   /** Opened, but from a device this person has not accepted yet. */
   unverified: boolean;
+  /** The message this one answers. Read from inside the sealed body. */
+  replyTo: string | null;
+  editedAt: string | null;
+}
+
+/** One person's one emoji on one message. Only reactions that opened are kept. */
+export interface DmReactionView {
+  id: string;
+  targetId: string;
+  authorId: string;
+  emoji: string;
 }
 
 interface DmState {
@@ -70,6 +82,7 @@ interface DmState {
   openId: string | null;
   dms: Record<string, DmChannel>;
   messages: Record<string, DmView[]>;
+  reactions: Record<string, DmReactionView[]>;
   loaded: Record<string, boolean>;
   /** Per conversation: every device of everyone in it, and what we make of each. */
   devices: Record<string, AssessedDevice[]>;
@@ -82,6 +95,7 @@ const initialState: DmState = {
   openId: null,
   dms: {},
   messages: {},
+  reactions: {},
   loaded: {},
   devices: {},
 };
@@ -95,6 +109,8 @@ type Action =
   | { type: 'hide' }
   | { type: 'devices'; dmId: string; devices: AssessedDevice[] }
   | { type: 'messages'; dmId: string; views: DmView[]; replace: boolean }
+  | { type: 'reactions'; dmId: string; reactions: DmReactionView[] }
+  | { type: 'reaction-removed'; dmId: string; id: string }
   | { type: 'deleted'; dmId: string; id: string }
   | { type: 'touched'; dmId: string; messageId: string }
   | { type: 'read'; dmId: string; messageId: string };
@@ -126,15 +142,33 @@ function reducer(state: DmState, action: Action): DmState {
         loaded: { ...state.loaded, [action.dmId]: true },
       };
     }
+    case 'reactions': {
+      const byId = new Map(
+        [...(state.reactions[action.dmId] ?? []), ...action.reactions].map((reaction) => [reaction.id, reaction]),
+      );
+      return { ...state, reactions: { ...state.reactions, [action.dmId]: [...byId.values()] } };
+    }
+    case 'reaction-removed':
+      return {
+        ...state,
+        reactions: {
+          ...state.reactions,
+          [action.dmId]: (state.reactions[action.dmId] ?? []).filter((reaction) => reaction.id !== action.id),
+        },
+      };
     case 'deleted': {
       const existing = state.messages[action.dmId];
       if (!existing) return state;
       return {
         ...state,
+        reactions: {
+          ...state.reactions,
+          [action.dmId]: (state.reactions[action.dmId] ?? []).filter((reaction) => reaction.targetId !== action.id),
+        },
         messages: {
           ...state.messages,
           [action.dmId]: existing.map((view) =>
-            view.id === action.id ? { ...view, deleted: true, text: null, problem: null } : view,
+            view.id === action.id ? { ...view, deleted: true, text: null, problem: null, editedAt: null } : view,
           ),
         },
       };
@@ -163,7 +197,11 @@ interface DmValue {
   openDm: (dmId: string) => void;
   /** Open the conversation with a person, making it if need be. */
   openWith: (userId: string) => Promise<void>;
-  send: (dmId: string, text: string) => Promise<void>;
+  send: (dmId: string, text: string, replyTo?: string | null) => Promise<void>;
+  /** Seal the message again with new text. What it replied to stays. */
+  edit: (dmId: string, messageId: string, text: string) => Promise<void>;
+  /** Add this emoji, or take it back if it is already yours. */
+  react: (dmId: string, messageId: string, emoji: string) => Promise<void>;
   remove: (dmId: string, messageId: string) => Promise<void>;
   loadOlder: (dmId: string) => Promise<void>;
   markRead: (dmId: string) => void;
@@ -272,6 +310,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
       authorId: message.authorId,
       createdAt: message.createdAt,
       deleted: message.deleted,
+      replyTo: null,
+      editedAt: message.deleted ? null : message.editedAt,
     };
     const self = device.current;
     if (message.deleted || !message.iv || !message.ciphertext || !self) {
@@ -293,8 +333,50 @@ export function DmProvider({ children }: { children: ReactNode }) {
       keys: message.keys,
     });
     if (!opened.ok) return { ...base, text: null, problem: opened.reason, unverified: false };
-    return { ...base, text: opened.body.text, problem: null, unverified: !isTrusted(sender.verdict) };
+    // A reaction handed over as if it were a message is not one.
+    if (opened.body.kind === 'reaction') return { ...base, text: null, problem: 'failed', unverified: false };
+    return {
+      ...base,
+      text: opened.body.text,
+      replyTo: opened.body.replyTo ?? null,
+      problem: null,
+      unverified: !isTrusted(sender.verdict),
+    };
   }, []);
+
+  /**
+   * A reaction that does not open is dropped rather than drawn: there is
+   * nothing to show for it. The sealed body names its own target, and that has
+   * to agree with the row the server filed it under, or a server could move
+   * somebody's thumbs-up onto a different message.
+   */
+  const toReaction = useCallback(async (message: DmMessage, known: AssessedDevice[]): Promise<DmReactionView | null> => {
+    const self = device.current;
+    if (!self || !message.reactionTo || !message.iv || !message.ciphertext) return null;
+    const sender = known.find(
+      (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
+    );
+    if (!sender || sender.verdict === 'invalid') return null;
+    const opened = await openMessage({
+      dmId: message.dmId,
+      self,
+      authorId: message.authorId,
+      senderDevice: sender.device,
+      iv: message.iv,
+      ciphertext: message.ciphertext,
+      keys: message.keys,
+    });
+    if (!opened.ok || opened.body.kind !== 'reaction' || opened.body.target !== message.reactionTo) return null;
+    return { id: message.id, targetId: message.reactionTo, authorId: message.authorId, emoji: opened.body.emoji };
+  }, []);
+
+  const toReactions = useCallback(
+    async (messages: DmMessage[], known: AssessedDevice[]): Promise<DmReactionView[]> =>
+      (await Promise.all(messages.map((message) => toReaction(message, known)))).filter(
+        (reaction): reaction is DmReactionView => reaction !== null,
+      ),
+    [toReaction],
+  );
 
   const remember = (messages: DmMessage[]): void => {
     for (const message of messages) {
@@ -306,12 +388,13 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const loadDm = useCallback(
     async (dmId: string) => {
       const known = await refreshDevices(dmId);
-      const { messages } = await api.dms.messages(dmId);
+      const { messages, reactions } = await api.dms.messages(dmId);
       remember(messages);
       const views = await Promise.all(messages.map((message) => toView(message, known)));
       dispatch({ type: 'messages', dmId, views, replace: true });
+      dispatch({ type: 'reactions', dmId, reactions: await toReactions(reactions, known) });
     },
-    [refreshDevices, toView],
+    [refreshDevices, toView, toReactions],
   );
 
   /* --------------------------------- gateway -------------------------------- */
@@ -331,8 +414,37 @@ export function DmProvider({ children }: { children: ReactNode }) {
       if (event.t === 'dm_read') dispatch({ type: 'read', dmId: event.d.dmId, messageId: event.d.lastReadMessageId });
 
       if (event.t === 'dm_message_delete') {
-        sealed.current[event.d.dmId]?.delete(event.d.id);
-        dispatch({ type: 'deleted', dmId: event.d.dmId, id: event.d.id });
+        if (event.d.reactionTo) {
+          dispatch({ type: 'reaction-removed', dmId: event.d.dmId, id: event.d.id });
+        } else {
+          sealed.current[event.d.dmId]?.delete(event.d.id);
+          dispatch({ type: 'deleted', dmId: event.d.dmId, id: event.d.id });
+        }
+      }
+
+      const knownFor = async (message: DmMessage): Promise<AssessedDevice[]> => {
+        const known = assessed.current[message.dmId] ?? [];
+        const senderKnown = known.some(
+          (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
+        );
+        return senderKnown ? known : refreshDevices(message.dmId);
+      };
+
+      if (event.t === 'dm_message_update') {
+        const message = event.d;
+        if (!stateRef.current.loaded[message.dmId]) return;
+        remember([message]);
+        const view = await toView(message, await knownFor(message));
+        dispatch({ type: 'messages', dmId: message.dmId, views: [view], replace: false });
+      }
+
+      // A reaction makes no sound and no unread mark.
+      if (event.t === 'dm_message_create' && event.d.reactionTo) {
+        const message = event.d;
+        if (!stateRef.current.loaded[message.dmId]) return;
+        const reactions = await toReactions([message], await knownFor(message));
+        dispatch({ type: 'reactions', dmId: message.dmId, reactions });
+        return;
       }
 
       if (event.t === 'dm_message_create') {
@@ -362,19 +474,15 @@ export function DmProvider({ children }: { children: ReactNode }) {
         // when somebody looks.
         if (!stateRef.current.loaded[message.dmId]) return;
         remember([message]);
-        let known = assessed.current[message.dmId] ?? [];
-        const senderKnown = known.some(
-          (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
-        );
-        if (!senderKnown) known = await refreshDevices(message.dmId);
-        dispatch({ type: 'messages', dmId: message.dmId, views: [await toView(message, known)], replace: false });
+        const view = await toView(message, await knownFor(message));
+        dispatch({ type: 'messages', dmId: message.dmId, views: [view], replace: false });
       }
     };
 
     return onGatewayEvent((event) => {
       void handle(event).catch(() => undefined);
     });
-  }, [onGatewayEvent, selfId, loadDm, refreshDevices, toView]);
+  }, [onGatewayEvent, selfId, loadDm, refreshDevices, toView, toReactions]);
 
   /* --------------------------------- intents -------------------------------- */
 
@@ -398,8 +506,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
     [openDm],
   );
 
-  const send = useCallback(
-    async (dmId: string, text: string) => {
+  /** Lock a body for every accepted device in the conversation. */
+  const seal = useCallback(
+    async (dmId: string, body: DmBody) => {
       const self = device.current;
       if (!self) throw new Error('This device has no keys yet.');
 
@@ -416,15 +525,52 @@ export function DmProvider({ children }: { children: ReactNode }) {
           );
         }
       }
+      return { known, message: await sealMessage({ dmId, sender: self, body, recipients }) };
+    },
+    [refreshDevices],
+  );
 
-      const message = await sealMessage({ dmId, sender: self, body: { v: 1, text }, recipients });
+  const send = useCallback(
+    async (dmId: string, text: string, replyTo?: string | null) => {
+      const { known, message } = await seal(dmId, replyTo ? { v: 1, text, replyTo } : { v: 1, text });
       const { message: created } = await api.dms.send(dmId, message);
       remember([created]);
       dispatch({ type: 'touched', dmId, messageId: created.id });
       dispatch({ type: 'read', dmId, messageId: created.id });
       dispatch({ type: 'messages', dmId, views: [await toView(created, known)], replace: false });
     },
-    [refreshDevices, toView],
+    [seal, toView],
+  );
+
+  const edit = useCallback(
+    async (dmId: string, messageId: string, text: string) => {
+      const current = stateRef.current.messages[dmId]?.find((view) => view.id === messageId);
+      if (!current || current.text === null) return;
+      const { known, message } = await seal(
+        dmId,
+        current.replyTo ? { v: 1, text, replyTo: current.replyTo } : { v: 1, text },
+      );
+      const { message: updated } = await api.dms.edit(dmId, messageId, message);
+      remember([updated]);
+      dispatch({ type: 'messages', dmId, views: [await toView(updated, known)], replace: false });
+    },
+    [seal, toView],
+  );
+
+  const react = useCallback(
+    async (dmId: string, messageId: string, emoji: string) => {
+      const mine = (stateRef.current.reactions[dmId] ?? []).find(
+        (reaction) => reaction.targetId === messageId && reaction.authorId === selfId && reaction.emoji === emoji,
+      );
+      if (mine) {
+        await api.dms.remove(dmId, mine.id);
+        return;
+      }
+      const { known, message } = await seal(dmId, { v: 1, kind: 'reaction', target: messageId, emoji });
+      const { message: created } = await api.dms.send(dmId, { ...message, reactionTo: messageId });
+      dispatch({ type: 'reactions', dmId, reactions: await toReactions([created], known) });
+    },
+    [seal, selfId, toReactions],
   );
 
   const remove = useCallback(async (dmId: string, messageId: string) => {
@@ -435,13 +581,14 @@ export function DmProvider({ children }: { children: ReactNode }) {
     async (dmId: string) => {
       const oldest = stateRef.current.messages[dmId]?.[0];
       if (!oldest) return;
-      const { messages } = await api.dms.messages(dmId, oldest.id);
+      const { messages, reactions } = await api.dms.messages(dmId, oldest.id);
       remember(messages);
       const known = assessed.current[dmId] ?? (await refreshDevices(dmId));
       const views = await Promise.all(messages.map((message) => toView(message, known)));
       dispatch({ type: 'messages', dmId, views, replace: false });
+      dispatch({ type: 'reactions', dmId, reactions: await toReactions(reactions, known) });
     },
-    [refreshDevices, toView],
+    [refreshDevices, toView, toReactions],
   );
 
   const markRead = useCallback((dmId: string) => {
@@ -468,8 +615,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<DmValue>(
-    () => ({ state, showDms, hideDms, openDm, openWith, send, remove, loadOlder, markRead, acceptDevice }),
-    [state, showDms, hideDms, openDm, openWith, send, remove, loadOlder, markRead, acceptDevice],
+    () => ({ state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice }),
+    [state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice],
   );
 
   return <DmContext.Provider value={value}>{children}</DmContext.Provider>;

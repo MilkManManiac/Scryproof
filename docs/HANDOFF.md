@@ -190,8 +190,22 @@ Discord overall is `docs/discord-features.md`. `npm run test:dm` passes all 21 c
   promise); PGlite returns bytea as a plain Uint8Array, so `toString('base64')`
   printed "12,200,7" (now `b64()` in the route); and a headless window never
   has focus, so the test turns on focus emulation before checking read state.
-- **Known gaps, by design for stage 1:** no edit, replies, reactions or files
-  in DMs (stage 2); a new device shows older DMs as locked (stage 3 adds the
+- **Stage 2, part one (2026-09-21, shipped): edit, replies, reactions.** All
+  three are content, so all three live inside the sealed body. An edit is the
+  author sealing the message again (`PATCH`, old bytes and old keys replaced).
+  A reply's target id is in the body; the server never learns it. A reaction is
+  its own sealed row with `reaction_to` set (migration `0004`): the server knows
+  somebody reacted and to what, not which emoji, and the client drops a reaction
+  whose sealed target disagrees with the row it was filed under. Taking one back
+  deletes the row. Reactions make no sound and no unread mark. `npm run test:dm`
+  is now 34 checks (`docs/shots/dm-stage2.png`).
+- **Found on the way:** the quoted line above a reply had zero width, in
+  channels too, since `.message` became a grid: the quote took the avatar's
+  40px column. Fixed in `styles.css`; the DM test measures it now.
+- **Still to do in stage 2:** attachments locked in the browser before upload.
+  Desktop notifications do not exist anywhere in the app yet; that is build-list
+  item 6 and should cover channels and DMs together ("who, not what" for DMs).
+- **Known gaps, by design for stage 1:** no files in DMs yet (rest of stage 2); a new device shows older DMs as locked (stage 3 adds the
   recovery phrase); your own second device reads nothing until your first one
   accepts it.
 

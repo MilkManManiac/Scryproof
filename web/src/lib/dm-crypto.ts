@@ -203,10 +203,29 @@ export async function assessDevices(
  * Sealing and opening.
  * ------------------------------------------------------------------ */
 
-/** What is inside a sealed message. Versioned so replies and files can be added. */
-export interface DmBody {
-  v: 1;
-  text: string;
+/**
+ * What is inside a sealed message. Everything a person would call content is
+ * in here, including which message a reply answers and which emoji a reaction
+ * is: the server is told only that a row is a reaction, and to what.
+ */
+export type DmBody =
+  | { v: 1; kind?: undefined; text: string; replyTo?: string }
+  | { v: 1; kind: 'reaction'; target: string; emoji: string };
+
+/** Only the shapes above come out. Anything else is treated as a message that did not open. */
+function parseBody(raw: unknown): DmBody | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const body = raw as Record<string, unknown>;
+  if (body.v !== 1) return null;
+  if (body.kind === 'reaction') {
+    if (typeof body.target !== 'string' || typeof body.emoji !== 'string') return null;
+    if (body.emoji.length === 0 || body.emoji.length > 32) return null;
+    return { v: 1, kind: 'reaction', target: body.target, emoji: body.emoji };
+  }
+  if (body.kind !== undefined || typeof body.text !== 'string') return null;
+  return typeof body.replyTo === 'string'
+    ? { v: 1, text: body.text, replyTo: body.replyTo }
+    : { v: 1, text: body.text };
 }
 
 export interface SealedMessage {
@@ -367,9 +386,9 @@ export async function openMessage(options: {
       messageKey,
       fromBase64(options.ciphertext) as BufferSource,
     );
-    const body = JSON.parse(new TextDecoder().decode(opened)) as Partial<DmBody>;
-    if (body.v !== 1 || typeof body.text !== 'string') return { ok: false, reason: 'failed' };
-    return { ok: true, body: { v: 1, text: body.text } };
+    const body = parseBody(JSON.parse(new TextDecoder().decode(opened)));
+    if (!body) return { ok: false, reason: 'failed' };
+    return { ok: true, body };
   } catch {
     return { ok: false, reason: 'failed' };
   }

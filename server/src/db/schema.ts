@@ -497,10 +497,20 @@ export const dmMessages = pgTable(
     /** Cleared on delete, like a channel message's body. */
     iv: bytea('iv'),
     ciphertext: bytea('ciphertext'),
+    /**
+     * Set when this row is a reaction, to the message it reacts to. The server
+     * knows that somebody reacted and to what. Which emoji is inside the sealed
+     * body with everything else.
+     */
+    reactionTo: text('reaction_to'),
     createdAt: createdAt(),
+    editedAt: timestamp('edited_at', { withTimezone: true, mode: 'date' }),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
   },
-  (table) => [index('dm_messages_dm_id_idx').on(table.dmId, table.id)],
+  (table) => [
+    index('dm_messages_dm_id_idx').on(table.dmId, table.id),
+    index('dm_messages_reaction_to_idx').on(table.reactionTo),
+  ],
 );
 
 /** The message key, locked once for each device allowed to open it. */

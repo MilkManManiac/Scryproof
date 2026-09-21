@@ -13,9 +13,10 @@ import { LIMITS } from '@scryproof/shared';
 
 import type { AssessedDevice } from '../lib/dm-crypto';
 import { isTrusted } from '../lib/dm-crypto';
-import { dmUnread, otherMember, sortedDms, useDms, type DmView } from '../state/dms';
+import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { UserPanel } from './UserPanel';
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -65,6 +66,8 @@ export function DmPane() {
   const { state } = useDms();
   const dm = state.openId ? state.dms[state.openId] : undefined;
   const selfId = app.user?.id ?? null;
+  /** Per conversation: the message the next thing sent will answer. */
+  const [replying, setReplying] = useState<Record<string, string | null>>({});
 
   if (!dm) {
     return (
@@ -94,8 +97,13 @@ export function DmPane() {
         </div>
       </header>
       <DeviceWarnings dm={dm} selfId={selfId} />
-      <DmMessages dm={dm} selfId={selfId} />
-      <DmComposer dm={dm} name={other?.displayName ?? 'them'} />
+      <DmMessages dm={dm} selfId={selfId} onReply={(id) => setReplying((current) => ({ ...current, [dm.id]: id }))} />
+      <DmComposer
+        dm={dm}
+        name={other?.displayName ?? 'them'}
+        replyingTo={replying[dm.id] ?? null}
+        onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
+      />
     </>
   );
 }
@@ -192,9 +200,29 @@ function withLinks(text: string): ReactNode[] {
   return parts;
 }
 
-function DmMessages({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
-  const { state, loadOlder, markRead, remove } = useDms();
+/** One line of a message, for the strip above a reply. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').slice(0, 140);
+
+function jumpTo(messageId: string): void {
+  const row = document.getElementById(`dm-message-${messageId}`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.add('flash');
+  window.setTimeout(() => row.classList.remove('flash'), 1200);
+}
+
+function DmMessages({
+  dm,
+  selfId,
+  onReply,
+}: {
+  dm: DmChannel;
+  selfId: string | null;
+  onReply: (messageId: string) => void;
+}) {
+  const { state, loadOlder, markRead, remove, edit, react } = useDms();
   const views = state.messages[dm.id] ?? [];
+  const reactions = state.reactions[dm.id] ?? [];
   const loaded = state.loaded[dm.id] ?? false;
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -288,9 +316,16 @@ function DmMessages({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
             <DmRow
               view={view}
               author={author ?? null}
-              grouped={grouped}
+              grouped={grouped && !view.replyTo}
               mine={view.authorId === selfId}
+              selfId={selfId}
+              members={dm.members}
+              parent={view.replyTo ? (views.find((entry) => entry.id === view.replyTo) ?? null) : null}
+              reactions={reactions.filter((reaction) => reaction.targetId === view.id)}
               onDelete={() => void remove(dm.id, view.id)}
+              onEdit={(text) => edit(dm.id, view.id, text)}
+              onReact={(emoji) => void react(dm.id, view.id, emoji).catch(() => undefined)}
+              onReply={() => onReply(view.id)}
             />
           </div>
         );
@@ -299,20 +334,68 @@ function DmMessages({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
   );
 }
 
+/** Reactions as the row draws them: one chip per emoji, in the order first used. */
+function grouped(reactions: DmReactionView[]): { emoji: string; userIds: string[] }[] {
+  const chips: { emoji: string; userIds: string[] }[] = [];
+  for (const reaction of reactions) {
+    const chip = chips.find((entry) => entry.emoji === reaction.emoji);
+    if (!chip) chips.push({ emoji: reaction.emoji, userIds: [reaction.authorId] });
+    else if (!chip.userIds.includes(reaction.authorId)) chip.userIds.push(reaction.authorId);
+  }
+  return chips;
+}
+
 function DmRow({
   view,
   author,
-  grouped,
+  grouped: isGrouped,
   mine,
+  selfId,
+  members,
+  parent,
+  reactions,
   onDelete,
+  onEdit,
+  onReact,
+  onReply,
 }: {
   view: DmView;
   author: PublicUser | null;
   grouped: boolean;
   mine: boolean;
+  selfId: string | null;
+  members: PublicUser[];
+  /** The message this answers, if it is among the ones loaded. */
+  parent: DmView | null;
+  reactions: DmReactionView[];
   onDelete: () => void;
+  onEdit: (text: string) => Promise<void>;
+  onReact: (emoji: string) => void;
+  onReply: () => void;
 }) {
   const at = new Date(view.createdAt);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [picking, setPicking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const readable = !view.deleted && view.problem === null && view.text !== null;
+  const nameOf = (userId: string): string =>
+    userId === selfId ? 'You' : (members.find((member) => member.id === userId)?.displayName ?? 'Someone');
+
+  async function saveEdit() {
+    const next = draft.trim();
+    if (!next || next === view.text) {
+      setEditing(false);
+      return;
+    }
+    try {
+      await onEdit(next);
+      setEditing(false);
+      setError(null);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not save that.');
+    }
+  }
 
   let body: ReactNode;
   if (view.deleted) body = <div className="message-text deleted">Message deleted</div>;
@@ -328,10 +411,32 @@ function DmRow({
         This message could not be opened, so it is not shown.
       </div>
     );
+  } else if (editing) {
+    body = (
+      <>
+        <textarea
+          className="composer-input"
+          style={{ width: '100%', background: 'var(--bg-raised)', borderRadius: 6, padding: 8 }}
+          value={draft}
+          autoFocus
+          maxLength={LIMITS.message.max}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setEditing(false);
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void saveEdit();
+            }
+          }}
+        />
+        {error ? <div className="error">{error}</div> : null}
+      </>
+    );
   } else {
     body = (
       <div className="message-text">
         {withLinks(view.text)}
+        {view.editedAt ? <span className="message-edited">edited</span> : null}
         {view.unverified ? (
           <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
             unaccepted device
@@ -341,15 +446,38 @@ function DmRow({
     );
   }
 
+  const chips = grouped(reactions);
+
   return (
-    <div className={grouped ? 'message grouped' : 'message'}>
-      {grouped ? (
+    <div id={`dm-message-${view.id}`} className={`message${isGrouped ? ' grouped' : ''}${view.replyTo ? ' is-reply' : ''}`}>
+      {view.replyTo ? (
+        <button
+          type="button"
+          className="reply-line"
+          disabled={!parent}
+          onClick={() => parent && jumpTo(parent.id)}
+          title={parent ? 'Go to that message' : undefined}
+        >
+          {parent ? (
+            <>
+              <span className="reply-line-author">{nameOf(parent.authorId)}</span>
+              <span className="reply-line-text">
+                {parent.deleted ? 'Message deleted' : parent.text !== null ? oneLine(parent.text) : 'A locked message'}
+              </span>
+            </>
+          ) : (
+            <span className="reply-line-text">An earlier message</span>
+          )}
+        </button>
+      ) : null}
+
+      {isGrouped ? (
         <span className="message-hover-time">{timeFormat.format(at)}</span>
       ) : (
         <div className="message-gutter">{author ? <Avatar user={author} /> : null}</div>
       )}
       <div className="message-body">
-        {grouped ? null : (
+        {isGrouped ? null : (
           <div className="message-meta">
             <span className="message-author" style={author ? { color: author.accent } : undefined}>
               {author?.displayName ?? 'Someone'}
@@ -360,22 +488,89 @@ function DmRow({
           </div>
         )}
         {body}
+        {chips.length > 0 && !view.deleted ? (
+          <div className="reactions">
+            {chips.map((chip) => (
+              <button
+                key={chip.emoji}
+                type="button"
+                className={chip.userIds.includes(selfId ?? '') ? 'reaction mine' : 'reaction'}
+                title={chip.userIds.map(nameOf).join(', ')}
+                onClick={() => onReact(chip.emoji)}
+              >
+                <span className="reaction-emoji">{chip.emoji}</span>
+                <span className="reaction-count">{chip.userIds.length}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
-      {mine && !view.deleted ? (
-        <div className="message-actions">
-          <button type="button" className="icon-button danger" title="Delete" onClick={onDelete}>
-            &#10005;
-          </button>
+      {view.deleted || editing ? null : (
+        <div className={picking ? 'message-actions open' : 'message-actions'}>
+          {readable ? (
+            <>
+              <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
+                &#9786;
+              </button>
+              <button type="button" className="icon-button" title="Reply" onClick={onReply}>
+                &#8617;
+              </button>
+            </>
+          ) : null}
+          {picking ? (
+            <ReactionPicker
+              onClose={() => setPicking(false)}
+              onPick={(emoji) => {
+                setPicking(false);
+                rememberReaction(emoji);
+                onReact(emoji);
+              }}
+            />
+          ) : null}
+          {mine && readable ? (
+            <button
+              type="button"
+              className="icon-button"
+              title="Edit"
+              onClick={() => {
+                setDraft(view.text ?? '');
+                setEditing(true);
+              }}
+            >
+              &#9998;
+            </button>
+          ) : null}
+          {mine ? (
+            <button type="button" className="icon-button danger" title="Delete" onClick={onDelete}>
+              &#10005;
+            </button>
+          ) : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
 
 /* --------------------------------- composer -------------------------------- */
 
-function DmComposer({ dm, name }: { dm: DmChannel; name: string }) {
+function DmComposer({
+  dm,
+  name,
+  replyingTo,
+  onCancelReply,
+}: {
+  dm: DmChannel;
+  name: string;
+  replyingTo: string | null;
+  onCancelReply: () => void;
+}) {
   const { state, send } = useDms();
+  const { state: app } = useStore();
+  const target = replyingTo ? ((state.messages[dm.id] ?? []).find((view) => view.id === replyingTo) ?? null) : null;
+  const targetName =
+    target?.authorId === app.user?.id
+      ? 'yourself'
+      : (dm.members.find((member) => member.id === target?.authorId)?.displayName ?? 'them');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -386,6 +581,10 @@ function DmComposer({ dm, name }: { dm: DmChannel; name: string }) {
     setError(null);
     input.current?.focus();
   }, [dm.id]);
+
+  useEffect(() => {
+    if (replyingTo) input.current?.focus();
+  }, [replyingTo]);
 
   // Grow with the text, up to a point.
   useLayoutEffect(() => {
@@ -401,7 +600,8 @@ function DmComposer({ dm, name }: { dm: DmChannel; name: string }) {
     setBusy(true);
     setError(null);
     try {
-      await send(dm.id, body);
+      await send(dm.id, body, target && !target.deleted ? target.id : null);
+      onCancelReply();
       setDrafts((current) => ({ ...current, [dm.id]: '' }));
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not send that.');
@@ -418,6 +618,17 @@ function DmComposer({ dm, name }: { dm: DmChannel; name: string }) {
           {error}
         </div>
       ) : null}
+      {target ? (
+        <div className="composer-reply">
+          <span className="composer-reply-text">
+            Replying to <strong>{targetName}</strong>
+            {target.text ? <span className="composer-reply-quote">{oneLine(target.text)}</span> : null}
+          </span>
+          <button type="button" className="link-button" onClick={onCancelReply}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
       <div className={state.ready ? 'composer-box' : 'composer-box denied'}>
         <textarea
           ref={input}
@@ -429,6 +640,10 @@ function DmComposer({ dm, name }: { dm: DmChannel; name: string }) {
           placeholder={state.ready ? `Message ${name}` : 'Setting up keys for this device'}
           onChange={(event) => setDrafts((current) => ({ ...current, [dm.id]: event.target.value }))}
           onKeyDown={(event) => {
+            if (event.key === 'Escape' && target) {
+              onCancelReply();
+              return;
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               void submit();

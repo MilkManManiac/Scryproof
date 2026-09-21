@@ -56,6 +56,32 @@ describe('sealing and opening', () => {
     }
   });
 
+  test('a reply and a reaction carry what they point at inside the seal', async () => {
+    const wes = await makeDevice('wes');
+    const sam = await makeDevice('sam');
+    const bodies = [
+      { v: 1, text: 'thursday works', replyTo: 'message-7' },
+      { v: 1, kind: 'reaction', target: 'message-7', emoji: '👍' },
+    ] as const;
+
+    for (const body of bodies) {
+      const sealed = await sealMessage({ dmId: DM, sender: wes.device, body, recipients: [sam.published] });
+      assert.equal(JSON.stringify(sealed).includes('message-7'), false);
+      const opened = await openMessage({ dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...sealed });
+      assert.deepEqual(opened, { ok: true, body });
+    }
+  });
+
+  test('a body of a shape nobody defined does not open as anything', async () => {
+    const wes = await makeDevice('wes');
+    const sam = await makeDevice('sam');
+    for (const body of [{ v: 1, kind: 'poll', text: 'x' }, { v: 1, kind: 'reaction', target: 'm' }, { v: 2, text: 'x' }]) {
+      const sealed = await sealMessage({ dmId: DM, sender: wes.device, body: body as never, recipients: [sam.published] });
+      const opened = await openMessage({ dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...sealed });
+      assert.deepEqual(opened, { ok: false, reason: 'failed' });
+    }
+  });
+
   test('what the server stores does not contain the text', async () => {
     const wes = await makeDevice('wes');
     const sam = await makeDevice('sam');

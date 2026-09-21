@@ -268,6 +268,12 @@ export interface DmMessage {
   ciphertext: string | null;
   /** Only the copies addressed to the person receiving this. */
   keys: DmWrappedKey[];
+  /**
+   * Set when this is a reaction: the message it reacts to. The emoji is inside
+   * the sealed body. A reaction is never listed among a conversation's messages.
+   */
+  reactionTo: Snowflake | null;
   createdAt: Timestamp;
+  editedAt: Timestamp | null;
   deleted: boolean;
 }
