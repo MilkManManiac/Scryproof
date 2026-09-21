@@ -10,7 +10,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { openMeter, sounds } from '../lib/voice-audio';
-import { captureOptions, keyLabel, voicePrefs, type InputMode } from '../lib/voice-prefs';
+import { captureOptions, keyLabel, shareCostLabel, voicePrefs, type InputMode, type ShareFps, type ShareHeight } from '../lib/voice-prefs';
 import { Modal } from './Modal';
 
 const FLOOR_DB = -80;
@@ -268,6 +268,34 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
             </option>
           ))}
         </select>
+
+        <div className="settings-subhead">Screen share quality</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            className="voice-select"
+            aria-label="Resolution"
+            value={prefs.shareHeight}
+            onChange={(event) => voicePrefs.set({ shareHeight: Number(event.target.value) as ShareHeight })}
+          >
+            <option value={720}>720p</option>
+            <option value={1080}>1080p</option>
+            <option value={1440}>1440p</option>
+            <option value={0}>Full size of the screen</option>
+          </select>
+          <select
+            className="voice-select"
+            aria-label="Frames a second"
+            value={prefs.shareFps}
+            onChange={(event) => voicePrefs.set({ shareFps: Number(event.target.value) as ShareFps })}
+          >
+            <option value={15}>15 frames a second</option>
+            <option value={30}>30 frames a second</option>
+            <option value={60}>60 frames a second</option>
+          </select>
+        </div>
+        <p className="field-note">
+          {shareCostLabel(prefs)} Everyone watching downloads the same. Applies the next time you start sharing.
+        </p>
       </div>
     </Modal>
   );

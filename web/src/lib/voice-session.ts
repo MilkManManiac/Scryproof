@@ -39,7 +39,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { MicGate, OutputMix, sounds } from './voice-audio';
-import { cameraOptions, captureOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
+import { cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -367,16 +367,21 @@ export class VoiceSession {
     const room = this.room;
     if (!room || !this.snapshot.can.screenShare) return;
     this.update({ mediaError: null });
+    const quality = screenShareOptions(voicePrefs.get());
     try {
-      await room.localParticipant.setScreenShareEnabled(on, {
-        // Game sound, untouched: the voice clean-up would mangle it. Where the
-        // browser can, leave this call's own voices out of what is captured,
-        // or everyone hears themselves come back.
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
-        resolution: ScreenSharePresets.h1080fps30.resolution,
-        contentHint: 'motion',
-        selfBrowserSurface: 'exclude',
-      });
+      await room.localParticipant.setScreenShareEnabled(
+        on,
+        {
+          // Game sound, untouched: the voice clean-up would mangle it. Where the
+          // browser can, leave this call's own voices out of what is captured,
+          // or everyone hears themselves come back.
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+          resolution: quality.resolution,
+          contentHint: 'motion',
+          selfBrowserSurface: 'exclude',
+        },
+        { screenShareEncoding: quality.encoding },
+      );
     } catch (problem) {
       // Closing the picker without choosing is not an error worth a message.
       const cancelled = problem instanceof Error && problem.name === 'NotAllowedError';

@@ -6,11 +6,17 @@
 
 export type InputMode = 'open' | 'threshold' | 'push';
 
+export type ShareHeight = 720 | 1080 | 1440 | 0;
+export type ShareFps = 15 | 30 | 60;
+
 export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
   inputDeviceId: string;
   outputDeviceId: string;
   cameraDeviceId: string;
+  /** How tall a shared screen is sent, in lines. 0 means as big as the screen is. */
+  shareHeight: ShareHeight;
+  shareFps: ShareFps;
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGain: boolean;
@@ -35,6 +41,8 @@ const DEFAULTS: VoicePrefs = {
   inputDeviceId: '',
   outputDeviceId: '',
   cameraDeviceId: '',
+  shareHeight: 1080,
+  shareFps: 30,
   noiseSuppression: true,
   echoCancellation: true,
   autoGain: true,
@@ -104,6 +112,37 @@ export function cameraOptions(prefs: VoicePrefs): { deviceId?: ConstrainDOMStrin
     deviceId: prefs.cameraDeviceId ? { exact: prefs.cameraDeviceId } : undefined,
     resolution: { width: 1280, height: 720, frameRate: 30 },
   };
+}
+
+/** Megabits a second for a moving picture of this height at 30 frames. Games, not slides. */
+const SHARE_MBPS: Record<ShareHeight, number> = { 720: 2.5, 1080: 5, 1440: 8, 0: 12 };
+const FPS_FACTOR: Record<ShareFps, number> = { 15: 0.6, 30: 1, 60: 1.6 };
+
+/**
+ * What to ask for when sharing a screen, and how much to spend sending it.
+ *
+ * The person sharing picks (Wes, 2026-09-21): it is their upload and their
+ * friends watching. There is no cap from the server, which could not enforce
+ * one on encrypted video anyway. If bandwidth ever becomes a problem, this
+ * table is where a ceiling goes.
+ */
+export function screenShareOptions(prefs: Pick<VoicePrefs, 'shareHeight' | 'shareFps'>): {
+  resolution: { width: number; height: number; frameRate: number } | undefined;
+  encoding: { maxBitrate: number; maxFramerate: number };
+} {
+  const height = prefs.shareHeight in SHARE_MBPS ? prefs.shareHeight : 1080;
+  const fps = prefs.shareFps in FPS_FACTOR ? prefs.shareFps : 30;
+  return {
+    // 16:9 is a ceiling, not a shape: the browser keeps the screen's own proportions inside it.
+    resolution: height === 0 ? undefined : { width: Math.round((height * 16) / 9), height, frameRate: fps },
+    encoding: { maxBitrate: Math.round(SHARE_MBPS[height] * FPS_FACTOR[fps] * 1_000_000), maxFramerate: fps },
+  };
+}
+
+/** Roughly what a choice costs the person sharing, for the settings screen. */
+export function shareCostLabel(prefs: Pick<VoicePrefs, 'shareHeight' | 'shareFps'>): string {
+  const mbps = screenShareOptions(prefs).encoding.maxBitrate / 1_000_000;
+  return `Up to about ${mbps % 1 === 0 ? mbps : mbps.toFixed(1)} megabits a second of your upload.`;
 }
 
 /** A key code as a person would say it. */

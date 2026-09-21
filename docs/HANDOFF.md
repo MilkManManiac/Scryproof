@@ -293,6 +293,12 @@ deploying.**
   the tray menu) and the AppUserModelId Windows needs before it shows pop-ups.
   **Pop-ups inside the desktop app are untested by a person.** The installer in
   Wes's Downloads predates this: rebuild with `cd desktop && npm run dist`.
+- **Stream quality picker, built, not deployed:** Voice settings > Screen share
+  quality. 720p / 1080p / 1440p / full size, at 15 / 30 / 60 frames. The person
+  sharing picks; no cap (Wes's call). `screenShareOptions` in `voice-prefs.ts`
+  holds the bitrate table, which is where a ceiling would go. Default is what
+  it was (1080p30, 5 Mbps). `npm run test:voice` still 28/28. Nobody has looked
+  at a real 1440p60 share yet.
 - **Global push-to-talk is not started.** Electron's `globalShortcut` has no
   key-up event, so hold-to-talk needs a native key hook (uiohook-napi or
   similar): a native dependency, to be vetted for phoning home before it ships.
