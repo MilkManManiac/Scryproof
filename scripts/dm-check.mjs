@@ -21,6 +21,10 @@
  *   8. Alex sends a picture and a text file. Wes sees the picture and can open
  *      the file; what the server stores is neither
  *   9. Wes deletes a message and it goes from Alex's screen
+ *  10. a DM that arrives while Wes is elsewhere lights the bell, saying who and never what
+ *  11. Wes makes a recovery phrase. On a new laptop everything is locked until
+ *      he types the twelve words; then the old messages open, Alex is not asked
+ *      to accept the laptop, and the words were never sent to the server
  *
  * Needs `npm run dev` and a seeded database (`npm run seed --workspace server`).
  *
@@ -235,6 +239,18 @@ class Device {
     })()`);
   }
 
+  /** Type into one field, through the browser's own input path, so React hears it. */
+  async fill(selector, text) {
+    const focused = await this.until(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return false;
+      el.focus();
+      return document.activeElement === el;
+    })()`);
+    if (!focused) throw new Error(`${this.label}: no field matching ${selector}.`);
+    await this.send('Input.insertText', { text });
+  }
+
   async pressEnter() {
     for (const type of ['keyDown', 'keyUp']) {
       await this.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
@@ -279,7 +295,8 @@ const REPLY = `reply-${stamp} what is a heliotrope`;
 const wes = new Device('wes', 'wes', 9341);
 const alex = new Device('alex', 'alex', 9342);
 const alexPhone = new Device('alex-phone', 'alex', 9343);
-const everyone = [wes, alex, alexPhone];
+const wesLaptop = new Device('wes-laptop', 'wes', 9344);
+const everyone = [wes, alex, alexPhone, wesLaptop];
 
 try {
   await Promise.all([wes.open(), alex.open()]);
@@ -461,6 +478,98 @@ try {
     await wes.evaluate(`document.querySelector('.notice.unread').click()`);
     check('clicking it goes to the conversation', Boolean(await wes.until(`document.querySelector('.main').innerText.includes(${JSON.stringify(BELL)})`)));
     check('and reading the conversation clears the bell', Boolean(await wes.until(`document.querySelector('.rail-bell .badge') === null`)));
+  }
+
+  /* 11: the recovery phrase. */
+  {
+    const AFTER = `after-${stamp} sent once the phrase existed`;
+    const FROM_LAPTOP = `laptop-${stamp} written on the new one`;
+    const BELL = `bell-${stamp}`;
+
+    // Everything the page sends from here on is kept, to be searched for the words.
+    await wes.evaluate(`(() => {
+      window.__sent = [];
+      const realFetch = window.fetch;
+      window.fetch = (input, init) => {
+        window.__sent.push(String(typeof input === 'string' ? input : input.url) + ' ' + String(init?.body ?? ''));
+        return realFetch(input, init);
+      };
+    })()`);
+
+    check('Wes is offered a recovery phrase', await wes.click('.dm-recovery .link-button', 'Make a recovery phrase'));
+    await wes.click('.modal .button', 'Show me the words');
+    const words = await wes.until(`(() => {
+      const items = Array.from(document.querySelectorAll('[data-testid=recovery-words] li'));
+      return items.length === 12 ? items.map((li) => li.lastChild.textContent.trim()) : null;
+    })()`);
+    check('twelve words are shown', Array.isArray(words) && words.length === 12 && words.every((word) => /^[a-z]+$/.test(word)));
+    await sleep(400);
+    if (process.env.DM_CHECK_PHRASE_SHOT) await wes.shot(process.env.DM_CHECK_PHRASE_SHOT);
+
+    await wes.click('.modal .button', 'I have written them down');
+    const places = await wes.until(`(() => {
+      const inputs = Array.from(document.querySelectorAll('.modal input[data-place]'));
+      return inputs.length === 3 ? inputs.map((input) => Number(input.dataset.place)) : null;
+    })()`);
+    // Wrong on purpose first: nothing may be published on a failed check.
+    await wes.fill(`.modal input[data-place="${places[0]}"]`, 'wrong');
+    await wes.click('.modal .button', 'Finish');
+    check('a wrong word is refused', Boolean(await wes.until(`document.querySelector('.modal .error') !== null`)));
+    check('and nothing was published', !(await wes.evaluate(`fetch('/api/devices', { credentials: 'include' }).then((r) => r.text())`)).includes('recovery-'));
+    await wes.evaluate(`(() => { const el = document.querySelector('.modal input[data-place="${places[0]}"]'); el.focus(); el.select(); })()`);
+    await wes.send('Input.insertText', { text: words[places[0]] });
+    for (const place of places.slice(1)) await wes.fill(`.modal input[data-place="${place}"]`, words[place]);
+    await wes.click('.modal .button', 'Finish');
+    check('the phrase is set up and the history passed on to it', Boolean(await wes.until(`document.querySelector('.modal')?.textContent.includes('Done.')`, 30_000)));
+
+    const sent = await wes.evaluate(`window.__sent.join(' | ')`);
+    check('the server was sent a recovery device', sent.includes('recovery-'));
+    check('and copies of old keys for it', sent.includes('/keys'));
+    // Single words prove nothing: "key" and "device" are on the list. Two in a row, in order, would.
+    check('and no two of the twelve words together', !words.slice(1).some((word, index) => sent.includes(words[index] + ' ' + word)));
+    check('nor are they in storage', await wes.evaluate(`!${JSON.stringify(words)}.slice(0, 3).every((word) => Object.keys(localStorage).some((key) => localStorage.getItem(key).includes(word)))`));
+    await wes.click('.modal .button', 'Close');
+
+    // Alex writes once more. His app has not been told anything; it has to work the trust out.
+    await alex.say(AFTER);
+    check('Wes gets it as usual', Boolean(await wes.sees(AFTER)));
+    check('Alex was not asked to accept anything', !(await alex.evaluate(`Array.from(document.querySelectorAll('.dm-warning')).some((el) => el.textContent.includes('Wes'))`)));
+
+    await wesLaptop.open();
+    await wesLaptop.signIn();
+    await wesLaptop.click('.rail-dms');
+    await wesLaptop.until(`document.querySelector('.dm-row') !== null`);
+    await wesLaptop.click('.dm-row', 'Alex');
+    check('on a new laptop the history is locked', Boolean(await wesLaptop.until(`document.querySelector('.main')?.innerText.includes('Locked.')`)));
+    check('and it says the phrase opens it', Boolean(await wesLaptop.until(`Array.from(document.querySelectorAll('.dm-warning')).some((el) => el.textContent.includes('recovery phrase'))`)));
+
+    await wesLaptop.click('.dm-warning .button', 'Enter recovery phrase');
+    await wesLaptop.fill('#recovery-phrase', words.slice(0, 11).join(' ') + ' ' + (words[11] === 'zoo' ? 'zone' : 'zoo'));
+    await wesLaptop.click('.modal .button', 'Unlock');
+    check('wrong words are refused', Boolean(await wesLaptop.until(`document.querySelector('.modal .error') !== null`)));
+    await wesLaptop.evaluate(`(() => { const el = document.querySelector('#recovery-phrase'); el.focus(); el.select(); })()`);
+    await wesLaptop.send('Input.insertText', { text: words.map((word, index) => `${index + 1}. ${word.toUpperCase()}`).join('\n') });
+    await wesLaptop.click('.modal .button', 'Unlock');
+    check('the right words are accepted, however they were typed', Boolean(await wesLaptop.until(`document.querySelector('.modal')?.textContent.includes('can now open')`)));
+    await wesLaptop.click('.modal .button', 'Close');
+
+    check('a message from before the phrase existed opens', Boolean(await wesLaptop.sees(BELL)));
+    check('so does one Wes wrote himself', Boolean(await wesLaptop.sees(EDITED)));
+    check('and one sent after', Boolean(await wesLaptop.sees(AFTER)));
+    check('nothing is left locked', !(await wesLaptop.screenText()).includes('Locked.'));
+    if (process.env.DM_CHECK_RESTORED_SHOT) await wesLaptop.shot(process.env.DM_CHECK_RESTORED_SHOT);
+
+    await wesLaptop.say(FROM_LAPTOP);
+    check('what the laptop writes opens for Alex', Boolean(await alex.sees(FROM_LAPTOP)));
+    check('and Alex is still not asked to accept anything', !(await alex.evaluate(`Array.from(document.querySelectorAll('.dm-warning')).some((el) => el.textContent.includes('Wes'))`)));
+    check('and it opens on Wes\'s first device too', Boolean(await wes.sees(FROM_LAPTOP)));
+
+    await wesLaptop.send('Page.navigate', { url: WEB });
+    await wesLaptop.until(`document.querySelector('.rail-dms') !== null`);
+    await wesLaptop.click('.rail-dms');
+    await wesLaptop.until(`document.querySelector('.dm-row') !== null`);
+    await wesLaptop.click('.dm-row', 'Alex');
+    check('after a reload the laptop still opens them, without the words', Boolean(await wesLaptop.sees(BELL)));
   }
 
   for (const device of everyone) {

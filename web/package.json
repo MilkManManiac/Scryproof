@@ -10,8 +10,10 @@
     "test": "node --import tsx --test \"src/tests/**/*.test.ts\""
   },
   "dependencies": {
-    "@scryproof/shared": "*",
     "@livekit/components-react": "^2.9.24",
+    "@noble/curves": "2.4.0",
+    "@scryproof/shared": "*",
+    "@scure/bip39": "2.4.0",
     "livekit-client": "^2.15.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
@@ -20,8 +22,8 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
+    "tsx": "^4.20.5",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "tsx": "^4.20.5"
+    "vite": "^7.1.5"
   }
 }

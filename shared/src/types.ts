@@ -231,6 +231,18 @@ export interface DeviceKey {
   dmKey: string;
   /** The identity key's signature over the user, the device and both keys. */
   signature: string;
+  /**
+   * Another of the same person's devices vouching for this one, so the people
+   * they talk to need not be asked again. The server stores it and cannot make
+   * one: it is a signature by a key that never leaves a member's machine.
+   */
+  endorsedBy?: DeviceEndorsement | null;
+}
+
+export interface DeviceEndorsement {
+  deviceId: string;
+  /** base64. The endorsing identity key's signature over the endorsed one. */
+  signature: string;
 }
 
 export interface DmChannel {
@@ -251,6 +263,12 @@ export interface DmWrappedKey {
   iv: string;
   /** base64 */
   key: string;
+  /**
+   * Set when the copy was not made by the device that sent the message but by
+   * one of the reader's own devices, passing on a key it could already open.
+   * That is how history reaches a recovery phrase made after the fact.
+   */
+  wrappedBy?: string | null;
 }
 
 /**

@@ -27,7 +27,7 @@
  * are M7's job; nothing here blocks it. `docs/dm-plan.md`.
  */
 
-import type { DeviceKey, DmWrappedKey } from '@scryproof/shared';
+import type { DeviceEndorsement, DeviceKey, DmWrappedKey } from '@scryproof/shared';
 
 import {
   type DeviceIdentity,
@@ -41,6 +41,8 @@ import {
 
 /** Must match `DEVICE_CONTEXT` in server/src/routes/dms.ts. */
 const DEVICE_CONTEXT = 'scryproof/dm/device/v1';
+/** Must match `ENDORSE_CONTEXT` in server/src/routes/dms.ts. */
+const ENDORSE_CONTEXT = 'scryproof/dm/endorse/v1';
 const WRAP_CONTEXT = 'scryproof/dm/wrap/v1';
 const BODY_CONTEXT = 'scryproof/dm/body/v1';
 const FILE_CONTEXT = 'scryproof/dm/file/v1';
@@ -149,6 +151,47 @@ export async function verifyDevice(device: DeviceKey): Promise<boolean> {
 }
 
 /* ------------------------------------------------------------------ *
+ * One device vouching for another.
+ * ------------------------------------------------------------------ */
+
+const endorsementBytes = (userId: string, endorserDeviceId: string, deviceId: string, identityKey: Uint8Array): Uint8Array =>
+  concatLabelled(ENDORSE_CONTEXT, userId, endorserDeviceId, deviceId, identityKey);
+
+/**
+ * "This other device is mine too", signed. What is signed is the other
+ * device's identity key, so the vouching cannot be moved onto a different key
+ * later, and the person's id, so it cannot be moved onto a different person.
+ */
+export async function endorse(
+  userId: string,
+  endorser: Pick<DeviceIdentity, 'deviceId' | 'privateKey'>,
+  target: Pick<DeviceKey, 'deviceId' | 'identityKey'>,
+): Promise<DeviceEndorsement> {
+  const signature = await subtle().sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    endorser.privateKey,
+    endorsementBytes(userId, endorser.deviceId, target.deviceId, fromBase64(target.identityKey)) as BufferSource,
+  );
+  return { deviceId: endorser.deviceId, signature: toBase64(new Uint8Array(signature)) };
+}
+
+export async function verifyEndorsement(device: DeviceKey, endorser: DeviceKey): Promise<boolean> {
+  const claim = device.endorsedBy;
+  if (!claim || claim.deviceId !== endorser.deviceId || endorser.userId !== device.userId) return false;
+  try {
+    const key = await importIdentityKey(fromBase64(endorser.identityKey));
+    return await subtle().verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      key,
+      fromBase64(claim.signature) as BufferSource,
+      endorsementBytes(device.userId, endorser.deviceId, device.deviceId, fromBase64(device.identityKey)) as BufferSource,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Which devices to believe.
  * ------------------------------------------------------------------ */
 
@@ -170,7 +213,11 @@ export const isTrusted = (verdict: AssessedDevice['verdict']): boolean =>
  * time. Here a person's whole list arrives at once, so meeting somebody for the
  * first time pins everything they have at that moment; otherwise their laptop
  * would be "first seen" and their phone, a line later, an alarming "new device".
- * After that first meeting, anything unfamiliar waits for a person to accept it.
+ * After that first meeting, anything unfamiliar waits for a person to accept it,
+ * with one exception: a device vouched for by one already believed. That is
+ * what a recovery phrase buys. The laptop vouches for the phrase, the phrase
+ * vouches for the next laptop, and nobody's friends are asked anything. A key
+ * that has *changed* is never rescued this way.
  */
 export async function assessDevices(
   store: IdentityStore,
@@ -196,6 +243,22 @@ export async function assessDevices(
     } else verdict = 'new-device';
 
     out.push({ device, fingerprint, verdict });
+  }
+
+  // Vouching can chain, and the list is in no particular order, so go round
+  // until a pass changes nothing.
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const entry of out) {
+      if (entry.verdict !== 'new-device' || !entry.device.endorsedBy) continue;
+      const endorser = out.find(
+        (other) => other.device.deviceId === entry.device.endorsedBy?.deviceId && isTrusted(other.verdict),
+      );
+      if (!endorser || !(await verifyEndorsement(entry.device, endorser.device))) continue;
+      await store.set(userId, entry.device.deviceId, entry.fingerprint);
+      entry.verdict = 'first-seen';
+      changed = true;
+    }
   }
   return out;
 }
@@ -416,42 +479,111 @@ export type OpenResult =
   /** A copy exists and does not open. Tampering, or a key that is not the one claimed. */
   | { ok: false; reason: 'failed' };
 
+/** Whatever can open a copy: a real device, or the one a recovery phrase stands for. */
+export interface DmOpener {
+  userId: string;
+  identity: Pick<DeviceIdentity, 'deviceId'>;
+  dm: Pick<DmKeypair, 'privateKey'>;
+}
+
+interface Sealed {
+  dmId: string;
+  self: DmOpener;
+  authorId: string;
+  senderDevice: DeviceKey;
+  iv: string;
+  keys: DmWrappedKey[];
+  /**
+   * This person's own devices that are believed. A copy passed on by one of
+   * them counts; a copy that says it was passed on by anything else does not.
+   */
+  ownDevices?: DeviceKey[];
+}
+
+/**
+ * The message key, from this opener's copy of it. Throws when the copy does
+ * not open. A copy is normally made by the device that sent the message. One
+ * made later by the reader's own device names that device in `wrappedBy`, and
+ * is opened against that device's key instead.
+ */
+async function messageKeyFor(options: Sealed, mine: DmWrappedKey): Promise<ArrayBuffer> {
+  const { dmId, self, senderDevice } = options;
+  let wrapper = { userId: options.authorId, device: senderDevice };
+  if (mine.wrappedBy) {
+    const own = options.ownDevices?.find((entry) => entry.userId === self.userId && entry.deviceId === mine.wrappedBy);
+    if (!own) throw new Error('Passed on by a device that is not believed.');
+    wrapper = { userId: self.userId, device: own };
+  }
+  const direction: Direction = {
+    dmId,
+    senderId: wrapper.userId,
+    senderDeviceId: wrapper.device.deviceId,
+    recipientId: self.userId,
+    recipientDeviceId: self.identity.deviceId,
+  };
+  const key = await wrappingKey(direction, self.dm.privateKey, fromBase64(wrapper.device.dmKey));
+  return subtle().decrypt(
+    {
+      name: 'AES-GCM',
+      iv: fromBase64(mine.iv) as BufferSource,
+      additionalData: wrapAad(direction, fromBase64(options.iv)) as BufferSource,
+    },
+    key,
+    fromBase64(mine.key) as BufferSource,
+  );
+}
+
+const copyFor = (options: Pick<Sealed, 'self' | 'keys'>): DmWrappedKey | undefined =>
+  options.keys.find((key) => key.userId === options.self.userId && key.deviceId === options.self.identity.deviceId);
+
+/**
+ * Pass a message key on to another of this person's devices. Used for the
+ * recovery phrase: messages from before it existed were never locked to it,
+ * and only a device that can already open them can fix that. Null when this
+ * device has no copy that opens.
+ */
+export async function rewrapKey(
+  options: Sealed & { self: DmDevice; target: DeviceKey },
+): Promise<{ iv: string; key: string } | null> {
+  const { self, target } = options;
+  const mine = copyFor(options);
+  if (!mine || target.userId !== self.userId || options.senderDevice.userId !== options.authorId) return null;
+  try {
+    const messageKeyBytes = await messageKeyFor(options, mine);
+    const direction: Direction = {
+      dmId: options.dmId,
+      senderId: self.userId,
+      senderDeviceId: self.identity.deviceId,
+      recipientId: target.userId,
+      recipientDeviceId: target.deviceId,
+    };
+    const key = await wrappingKey(direction, self.dm.privateKey, fromBase64(target.dmKey));
+    const wrapIv = randomBytes(12);
+    const wrapped = await subtle().encrypt(
+      { name: 'AES-GCM', iv: wrapIv as BufferSource, additionalData: wrapAad(direction, fromBase64(options.iv)) as BufferSource },
+      key,
+      messageKeyBytes,
+    );
+    return { iv: toBase64(wrapIv), key: toBase64(new Uint8Array(wrapped)) };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Open a message. Never throws: a hostile server can send anything it likes,
  * and every one of those is a message that does not open, not a crash.
  */
-export async function openMessage(options: {
-  dmId: string;
-  self: DmDevice;
-  authorId: string;
-  senderDevice: DeviceKey;
-  iv: string;
-  ciphertext: string;
-  keys: DmWrappedKey[];
-}): Promise<OpenResult> {
-  const { dmId, self, senderDevice } = options;
-  const mine = options.keys.find(
-    (key) => key.userId === self.userId && key.deviceId === self.identity.deviceId,
-  );
+export async function openMessage(options: Sealed & { ciphertext: string }): Promise<OpenResult> {
+  const { dmId, senderDevice } = options;
+  const mine = copyFor(options);
   if (!mine) return { ok: false, reason: 'no-key' };
   // The device has to belong to the person the server says wrote this.
   if (senderDevice.userId !== options.authorId) return { ok: false, reason: 'failed' };
 
   try {
-    const direction: Direction = {
-      dmId,
-      senderId: options.authorId,
-      senderDeviceId: senderDevice.deviceId,
-      recipientId: self.userId,
-      recipientDeviceId: self.identity.deviceId,
-    };
     const bodyIv = fromBase64(options.iv);
-    const key = await wrappingKey(direction, self.dm.privateKey, fromBase64(senderDevice.dmKey));
-    const messageKeyBytes = await subtle().decrypt(
-      { name: 'AES-GCM', iv: fromBase64(mine.iv) as BufferSource, additionalData: wrapAad(direction, bodyIv) as BufferSource },
-      key,
-      fromBase64(mine.key) as BufferSource,
-    );
+    const messageKeyBytes = await messageKeyFor(options, mine);
     const messageKey = await subtle().importKey('raw', messageKeyBytes, 'AES-GCM', false, ['decrypt']);
     const opened = await subtle().decrypt(
       {

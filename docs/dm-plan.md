@@ -46,7 +46,8 @@ message) is what M7's MLS work does, and this design does not block it.
 2. **It behaves like the rest of the app.** Unread badges, notifications,
    edit, delete, replies, reactions, and attachments locked in the browser
    before upload.
-3. **The new-device story.** A new device says plainly that older DMs are
+3. **The new-device story.** *Built 2026-09-21; how it works is in
+   `web/src/lib/dm-recovery.ts` and HANDOFF.* A new device says plainly that older DMs are
    locked, and why. Then key backup: a recovery phrase Wes keeps, which unlocks
    history on a new device. The phrase never reaches the server.
 4. **The safety number.** A short code both people can compare, and the

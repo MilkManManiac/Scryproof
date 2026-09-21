@@ -253,6 +253,9 @@ export const api = {
   /** Direct messages. The bodies here are sealed before they reach this file. */
   dms: {
     publishDevice: (device: Omit<DeviceKey, 'userId'>) => put<{ device: DeviceKey }>('/api/devices', device),
+    myDevices: () => get<{ devices: DeviceKey[] }>('/api/devices'),
+    addKeys: (dmId: string, body: { wrappedBy: string; deviceId: string; keys: { messageId: string; iv: string; key: string }[] }) =>
+      post<{ added: number }>(`/api/dms/${dmId}/keys`, body),
     list: () => get<{ dms: DmChannel[] }>('/api/dms'),
     open: (userId: string) => post<{ dm: DmChannel }>('/api/dms', { userId }),
     devices: (dmId: string) => get<{ devices: DeviceKey[] }>(`/api/dms/${dmId}/devices`),

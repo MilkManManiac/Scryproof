@@ -23,11 +23,12 @@ import {
 } from './voice-crypto';
 
 const DB_NAME = 'scryproof';
-/** 2 added the DM key store. Every store is created here, so any version can upgrade. */
-const DB_VERSION = 2;
+/** 2 added the DM key store, 3 the recovery key. Every store is created here, so any version can upgrade. */
+const DB_VERSION = 3;
 const IDENTITY_STORE = 'device-identity';
 const PINS_STORE = 'identity-pins';
 const DM_KEY_STORE = 'dm-key';
+const RECOVERY_STORE = 'dm-recovery';
 
 interface StoredIdentity {
   deviceId: string;
@@ -43,6 +44,7 @@ function open(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(IDENTITY_STORE)) db.createObjectStore(IDENTITY_STORE);
       if (!db.objectStoreNames.contains(PINS_STORE)) db.createObjectStore(PINS_STORE);
       if (!db.objectStoreNames.contains(DM_KEY_STORE)) db.createObjectStore(DM_KEY_STORE);
+      if (!db.objectStoreNames.contains(RECOVERY_STORE)) db.createObjectStore(RECOVERY_STORE);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('IndexedDB refused to open.'));
@@ -133,6 +135,25 @@ export async function loadDmKeypair<T extends { privateKey: CryptoKey; publicKey
   );
   return pair;
 }
+
+/**
+ * The key a recovery phrase rebuilt, kept so the words are typed once per
+ * device and not once per visit. Only the half that opens messages, and only
+ * as a handle: the words themselves are never stored, and the phrase's signing
+ * key is used once, at the moment the words are typed, and dropped.
+ */
+export interface StoredRecoveryKey {
+  deviceId: string;
+  privateKey: CryptoKey;
+}
+
+export const loadRecoveryKey = (userId: string): Promise<StoredRecoveryKey | null> =>
+  withStore(RECOVERY_STORE, 'readonly', async (store) => (await run<StoredRecoveryKey | undefined>(store.get(userId))) ?? null);
+
+export const saveRecoveryKey = (userId: string, key: StoredRecoveryKey): Promise<void> =>
+  withStore(RECOVERY_STORE, 'readwrite', async (store) => {
+    await run(store.put(key, userId));
+  });
 
 /**
  * What this device has seen of everyone else's identity keys.

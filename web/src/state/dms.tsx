@@ -31,18 +31,29 @@ import {
   type DmBody,
   type DmDevice,
   type DmFileRef,
+  type DmOpener,
+  type OpenResult,
   assessDevices,
   createDmKeypair,
   describeDevice,
   describeDmKeypair,
+  endorse,
   isTrusted,
   openMessage,
+  rewrapKey,
   sealMessage,
 } from '../lib/dm-crypto';
+import { isRecoveryDevice, recoveryDevice } from '../lib/dm-recovery';
 import { noticeFor, notices } from '../lib/notices';
 import { notifyPrefs, play, soundFor } from '../lib/notify';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
-import { IndexedDbIdentityStore, loadDeviceIdentity, loadDmKeypair } from '../lib/voice-identity';
+import {
+  IndexedDbIdentityStore,
+  loadDeviceIdentity,
+  loadDmKeypair,
+  loadRecoveryKey,
+  saveRecoveryKey,
+} from '../lib/voice-identity';
 import { useStore } from './store';
 
 /** A message as the screen draws it. */
@@ -89,6 +100,11 @@ interface DmState {
   loaded: Record<string, boolean>;
   /** Per conversation: every device of everyone in it, and what we make of each. */
   devices: Record<string, AssessedDevice[]>;
+  /**
+   * Whether this person has a recovery phrase, and whether its words have been
+   * typed into this device. Null until the server has been asked.
+   */
+  recovery: { exists: boolean; held: boolean } | null;
 }
 
 const initialState: DmState = {
@@ -101,10 +117,12 @@ const initialState: DmState = {
   reactions: {},
   loaded: {},
   devices: {},
+  recovery: null,
 };
 
 type Action =
   | { type: 'ready' }
+  | { type: 'recovery'; exists: boolean; held: boolean }
   | { type: 'setup-failed'; message: string }
   | { type: 'dms'; dms: DmChannel[] }
   | { type: 'dm'; dm: DmChannel }
@@ -122,6 +140,8 @@ function reducer(state: DmState, action: Action): DmState {
   switch (action.type) {
     case 'ready':
       return { ...state, ready: true, setupError: null };
+    case 'recovery':
+      return { ...state, recovery: { exists: action.exists, held: action.held } };
     case 'setup-failed':
       return { ...state, ready: false, setupError: action.message };
     case 'dms':
@@ -212,6 +232,14 @@ interface DmValue {
   markRead: (dmId: string) => void;
   /** Only ever called because somebody read a warning and clicked. */
   acceptDevice: (dmId: string, device: AssessedDevice) => Promise<void>;
+  /**
+   * Publish the device these words stand for, and pass every key this device
+   * can open on to it. Replaces any phrase made before. `onProgress` is told
+   * how many conversations are done, because a long history takes a while.
+   */
+  createRecovery: (phrase: string, onProgress?: (done: number, total: number) => void) => Promise<void>;
+  /** On a new device: rebuild the phrase's key from its words and open what was locked to it. */
+  restoreRecovery: (phrase: string) => Promise<void>;
 }
 
 const DmContext = createContext<DmValue | null>(null);
@@ -254,6 +282,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const selfId = app.user?.id ?? null;
 
   const device = useRef<DmDevice | null>(null);
+  /** The phrase's key, on a device its words have been typed into. */
+  const recovery = useRef<DmOpener | null>(null);
   const pins = useRef(new IndexedDbIdentityStore());
   /** Sealed copies, kept so that accepting a device can re-open what it sent. */
   const sealed = useRef<Record<string, Map<string, DmMessage>>>({});
@@ -271,9 +301,17 @@ export function DmProvider({ children }: { children: ReactNode }) {
       try {
         const mine = await deviceFor(selfId, pins.current);
         const { dms } = await api.dms.list();
+        const { devices: own } = await api.dms.myDevices();
+        const stored = await loadRecoveryKey(selfId).catch(() => null);
         if (cancelled) return;
 
         device.current = mine;
+        // A key for a phrase that has since been replaced opens nothing new, and says so by not counting.
+        const published = own.find((entry) => isRecoveryDevice(entry.deviceId));
+        const held = Boolean(stored && published && stored.deviceId === published.deviceId);
+        recovery.current =
+          held && stored ? { userId: selfId, identity: { deviceId: stored.deviceId }, dm: { privateKey: stored.privateKey } } : null;
+        dispatch({ type: 'recovery', exists: Boolean(published), held });
         dispatch({ type: 'dms', dms });
         dispatch({ type: 'ready' });
       } catch (problem) {
@@ -308,6 +346,34 @@ export function DmProvider({ children }: { children: ReactNode }) {
     return result;
   }, []);
 
+  /**
+   * Open with this device's own copy, and failing that with the phrase's, if
+   * its words have been typed in here. A copy for the phrase may have been
+   * passed on by one of this person's other devices, which only counts if that
+   * device is one this device believes.
+   */
+  const open = useCallback(
+    async (message: DmMessage & { iv: string; ciphertext: string }, sender: AssessedDevice, known: AssessedDevice[]): Promise<OpenResult> => {
+      const self = device.current;
+      if (!self) return { ok: false, reason: 'failed' };
+      const sealedMessage = {
+        dmId: message.dmId,
+        authorId: message.authorId,
+        senderDevice: sender.device,
+        iv: message.iv,
+        ciphertext: message.ciphertext,
+        keys: message.keys,
+      };
+      const direct = await openMessage({ ...sealedMessage, self });
+      if (direct.ok || direct.reason !== 'no-key' || !recovery.current) return direct;
+      const ownDevices = known
+        .filter((entry) => entry.device.userId === self.userId && isTrusted(entry.verdict))
+        .map((entry) => entry.device);
+      return openMessage({ ...sealedMessage, self: recovery.current, ownDevices });
+    },
+    [],
+  );
+
   const toView = useCallback(async (message: DmMessage, known: AssessedDevice[]): Promise<DmView> => {
     const base = {
       id: message.id,
@@ -329,15 +395,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     );
     if (!sender || sender.verdict === 'invalid') return { ...base, text: null, problem: 'failed', unverified: false };
 
-    const opened = await openMessage({
-      dmId: message.dmId,
-      self,
-      authorId: message.authorId,
-      senderDevice: sender.device,
-      iv: message.iv,
-      ciphertext: message.ciphertext,
-      keys: message.keys,
-    });
+    const opened = await open({ ...message, iv: message.iv, ciphertext: message.ciphertext }, sender, known);
     if (!opened.ok) return { ...base, text: null, problem: opened.reason, unverified: false };
     // A reaction handed over as if it were a message is not one.
     if (opened.body.kind === 'reaction') return { ...base, text: null, problem: 'failed', unverified: false };
@@ -349,7 +407,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       problem: null,
       unverified: !isTrusted(sender.verdict),
     };
-  }, []);
+  }, [open]);
 
   /**
    * A reaction that does not open is dropped rather than drawn: there is
@@ -364,18 +422,10 @@ export function DmProvider({ children }: { children: ReactNode }) {
       (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
     );
     if (!sender || sender.verdict === 'invalid') return null;
-    const opened = await openMessage({
-      dmId: message.dmId,
-      self,
-      authorId: message.authorId,
-      senderDevice: sender.device,
-      iv: message.iv,
-      ciphertext: message.ciphertext,
-      keys: message.keys,
-    });
+    const opened = await open({ ...message, iv: message.iv, ciphertext: message.ciphertext }, sender, known);
     if (!opened.ok || opened.body.kind !== 'reaction' || opened.body.target !== message.reactionTo) return null;
     return { id: message.id, targetId: message.reactionTo, authorId: message.authorId, emoji: opened.body.emoji };
-  }, []);
+  }, [open]);
 
   const toReactions = useCallback(
     async (messages: DmMessage[], known: AssessedDevice[]): Promise<DmReactionView[]> =>
@@ -392,16 +442,54 @@ export function DmProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Give the recovery phrase a copy of any key it is missing and this device
+   * has. Messages from before the phrase existed were never locked to it, and
+   * neither is anything from a friend whose app had not yet heard of it. Runs
+   * whenever messages are fetched, so the gaps close by themselves.
+   */
+  const passOn = useCallback(async (dmId: string, messages: DmMessage[], known: AssessedDevice[]): Promise<void> => {
+    const self = device.current;
+    if (!self) return;
+    const target = known.find(
+      (entry) => entry.device.userId === self.userId && isRecoveryDevice(entry.device.deviceId) && isTrusted(entry.verdict),
+    )?.device;
+    if (!target) return;
+
+    const keys: { messageId: string; iv: string; key: string }[] = [];
+    for (const message of messages) {
+      if (message.deleted || !message.iv || message.keys.some((key) => key.deviceId === target.deviceId)) continue;
+      const sender = known.find(
+        (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
+      );
+      if (!sender || sender.verdict === 'invalid') continue;
+      const copy = await rewrapKey({
+        dmId,
+        self,
+        authorId: message.authorId,
+        senderDevice: sender.device,
+        iv: message.iv,
+        keys: message.keys,
+        target,
+      });
+      if (copy) keys.push({ messageId: message.id, ...copy });
+    }
+    for (let at = 0; at < keys.length; at += 200) {
+      await api.dms.addKeys(dmId, { wrappedBy: self.identity.deviceId, deviceId: target.deviceId, keys: keys.slice(at, at + 200) });
+    }
+  }, []);
+
   const loadDm = useCallback(
     async (dmId: string) => {
       const known = await refreshDevices(dmId);
       const { messages, reactions } = await api.dms.messages(dmId);
+      void passOn(dmId, [...messages, ...reactions], known).catch(() => undefined);
       remember(messages);
       const views = await Promise.all(messages.map((message) => toView(message, known)));
       dispatch({ type: 'messages', dmId, views, replace: true });
       dispatch({ type: 'reactions', dmId, reactions: await toReactions(reactions, known) });
     },
-    [refreshDevices, toView, toReactions],
+    [refreshDevices, toView, toReactions, passOn],
   );
 
   /* --------------------------------- gateway -------------------------------- */
@@ -631,11 +719,12 @@ export function DmProvider({ children }: { children: ReactNode }) {
       const { messages, reactions } = await api.dms.messages(dmId, oldest.id);
       remember(messages);
       const known = assessed.current[dmId] ?? (await refreshDevices(dmId));
+      void passOn(dmId, [...messages, ...reactions], known).catch(() => undefined);
       const views = await Promise.all(messages.map((message) => toView(message, known)));
       dispatch({ type: 'messages', dmId, views, replace: false });
       dispatch({ type: 'reactions', dmId, reactions: await toReactions(reactions, known) });
     },
-    [refreshDevices, toView, toReactions],
+    [refreshDevices, toView, toReactions, passOn],
   );
 
   const markRead = useCallback((dmId: string) => {
@@ -662,9 +751,88 @@ export function DmProvider({ children }: { children: ReactNode }) {
     [refreshDevices, toView],
   );
 
+  /** Publish this device again, vouched for by the phrase. The keys do not change; the server only adds the vouching. */
+  const vouchForThisDevice = useCallback(async (self: DmDevice, phrase: DmDevice) => {
+    const { userId: _self, ...published } = await describeDevice(self);
+    void _self;
+    await api.dms.publishDevice({ ...published, endorsedBy: await endorse(self.userId, phrase.identity, published) });
+  }, []);
+
+  const createRecovery = useCallback(
+    async (words: string, onProgress?: (done: number, total: number) => void) => {
+      const self = device.current;
+      if (!self) throw new Error('This device has no keys yet.');
+      const phrase = await recoveryDevice(self.userId, words);
+
+      // Each vouches for the other. Friends who believe this device then believe
+      // the phrase, and a device that believes the phrase then believes this one.
+      const { userId: _self, ...published } = await describeDevice(phrase);
+      void _self;
+      // Believed here before anyone is told of it, so this device never warns its owner about their own phrase.
+      await pins.current.set(self.userId, phrase.identity.deviceId, phrase.identity.fingerprint);
+      await api.dms.publishDevice({ ...published, endorsedBy: await endorse(self.userId, self.identity, published) });
+      await vouchForThisDevice(self, phrase);
+      // This device made the phrase and needs nothing from it, so nothing of it is kept here.
+      recovery.current = null;
+      dispatch({ type: 'recovery', exists: true, held: false });
+
+      // Everything already written, in every conversation, newest page first.
+      const all = Object.keys(stateRef.current.dms);
+      let done = 0;
+      onProgress?.(done, all.length);
+      for (const dmId of all) {
+        const known = await refreshDevices(dmId);
+        let before: string | undefined;
+        for (;;) {
+          const { messages, reactions } = await api.dms.messages(dmId, before);
+          await passOn(dmId, [...messages, ...reactions], known);
+          // Ids sort by time. Whatever order the page came in, the smallest is the oldest.
+          const oldest = messages.map((message) => message.id).sort()[0];
+          if (!oldest || oldest === before) break;
+          before = oldest;
+        }
+        done += 1;
+        onProgress?.(done, all.length);
+      }
+    },
+    [refreshDevices, passOn, vouchForThisDevice],
+  );
+
+  const restoreRecovery = useCallback(
+    async (words: string) => {
+      const self = device.current;
+      if (!self) throw new Error('This device has no keys yet.');
+      const phrase = await recoveryDevice(self.userId, words);
+      const { devices: own } = await api.dms.myDevices();
+      if (!own.some((entry) => entry.deviceId === phrase.identity.deviceId)) {
+        throw new Error(
+          own.some((entry) => isRecoveryDevice(entry.deviceId))
+            ? 'Those are real words, but not the phrase this account is using. If you made a newer phrase, it is that one.'
+            : 'This account has no recovery phrase yet.',
+        );
+      }
+
+      await saveRecoveryKey(self.userId, { deviceId: phrase.identity.deviceId, privateKey: phrase.dm.privateKey });
+      await pins.current.set(self.userId, phrase.identity.deviceId, phrase.identity.fingerprint);
+      await vouchForThisDevice(self, phrase);
+      recovery.current = { userId: self.userId, identity: { deviceId: phrase.identity.deviceId }, dm: { privateKey: phrase.dm.privateKey } };
+      dispatch({ type: 'recovery', exists: true, held: true });
+
+      // What is on screen was drawn as locked. Draw it again.
+      for (const dmId of Object.keys(stateRef.current.loaded)) await loadDm(dmId).catch(() => undefined);
+    },
+    [loadDm, vouchForThisDevice],
+  );
+
   const value = useMemo<DmValue>(
-    () => ({ state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice }),
-    [state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice],
+    () => ({
+      state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice,
+      createRecovery, restoreRecovery,
+    }),
+    [
+      state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice,
+      createRecovery, restoreRecovery,
+    ],
   );
 
   return <DmContext.Provider value={value}>{children}</DmContext.Provider>;

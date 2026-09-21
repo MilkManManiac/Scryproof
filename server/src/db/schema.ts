@@ -438,6 +438,9 @@ export const deviceKeys = pgTable(
     identityKey: text('identity_key').notNull(),
     dmKey: text('dm_key').notNull(),
     signature: text('signature').notNull(),
+    /** Another of this person's devices vouching for this one. Both or neither. */
+    endorsedBy: text('endorsed_by'),
+    endorsement: text('endorsement'),
     createdAt: createdAt(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
@@ -524,6 +527,8 @@ export const dmMessageKeys = pgTable(
     deviceId: text('device_id').notNull(),
     iv: bytea('iv').notNull(),
     wrapped: bytea('wrapped').notNull(),
+    /** Null: locked by the device that sent the message. Otherwise the reader's own device that passed it on. */
+    wrappedBy: text('wrapped_by'),
   },
   (table) => [primaryKey({ columns: [table.messageId, table.userId, table.deviceId] })],
 );

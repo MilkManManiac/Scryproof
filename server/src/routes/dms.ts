@@ -49,6 +49,13 @@ const MAX_DEVICES_PER_USER = 20;
 
 /** Must match `DEVICE_CONTEXT` in web/src/lib/dm-crypto.ts. */
 const DEVICE_CONTEXT = 'scryproof/dm/device/v1';
+/** Must match `ENDORSE_CONTEXT` in web/src/lib/dm-crypto.ts. */
+const ENDORSE_CONTEXT = 'scryproof/dm/endorse/v1';
+/**
+ * The device a recovery phrase stands for. It never signs in, so it is never
+ * "seen", and must not be forgotten for that. One per person.
+ */
+const RECOVERY_PREFIX = 'recovery-';
 
 const base64 = z.string().min(1).max(4096).regex(/^[A-Za-z0-9+/]+={0,2}$/);
 const deviceIdShape = z.string().min(8).max(64).regex(/^[A-Za-z0-9-]+$/);
@@ -97,12 +104,43 @@ async function signatureHolds(userId: string, device: Omit<DeviceKey, 'userId'>)
   }
 }
 
+/**
+ * Whether one of this person's devices really vouched for another. Like the
+ * check above, this keeps nonsense out of the table. Whether the vouching
+ * device is one to believe is for the people reading it to decide.
+ */
+async function endorsementHolds(
+  userId: string,
+  endorser: DeviceKeyRow,
+  device: { deviceId: string; identityKey: string },
+  signature: string,
+): Promise<boolean> {
+  try {
+    const key = await webcrypto.subtle.importKey(
+      'spki',
+      Buffer.from(endorser.identityKey, 'base64'),
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+    return await webcrypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      key,
+      Buffer.from(signature, 'base64'),
+      concatLabelled(ENDORSE_CONTEXT, userId, endorser.deviceId, device.deviceId, Buffer.from(device.identityKey, 'base64')),
+    );
+  } catch {
+    return false;
+  }
+}
+
 const toDeviceKey = (row: DeviceKeyRow): DeviceKey => ({
   userId: row.userId,
   deviceId: row.deviceId,
   identityKey: row.identityKey,
   dmKey: row.dmKey,
   signature: row.signature,
+  endorsedBy: row.endorsedBy && row.endorsement ? { deviceId: row.endorsedBy, signature: row.endorsement } : null,
 });
 
 /**
@@ -189,6 +227,7 @@ function toDmMessage(row: DmMessageRow, keys: DmMessageKeyRow[], forUserId: stri
               deviceId: key.deviceId,
               iv: b64(key.iv),
               key: b64(key.wrapped),
+              wrappedBy: key.wrappedBy,
             }),
           ),
     reactionTo: row.reactionTo,
@@ -295,8 +334,14 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   /** A browser announcing its public keys. Safe to repeat on every sign-in. */
   app.put('/api/devices', async (request) => {
     const user = requireUser(request);
-    const body = z
-      .object({ deviceId: deviceIdShape, identityKey: base64, dmKey: base64, signature: base64 })
+    const { endorsedBy, ...body } = z
+      .object({
+        deviceId: deviceIdShape,
+        identityKey: base64,
+        dmKey: base64,
+        signature: base64,
+        endorsedBy: z.object({ deviceId: deviceIdShape, signature: base64 }).nullish(),
+      })
       .parse(request.body);
 
     if (!(await signatureHolds(user.id, body))) {
@@ -304,6 +349,18 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const db = getDb();
+    let vouched: { endorsedBy: string; endorsement: string } | null = null;
+    if (endorsedBy) {
+      const [endorser] = await db
+        .select()
+        .from(deviceKeys)
+        .where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, endorsedBy.deviceId)))
+        .limit(1);
+      if (!endorser || !(await endorsementHolds(user.id, endorser, body, endorsedBy.signature))) {
+        throw badRequest('That endorsement does not hold.', 'invalid_endorsement');
+      }
+      vouched = { endorsedBy: endorsedBy.deviceId, endorsement: endorsedBy.signature };
+    }
     const [existing] = await db
       .select()
       .from(deviceKeys)
@@ -317,16 +374,19 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
       if (existing.identityKey !== body.identityKey || existing.dmKey !== body.dmKey) {
         throw conflict('That device already has different keys.', 'device_key_mismatch');
       }
-      await db
+      // The keys stay; who vouches for them may be added later, which is what
+      // happens when a recovery phrase is made or typed in.
+      const [updated] = await db
         .update(deviceKeys)
-        .set({ lastSeenAt: new Date() })
-        .where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, body.deviceId)));
-      return { device: toDeviceKey(existing) };
+        .set({ lastSeenAt: new Date(), ...(vouched ?? {}) })
+        .where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, body.deviceId)))
+        .returning();
+      return { device: toDeviceKey(updated ?? existing) };
     }
 
     const [created] = await db
       .insert(deviceKeys)
-      .values({ userId: user.id, ...body })
+      .values({ userId: user.id, ...body, ...(vouched ?? {}) })
       .returning();
     if (!created) throw badRequest('Could not register this device.', 'device_failed');
 
@@ -335,13 +395,70 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
       .from(deviceKeys)
       .where(eq(deviceKeys.userId, user.id))
       .orderBy(desc(deviceKeys.lastSeenAt));
-    for (const stale of all.slice(MAX_DEVICES_PER_USER)) {
+
+    // A new phrase replaces the old one. Two would mean the lost one still opened things.
+    if (created.deviceId.startsWith(RECOVERY_PREFIX)) {
+      for (const old of all) {
+        if (old.deviceId === created.deviceId || !old.deviceId.startsWith(RECOVERY_PREFIX)) continue;
+        await db.delete(deviceKeys).where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, old.deviceId)));
+      }
+    }
+
+    const browsers = all.filter((row) => !row.deviceId.startsWith(RECOVERY_PREFIX));
+    for (const stale of browsers.slice(MAX_DEVICES_PER_USER)) {
       await db
         .delete(deviceKeys)
         .where(and(eq(deviceKeys.userId, user.id), eq(deviceKeys.deviceId, stale.deviceId)));
     }
 
     return { device: toDeviceKey(created) };
+  });
+
+  /** This person's own devices. How a browser learns whether a recovery phrase exists. */
+  app.get('/api/devices', async (request) => {
+    const user = requireUser(request);
+    const rows = await getDb().select().from(deviceKeys).where(eq(deviceKeys.userId, user.id));
+    return { devices: rows.map(toDeviceKey) };
+  });
+
+  /**
+   * Copies of message keys made after the fact, by one of the reader's own
+   * devices for another of them. Only ever for the person asking: nobody can
+   * add a way in for somebody else. The server cannot tell whether a copy
+   * opens; a wrong one is a copy that does not.
+   */
+  app.post('/api/dms/:dmId/keys', async (request) => {
+    const user = requireUser(request);
+    const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
+    await requireDmMember(dmId, user.id);
+    const body = z
+      .object({
+        wrappedBy: deviceIdShape,
+        deviceId: deviceIdShape,
+        keys: z.array(z.object({ messageId: z.string().max(64), iv: base64.max(64), key: base64.max(256) })).min(1).max(200),
+      })
+      .parse(request.body);
+    await requirePublishedDevice(user.id, body.wrappedBy);
+    await requirePublishedDevice(user.id, body.deviceId);
+
+    const db = getDb();
+    const real = await db
+      .select({ id: dmMessages.id })
+      .from(dmMessages)
+      .where(and(eq(dmMessages.dmId, dmId), inArray(dmMessages.id, body.keys.map((key) => key.messageId))));
+    const inThisDm = new Set(real.map((row) => row.id));
+    const rows = body.keys
+      .filter((key) => inThisDm.has(key.messageId))
+      .map((key) => ({
+        messageId: key.messageId,
+        userId: user.id,
+        deviceId: body.deviceId,
+        iv: Buffer.from(key.iv, 'base64'),
+        wrapped: Buffer.from(key.key, 'base64'),
+        wrappedBy: body.wrappedBy,
+      }));
+    if (rows.length > 0) await db.insert(dmMessageKeys).values(rows).onConflictDoNothing();
+    return { added: rows.length };
   });
 
   /** Every device of everyone in a conversation: who a message must be locked for. */

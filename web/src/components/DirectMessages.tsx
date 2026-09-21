@@ -19,6 +19,7 @@ import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmV
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
+import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
 import { UserPanel } from './UserPanel';
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -58,8 +59,73 @@ export function DmSidebar() {
           );
         })}
       </div>
+      <RecoveryStatus />
       <UserPanel />
     </aside>
+  );
+}
+
+/** Where the phrase stands, and the way in to making or entering one. */
+function RecoveryStatus() {
+  const { state } = useDms();
+  const [dialog, setDialog] = useState<null | 'create' | 'restore'>(null);
+  const recovery = state.recovery;
+  if (!state.ready || !recovery) return null;
+
+  return (
+    <div className="dm-recovery">
+      {!recovery.exists ? (
+        <>
+          <p>A new computer cannot open your old messages unless you have a recovery phrase.</p>
+          <button type="button" className="link-button" onClick={() => setDialog('create')}>
+            Make a recovery phrase
+          </button>
+        </>
+      ) : (
+        <>
+          <p>{recovery.held ? 'Recovery phrase entered on this device.' : 'You have a recovery phrase.'}</p>
+          {recovery.held ? null : (
+            <button type="button" className="link-button" onClick={() => setDialog('restore')}>
+              Enter it here
+            </button>
+          )}
+          <button type="button" className="link-button" onClick={() => setDialog('create')}>
+            Make a new one
+          </button>
+        </>
+      )}
+      {dialog === 'create' ? <CreateRecovery onClose={() => setDialog(null)} /> : null}
+      {dialog === 'restore' ? <RestoreRecovery onClose={() => setDialog(null)} /> : null}
+    </div>
+  );
+}
+
+/** Above a conversation with messages this device cannot open: what would open them. */
+function LockedNotice({ dmId }: { dmId: string }) {
+  const { state } = useDms();
+  const [open, setOpen] = useState(false);
+  const locked = (state.messages[dmId] ?? []).some((view) => view.problem === 'no-key');
+  const needed = locked && Boolean(state.recovery?.exists) && !state.recovery?.held;
+
+  // The dialog outlives the warning, in the same place in the tree, or React
+  // would start it again just as it had something to say.
+  return (
+    <>
+      {needed ? (
+        <div className="dm-warnings">
+          <div className="dm-warning">
+            <div>
+              <strong>Some messages here are locked.</strong> They were sent before this device existed. Your recovery
+              phrase opens them.
+            </div>
+            <button type="button" className="button inline" onClick={() => setOpen(true)}>
+              Enter recovery phrase
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {open ? <RestoreRecovery onClose={() => setOpen(false)} /> : null}
+    </>
   );
 }
 
@@ -99,6 +165,7 @@ export function DmPane() {
         </div>
       </header>
       <DeviceWarnings dm={dm} selfId={selfId} />
+      <LockedNotice dmId={dm.id} />
       <DmMessages dm={dm} selfId={selfId} onReply={(id) => setReplying((current) => ({ ...current, [dm.id]: id }))} />
       <DmComposer
         dm={dm}

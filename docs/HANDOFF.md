@@ -266,11 +266,12 @@ until it is a problem), recovery phrase -> quick four -> UI pass.
 - Trap: an invite link opened in the app does nothing yet (`/invite/<code>`
   is a browser path). Joining by invite still happens in the browser.
 
-## Notifications and the timeline: built 2026-09-21, NOT deployed
+## Notifications and the timeline: built and deployed 2026-09-21
 
-**Wes was testing on the live site and said not to push anything live. The
-commits from here on are in git but `ship.sh` has not been run. Ask before
-deploying.**
+Held back while Wes tested on the live site with a friend; he said he was done
+and it went out the same evening (release `20260921_230113-bc023b68`). The
+installer in his Downloads was rebuilt after it, so it has the tray, the bell
+and the quality picker.
 
 - `web/src/lib/notices.ts`: the rules (`noticeFor`), the list, the pop-up.
   Mentions and DMs that arrive while you are not watching go on a list kept in
@@ -862,20 +863,72 @@ sections and the channel gear are all absent for him.
 as small uppercase captions, which turned a role name into a heading. It is
 `.field > label` now.
 
+## DM stage 3, the recovery phrase: built 2026-09-21
+
+Twelve words that are a device. `web/src/lib/dm-recovery.ts` has the long
+explanation; the short one:
+
+- The words (BIP39, 128 bits) are turned into two P-256 keys, the same way
+  every time. The public halves are published as a device whose id starts
+  `recovery-`. Messages get locked to it like any other device. Typing the
+  words into a new device rebuilds the private halves there. **The server
+  holds public keys and locked copies, which is all it holds for any device.
+  No words, nothing derived from them, no wrapped private key.** Rule 8 holds
+  without an argument about what "backed up" means.
+- **Vouching.** A device row can carry `endorsedBy`: a signature by another of
+  the same person's devices. `assessDevices` trusts an unfamiliar device if one
+  it already trusts vouches for it, and follows chains. The laptop that makes
+  the phrase vouches for it, the phrase vouches back, and the phrase vouches
+  for any device its words are typed into. So a friend's app trusts your new
+  laptop without an Accept prompt, and your devices trust each other. A key
+  that *changed* is never rescued by vouching. The server checks endorsement
+  signatures to keep junk out; it cannot make one.
+- **History from before the phrase.** `dm_message_keys.wrapped_by`: a copy of a
+  message key made later by one of the reader's own devices (`rewrapKey`),
+  opened against that device's key, and only if that device is trusted.
+  `POST /api/dms/:dmId/keys` takes them, only for the person asking. Making a
+  phrase sweeps every conversation; after that `passOn` runs on every fetch, so
+  gaps (a friend whose app had not yet seen the phrase) close by themselves.
+- The device that makes the phrase keeps nothing of it. A device the words are
+  typed into keeps the DM private key as a non-extractable handle in IndexedDB
+  (`dm-recovery` store, DB version 3), never the words or the signing key.
+- Making a new phrase deletes the old recovery device on the server. One per
+  person. Recovery devices are exempt from the 20-device pruning.
+- UI: bottom of the DM sidebar (make / enter / make a new one), and a banner
+  over any conversation with locked messages. The words are shown once and
+  three of them are asked back before anything is published.
+- New dependencies, web only, pinned: `@noble/curves` 2.4.0 (WebCrypto cannot
+  derive a P-256 key from a seed) and `@scure/bip39` 2.4.0 (the word list and
+  checksum). Same author as the `@noble/hashes` otplib already pulls in,
+  audited, no network calls (grepped), past the 7-day cooldown.
+- Migration `0006`: three nullable columns. Additive.
+- Tests: `web/src/tests/dm-recovery.test.ts` (14, including forged and moved
+  endorsements) and step 11 of `npm run test:dm`, which makes a phrase, opens a
+  fourth browser as "Wes's new laptop", checks the history is locked, types the
+  words, checks everything opens, that Alex was never asked to accept
+  anything, and that no two of the words ever appeared in a request.
+  Shots: `docs/shots/recovery-phrase.png`, `recovery-restored.png`.
+- Honest limits, not yet fixed: whoever reads the words reads the DMs. A
+  retired phrase still opens copies made while it was current, for someone who
+  also has the account. A hostile server could leave the recovery device out
+  of the list it hands a friend, and their messages would then not be
+  recoverable (denial, not disclosure; `passOn` repairs it next time a real
+  device of yours opens them).
+
 ## Next, in order
 
 Rewritten 2026-09-21, after the desktop shell. The droplet, domain and M0 are
 done; the old list here was about getting onto the box.
 
-1. **Notifications, with a timeline.** Desktop pop-ups for mentions and DMs
+1. ~~Notifications, with a timeline.~~ Built and live. Left over: muting one
+   server or channel. Original note: Desktop pop-ups for mentions and DMs
    ("who, not what" for DMs), plus Wes's idea: an inbox that lists what you
    got, when, and from which server and channel, so a busy day can be traced.
    Built once for browser and desktop app.
 2. **Desktop basics:** tray icon, start with Windows, global push-to-talk.
 3. **Stream quality picker.** The streamer picks resolution and frame rate. No
    cap from us (Wes, 2026-09-21); add one only if bandwidth becomes a problem.
-4. **DM stage 3: recovery phrase.** Moved up because the desktop app is a new
-   device for everybody and shows old DMs locked.
+4. ~~DM stage 3: recovery phrase.~~ Built 2026-09-21, see above.
 5. **The quick four:** profile picture, status, pins (stream quality is 3).
 6. **Private channels in one click.** Hidden text and voice channels already
    work through permission overwrites (deny View Channel to @everyone, allow a
