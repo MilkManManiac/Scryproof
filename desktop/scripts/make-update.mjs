@@ -43,9 +43,7 @@ const publicKeyPem = createPublicKey(privateKey).export({ type: 'spki', format: 
 // The key the apps are built with has to be the other half of the one signing. Out of step, every update would be refused.
 if (!process.env.SCRYPROOF_UPDATE_OUT) {
   // Git on Windows may have rewritten the line endings. The key is the same key.
-  if (existsSync(publicKeyPath) && readFileSync(publicKeyPath, 'utf8').replace(/
-/g, '
-') !== publicKeyPem) {
+  if (existsSync(publicKeyPath) && readFileSync(publicKeyPath, 'utf8').replace(/\r\n/g, '\n') !== publicKeyPem) {
     console.error(
       `The signing key at ${keyPath} is not the one installed apps trust (desktop/src/update-key.pub.pem).\n` +
         'If the old key is lost, delete that .pem file, run this again, and build and hand out a new installer.',
