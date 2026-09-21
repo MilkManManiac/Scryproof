@@ -16,17 +16,16 @@ source "$(dirname "$0")/lib.sh"
 need_root
 
 LIVEKIT_VERSION="1.13.6"
-# TODO before first use: fill this in. Only the Windows build's hash has been
-# verified so far. Get it from checksums.txt on the v1.13.6 GitHub release page,
-# read on a machine other than this box, and paste the 64 hex characters here.
-# The script refuses to run while this is empty.
-LIVEKIT_SHA256=""
+# From checksums.txt on the v1.13.6 GitHub release page, read on Wes's PC, not
+# on the box, 2026-09-21. The script refuses to run without it.
+LIVEKIT_SHA256="2b61abef2b9ba14b4b8ca38b37de9a37ffc682b9931d5fc03ceca2f0b77d3e33"
 
 ASSET="livekit_${LIVEKIT_VERSION}_linux_amd64.tar.gz"
 URL="https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/${ASSET}"
 CONFIG_DIR="$VAULT_MOUNT/livekit"
 CONFIG="$CONFIG_DIR/livekit.yaml"
 UNIT="livekit.service"
+APP_ENV="/srv/sites/scryproof/shared/.env"
 
 [ "$#" -eq 1 ] || die "usage: 60-livekit-install.sh <domain>"
 DOMAIN="$1"
@@ -88,7 +87,7 @@ else
       die "could not find a public IPv4 on this box (got '$public_ip'); set node_ip by hand" ;;
   esac
   note "media address $public_ip"
-  key="GO$(openssl rand -hex 6)"
+  key="SP$(openssl rand -hex 6)"
   secret="$(openssl rand -hex 32)"
   umask 077
   cat > "$CONFIG" <<CONF
@@ -129,15 +128,44 @@ CONF
   chown root:livekit "$CONFIG"
   chmod 0640 "$CONFIG"
   note "wrote $CONFIG"
-  printf '\n    Put these three lines in the app .env on the vault. They are shown once.\n\n'
-  printf '      LIVEKIT_URL=wss://%s\n' "$DOMAIN"
-  printf '      LIVEKIT_API_KEY=%s\n' "$key"
-  printf '      LIVEKIT_API_SECRET=%s\n\n' "$secret"
+  # Straight into the app's .env, which is on the vault too. Never printed: the
+  # output of this script crosses an SSH session and lands in a terminal log.
+  if [ -f "$APP_ENV" ] && ! grep -q '^LIVEKIT_API_SECRET=' "$APP_ENV"; then
+    {
+      printf 'LIVEKIT_URL=wss://%s\n' "$DOMAIN"
+      printf 'LIVEKIT_API_KEY=%s\n' "$key"
+      printf 'LIVEKIT_API_SECRET=%s\n' "$secret"
+    } >> "$APP_ENV"
+    note "appended LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET to $APP_ENV"
+  else
+    note "did NOT touch $APP_ENV (missing, or it already has LiveKit lines)."
+    note "the key and secret are in $CONFIG under 'keys:'; copy them across on the box."
+  fi
 fi
 
-for path in "/etc/ssl/certs/$DOMAIN.fullchain.pem" "/etc/ssl/private/$DOMAIN.key"; do
-  if [ -e "$path" ]; then note "found   $path"; else note "MISSING $path  (TURN over TLS will not start until the config points at the real certificate)"; fi
-done
+say "Certificate for TURN over TLS"
+# certbot keeps the real certificate where only root can read it. This hook
+# copies it to where the livekit user (group ssl-cert) can, now and after every
+# renewal. /etc/letsencrypt is on the vault, so the hook is too.
+hook=/etc/letsencrypt/renewal-hooks/deploy/scryproof-livekit.sh
+live="/etc/letsencrypt/live/$DOMAIN"
+mkdir -p "$(dirname "$hook")"
+cat > "$hook" <<HOOK
+#!/usr/bin/env bash
+set -euo pipefail
+live="$live"
+[ -f "\$live/fullchain.pem" ] || exit 0
+install -o root -g root     -m 0644 "\$live/fullchain.pem" "/etc/ssl/certs/$DOMAIN.fullchain.pem"
+install -o root -g ssl-cert -m 0640 "\$live/privkey.pem"   "/etc/ssl/private/$DOMAIN.key"
+systemctl try-restart livekit.service || true
+HOOK
+chmod 0755 "$hook"
+if [ -f "$live/fullchain.pem" ]; then
+  "$hook"
+  note "copied the certificate for $DOMAIN"
+else
+  note "MISSING $live  (run bonesdeploy site ssl first; TURN over TLS will not start without it)"
+fi
 
 say "Service"
 cat > "/etc/systemd/system/$UNIT" <<'CONF'
