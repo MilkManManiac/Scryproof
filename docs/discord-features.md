@@ -44,7 +44,7 @@ Numbers are kept from the first draft so his answers can be traced.
 
 ### Later (wanted, not now)
 
-17. **Polls.** "I really care about polls", for later. First in line from this pile.
+17. Polls. Corrected the same evening: the dictation dropped a "don't". He does not much care; maybe later.
 12. Timeout a member. "Not super worried."
 15. `/roll` and built-in commands. "Not crazy important right now."
 16. Threads.
