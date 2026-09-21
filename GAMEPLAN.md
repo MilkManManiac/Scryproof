@@ -75,7 +75,7 @@ The replacement, decided:
 Every page load, the browser downloads the client from our box. If the box is compromised, the attacker can serve JavaScript that leaks keys before anything is encrypted. No web app escapes this; it is why Signal has no web client.
 
 - **Browser = convenience tier.** Strict CSP (already planned), no inline scripts, no third-party origins, and the build publishes a hash of itself that is also committed to the git repo, so a tampered deploy is *detectable* by anyone who checks.
-- **Desktop = trust tier.** The Tauri app (M6) must bundle the client inside the installer, not load it from the server. Updates are signed with a key that lives on Wes's workstation and **never on the box**. Then owning the server does not let anyone change the code members run.
+- **Desktop = trust tier.** The Electron desktop app (M6) must bundle the client inside the installer, not load it from the server. Electron ships its own Chromium, so end-to-end encrypted media (LiveKit E2EE, insertable streams) behaves identically on every machine. (2026-09-21) Updates are signed with a key that lives on Wes's workstation and **never on the box**. Then owning the server does not let anyone change the code members run.
 - The UI does not claim more than this. M6's "done when" gains a line for it.
 
 ### Finding 3 — the DigitalOcean account is root, so the box must boot dumb.
@@ -162,8 +162,8 @@ One box. Every service is a systemd unit under its own Linux user, provisioned b
 | Database | Postgres 16, native, provisioned by `bonesdeploy site services`, bound to localhost, data directory on the LUKS volume. **PGlite in development** (Postgres compiled to WebAssembly; zero installs on Windows, same SQL, same migrations) | Boring, correct, encrypted at rest without a managed-DB third party. |
 | Files | **Local disk** under `DATA_DIR` on the encrypted volume (`STORAGE_DRIVER=local`). The S3 driver exists for MinIO later, only if disk cost bites | One fewer service to run and secure. For a friend group, the disk is the right size. |
 | Auth | Our own. Argon2id passwords, TOTP 2FA, invite-only registration, sessions in httpOnly cookies, 15-minute LiveKit tokens | No identity provider gets a user list. |
-| Client | React 19 + Vite, plain fetch + one store, `livekit-client` and `components-react` for M3 | Web first. Same code ships as a Tauri desktop app in Milestone 6. |
-| Desktop | Tauri 2 | Small, Rust shell, global push-to-talk hotkey, window capture with audio on Windows. |
+| Client | React 19 + Vite, plain fetch + one store, `livekit-client` and `components-react` for M3 | Web first. Same code ships as an Electron desktop app in Milestone 6. |
+| Desktop | Electron | Global push-to-talk hotkey, window capture with audio on Windows. |
 | Reverse proxy | **nginx**, provisioned by bonesdeploy; TLS via `bonesdeploy site ssl` | It is what the deploy tool provides. Caddy is out. |
 | Deploy | **bonesdeploy** (section 2b) | Systemd + per-site Linux users + AppArmor + cgroups, no Docker daemon, GPG-encrypted secrets, versioned releases with rollback. Written by Alex, who is one message away. |
 | Region | DigitalOcean **ATL1 (Atlanta)** | Wes is in Tennessee. Atlanta is the nearest region; expect 15–30 ms round trip from Chattanooga. NYC3 as fallback if ATL1 capacity is missing. |
@@ -280,7 +280,7 @@ Order changed from the original brief: M1 and most of M2 were built locally firs
 
 **M5 — Feel.** Unread badges, mentions, reactions, replies, link handling, keyboard shortcuts, sounds. Read `references/ai-tell.md` in the milk-project skill before this one. **All of it is built** — see `docs/HANDOFF.md`. Three decisions worth carrying forward: the server resolves mentions and therefore pings nobody in an encrypted channel; there are no link previews, because an unfurl puts a third party in the data path whichever end does the fetching; and a category name is filtered like a channel name, because "staff-only" over hidden channels gives away what hiding them was for. *Done when: Wes says it doesn't feel like a clone.* **Not done: he has not looked at it.**
 
-**M6 — Desktop app.** Tauri 2, global push-to-talk, share a game window with its audio, start with Windows, tray icon. **This is also the trust tier (1b, finding 2):** the client ships inside the installer rather than loading from the server, and updates are signed with a key that lives on Wes's workstation, never on the box. *Done when: Wes plays a game with PTT and never alt-tabs, and replacing the web client on the server changes nothing about what the desktop app runs.*
+**M6 — Desktop app.** Electron, global push-to-talk, share a game window with its audio, start with Windows, tray icon. **This is also the trust tier (1b, finding 2):** the client ships inside the installer rather than loading from the server, and updates are signed with a key that lives on Wes's workstation, never on the box. *Done when: Wes plays a game with PTT and never alt-tabs, and replacing the web client on the server changes nothing about what the desktop app runs.*
 
 **M7 — Text E2EE (Phase 2 from section 1).** DMs and private channels via MLS, reusing the device identity keys from M3. Key backup. Attachments encrypted in the client before upload. *Done when: the server owner runs a DB query and cannot read a private channel.* If privacy keeps outranking feel, this moves ahead of M5; it is the only milestone that takes text out of the host's reach.
 
@@ -309,7 +309,7 @@ Scryproof/
   shared/              types, permission bits, validation — one copy for both sides
   server/              Fastify + ws + Drizzle; src/scripts/seed.ts and smoke.ts
   web/                 React + Vite
-  desktop/             Tauri 2 (M6)
+  desktop/             Electron (M6)
   scripts/dev-restart.sh
   docs/
     HANDOFF.md         living state for the next session — read it

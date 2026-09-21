@@ -105,6 +105,9 @@ class Device {
     });
     await this.send('Page.enable');
     await this.send('Runtime.enable');
+    // A headless window never has focus, and the app only marks a conversation
+    // read while someone is looking at it.
+    await this.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   }
 
   send(method, params = {}) {

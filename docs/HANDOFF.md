@@ -163,12 +163,11 @@ codes, voice, video and screen share all worked.
   `docs/discord-features.md`; it is waiting on his answers, and on one real
   decision about whether DMs are encrypted from day one.
 
-## DMs, stage 1: in progress, NOT deployed (2026-09-21, evening)
+## DMs, stage 1: passing locally, shipped 2026-09-21
 
 Wes said go on encrypted DMs. The plan is `docs/dm-plan.md`; what he wants from
-Discord overall is `docs/discord-features.md`. Everything below is committed and
-**none of it is on the box**. Do not run `~/ship.sh` until `npm run test:dm`
-passes.
+Discord overall is `docs/discord-features.md`. `npm run test:dm` passes all 21 checks (`docs/shots/dm-stage1.png`).
+**Not done:** no two real people have used it on the box yet.
 
 - **Server:** `server/src/routes/dms.ts`, five new tables (`device_keys`,
   `dm_channels`, `dm_members`, `dm_messages`, `dm_message_keys`), migration
@@ -186,12 +185,11 @@ passes.
   an `@` button at the top of the rail, click a member to message them, a
   warning with Accept when someone has a new or changed device.
 - **Browser test:** `npm run test:dm` (three real Chromes; needs `npm run dev`
-  and a seeded database). **Last run: 6 of 21 failing**, all "the text never
-  appears". Two causes found and fixed so far: React dev mode ran device setup
-  twice and published two half-matched devices (now one shared promise), and
-  PGlite returns bytea as a plain Uint8Array, so `toString('base64')` printed
-  "12,200,7" (now `b64()` in the route). **The second fix has not been run
-  yet.** Next step: `bash scripts/dev-restart.sh`, seed, `npm run test:dm`.
+  and a seeded database). **All 21 pass.** Three bugs on the way: React dev mode
+  ran device setup twice and published two half-matched devices (now one shared
+  promise); PGlite returns bytea as a plain Uint8Array, so `toString('base64')`
+  printed "12,200,7" (now `b64()` in the route); and a headless window never
+  has focus, so the test turns on focus emulation before checking read state.
 - **Known gaps, by design for stage 1:** no edit, replies, reactions or files
   in DMs (stage 2); a new device shows older DMs as locked (stage 3 adds the
   recovery phrase); your own second device reads nothing until your first one
