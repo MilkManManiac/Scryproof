@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT="{{ project }}"
+CURRENT_POOL="{{ current_pool }}"
+
+for pool in /etc/php/*/fpm/pool.d/"${PROJECT}".conf; do
+  [ -e "$pool" ] || continue
+  [ "$pool" = "$CURRENT_POOL" ] && continue
+  version=${pool#/etc/php/}
+  version=${version%%/*}
+  rm -f "$pool"
+  systemctl reload-or-restart "php${version}-fpm"
+done

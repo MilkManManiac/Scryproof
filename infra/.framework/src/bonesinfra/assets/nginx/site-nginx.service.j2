@@ -1,0 +1,48 @@
+[Unit]
+Description=Per-site nginx for {{ project_name }}
+After=network.target apparmor.service
+Requires=apparmor.service
+PartOf={{ project_name }}.target
+Before={{ project_name }}.target
+
+[Service]
+Type=simple
+User={{ runtime_user }}
+Group={{ runtime_group }}
+WorkingDirectory={{ paths.current }}
+# 0711: system nginx (www-data) must traverse this dir to reach the socket.
+# 0750 causes 502 — www-data is not in the runtime group.
+RuntimeDirectory={{ project_name }}/nginx
+RuntimeDirectoryMode=0711
+StandardOutput=journal
+StandardError=journal
+
+ExecStart=/usr/sbin/nginx -c {{ paths.site_nginx_config }} -g 'daemon off;'
+
+AppArmorProfile={{ apparmor_profile_name | default("bonesdeploy-" ~ project_name ~ "-nginx") }}
+
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies={{ nginx_address_families | default("AF_UNIX") }}
+{% if nginx_ip_loopback_only %}IPAddressDeny=any
+IPAddressAllow=localhost
+{% endif %}
+
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+ReadWritePaths={{ paths.runtime_nginx_dir }}
+ReadOnlyPaths={{ paths.current }} {{ paths.site_nginx_config }}
+
+Restart=always
+RestartSec=2

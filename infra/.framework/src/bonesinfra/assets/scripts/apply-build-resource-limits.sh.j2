@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BUILD_USER="{{ build_user }}"
+STAGED_DROPIN="{{ staged_dropin }}"
+CPU_QUOTA="{{ cpu_quota }}"
+MEMORY_HIGH="{{ memory_high }}"
+MEMORY_MAX="{{ memory_max }}"
+MEMORY_SWAP_MAX="{{ memory_swap_max }}"
+
+uid=$(id -u "$BUILD_USER")
+slice="user-${uid}.slice"
+dropin="/etc/systemd/system/${slice}.d/bonesdeploy-build.conf"
+
+if ! cmp -s "$STAGED_DROPIN" "$dropin"; then
+  install -d -m 0755 "$(dirname "$dropin")"
+  install -m 0644 "$STAGED_DROPIN" "$dropin"
+  systemctl daemon-reload
+  systemctl set-property --runtime "$slice" "CPUQuota=${CPU_QUOTA}" "MemoryHigh=${MEMORY_HIGH}" "MemoryMax=${MEMORY_MAX}" "MemorySwapMax=${MEMORY_SWAP_MAX}"
+fi

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DATABASE="{{ database }}"
+USERNAME="{{ username }}"
+PASSWORD="{{ password }}"
+
+sudo -u postgres psql <<SQL
+DO \$\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$USERNAME') THEN
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', '$USERNAME', '$PASSWORD');
+  ELSE
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '$USERNAME', '$PASSWORD');
+  END IF;
+END
+\$\$;
+SQL
+sudo -u postgres psql -v ON_ERROR_STOP=1 -v database="$DATABASE" -v user="$USERNAME" <<'SQL'
+SELECT format('CREATE DATABASE %I OWNER %I', :'database', :'user') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'database') \gexec
+SQL
+sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = 'localhost'"

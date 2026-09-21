@@ -1,0 +1,8 @@
+[storage]
+driver = "overlay"
+
+[storage.options]
+mount_program = "/usr/bin/fuse-overlayfs"
+additionalimagestores = [
+  "{{ additional_image_store }}",
+]

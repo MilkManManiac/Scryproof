@@ -1,0 +1,49 @@
+#include <tunables/global>
+
+profile {{ apparmor_profile_name | default("bonesdeploy-" ~ project_name ~ "-nginx") }} flags=(attach_disconnected,mediate_deleted) {
+  # Base runtime abstractions and libc/loader paths.
+  #include <abstractions/base>
+
+  {{ nginx_apparmor_network | default("network unix stream,") }}
+
+  {{ paths.bonesremote_global_link }} mr,
+  {{ paths.bonesremote_global_link }} ix,
+  /usr/sbin/nginx mr,
+  /usr/sbin/nginx ix,
+
+  /usr/** r,
+  /bin/** r,
+  /sbin/** r,
+  /lib/** r,
+  /lib64/** r,
+  /etc/nginx/** r,
+  /etc/ssl/** r,
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+  /proc/** r,
+  /sys/devices/system/cpu/online r,
+
+  {{ paths.current_web_root }}/** r,
+  # current is a symlink, so allow the resolved release path too.
+  {{ paths.releases }}/*/{{ web_root }}/** r,
+  {{ paths.site_nginx_config }} r,
+
+  {{ paths.runtime_nginx_dir }}/ rw,
+  {{ paths.runtime_nginx_dir }}/** rwk,
+
+  # ponytail: glob grant on app sockets — per-app profiles are leaf-scoped,
+  # but the per-site nginx must reach every app socket under /run/<project>/.
+  # Upgrade path: enumerate explicit socket paths per runtime when runtimes
+  # become dynamic.
+  {{ paths.runtime_socket_dir }}/ r,
+  {{ paths.runtime_socket_dir }}/*/ r,
+  {{ paths.runtime_socket_dir }}/*/*.sock rw,
+
+  # Repos default to /home/git/<project>.git; runtime policy should not depend on
+  # repo-owned config.
+  deny /root/** r,
+  deny /etc/ssh/** r,
+}

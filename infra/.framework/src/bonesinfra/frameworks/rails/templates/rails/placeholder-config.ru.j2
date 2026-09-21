@@ -1,0 +1,10 @@
+INDEX_PATH = File.join('{{ paths.current }}', '{{ web_root }}', 'index.html')
+
+run ->(_env) {
+  body = begin
+    File.read(INDEX_PATH)
+  rescue StandardError
+    "<h1>It's Working!</h1>"
+  end
+  [200, { 'Content-Type' => 'text/html' }, [body]]
+}

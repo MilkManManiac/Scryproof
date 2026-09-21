@@ -1,0 +1,42 @@
+[Unit]
+Description={{ runtime_label }} for {{ project_name }}
+After=network.target apparmor.service
+Requires=apparmor.service
+PartOf={{ project_name }}.target
+Before={{ project_name }}.target
+
+[Service]
+Type=simple
+User={{ runtime_user }}
+Group={{ runtime_group }}
+WorkingDirectory={{ paths.current }}
+RuntimeDirectory={{ project_name }}/{{ runtime_name }}
+RuntimeDirectoryMode=0750
+EnvironmentFile=-{{ paths.conf_root }}/runtime.env
+ExecStart={{ runtime_exec }}
+
+AppArmorProfile={{ apparmor_profile_name }}
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies={{ runtime_address_families | default("AF_UNIX") }}
+
+ReadOnlyPaths={{ paths.current }}
+ReadWritePaths={{ paths.runtime_socket_dir }}/{{ runtime_name }} {{ runtime_write_paths }} /var/log/bonesdeploy/{{ project_name }}
+
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=2

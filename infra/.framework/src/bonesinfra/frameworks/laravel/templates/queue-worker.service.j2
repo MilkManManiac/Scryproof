@@ -1,0 +1,35 @@
+[Unit]
+Description={{ project_name }} Laravel queue worker
+After=network.target
+PartOf={{ project_name }}.target
+Before={{ project_name }}.target
+ConditionPathExists={{ paths.current }}/artisan
+
+[Service]
+Type=simple
+User={{ runtime_user }}
+Group={{ runtime_group }}
+WorkingDirectory={{ paths.current }}
+ExecStart={{ php_executable }} artisan queue:work --sleep=3 --tries=3 --max-time=3600
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+ReadWritePaths={{ paths.shared }}/storage {{ paths.current }}/bootstrap/cache {{ paths.site_log_dir }}
+
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=2

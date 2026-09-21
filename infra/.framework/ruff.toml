@@ -1,0 +1,118 @@
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = [
+  "E",    # pycodestyle
+  "F",    # pyflakes
+  "B",    # bugbear
+  "I",    # import sorting
+  "SIM",  # simplify
+  "UP",   # pyupgrade
+  "N",    # naming
+  "ARG",  # unused args
+  "C90",  # complexity
+  "BLE",  # blind except
+  "FBT",  # boolean trap
+  "TRY",  # exception handling quality
+  "PTH",  # pathlib preference
+  "RUF",  # Ruff-specific rules
+  "PL",   # pylint-derived rules
+  "S",    # security-ish checks
+  "D",    # docstring presence/style
+  "A",    # shadowing builtins
+  "RET",  # return statement cleanliness
+  "T20",  # print statement detection (like dbg_macro in Rust)
+  "ERA",  # commented-out code detection
+  "ICN",  # import conventions (numpy as np, etc.)
+  "PERF", # performance anti-patterns
+  "FURB", # modernize / refurbish
+  "Q",    # quote consistency
+  "PIE",  # misc. lints (unnecessary pass, duplicate class field keys)
+  "C4",   # comprehension style
+  "RSE",  # unnecessary exception parentheses
+  "FA",   # future annotations
+]
+ignore = [
+  "D",      # docstring rules (disabled by project convention)
+  "TRY003", # long exception messages (sometimes necessary in CLI tools)
+  "FBT001", # boolean positional arg (sometimes necessary for flags)
+  "RET504", # unnecessary assignment before return (can aid readability)
+  "ERA001", # commented-out code (enable once codebase is clean)
+]
+
+fixable = ["ALL"]
+dummy-variable-rgx = "^_"
+
+[lint.mccabe]
+max-complexity = 8
+
+[lint.pylint]
+max-args = 5
+max-branches = 10
+max-returns = 6
+max-statements = 40
+
+[lint.isort]
+force-single-line = false
+known-first-party = []
+combine-as-imports = true
+
+[lint.per-file-ignores]
+"tests/**/*.py" = [
+  "S101",   # allow assert in tests
+  "D100",   # no module docstring requirement in tests
+  "D101",
+  "D102",
+  "D103",
+  "D104",
+  "ARG001", # unused function args (fixtures, parametrize)
+  "ARG002", # unused method args
+  "PLR2004", # magic values in comparisons (fine in tests)
+  "T20",    # allow print in tests
+  "S102",    # exec() used in test helpers
+  "S603",    # subprocess with test harness
+]
+"__init__.py" = ["F401", "D104"]
+"conftest.py" = ["D100", "D103"]
+"scripts/**/*.py" = ["T20"]
+"src/bonesinfra/cli/*.py" = [
+  "T20",     # CLI tool uses print for output/errors
+  "PLC0415", # intentional lazy imports for CLI commands
+]
+"src/bonesinfra/app/*.py" = [
+  "T20",     # app services print errors to stderr
+]
+"src/bonesinfra/pyinfra/runner.py" = [
+  "T20",     # print to stderr on failure
+  "PLR0913", # run() takes 6 keyword args naturally
+]
+"src/bonesinfra/services/linux/apparmor/app.py" = [
+  "PLR0913", # render_profile() accepts many keyword-only args for template data
+  "ARG001",  # paths arg kept for consistent call signature
+]
+"src/bonesinfra/services/linux/nginx/router.py" = [
+  "PLR0913", # render_router_config() accepts many keyword-only args naturally
+]
+"src/bonesinfra/services/runtime/__init__.py" = ["T20"]
+"src/bonesinfra/cli/commands/server/bonesremote.py" = [
+  "S604",    # pyinfra.server.user with shell=True is standard
+]
+"src/bonesinfra/cli/commands/server/users.py" = [
+  "S604",    # pyinfra.server.user with shell=True is standard
+]
+"src/bonesinfra/cli/commands/site/users.py" = [
+  "S604",    # pyinfra.server.user with shell=True is standard
+]
+"src/bonesinfra/cli/commands/ssl/__init__.py" = [
+  "A005",    # intentional module name matching project domain
+  "T20",     # print to stderr on error
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = 80

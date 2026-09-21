@@ -1,0 +1,36 @@
+#include <tunables/global>
+
+profile {{ apparmor_profile_name }} flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  {{ apparmor_network | default("network unix stream,") }}
+
+{% for exec_path in apparmor_exec_paths %}
+  {{ exec_path }} mrix,
+{% endfor %}
+
+  /usr/** r,
+  /bin/** r,
+  /sbin/** r,
+  /lib/** r,
+  /lib64/** r,
+  /etc/** r,
+  /proc/** r,
+  /sys/devices/system/cpu/online r,
+
+  # current is a symlink, so AppArmor mediates the resolved release path.
+  {{ paths.releases }}/*/** r,
+{% for write_path in apparmor_writable_paths %}
+  {{ write_path }}/ rw,
+  {{ write_path }}/** rwk,
+{% endfor %}
+
+  {{ paths.runtime_socket_dir }}/{{ apparmor_runtime }}/ rw,
+  {{ paths.runtime_socket_dir }}/{{ apparmor_runtime }}/** rwk,
+
+  /var/log/bonesdeploy/{{ project_name }}/ rw,
+  /var/log/bonesdeploy/{{ project_name }}/** rwk,
+
+  deny /root/** r,
+  deny /etc/ssh/** r,
+}

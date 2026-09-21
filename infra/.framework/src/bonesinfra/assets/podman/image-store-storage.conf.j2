@@ -1,0 +1,8 @@
+[storage]
+driver = "overlay"
+graphroot = "/var/lib/bonesdeploy/image-store"
+runroot = "/run/bonesdeploy/image-store"
+
+[storage.options.overlay]
+force_mask = "shared"
+mount_program = "/usr/bin/fuse-overlayfs"

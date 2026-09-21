@@ -1,0 +1,13 @@
+import os
+
+INDEX_PATH = os.path.join('{{ paths.current }}', '{{ web_root }}', 'index.html')
+
+
+def application(environ, start_response):
+    try:
+        with open(INDEX_PATH, 'rb') as f:
+            body = f.read()
+    except OSError:
+        body = b"<h1>It's Working!</h1>"
+    start_response('200 OK', [('Content-Type', 'text/html')])
+    return [body]

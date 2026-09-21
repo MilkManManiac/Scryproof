@@ -1,0 +1,7 @@
+[www]
+user = {{ runtime_user | default('root') }}
+group = {{ runtime_group | default('root') }}
+listen = /run/bonesdeploy/php/php-fpm.sock
+listen.owner = {{ runtime_user | default('root') }}
+listen.group = {{ runtime_group | default('root') }}
+clear_env = no

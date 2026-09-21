@@ -1,0 +1,14 @@
+[Unit]
+Description={{ project_name }} Docker application runtime
+PartOf={{ project_name }}.target
+After=docker.service
+
+[Service]
+Type=simple
+ExecStart={{ paths.usr_local_bin }}/bonesremote runtime start --site {{ project_name }}
+ExecStop={{ paths.usr_local_bin }}/bonesremote runtime stop --site {{ project_name }}
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy={{ project_name }}.target

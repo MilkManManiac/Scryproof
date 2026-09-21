@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+binary=/usr/local/bin/bonesremote
+case "$(uname -m)" in
+    x86_64|amd64) ;;
+    *)
+        echo "ERROR: bonesremote release binaries only support x86_64 hosts." >&2
+        exit 1
+        ;;
+esac
+
+if [ ! -x "$binary" ] || [ "$("$binary" version 2>/dev/null || true)" != "bonesremote {{ bonesremote_version }}" ]; then
+    artifact=bonesremote-x86_64-unknown-linux-musl
+    base_url=https://github.com/AlextheYounga/bonesdeploy/releases/download/v{{ bonesremote_version }}
+    temp_dir=$(mktemp -d)
+    trap 'rm -rf "$temp_dir"' EXIT
+
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        "$base_url/$artifact" --output "$temp_dir/$artifact"
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        "$base_url/$artifact.sha256" --output "$temp_dir/$artifact.sha256"
+    (cd "$temp_dir" && sha256sum --check "$artifact.sha256")
+    chmod 0755 "$temp_dir/$artifact"
+    "$temp_dir/$artifact" version | grep -Fx "bonesremote {{ bonesremote_version }}"
+
+    install -o root -g root -m 0755 "$temp_dir/$artifact" "$binary.tmp"
+    mv -f "$binary.tmp" "$binary"
+fi
+chown root:root "$binary"
+chmod 0755 "$binary"
