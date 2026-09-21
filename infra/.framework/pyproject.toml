@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bonesinfra"
+version = "0.3.4"
+description = "Deployment automation for BonesDeploy"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyinfra>=3.8.0",
+    "rich>=15.0.0",
+    "typer>=0.26.7",
+]
+
+[project.scripts]
+bonesinfra = "bonesinfra.__main__:main"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.package-data]
+bonesinfra = [
+    "assets/**/*",
+    "frameworks/**/*",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

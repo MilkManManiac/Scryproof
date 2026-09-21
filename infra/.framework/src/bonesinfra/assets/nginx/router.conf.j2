@@ -1,0 +1,53 @@
+{% if preview_domain and ssl_domain and preview_domain != ssl_domain %}
+# When a real domain is configured, preview_domain redirects to it.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ preview_domain }};
+    return 301 https://{{ ssl_domain }}$request_uri;
+}
+
+{% endif %}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ nginx_server_name }};
+
+    location / {
+        proxy_pass http://unix:{{ paths.runtime_nginx_socket }};
+        proxy_buffer_size 16k;
+        proxy_buffers 8 8k;
+        proxy_busy_buffers_size 16k;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ paths.acme_webroot }};
+        try_files $uri =404;
+    }
+}
+
+{% if nginx_ssl_enabled %}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name {{ nginx_server_name }};
+
+    ssl_certificate {{ nginx_ssl_certificate_path }};
+    ssl_certificate_key {{ nginx_ssl_certificate_key_path }};
+
+    location / {
+        proxy_pass http://unix:{{ paths.runtime_nginx_socket }};
+        proxy_buffer_size 16k;
+        proxy_buffers 8 8k;
+        proxy_busy_buffers_size 16k;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+{% endif %}

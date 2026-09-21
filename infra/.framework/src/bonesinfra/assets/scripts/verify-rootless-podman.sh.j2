@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BUILD_HOME="{{ build_home }}"
+USERNAME=$(id -un)
+USER_UID=$(id -u)
+
+getsubids "$USERNAME" | grep -q . || { echo "ERROR: build user is missing subordinate UIDs" >&2; exit 1; }
+getsubids -g "$USERNAME" | grep -q . || { echo "ERROR: build user is missing subordinate GIDs" >&2; exit 1; }
+
+loginctl show-user "$USERNAME" -p Linger --value | grep -qx yes || { echo "ERROR: build user lingering is disabled" >&2; exit 1; }
+systemctl is-active --quiet "user@${USER_UID}.service" || { echo "ERROR: build user manager is inactive" >&2; exit 1; }
+
+test -S "/run/user/${USER_UID}/bus" || { echo "ERROR: build user D-Bus socket is missing" >&2; exit 1; }
+
+{# The podman --format argument is a Go template; raw-escape it from Jinja. #}
+HOME="$BUILD_HOME" XDG_RUNTIME_DIR="/run/user/${USER_UID}" podman info --format '{% raw %}{{.Host.Security.Rootless}}{% endraw %}' | grep -qx true || { echo "ERROR: rootless Podman is unavailable" >&2; exit 1; }

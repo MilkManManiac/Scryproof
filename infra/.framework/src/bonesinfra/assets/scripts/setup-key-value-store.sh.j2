@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG="{{ config }}"
+DATA_DIR="{{ data }}"
+PASSWORD="{{ password }}"
+PORT="{{ port }}"
+UNIT="{{ unit }}"
+RUNTIME_GROUP="{{ runtime_group }}"
+BINARY="{{ binary }}"
+SERVICE="{{ service }}"
+PROJECT="{{ project }}"
+PACKAGE_USER="{{ package_user }}"
+UNIT_PATH="{{ unit_path }}"
+
+if [ -n "$(ss -ltn "sport = :$PORT")" ]; then
+  printf 'Port %s is already in use\n' "$PORT" >&2
+  exit 1
+fi
+
+install -d -m 0755 -o root -g root /etc/bonesinfra/services
+install -d -m 0700 -o "$PACKAGE_USER" -g "$PACKAGE_USER" "$DATA_DIR"
+
+printf 'bind 127.0.0.1\nport %s\nprotected-mode yes\ndaemonize no\nrequirepass %s\ndir %s\n' "$PORT" "$PASSWORD" "$DATA_DIR" > "$CONFIG"
+chown "root:$PACKAGE_USER" "$CONFIG"
+chmod 0640 "$CONFIG"
+
+printf '[Unit]\nDescription=BonesInfra %s instance for %s\nAfter=network.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nExecStart=%s "%s"\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' \
+  "$SERVICE" "$PROJECT" "$PACKAGE_USER" "$RUNTIME_GROUP" "$BINARY" "$CONFIG" > "$UNIT_PATH"
+chown root:root "$UNIT_PATH"
+chmod 0644 "$UNIT_PATH"
+
+systemctl disable --now "${UNIT}.service" 2>/dev/null || true

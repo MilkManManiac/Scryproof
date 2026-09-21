@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CERT="{{ cert }}"
+KEY="{{ key }}"
+
+if [ -s "$CERT" ] && [ -s "$KEY" ]; then
+  exit 0
+fi
+
+install -d -m 0755 /etc/ssl/certs
+install -d -m 0700 /etc/ssl/private
+
+openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+  -subj /CN=bonesdeploy-default-deny.invalid \
+  -keyout "$KEY" -out "$CERT"
+
+chmod 0600 "$KEY"
+chmod 0644 "$CERT"

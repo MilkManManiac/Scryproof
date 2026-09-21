@@ -1,0 +1,37 @@
+worker_processes 1;
+pid {{ paths.runtime_nginx_pid }};
+error_log {{ paths.runtime_nginx_dir }}/error.log notice;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log {{ paths.runtime_nginx_dir }}/access.log;
+    client_body_temp_path {{ paths.runtime_nginx_dir }}/client_body;
+    proxy_temp_path {{ paths.runtime_nginx_dir }}/proxy;
+    fastcgi_temp_path {{ paths.runtime_nginx_dir }}/fastcgi;
+    uwsgi_temp_path {{ paths.runtime_nginx_dir }}/uwsgi;
+    scgi_temp_path {{ paths.runtime_nginx_dir }}/scgi;
+
+    server {
+        # ponytail: socket inherits umask, typically 0666 — any local user
+        # can connect directly, bypassing the system nginx router. Acceptable
+        # on single-tenant deploy servers. Upgrade path: set the per-site
+        # nginx group to www-data and use a 0660 socket mode directive.
+        listen unix:{{ paths.runtime_nginx_socket }};
+        root {{ paths.current_web_root }};
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location ^~ /.well-known/acme-challenge/ {
+            try_files $uri =404;
+        }
+    }
+}

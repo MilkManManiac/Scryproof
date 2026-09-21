@@ -1,0 +1,26 @@
+[{{ php_fpm_pool_name }}]
+user = {{ runtime_user }}
+group = {{ runtime_group }}
+
+listen = {{ php_fpm_socket_path }}
+listen.owner = {{ runtime_user }}
+listen.group = {{ runtime_group }}
+listen.mode = 0660
+
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
+
+chdir = {{ paths.current }}
+clear_env = no
+
+catch_workers_output = yes
+decorate_workers_output = no
+
+php_admin_flag[log_errors] = on
+php_admin_value[error_log] = /var/log/bonesdeploy/{{ project_name }}/php-worker-error.log
+
+access.log = /var/log/bonesdeploy/{{ project_name }}/php-fpm-access.log
+slowlog = /var/log/bonesdeploy/{{ project_name }}/php-fpm-slow.log

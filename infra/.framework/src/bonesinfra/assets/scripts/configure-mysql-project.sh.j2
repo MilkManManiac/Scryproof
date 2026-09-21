@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+USER="{{ user }}"
+DATABASE="{{ database }}"
+USERNAME="{{ username }}"
+PASSWORD="{{ password }}"
+
+mysql <<SQL
+CREATE DATABASE IF NOT EXISTS \`$DATABASE\`;
+CREATE USER IF NOT EXISTS '$USERNAME'@'localhost' IDENTIFIED BY '$PASSWORD';
+ALTER USER '$USERNAME'@'localhost' IDENTIFIED BY '$PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DATABASE\`.* TO '$USERNAME'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+install -d -m 0755 /etc/mysql/conf.d
+printf '[mysqld]\nbind-address = 127.0.0.1\n' > /etc/mysql/conf.d/bonesdeploy.cnf

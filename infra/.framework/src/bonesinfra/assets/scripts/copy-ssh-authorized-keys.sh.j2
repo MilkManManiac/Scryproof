@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEPLOY_USER="{{ deploy_user }}"
+SSH_USER="{{ ssh_user }}"
+
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 0700 "/home/$DEPLOY_USER/.ssh"
+
+src=$(eval echo "~${SSH_USER}/.ssh/authorized_keys")
+[ -f "$src" ] || { echo "ERROR: $src not found" >&2; exit 1; }
+cp "$src" "/home/$DEPLOY_USER/.ssh/authorized_keys"
+
+chown "${DEPLOY_USER}:${DEPLOY_USER}" "/home/$DEPLOY_USER/.ssh/authorized_keys"
+chmod 0600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
