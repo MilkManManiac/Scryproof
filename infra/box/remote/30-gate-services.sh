@@ -37,6 +37,15 @@ install -m 0644 "$(dirname "$0")/lib.sh" /usr/local/lib/scryproof/lib.sh
 install -m 0750 "$(dirname "$0")/scryproof-unlock" /usr/local/sbin/scryproof-unlock
 install -m 0750 "$(dirname "$0")/scryproof-lock" /usr/local/sbin/scryproof-lock
 
+say "ssl-cert.service"
+# Ubuntu regenerates the snakeoil key at boot when it is missing. On a locked
+# box /etc/ssl/private is the bare root-disk directory, so it always looks
+# missing, a key gets written there, and scryproof-unlock then refuses to bind
+# over a directory that is not empty. The vault already holds one. Found by the
+# first reboot test, 2026-09-21.
+systemctl mask ssl-cert.service >/dev/null 2>&1 || true
+note "masked"
+
 for unit in "$@"; do
   say "$unit"
   if ! systemctl cat "$unit" >/dev/null 2>&1; then
