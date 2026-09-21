@@ -8,8 +8,8 @@
 
 import { asc, eq, inArray } from 'drizzle-orm';
 
-import { Permission, encodeMask, has } from '@gooffline/shared';
-import type { ServerDetail } from '@gooffline/shared';
+import { Permission, encodeMask, has } from '@scryproof/shared';
+import type { ServerDetail } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { categories, channels, members, roles, servers } from '../db/schema.js';

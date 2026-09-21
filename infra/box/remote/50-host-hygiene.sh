@@ -25,26 +25,26 @@ say "Swap"
 # Swap on the root disk would write pieces of memory, including the vault key
 # and session secrets, onto unencrypted storage.
 swapoff -a
-sed -i.bak -E '/\sswap\s/ s/^/# disabled by gooffline: /' /etc/fstab
+sed -i.bak -E '/\sswap\s/ s/^/# disabled by scryproof: /' /etc/fstab
 note "off, and commented out of /etc/fstab"
 
 say "Core dumps"
 # A crash dump is a copy of process memory written to disk.
 mkdir -p /etc/systemd/coredump.conf.d
-cat > /etc/systemd/coredump.conf.d/10-gooffline.conf <<CONF
+cat > /etc/systemd/coredump.conf.d/10-scryproof.conf <<CONF
 [Coredump]
 Storage=none
 ProcessSizeMax=0
 CONF
-printf '* hard core 0\n' > /etc/security/limits.d/10-gooffline-nocore.conf
+printf '* hard core 0\n' > /etc/security/limits.d/10-scryproof-nocore.conf
 note "disabled"
 
 say "System journal"
 # RAM only. While the box is locked there is nowhere private to write, so
-# nothing is written at all. Once unlocked, gooffline-journal-archive copies the
+# nothing is written at all. Once unlocked, scryproof-journal-archive copies the
 # journal onto the vault as text, and a timer deletes anything past 14 days.
 mkdir -p /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/10-gooffline.conf <<CONF
+cat > /etc/systemd/journald.conf.d/10-scryproof.conf <<CONF
 [Journal]
 Storage=volatile
 RuntimeMaxUse=64M
@@ -54,7 +54,7 @@ systemctl restart systemd-journald
 rm -rf /var/log/journal
 note "volatile, 64 MB cap"
 
-cat > /etc/systemd/system/gooffline-journal-archive.service <<CONF
+cat > /etc/systemd/system/scryproof-journal-archive.service <<CONF
 [Unit]
 Description=Copy the journal onto the encrypted vault
 RequiresMountsFor=$VAULT_MOUNT
@@ -68,7 +68,7 @@ RestartSec=5
 RuntimeMaxSec=86400
 CONF
 
-cat > /etc/systemd/system/gooffline-log-expiry.service <<CONF
+cat > /etc/systemd/system/scryproof-log-expiry.service <<CONF
 [Unit]
 Description=Delete archived logs older than 14 days
 ConditionPathExists=$UNLOCKED_FLAG
@@ -78,7 +78,7 @@ Type=oneshot
 ExecStart=/usr/bin/find $VAULT_MOUNT/logs -type f -mtime +14 -delete
 CONF
 
-cat > /etc/systemd/system/gooffline-log-expiry.timer <<CONF
+cat > /etc/systemd/system/scryproof-log-expiry.timer <<CONF
 [Unit]
 Description=Daily log expiry
 
@@ -91,10 +91,10 @@ WantedBy=timers.target
 CONF
 
 systemctl daemon-reload
-systemctl enable --now gooffline-log-expiry.timer
+systemctl enable --now scryproof-log-expiry.timer
 mkdir -p "$STATE_DIR"
 touch "$UNITS_FILE"
-grep -qxF gooffline-journal-archive.service "$UNITS_FILE" || printf '%s\n' gooffline-journal-archive.service >> "$UNITS_FILE"
+grep -qxF scryproof-journal-archive.service "$UNITS_FILE" || printf '%s\n' scryproof-journal-archive.service >> "$UNITS_FILE"
 note "archive service registered; it starts on unlock"
 
 say "Done."

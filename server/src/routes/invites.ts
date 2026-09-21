@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission } from '@gooffline/shared';
+import { Permission } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { config } from '../config.js';

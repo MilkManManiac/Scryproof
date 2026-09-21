@@ -1,6 +1,6 @@
 """What this project puts on the box, for `bonesdeploy site manifest`."""
 
-NAME = "gooffline"
+NAME = "scryproof"
 
 
 def artifacts(ctx):
@@ -20,7 +20,7 @@ def artifacts(ctx):
 def services(_ctx):
     return [
         ("site nginx", "{project}-nginx.service", "runtime"),
-        ("application service", "{project}-gooffline.service", "framework"),
+        ("application service", "{project}-scryproof.service", "framework"),
     ]
 
 

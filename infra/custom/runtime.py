@@ -1,5 +1,5 @@
 """
-How GoOffline runs on the box.
+How Scryproof runs on the box.
 
 bonesdeploy's `custom` template provisions nothing on purpose and then hands
 control to this file. It is modelled on bonesdeploy's own Next.js runtime
@@ -35,7 +35,7 @@ from bonesinfra.services.linux import application, runtime, shared, validation
 
 TEMPLATES = Path(__file__).parent / "templates"
 
-NAME = "gooffline"
+NAME = "scryproof"
 PORT = 8787
 ENTRYPOINT = "server/dist/index.js"
 SHARED_DIRECTORIES = ("data", "data/uploads")
@@ -66,7 +66,7 @@ def deploy(ctx):
                 mode="0750",
             )
             render(
-                "Seed placeholder GoOffline server",
+                "Seed placeholder Scryproof server",
                 TEMPLATES / "placeholder-index.js.j2",
                 f"{server_dir}/index.js",
                 user="root",
@@ -96,7 +96,7 @@ def deploy(ctx):
         def validate(current_ctx, paths, _node_binary):
             validation.run_as_runtime_user(
                 current_ctx,
-                "Validate the GoOffline server bundle exists as runtime user",
+                "Validate the Scryproof server bundle exists as runtime user",
                 f"test -f {paths['current']}/{ENTRYPOINT}",
             )
 
@@ -112,7 +112,7 @@ def deploy(ctx):
         application.deploy_server(
             current_ctx,
             name=NAME,
-            runtime_label="GoOffline API and gateway",
+            runtime_label="Scryproof API and gateway",
             nginx_template=TEMPLATES / "site-nginx.conf.j2",
             apparmor_template=TEMPLATES / "app-profile.j2",
             install=NODE.install,

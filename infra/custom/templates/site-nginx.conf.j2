@@ -1,8 +1,8 @@
-# Per-site nginx for GoOffline. Rendered by infra/custom/runtime.py.
+# Per-site nginx for Scryproof. Rendered by infra/custom/runtime.py.
 #
 # bonesdeploy runs two nginx layers: a shared "router" on :80/:443 that holds
 # the certificate, and this one, which runs as the site's own user and listens
-# on a unix socket. Everything specific to GoOffline lives here.
+# on a unix socket. Everything specific to Scryproof lives here.
 #
 # Still needed in the ROUTER, which is bonesdeploy's file, not ours
 # (docs/for-alex.md): WebSocket upgrade headers, `proxy_http_version 1.1`,
@@ -45,7 +45,7 @@ http {
 
     # "upgrade" when the browser asks for a WebSocket, empty otherwise, so
     # ordinary requests keep their upstream keep-alive.
-    map $http_upgrade $gooffline_connection {
+    map $http_upgrade $scryproof_connection {
         default upgrade;
         ''      '';
     }
@@ -98,7 +98,7 @@ http {
             proxy_pass {{ app_proxy_target }};
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $gooffline_connection;
+            proxy_set_header Connection $scryproof_connection;
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-Proto https;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -116,7 +116,7 @@ http {
             proxy_pass http://127.0.0.1:7880;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $gooffline_connection;
+            proxy_set_header Connection $scryproof_connection;
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 120s;

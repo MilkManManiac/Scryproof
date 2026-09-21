@@ -31,7 +31,7 @@ const user = flag('as', 'wes');
 const channel = flag('channel', null);
 const password = process.env.SEED_PASSWORD ?? 'seed-passphrase-for-local-dev';
 const chrome = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const profile = mkdtempSync(join(tmpdir(), 'gooffline-shot-'));
+const profile = mkdtempSync(join(tmpdir(), 'scryproof-shot-'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const browser = spawn(chrome, [

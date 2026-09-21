@@ -35,7 +35,7 @@ import {
 } from 'livekit-client';
 import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 
-import type { VoiceMembership, VoiceSignal } from '@gooffline/shared';
+import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { MicGate, OutputMix, sounds } from './voice-audio';
@@ -50,7 +50,7 @@ import {
   type WrappedKey,
 } from './voice-crypto';
 import { IndexedDbIdentityStore, loadDeviceIdentity } from './voice-identity';
-import { GoOfflineKeyProvider, voiceSupport } from './voice-key-provider';
+import { ScryproofKeyProvider, voiceSupport } from './voice-key-provider';
 
 /** LiveKit keeps a ring of this many keys per participant, addressed by index. */
 const KEYRING_SIZE = 16;
@@ -174,7 +174,7 @@ export class VoiceSession {
   private call: VoiceCall | null = null;
   private myAnnouncement: Announcement | null = null;
   private room: Room | null = null;
-  private keyProvider: GoOfflineKeyProvider | null = null;
+  private keyProvider: ScryproofKeyProvider | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private mix: OutputMix | null = null;
   private gate: MicGate | null = null;
@@ -252,7 +252,7 @@ export class VoiceSession {
       this.myAnnouncement = await announce(channelId, this.userId, identity, callKeys);
       await this.call.admit([this.myAnnouncement]);
 
-      this.keyProvider = new GoOfflineKeyProvider();
+      this.keyProvider = new ScryproofKeyProvider();
       const room = new Room({
         encryption: { keyProvider: this.keyProvider, worker: new E2EEWorker() },
         // Only fetch the picture sizes somebody is actually looking at, and

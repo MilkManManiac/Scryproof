@@ -10,7 +10,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 
-import { LIMITS } from '@gooffline/shared';
+import { LIMITS } from '@scryproof/shared';
 
 import { config } from './config.js';
 import { HttpError } from './lib/http-error.js';

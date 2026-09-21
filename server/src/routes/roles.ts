@@ -20,7 +20,7 @@ import {
   decodeMask,
   has,
   validateRoleName,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';

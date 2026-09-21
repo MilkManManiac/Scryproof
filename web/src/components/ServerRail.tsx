@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { LIMITS, validateServerName } from '@gooffline/shared';
+import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';

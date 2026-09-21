@@ -1,4 +1,4 @@
-# GoOffline handoff
+# Scryproof handoff
 
 Living state. Update this at the end of every working session.
 
@@ -26,11 +26,11 @@ Living state. Update this at the end of every working session.
 | M6 desktop | Not started. |
 | M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
 
-**Repo:** https://github.com/MilkManManiac/GoOffline (private)
+**Repo:** https://github.com/MilkManManiac/Scryproof (private)
 
 ## M0 so far (2026-09-21)
 
-- **The box:** DigitalOcean droplet `GoOffline`, **NYC1** (ATL1 had no Basic
+- **The box:** DigitalOcean droplet `Scryproof`, **NYC1** (ATL1 had no Basic
   plans to sell), Ubuntu 24.04, **1 GB / 1 vCPU, $6** — Wes's choice, smaller
   than the 2 GB planned. IPv4 `68.183.16.145`, in the gitignored `.env.box`.
   Expect the first build to need a temporary resize ("CPU and RAM only").
@@ -38,11 +38,11 @@ Living state. Update this at the end of every working session.
   Cloudflare DNS. One A record, **DNS only (grey cloud)**, verified from here to
   resolve straight to the droplet. If it ever resolves to a Cloudflare address,
   someone turned the proxy on and non-negotiable 1 is broken. The project may
-  be renamed to match; the box, volume, key and vault labels say `gooffline`
+  be renamed to match; the box, volume, key and vault labels say `scryproof`
   and can stay that way.
-- **Vault:** LUKS2 on the 10 GB volume `gooffline-vault`, argon2id capped at
+- **Vault:** LUKS2 on the 10 GB volume `scryproof-vault`, argon2id capped at
   256 MB (it settled near 103 MB). Passphrase is in Wes's Bitwarden and nowhere
-  else. Header backup is at `Documents\GoOffline-keep\` on his PC, checksum
+  else. Header backup is at `Documents\Scryproof-keep\` on his PC, checksum
   matched, deleted from the box. cryptsetup's "requires more than available
   memory" warning at open is harmless at this size.
 - **Bound onto the vault before anything was installed:** `/srv/sites`,
@@ -54,12 +54,12 @@ Living state. Update this at the end of every working session.
 - **bonesdeploy runs from WSL** (Wes allowed it, 2026-09-21). Ubuntu 26.04 in
   WSL2, Rust and the CLI at v0.8.7 inside it, nothing on the Windows side. The
   CLI cannot work on the Windows drive (no chmod on `/mnt/c`), so there is a
-  second clone at `~/gooffline` in WSL whose `origin` is the Windows repo. Flow:
+  second clone at `~/scryproof` in WSL whose `origin` is the Windows repo. Flow:
   commit here, `git pull` there, run `bonesdeploy` there. To bring its commits
-  back: `git pull //wsl.localhost/Ubuntu/home/weshu/gooffline main`. Drive it
-  from this session with `wsl.exe -d Ubuntu -- bash -lc '. ~/.cargo/env; cd ~/gooffline && ...'`
+  back: `git pull //wsl.localhost/Ubuntu/home/weshu/scryproof main`. Drive it
+  from this session with `wsl.exe -d Ubuntu -- bash -lc '. ~/.cargo/env; cd ~/scryproof && ...'`
   (root without a password: `wsl.exe -d Ubuntu -u root`). The box's SSH key is
-  copied to `~/.ssh/gooffline` there.
+  copied to `~/.ssh/scryproof` there.
 - **`init` only scaffolds when there is no `infra/` folder.** Ours existed, so
   it had to be moved aside, init run fresh, and `box/`, `livekit/`, `custom/`
   put back. It writes the whole provisioning engine into `infra/.framework/`
@@ -73,7 +73,7 @@ Living state. Update this at the end of every working session.
   its claims have since turned out wrong; that log says which.
 - **On the box now:** nginx (router plus per-site), Postgres 16 with its data
   on the vault, Node 24.19.0, rootless Podman, fail2ban, the `git` deploy user,
-  `bonesremote`, and the placeholder service `gooffline-gooffline`. About
+  `bonesremote`, and the placeholder service `scryproof-scryproof`. About
   450 MB of the 1 GB in use at rest.
 - **Firewall on and tested** (`40-firewall.sh 22`, first real run, no fixes
   needed): inbound deny, outbound deny with logging, a fresh SSH connection
@@ -90,7 +90,7 @@ Living state. Update this at the end of every working session.
   from the Windows repo, pushes to the box, deploys, logs to `~/deploy.log`).
   Build scripts moved to `infra/deployment/build/`, where 0.8.7 looks.
 - **The app's `.env` is on the box, on the vault**, at
-  `/srv/sites/gooffline/shared/.env`, root:gooffline 0640: `NODE_ENV`,
+  `/srv/sites/scryproof/shared/.env`, root:scryproof 0640: `NODE_ENV`,
   `PUBLIC_URL=https://scryproof.com`, `DATABASE_URL`, `SESSION_SECRET` (made on
   the box with openssl). No value passed through the session. **Never run
   `bonesdeploy secrets push`**: it replaces that file whole with the
@@ -106,7 +106,7 @@ Living state. Update this at the end of every working session.
   `30-gate-services.sh`, and the reboot-stays-locked test. Check what sits in
   `/root/.config/bonesremote/` and `/home/git/`, both on the root disk.
 - **Passphrase steps run in Wes's own Git Bash window**, never through the
-  session: `cd /c/Users/weshu/CodeProjects/GoOffline && bash scripts/box.sh ...`.
+  session: `cd /c/Users/weshu/CodeProjects/Scryproof && bash scripts/box.sh ...`.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 
@@ -670,7 +670,7 @@ as small uppercase captions, which turned a role name into a heading. It is
 ## Next, in order
 
 1. **Wes buys the droplet and a domain.** 2 GB / 1 vCPU, a 10 GB volume,
-   ATL1, Ubuntu 24.04, the SSH key named `gooffline`, no backups and no
+   ATL1, Ubuntu 24.04, the SSH key named `scryproof`, no backups and no
    monitoring agent. Resize later with "CPU and RAM only" so it stays
    reversible. Domain from Porkbun or Namecheap. He sends a screenshot of the
    droplet page for the address.

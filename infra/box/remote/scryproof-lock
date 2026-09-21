@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Installed on the box as /usr/local/sbin/gooffline-lock.
+# Installed on the box as /usr/local/sbin/scryproof-lock.
 #
 # Stops everything and closes the vault, without a reboot. Two uses: the M0
 # test that a locked box serves nothing, and the moment Wes wants the data dark
 # right now.
 
-source /usr/local/lib/gooffline/lib.sh
+source /usr/local/lib/scryproof/lib.sh
 need_root
 
 say "Stopping services"

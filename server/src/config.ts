@@ -93,7 +93,7 @@ export const config = {
     localPath: resolve(dataDir, optional('STORAGE_PATH', 'uploads')),
     s3: {
       endpoint: optional('S3_ENDPOINT', ''),
-      bucket: optional('S3_BUCKET', 'gooffline'),
+      bucket: optional('S3_BUCKET', 'scryproof'),
       region: optional('S3_REGION', 'us-east-1'),
       accessKeyId: optional('S3_ACCESS_KEY_ID', ''),
       secretAccessKey: optional('S3_SECRET_ACCESS_KEY', ''),

@@ -36,7 +36,7 @@ import {
   toNames,
   type OverwriteLike,
   type RoleLike,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 // --------------------------------------------------------------- fixtures
 

@@ -9,8 +9,8 @@
 
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
-import { REACTIONS_PER_MESSAGE, REACTION_MAX_LENGTH } from '@gooffline/shared';
-import type { Reaction } from '@gooffline/shared';
+import { REACTIONS_PER_MESSAGE, REACTION_MAX_LENGTH } from '@scryproof/shared';
+import type { Reaction } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { reactions } from '../db/schema.js';

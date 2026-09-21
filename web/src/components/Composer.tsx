@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LIMITS, Permission } from '@gooffline/shared';
-import type { Attachment, Channel } from '@gooffline/shared';
+import { LIMITS, Permission } from '@scryproof/shared';
+import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';

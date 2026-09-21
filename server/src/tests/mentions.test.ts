@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { mentionToken } from '@gooffline/shared';
+import { mentionToken } from '@scryproof/shared';
 
 import { resolveMentions } from '../services/mentions';
 import { groupReactions, isValidEmoji } from '../services/reactions';

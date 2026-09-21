@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import type { PresenceStatus } from '@gooffline/shared';
+import type { PresenceStatus } from '@scryproof/shared';
 
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';

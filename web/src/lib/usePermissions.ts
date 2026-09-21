@@ -8,8 +8,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Permission, decodeMask, has } from '@gooffline/shared';
-import type { ServerDetail } from '@gooffline/shared';
+import { Permission, decodeMask, has } from '@scryproof/shared';
+import type { ServerDetail } from '@scryproof/shared';
 
 import { api } from './api';
 

@@ -13,8 +13,8 @@
  */
 
 import { useEffect, useState, type FormEvent } from 'react';
-import { LIMITS, validatePassword, validateUsername } from '@gooffline/shared';
-import type { SelfUser } from '@gooffline/shared';
+import { LIMITS, validatePassword, validateUsername } from '@scryproof/shared';
+import type { SelfUser } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 

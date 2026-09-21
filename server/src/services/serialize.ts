@@ -7,7 +7,7 @@
  * not silently round them.
  */
 
-import { encodeMask } from '@gooffline/shared';
+import { encodeMask } from '@scryproof/shared';
 import type {
   Attachment,
   Category,
@@ -21,7 +21,7 @@ import type {
   Role,
   SelfUser,
   Server,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 import { accentForId } from '../lib/crypto.js';
 import type {

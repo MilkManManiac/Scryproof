@@ -1,14 +1,14 @@
 /**
  * Human labels for the permission bits.
  *
- * The masks and their meaning live in `@gooffline/shared`; this file is purely
+ * The masks and their meaning live in `@scryproof/shared`; this file is purely
  * how they read on screen. The descriptions matter more than they look: a
  * permission screen where every row is a two-word label is how people grant
  * MANAGE_ROLES to a friend without understanding they have handed over the
  * server. Each line says what the bit actually lets someone do.
  */
 
-import { Permission, type PermissionName } from '@gooffline/shared';
+import { Permission, type PermissionName } from '@scryproof/shared';
 
 export interface PermissionMeta {
   name: PermissionName;

@@ -16,7 +16,7 @@ import { badRequest } from '../lib/http-error.js';
 import { inviteCode } from '../lib/ids.js';
 import type { User } from '../db/schema.js';
 
-const ISSUER = 'GoOffline';
+const ISSUER = 'Scryproof';
 const PERIOD_SECONDS = 30;
 
 /**

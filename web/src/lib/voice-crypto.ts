@@ -39,9 +39,9 @@
  * replayed into another.
  * ------------------------------------------------------------------ */
 
-const SIGN_CONTEXT = 'gooffline/voice/announce/v1';
-const WRAP_CONTEXT = 'gooffline/voice/wrap/v1';
-const CODE_CONTEXT = 'gooffline/voice/code/v1';
+const SIGN_CONTEXT = 'scryproof/voice/announce/v1';
+const WRAP_CONTEXT = 'scryproof/voice/wrap/v1';
+const CODE_CONTEXT = 'scryproof/voice/code/v1';
 
 /** How hard it is to grind a verification code. See `verificationCode`. */
 const CODE_ITERATIONS = 600_000;

@@ -24,7 +24,7 @@ Two rules that never bend:
 
 ## Before step 1 (Wes, in the DigitalOcean panel)
 
-- Droplet: Ubuntu 24.04, 2 GB / 1 vCPU, region ATL1, SSH key `gooffline`,
+- Droplet: Ubuntu 24.04, 2 GB / 1 vCPU, region ATL1, SSH key `scryproof`,
   backups off, monitoring off.
 - Volume: 10 GB, same region, attached to the droplet, **"Manually Format and
   Mount"**. If DigitalOcean formats it, step 4 will refuse to touch it.
@@ -39,7 +39,7 @@ Create `.env.box` in the repo root (it is gitignored):
     BOX_HOST=<droplet IPv4>
     BOX_PORT=22
     BOX_USER=root
-    BOX_KEY=~/.ssh/gooffline
+    BOX_KEY=~/.ssh/scryproof
 
 ## 2. Look before touching anything
 
@@ -62,13 +62,13 @@ onto the vault once it is open.
 
 Asks for the passphrase twice. Paste from the password manager; nothing shows
 as you type. It formats the volume as LUKS2, mounts it at `/mnt/vault`, and
-saves a header backup at `/root/gooffline-vault-header.img`.
+saves a header backup at `/root/scryproof-vault-header.img`.
 
 Afterwards, copy the header backup to this PC and delete it from the box. The
 header is useless without the passphrase, but a damaged header with no backup
 means the data is gone.
 
-    scp -i ~/.ssh/gooffline root@<droplet IPv4>:/root/gooffline-vault-header.img ./
+    scp -i ~/.ssh/scryproof root@<droplet IPv4>:/root/scryproof-vault-header.img ./
 
 Store that file with the passphrase entry in the password manager, then remove
 it from the repo folder.
@@ -110,7 +110,7 @@ refuses to run if the port you give is not the port your SSH session is on.
 
 ## 8. The app's settings
 
-Write `/srv/sites/gooffline/shared/.env` on the box from `infra/.env.example`.
+Write `/srv/sites/scryproof/shared/.env` on the box from `infra/.env.example`.
 Generate `SESSION_SECRET` on the box (`openssl rand -hex 32`). The file is on
 the vault because of step 5. It is never copied to this PC.
 
@@ -147,17 +147,17 @@ builds may be killed for memory. If the build dies with no error, or with
 ## 11. Gate everything behind the vault
 
 List units in the order they should start. Get the app's real unit name from
-`systemctl list-units 'gooffline*'` first.
+`systemctl list-units 'scryproof*'` first.
 
     bash scripts/box.sh 30-gate-services.sh postgresql.service livekit.service <the app unit> nginx.service
 
-This also installs `gooffline-unlock` and `gooffline-lock` on the box. Any unit
-added to `/etc/gooffline/units.list` later (step 9 adds `livekit.service`) only
+This also installs `scryproof-unlock` and `scryproof-lock` on the box. Any unit
+added to `/etc/scryproof/units.list` later (step 9 adds `livekit.service`) only
 gets its drop-in when this script is run again with that unit named.
 
 ## 12. The test that matters: reboot and find it locked
 
-    bash scripts/box.sh gooffline-lock
+    bash scripts/box.sh scryproof-lock
 
 Then reboot the droplet from the DigitalOcean panel and wait two minutes.
 

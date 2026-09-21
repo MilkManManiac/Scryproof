@@ -19,8 +19,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Permission, computeBasePermissions, decodeMask, encodeMask } from '@gooffline/shared';
-import type { MaskString, Member, Role, ServerDetail } from '@gooffline/shared';
+import { Permission, computeBasePermissions, decodeMask, encodeMask } from '@scryproof/shared';
+import type { MaskString, Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import type { PermissionGroup } from '../../lib/permissionMeta';

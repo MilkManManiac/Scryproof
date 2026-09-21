@@ -42,7 +42,7 @@ if (!browser) {
   process.exit(2);
 }
 
-const profile = join(tmpdir(), `gooffline-exif-${process.pid}`);
+const profile = join(tmpdir(), `scryproof-exif-${process.pid}`);
 
 const child = spawn(
   browser,

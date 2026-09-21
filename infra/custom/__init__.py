@@ -1,1 +1,1 @@
-"""Project-owned provisioning for GoOffline."""
+"""Project-owned provisioning for Scryproof."""

@@ -46,7 +46,7 @@ const DEFAULTS: VoicePrefs = {
   sounds: true,
 };
 
-const STORAGE_KEY = 'gooffline.voice-prefs.v1';
+const STORAGE_KEY = 'scryproof.voice-prefs.v1';
 
 function load(): VoicePrefs {
   try {

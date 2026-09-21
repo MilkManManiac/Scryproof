@@ -9,7 +9,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import type { ReadState } from '@gooffline/shared';
+import type { ReadState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { readStates } from '../db/schema.js';

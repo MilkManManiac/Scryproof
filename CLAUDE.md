@@ -1,4 +1,4 @@
-# GoOffline
+# Scryproof
 
 Wes's own Discord: servers, channels, roles, voice, video, screen share. Private, self-hosted, ours.
 

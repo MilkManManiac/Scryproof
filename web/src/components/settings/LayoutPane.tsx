@@ -15,8 +15,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Permission } from '@gooffline/shared';
-import type { Channel, ServerDetail } from '@gooffline/shared';
+import { Permission } from '@scryproof/shared';
+import type { Channel, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import { groupChannels } from '../../lib/channel-order';

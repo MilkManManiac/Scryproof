@@ -8,8 +8,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Permission } from '@gooffline/shared';
-import type { SelfUser } from '@gooffline/shared';
+import { Permission } from '@scryproof/shared';
+import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
@@ -111,7 +111,7 @@ function Shell() {
     [state],
   );
   useEffect(() => {
-    document.title = pending > 0 ? `(${pending}) GoOffline` : 'GoOffline';
+    document.title = pending > 0 ? `(${pending}) Scryproof` : 'Scryproof';
   }, [pending]);
 
   // A channel that is closed, deleted or switched away from should not leave
@@ -160,7 +160,7 @@ function Shell() {
           <ChannelSidebar server={server} />
         ) : (
           <aside className="sidebar">
-            <div className="sidebar-header">GoOffline</div>
+            <div className="sidebar-header">Scryproof</div>
             <div className="sidebar-scroll" />
             <UserPanel />
           </aside>

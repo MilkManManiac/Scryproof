@@ -35,7 +35,7 @@ All of this was run, not read. WSL2, Ubuntu 26.04, rustc 1.98.1.
   Windows drive (`/mnt/c/...`): "Failed to set permissions on
   infra/deployment/functions.sh, Operation not permitted". A DrvFs mount cannot
   chmod. The repo has to be cloned inside the Linux filesystem. Ours is at
-  `~/gooffline`, with the Windows repo as its `origin`.
+  `~/scryproof`, with the Windows repo as its `origin`.
 - **Item 6 is wrong as written.** `init` did not overwrite our
   `infra/custom/`. With an `infra/` directory already present it prints "Using
   existing infra/ configuration", scaffolds nothing, and leaves

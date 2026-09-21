@@ -7,8 +7,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { LIMITS, Permission, slugifyChannelName, validateChannelName } from '@gooffline/shared';
-import type { ServerDetail } from '@gooffline/shared';
+import { LIMITS, Permission, slugifyChannelName, validateChannelName } from '@scryproof/shared';
+import type { ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';

@@ -5,7 +5,7 @@
  * the same list or Alt+Down goes somewhere that is not the next row down.
  */
 
-import type { Channel, ServerDetail } from '@gooffline/shared';
+import type { Channel, ServerDetail } from '@scryproof/shared';
 
 export interface ChannelGroup {
   id: string | null;

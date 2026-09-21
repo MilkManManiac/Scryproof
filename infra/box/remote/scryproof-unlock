@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installed on the box as /usr/local/sbin/gooffline-unlock.
+# Installed on the box as /usr/local/sbin/scryproof-unlock.
 #
 # After any reboot the box is up, reachable over SSH, and useless: the vault is
 # locked, so there is no database, no uploads, no secrets file, no TLS key, and
@@ -8,7 +8,7 @@
 #
 # From Wes's PC:   bash scripts/unlock.sh
 
-source /usr/local/lib/gooffline/lib.sh
+source /usr/local/lib/scryproof/lib.sh
 need_root
 
 if vault_is_mounted && [ -e "$UNLOCKED_FLAG" ]; then

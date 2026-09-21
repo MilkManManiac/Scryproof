@@ -20,7 +20,7 @@
  * length are written separately.
  */
 
-export const PROBE_MARKER = 'GoOffline-EXIF-Probe';
+export const PROBE_MARKER = 'Scryproof-EXIF-Probe';
 
 /** ASCII, SHORT, LONG, RATIONAL — the four EXIF types used here. */
 const ASCII = 2;

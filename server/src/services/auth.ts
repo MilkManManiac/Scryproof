@@ -9,7 +9,7 @@
 
 import { and, eq, gt, isNull } from 'drizzle-orm';
 
-import { validatePassword, validateUsername, validateDisplayName } from '@gooffline/shared';
+import { validatePassword, validateUsername, validateDisplayName } from '@scryproof/shared';
 
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';

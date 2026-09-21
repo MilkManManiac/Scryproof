@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from 'react';
-import type { Member, Role, ServerDetail } from '@gooffline/shared';
+import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';

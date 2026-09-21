@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring GoOffline back after a reboot.
+# Bring Scryproof back after a reboot.
 #
 #   bash scripts/unlock.sh
 #
@@ -15,8 +15,8 @@ source "$root/.env.box"
 
 BOX_PORT="${BOX_PORT:-22}"
 BOX_USER="${BOX_USER:-root}"
-BOX_KEY="${BOX_KEY:-$HOME/.ssh/gooffline}"
+BOX_KEY="${BOX_KEY:-$HOME/.ssh/scryproof}"
 BOX_KEY="${BOX_KEY/#\~/$HOME}"
 sudo=""; [ "$BOX_USER" = "root" ] || sudo="sudo"
 
-exec ssh -t -i "$BOX_KEY" -p "$BOX_PORT" -o IdentitiesOnly=yes "$BOX_USER@$BOX_HOST" "$sudo /usr/local/sbin/gooffline-unlock"
+exec ssh -t -i "$BOX_KEY" -p "$BOX_PORT" -o IdentitiesOnly=yes "$BOX_USER@$BOX_HOST" "$sudo /usr/local/sbin/scryproof-unlock"

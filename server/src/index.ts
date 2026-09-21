@@ -32,7 +32,7 @@ async function main(): Promise<void> {
       voice: isLivekitConfigured() ? 'livekit configured' : 'livekit not configured yet',
       publicUrl: config.publicUrl,
     },
-    'GoOffline server listening',
+    'Scryproof server listening',
   );
 
   if (!config.isProduction) {

@@ -16,7 +16,7 @@ import { getDb } from '../db/index.js';
 import { auditLog, users } from '../db/schema.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as serialize from './serialize.js';
-import type { AuditLogEntry } from '@gooffline/shared';
+import type { AuditLogEntry } from '@scryproof/shared';
 
 export type AuditAction =
   | 'server.update'

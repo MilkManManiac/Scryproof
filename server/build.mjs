@@ -5,7 +5,7 @@
  * from node_modules at runtime; several of them carry native code or
  * WebAssembly that a bundler should not try to swallow.
  *
- * The one exception is our own `@gooffline/shared` workspace. It is TypeScript
+ * The one exception is our own `@scryproof/shared` workspace. It is TypeScript
  * source with no build step, so Node cannot load it. Leaving it external is
  * what `--packages=external` did, and the result was a build that compiled
  * cleanly and could not start. It gets bundled in.
@@ -18,7 +18,7 @@ const bundleOurOwn = {
   setup(api) {
     // A bare specifier is anything that is not a relative or absolute path.
     api.onResolve({ filter: /^[^./]/ }, (args) => {
-      if (args.path.startsWith('@gooffline/')) return undefined;
+      if (args.path.startsWith('@scryproof/')) return undefined;
       if (/^[A-Za-z]:[\/]/.test(args.path)) return undefined; // a Windows path
       return { path: args.path, external: true };
     });

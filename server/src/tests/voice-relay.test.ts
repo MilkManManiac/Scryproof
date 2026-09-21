@@ -11,8 +11,8 @@
 import { strict as assert } from 'node:assert';
 import { beforeEach, describe, it } from 'node:test';
 
-import type { ServerEvent, VoiceState } from '@gooffline/shared';
-import { VOICE_SIGNAL_MAX_BYTES } from '@gooffline/shared';
+import type { ServerEvent, VoiceState } from '@scryproof/shared';
+import { VOICE_SIGNAL_MAX_BYTES } from '@scryproof/shared';
 
 import * as hub from '../gateway/hub';
 import { handleVoiceSignal } from '../gateway/voice';

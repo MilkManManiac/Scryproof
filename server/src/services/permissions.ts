@@ -19,7 +19,7 @@ import {
   Permission,
   type OverwriteLike,
   type RoleLike,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import {

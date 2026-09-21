@@ -1,4 +1,4 @@
-# GoOffline — your own Discord. Research + plan (2026-09-16)
+# Scryproof — your own Discord. Research + plan (2026-09-16)
 
 ## The one-paragraph version
 
@@ -101,7 +101,7 @@ Each step ends with something you can log into and poke at. No step ends in a do
 
 ## Open decisions (I'll default these unless you say otherwise)
 
-- Name and domain. Working title is the folder name, GoOffline.
+- Name and domain. Working title is the folder name, Scryproof.
 - Web-only for launch, desktop app after. Default: yes.
 - Who is it for: a private server for your groups, or something others can spin up too? Default: private first, which lets us skip signups/abuse handling for months.
 - Fluxer-for-an-evening as reference: default yes.

@@ -16,8 +16,8 @@
 import { eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 
-import { Permission, encodeEvent, has } from '@gooffline/shared';
-import type { Presence, ServerEvent, VoiceState } from '@gooffline/shared';
+import { Permission, encodeEvent, has } from '@scryproof/shared';
+import type { Presence, ServerEvent, VoiceState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { channels as channelsTable } from '../db/schema.js';

@@ -16,8 +16,8 @@ import {
   decodeMask,
   slugifyChannelName,
   validateChannelName,
-} from '@gooffline/shared';
-import type { Channel, Member, ServerDetail } from '@gooffline/shared';
+} from '@scryproof/shared';
+import type { Channel, Member, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import { groupsForChannel } from '../../lib/permissionMeta';

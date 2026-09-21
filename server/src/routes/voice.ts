@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission, has } from '@gooffline/shared';
+import { Permission, has } from '@scryproof/shared';
 
 import { config } from '../config.js';
 import { requireUser } from '../app.js';

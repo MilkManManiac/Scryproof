@@ -4,10 +4,10 @@ set -Eeuo pipefail
 
 VAULT_NAME="vault"                       # /dev/mapper/vault
 VAULT_MOUNT="/mnt/vault"
-STATE_DIR="/etc/gooffline"               # which paths and units the vault gates
+STATE_DIR="/etc/scryproof"               # which paths and units the vault gates
 BINDS_FILE="$STATE_DIR/binds.list"
 UNITS_FILE="$STATE_DIR/units.list"
-UNLOCKED_FLAG="/run/gooffline/unlocked"  # tmpfs: a reboot always removes it
+UNLOCKED_FLAG="/run/scryproof/unlocked"  # tmpfs: a reboot always removes it
 
 say()  { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }

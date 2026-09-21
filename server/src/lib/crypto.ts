@@ -92,7 +92,7 @@ function derivedKey(info: string): Buffer {
   );
 }
 
-const SECRET_KEY_INFO = 'gooffline:secret-box:v1';
+const SECRET_KEY_INFO = 'scryproof:secret-box:v1';
 
 /** AES-256-GCM. Output is iv.tag.ciphertext, base64url, self-describing. */
 export function encryptSecret(plaintext: string): string {

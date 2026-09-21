@@ -31,7 +31,7 @@ import type {
   ServerDetail,
   ServerEvent,
   VoiceState,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { notifyPrefs, play, soundFor } from '../lib/notify';

@@ -27,7 +27,7 @@ export default defineConfig({
   optimizeDeps: {
     // The shared workspace is raw TypeScript compiled by Vite itself, not a
     // prebuilt package.
-    exclude: ['@gooffline/shared'],
+    exclude: ['@scryproof/shared'],
   },
   build: {
     outDir: 'dist',

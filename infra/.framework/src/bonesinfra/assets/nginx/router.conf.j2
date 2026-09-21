@@ -34,7 +34,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection ${{ ws_connection }};
-        # GoOffline: uploads go to 100 MB. Upstream would want this defaulting to 1m.
+        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
         client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
     }
 
@@ -65,7 +65,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection ${{ ws_connection }};
-        # GoOffline: uploads go to 100 MB. Upstream would want this defaulting to 1m.
+        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
         client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
     }
 }

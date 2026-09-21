@@ -26,7 +26,7 @@ const MODES: { id: InputMode; label: string; note: string }[] = [
   {
     id: 'push',
     label: 'Push to talk',
-    note: 'Live only while you hold a key. This works while GoOffline is the window in front. Holding a key from inside a game needs the desktop app, which does not exist yet.',
+    note: 'Live only while you hold a key. This works while Scryproof is the window in front. Holding a key from inside a game needs the desktop app, which does not exist yet.',
   },
 ];
 

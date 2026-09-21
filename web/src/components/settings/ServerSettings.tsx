@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { LIMITS, Permission, toNames, decodeMask } from '@gooffline/shared';
-import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@gooffline/shared';
+import { LIMITS, Permission, toNames, decodeMask } from '@scryproof/shared';
+import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';

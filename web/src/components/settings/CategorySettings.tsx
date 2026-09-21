@@ -13,8 +13,8 @@
  */
 
 import { useState } from 'react';
-import { Permission } from '@gooffline/shared';
-import type { Category, Member, ServerDetail } from '@gooffline/shared';
+import { Permission } from '@scryproof/shared';
+import type { Category, Member, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import { groupsForCategory } from '../../lib/permissionMeta';

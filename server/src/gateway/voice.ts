@@ -10,8 +10,8 @@
  * screen without SHARE_SCREEN is simply not believed.
  */
 
-import { Permission, VOICE_SIGNAL_MAX_BYTES, has } from '@gooffline/shared';
-import type { VoiceSignal, VoiceState } from '@gooffline/shared';
+import { Permission, VOICE_SIGNAL_MAX_BYTES, has } from '@scryproof/shared';
+import type { VoiceSignal, VoiceState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { channels } from '../db/schema.js';

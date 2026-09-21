@@ -147,7 +147,7 @@ hear each other, which is the honest state.
 
 ## Handing keys to LiveKit
 
-`GoOfflineKeyProvider` is a `BaseKeyProvider` with `sharedKey: false` and
+`ScryproofKeyProvider` is a `BaseKeyProvider` with `sharedKey: false` and
 ratcheting off, since we rotate with fresh keys instead.
 
 The 32 bytes are imported as **HKDF key material**, not as an AES-GCM key.

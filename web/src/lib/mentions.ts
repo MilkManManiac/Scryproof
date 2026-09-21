@@ -6,8 +6,8 @@
  * file converts in both directions.
  */
 
-import { mentionToken, splitContent } from '@gooffline/shared';
-import type { Member } from '@gooffline/shared';
+import { mentionToken, splitContent } from '@scryproof/shared';
+import type { Member } from '@scryproof/shared';
 
 export const nameOf = (member: Member): string => member.nickname ?? member.user.displayName;
 

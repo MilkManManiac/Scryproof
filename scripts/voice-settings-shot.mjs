@@ -17,7 +17,7 @@ import { WebSocket } from 'ws';
 const out = process.argv[2] ?? 'docs/shots/voice-settings.png';
 const mode = process.argv[3] ?? 'threshold';
 const chrome = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const profile = mkdtempSync(join(tmpdir(), 'gooffline-shot-'));
+const profile = mkdtempSync(join(tmpdir(), 'scryproof-shot-'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const browser = spawn(chrome, [

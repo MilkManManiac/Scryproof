@@ -11,7 +11,7 @@
  *      to an unticked "Ban members" is lying about the outcome.
  */
 
-import { Permission } from '@gooffline/shared';
+import { Permission } from '@scryproof/shared';
 
 import type { PermissionGroup } from '../../lib/permissionMeta';
 

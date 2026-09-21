@@ -3,14 +3,14 @@
 # Installed by infra/box/remote/60-livekit-install.sh, which carries its own
 # copy of this text. Change one, change the other.
 #
-# This unit must be listed in /etc/gooffline/units.list so that
+# This unit must be listed in /etc/scryproof/units.list so that
 # 30-gate-services.sh gives it the vault drop-in (RequiresMountsFor=/mnt/vault
-# and AssertPathExists=/run/gooffline/unlocked). Its config, with the API
+# and AssertPathExists=/run/scryproof/unlocked). Its config, with the API
 # secret in it, is on the vault: a rebooted, locked box cannot start it.
-# It is deliberately NOT enabled at boot. gooffline-unlock starts it.
+# It is deliberately NOT enabled at boot. scryproof-unlock starts it.
 
 [Unit]
-Description=LiveKit media server (GoOffline voice)
+Description=LiveKit media server (Scryproof voice)
 After=network-online.target
 Wants=network-online.target
 

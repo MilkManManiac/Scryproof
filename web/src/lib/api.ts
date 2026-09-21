@@ -21,7 +21,7 @@ import type {
   Server,
   ServerDetail,
   VoiceState,
-} from '@gooffline/shared';
+} from '@scryproof/shared';
 
 export class ApiError extends Error {
   constructor(

@@ -4,7 +4,7 @@
 
 import { and, eq } from 'drizzle-orm';
 
-import { DEFAULT_EVERYONE_PERMISSIONS, validateServerName } from '@gooffline/shared';
+import { DEFAULT_EVERYONE_PERMISSIONS, validateServerName } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import {

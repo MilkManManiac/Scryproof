@@ -23,7 +23,7 @@ export interface NotifyPrefs {
 }
 
 const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused' };
-const STORAGE_KEY = 'gooffline.notify.v1';
+const STORAGE_KEY = 'scryproof.notify.v1';
 
 function load(): NotifyPrefs {
   try {

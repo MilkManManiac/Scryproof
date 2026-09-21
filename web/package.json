@@ -1,5 +1,5 @@
 {
-  "name": "@gooffline/web",
+  "name": "@scryproof/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "node --import tsx --test \"src/tests/**/*.test.ts\""
   },
   "dependencies": {
-    "@gooffline/shared": "*",
+    "@scryproof/shared": "*",
     "@livekit/components-react": "^2.9.24",
     "livekit-client": "^2.15.7",
     "react": "^19.1.1",

@@ -2,7 +2,7 @@
 # Make services refuse to start while the vault is locked, and install the
 # unlock and lock commands.
 #
-#   30-gate-services.sh postgresql.service nginx.service gooffline.target ...
+#   30-gate-services.sh postgresql.service nginx.service scryproof.target ...
 #
 # Order matters: list them in the order they should START. Lock stops them in
 # reverse.
@@ -13,12 +13,12 @@
 #                                      fstab entry is noauto, so at boot systemd
 #                                      tries the mount, the mapper device is
 #                                      absent, and the unit fails in ~10 s.
-#   AssertPathExists=/run/gooffline/unlocked
+#   AssertPathExists=/run/scryproof/unlocked
 #                                      the belt to that pair of braces. The vault
 #                                      being mounted is not enough: the bind
 #                                      mounts must be in place too, or Postgres
 #                                      would start against an empty directory on
-#                                      the root disk. gooffline-unlock creates
+#                                      the root disk. scryproof-unlock creates
 #                                      this flag last, /run is tmpfs, and so a
 #                                      reboot always removes it.
 #
@@ -31,11 +31,11 @@ need_root
 mkdir -p "$STATE_DIR"
 touch "$UNITS_FILE"
 
-say "Installing gooffline-unlock and gooffline-lock"
-install -d -m 0755 /usr/local/lib/gooffline
-install -m 0644 "$(dirname "$0")/lib.sh" /usr/local/lib/gooffline/lib.sh
-install -m 0750 "$(dirname "$0")/gooffline-unlock" /usr/local/sbin/gooffline-unlock
-install -m 0750 "$(dirname "$0")/gooffline-lock" /usr/local/sbin/gooffline-lock
+say "Installing scryproof-unlock and scryproof-lock"
+install -d -m 0755 /usr/local/lib/scryproof
+install -m 0644 "$(dirname "$0")/lib.sh" /usr/local/lib/scryproof/lib.sh
+install -m 0750 "$(dirname "$0")/scryproof-unlock" /usr/local/sbin/scryproof-unlock
+install -m 0750 "$(dirname "$0")/scryproof-lock" /usr/local/sbin/scryproof-lock
 
 for unit in "$@"; do
   say "$unit"
@@ -45,7 +45,7 @@ for unit in "$@"; do
   fi
   dropin="/etc/systemd/system/$unit.d"
   mkdir -p "$dropin"
-  cat > "$dropin/10-gooffline-vault.conf" <<CONF
+  cat > "$dropin/10-scryproof-vault.conf" <<CONF
 # Written by infra/box/remote/30-gate-services.sh. The box boots dumb.
 [Unit]
 RequiresMountsFor=$VAULT_MOUNT

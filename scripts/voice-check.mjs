@@ -66,7 +66,7 @@ class Person {
   constructor(username, debugPort) {
     this.username = username;
     this.debugPort = debugPort;
-    this.profile = mkdtempSync(join(tmpdir(), `gooffline-voice-${username}-`));
+    this.profile = mkdtempSync(join(tmpdir(), `scryproof-voice-${username}-`));
     this.nextId = 1;
     this.complaints = [];
   }

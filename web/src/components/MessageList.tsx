@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Permission, splitContent } from '@gooffline/shared';
-import type { Channel, Member, Message } from '@gooffline/shared';
+import { Permission, splitContent } from '@scryproof/shared';
+import type { Channel, Member, Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';

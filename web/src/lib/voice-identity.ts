@@ -22,7 +22,7 @@ import {
   fingerprintOf,
 } from './voice-crypto';
 
-const DB_NAME = 'gooffline';
+const DB_NAME = 'scryproof';
 const DB_VERSION = 1;
 const IDENTITY_STORE = 'device-identity';
 const PINS_STORE = 'identity-pins';

@@ -18,8 +18,8 @@ import {
   decodeMask,
   has,
   highestRolePosition,
-} from '@gooffline/shared';
-import type { Member, Role, ServerDetail } from '@gooffline/shared';
+} from '@scryproof/shared';
+import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
 export interface Authority {
   isOwner: boolean;

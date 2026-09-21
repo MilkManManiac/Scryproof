@@ -6,8 +6,8 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission, validateServerName } from '@gooffline/shared';
-import type { Member } from '@gooffline/shared';
+import { Permission, validateServerName } from '@scryproof/shared';
+import type { Member } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';

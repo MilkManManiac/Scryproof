@@ -14,7 +14,7 @@
 
 import { eq } from 'drizzle-orm';
 
-import { Permission, has, parseMentions } from '@gooffline/shared';
+import { Permission, has, parseMentions } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { members } from '../db/schema.js';

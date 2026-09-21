@@ -15,8 +15,8 @@ import {
   HEARTBEAT_INTERVAL_MS,
   decodeServerEvent,
   encodeEvent,
-} from '@gooffline/shared';
-import type { ClientEvent, ServerEvent } from '@gooffline/shared';
+} from '@scryproof/shared';
+import type { ClientEvent, ServerEvent } from '@scryproof/shared';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 

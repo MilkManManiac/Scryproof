@@ -1,4 +1,4 @@
-# GoOffline — Game plan and build brief
+# Scryproof — Game plan and build brief
 
 Written 2026-09-16 for handoff to the build session. Revised the same evening after M1 shipped and the deploy tool was chosen. Background research is in `PLAN.md`; this file is the authority when they disagree. **Current state lives in `docs/HANDOFF.md`** — read that second.
 
@@ -168,7 +168,7 @@ One box. Every service is a systemd unit under its own Linux user, provisioned b
 | Deploy | **bonesdeploy** (section 2b) | Systemd + per-site Linux users + AppArmor + cgroups, no Docker daemon, GPG-encrypted secrets, versioned releases with rollback. Written by Alex, who is one message away. |
 | Region | DigitalOcean **ATL1 (Atlanta)** | Wes is in Tennessee. Atlanta is the nearest region; expect 15–30 ms round trip from Chattanooga. NYC3 as fallback if ATL1 capacity is missing. |
 | Box | Premium AMD 4 GB / 2 vCPU, plus a 50 GB block volume with LUKS | ~$33/mo. LiveKit is CPU-light for audio. |
-| Repo | Private GitHub repo `MilkManManiac/GoOffline` | Private until Wes decides otherwise. |
+| Repo | Private GitHub repo `MilkManManiac/Scryproof` | Private until Wes decides otherwise. |
 
 **Explicitly banned:** Clerk, Auth0, Firebase, Supabase, Uploadthing, Sentry (hosted), PostHog (hosted), Google Fonts, any CDN-hosted JS, Cloudflare proxying (DNS-only is fine), Discord-clone tutorial code copied in, `@fastify/static` (dropped over a path-traversal advisory; nginx serves the built client). Every one of these is a third party in the data path.
 
@@ -178,13 +178,13 @@ Repo: https://github.com/AlextheYounga/bonesdeploy. Read its README and run `bon
 
 What it gives us, and why it fits the threat model better than Docker did: each site is its own Linux user with its own systemd service, AppArmor profile and cgroup limits — the same kernel isolation Docker uses, without a root daemon, an image registry or a container runtime in the trust chain. Secrets live GPG-encrypted at `infra/secrets/.env.gpg` and are pushed to a mode-600 `shared/.env` on the box with `bonesdeploy secrets push` (that file has to end up on the LUKS volume, not the root disk: section 1b, finding 3); the encrypted file *may* be committed, which means the session secret and LiveKit keys survive a dead laptop. Postgres is provisioned localhost-only with a per-site credential, reachable from a workstation only over an SSH tunnel. Releases are versioned; `bonesdeploy rollback` is one command.
 
-How GoOffline maps onto it:
+How Scryproof maps onto it:
 
 - `BONES_TEMPLATE=custom`. The shipped templates are Next/Nuxt/Vue/SvelteKit; we are a plain Fastify process plus a static Vite build. We write our own `deployment/build/` (npm ci, `vite build`, esbuild the server) and `deployment/prepare/` (run migrations) scripts. Expect an hour or two, not five minutes.
 - The app server is one systemd unit: `node server/dist/index.js`, binding `127.0.0.1:8787`. nginx serves `web/dist` and proxies `/api` and `/gateway` to it.
 - LiveKit and coturn are two more systemd units on the same box. They are Go binaries, not Node, so they may sit outside bonesdeploy's site model as plain units in `infra/custom/`. Decide when we get there; do not fight the tool.
 - `bonesdeploy site services` provisions Postgres. `DATABASE_URL` goes into the encrypted secrets.
-- LUKS is ours to do, before `bonesdeploy server setup`: attach the block volume, `cryptsetup`, mount at `/var/lib/gooffline` (uploads) and point Postgres's data directory at it. bonesdeploy does not know about disk encryption and should not need to.
+- LUKS is ours to do, before `bonesdeploy server setup`: attach the block volume, `cryptsetup`, mount at `/var/lib/scryproof` (uploads) and point Postgres's data directory at it. bonesdeploy does not know about disk encryption and should not need to.
 
 **Answered 2026-09-17 by reading bonesdeploy v0.8.7's source: no, and in both of its nginx layers.** The per-site config is ours to write under `infra/custom/`, and ours passes upgrades. The root router on 80/443 is Alex's file and needs a change upstream; `docs/for-alex.md` and `docs/bonesdeploy-router.patch` (untested) are what Wes sends him. The question as first asked, kept for the record:
 
@@ -291,7 +291,7 @@ Time honesty: M0–M4 are the fun part. M5 and M8 together are as long as M0–M
 ## 7. Repo layout
 
 ```
-GoOffline/
+Scryproof/
   CLAUDE.md            project rules (non-negotiables from this file)
   GAMEPLAN.md          this file
   PLAN.md              background research

@@ -17,8 +17,8 @@ import {
   HEARTBEAT_TIMEOUT_MS,
   decodeClientEvent,
   encodeEvent,
-} from '@gooffline/shared';
-import type { ClientEvent, Presence, ServerEvent } from '@gooffline/shared';
+} from '@scryproof/shared';
+import type { ClientEvent, Presence, ServerEvent } from '@scryproof/shared';
 
 import { config } from '../config.js';
 import { resolveSession } from '../services/auth.js';
@@ -266,7 +266,7 @@ async function handleClientEvent(
       const { getDb } = await import('../db/index.js');
       const { channels } = await import('../db/schema.js');
       const { eq } = await import('drizzle-orm');
-      const { Permission } = await import('@gooffline/shared');
+      const { Permission } = await import('@scryproof/shared');
 
       const [channel] = await getDb()
         .select({ id: channels.id, serverId: channels.serverId })

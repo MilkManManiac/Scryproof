@@ -6,7 +6,7 @@
  * so a person looks the same to everyone without the server storing anything.
  */
 
-import type { PresenceStatus, PublicUser } from '@gooffline/shared';
+import type { PresenceStatus, PublicUser } from '@scryproof/shared';
 
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);

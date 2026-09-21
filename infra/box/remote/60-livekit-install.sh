@@ -37,7 +37,7 @@ esac
 [[ "$LIVEKIT_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "LIVEKIT_SHA256 is not filled in. Read the TODO at the top of this script."
 [ "$(uname -m)" = "x86_64" ] || die "this installs the amd64 build, and this machine is $(uname -m)."
 # Mounted is enough here. During first setup the unlocked flag does not exist
-# yet, because gooffline-unlock is only installed by 30-gate-services.sh.
+# yet, because scryproof-unlock is only installed by 30-gate-services.sh.
 vault_is_mounted || die "the vault is not mounted. The config must be written onto it."
 
 say "Download LiveKit $LIVEKIT_VERSION"
@@ -142,7 +142,7 @@ done
 say "Service"
 cat > "/etc/systemd/system/$UNIT" <<'CONF'
 [Unit]
-Description=LiveKit media server (GoOffline voice)
+Description=LiveKit media server (Scryproof voice)
 After=network-online.target
 Wants=network-online.target
 
@@ -183,12 +183,12 @@ ReadOnlyPaths=/mnt/vault/livekit
 WantedBy=multi-user.target
 CONF
 systemctl daemon-reload
-# Not enabled: a locked box must not try to start it. gooffline-unlock does.
+# Not enabled: a locked box must not try to start it. scryproof-unlock does.
 systemctl disable "$UNIT" >/dev/null 2>&1 || true
 mkdir -p "$STATE_DIR"
 touch "$UNITS_FILE"
 grep -qxF "$UNIT" "$UNITS_FILE" || printf '%s\n' "$UNIT" >> "$UNITS_FILE"
 note "installed, and listed in $UNITS_FILE"
-note "now run 30-gate-services.sh again so it gets the vault drop-in, then gooffline-unlock starts it"
+note "now run 30-gate-services.sh again so it gets the vault drop-in, then scryproof-unlock starts it"
 
 say "Done."

@@ -29,7 +29,7 @@ if [ "$KEEP_DATA" -eq 0 ]; then
 fi
 
 cd "$ROOT/server" || exit 1
-npx tsx src/index.ts > /tmp/gooffline-server.log 2>&1 &
+npx tsx src/index.ts > /tmp/scryproof-server.log 2>&1 &
 
 for _ in $(seq 1 40); do
   if curl -fsS -m 2 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
@@ -40,5 +40,5 @@ for _ in $(seq 1 40); do
 done
 
 echo "server did not come up; log follows"
-tail -30 /tmp/gooffline-server.log
+tail -30 /tmp/scryproof-server.log
 exit 1

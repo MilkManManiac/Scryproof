@@ -27,7 +27,7 @@ import { BaseKeyProvider } from 'livekit-client';
  * person would collide here; that is a real limit of the media layer and the
  * reason a call is one device per person for now.
  */
-export class GoOfflineKeyProvider extends BaseKeyProvider {
+export class ScryproofKeyProvider extends BaseKeyProvider {
   constructor() {
     super({
       // The whole point: every participant gets their own key.

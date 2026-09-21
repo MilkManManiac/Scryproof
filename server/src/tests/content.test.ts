@@ -9,8 +9,8 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { hrefFor, mentionToken, splitContent } from '@gooffline/shared';
-import type { ContentPart } from '@gooffline/shared';
+import { hrefFor, mentionToken, splitContent } from '@scryproof/shared';
+import type { ContentPart } from '@scryproof/shared';
 
 const ALEX = '018f0000-0000-7000-8000-000000000002';
 

@@ -16,7 +16,7 @@ const EVERYDAY = [
 ];
 const TABLE = ['🎲', '⚔️', '🛡️', '🐉', '🧙', '🗺️', '🏹', '🍺'];
 
-const STORAGE_KEY = 'gooffline.reactions.recent.v1';
+const STORAGE_KEY = 'scryproof.reactions.recent.v1';
 
 function recent(): string[] {
   try {

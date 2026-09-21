@@ -135,7 +135,7 @@ async function main(): Promise<void> {
   const owner = new Actor('owner');
   const friend = new Actor('friend');
 
-  console.log(`\nGoOffline smoke test against ${BASE}\n`);
+  console.log(`\nScryproof smoke test against ${BASE}\n`);
 
   /* ------------------------------- accounts ------------------------------ */
   console.log('accounts');

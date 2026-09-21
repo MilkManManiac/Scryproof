@@ -10,8 +10,8 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { LIMITS, Permission, has, validateMessageContent } from '@gooffline/shared';
-import type { Attachment, Message, Reaction, ReplyPreview } from '@gooffline/shared';
+import { LIMITS, Permission, has, validateMessageContent } from '@scryproof/shared';
+import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';

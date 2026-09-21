@@ -4,7 +4,7 @@
 #   20-vault-adopt.sh /srv/sites /srv/conf /var/lib/postgresql ...
 #
 # The software that owns the path never knows: bonesdeploy still writes
-# /srv/sites/gooffline/shared/.env, Postgres still uses /var/lib/postgresql,
+# /srv/sites/scryproof/shared/.env, Postgres still uses /var/lib/postgresql,
 # and both are really on the encrypted volume. That is how "everything secret
 # lives on the vault" happens without fighting any tool over where things go.
 #
@@ -16,7 +16,7 @@
 
 source "$(dirname "$0")/lib.sh"
 need_root
-vault_is_mounted || die "the vault is not mounted. Run gooffline-unlock first."
+vault_is_mounted || die "the vault is not mounted. Run scryproof-unlock first."
 [ "$#" -gt 0 ] || die "name at least one absolute path."
 
 for path in "$@"; do

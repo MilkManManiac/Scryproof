@@ -9,8 +9,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { LIMITS, Permission, decodeMask, encodeMask, validateRoleName } from '@gooffline/shared';
-import type { Member, Role, ServerDetail } from '@gooffline/shared';
+import { LIMITS, Permission, decodeMask, encodeMask, validateRoleName } from '@scryproof/shared';
+import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
 import { PERMISSION_GROUPS } from '../../lib/permissionMeta';

@@ -23,7 +23,7 @@ volume="$(find_volume)"
 say "Volume: $volume -> $(readlink -f "$volume")"
 
 if cryptsetup isLuks "$volume"; then
-  die "this volume is ALREADY a LUKS vault. Use gooffline-unlock. If you truly mean to destroy it, wipe it by hand: wipefs -a $volume"
+  die "this volume is ALREADY a LUKS vault. Use scryproof-unlock. If you truly mean to destroy it, wipe it by hand: wipefs -a $volume"
 fi
 existing="$(blkid -o value -s TYPE "$volume" 2>/dev/null || true)"
 if [ -n "$existing" ]; then
@@ -37,13 +37,13 @@ say "Encrypting. Type the vault passphrase from the password manager, twice."
 # every unlock must find that much free. The default takes half the machine,
 # which on a 1 GB box with swap off is an unlock that can be killed for memory.
 # 256 MB is safe here, and the passphrase is seven random words either way.
-cryptsetup luksFormat --type luks2 --iter-time 4000 --pbkdf-memory 262144 --label gooffline-vault "$volume"
+cryptsetup luksFormat --type luks2 --iter-time 4000 --pbkdf-memory 262144 --label scryproof-vault "$volume"
 
 say "Opening it. Type the passphrase once more."
 cryptsetup open "$volume" "$VAULT_NAME"
 
 say "Creating the filesystem"
-mkfs.ext4 -q -L gooffline-vault "/dev/mapper/$VAULT_NAME"
+mkfs.ext4 -q -L scryproof-vault "/dev/mapper/$VAULT_NAME"
 
 say "Registering the mount point"
 mkdir -p "$VAULT_MOUNT" "$STATE_DIR"
@@ -66,8 +66,8 @@ touch "$BINDS_FILE" "$UNITS_FILE"
 say "Header backup"
 note "A damaged LUKS header means the data is gone even with the passphrase."
 note "Copy the file below OFF this box, then delete it here:"
-cryptsetup luksHeaderBackup "$volume" --header-backup-file /root/gooffline-vault-header.img
-note "/root/gooffline-vault-header.img"
+cryptsetup luksHeaderBackup "$volume" --header-backup-file /root/scryproof-vault-header.img
+note "/root/scryproof-vault-header.img"
 note "It is useless without the passphrase."
 
 say "Done. The vault is open and mounted at $VAULT_MOUNT."

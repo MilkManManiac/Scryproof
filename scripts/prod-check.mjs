@@ -78,7 +78,7 @@ const PAGE_HEADERS = headersFromTemplate();
 
 // ---- the production API ------------------------------------------------------
 
-const dataDir = mkdtempSync(join(tmpdir(), 'gooffline-prod-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-prod-'));
 const api = spawn(process.execPath, [SERVER_BUNDLE], {
   cwd: join(ROOT, 'server'),
   env: {
@@ -199,7 +199,7 @@ if (!browserPath) {
   process.exit(2);
 }
 
-const profile = mkdtempSync(join(tmpdir(), 'gooffline-prodcheck-'));
+const profile = mkdtempSync(join(tmpdir(), 'scryproof-prodcheck-'));
 let browser;
 let socket;
 
