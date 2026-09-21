@@ -388,6 +388,32 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         presences: { ...state.presences, [event.d.userId]: event.d.status },
       };
 
+    case 'user_update': {
+      // The same person is drawn in three places: the member lists, the
+      // messages they wrote, and, if it is you, the panel at the bottom.
+      const fresh = event.d;
+      const members = Object.fromEntries(
+        Object.entries(state.members).map(([serverId, list]) => [
+          serverId,
+          list.map((member) => (member.userId === fresh.id ? { ...member, user: fresh } : member)),
+        ]),
+      );
+      const messages = Object.fromEntries(
+        Object.entries(state.messages).map(([channelId, list]) => [
+          channelId,
+          list.some((message) => message.authorId === fresh.id)
+            ? list.map((message) => (message.authorId === fresh.id ? { ...message, author: fresh } : message))
+            : list,
+        ]),
+      );
+      return {
+        ...state,
+        members,
+        messages,
+        user: state.user && state.user.id === fresh.id ? { ...state.user, ...fresh } : state.user,
+      };
+    }
+
     case 'server_create':
       return upsertServer(state, event.d);
 

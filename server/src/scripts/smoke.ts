@@ -734,6 +734,32 @@ async function main(): Promise<void> {
     friendAudit.json,
   );
 
+  /* ---------------------------- profile and pins --------------------------- */
+  const profiled = await owner.patch('/api/auth/profile', { displayName: 'Wes H', statusText: 'running the game' });
+  check('a display name and a status can be set', profiled.status === 200 && profiled.json?.user?.statusText === 'running the game', profiled.json);
+  const twoLines = await owner.patch('/api/auth/profile', { statusText: 'one\ntwo' });
+  check('a status is one line', twoLines.status === 400, twoLines.json);
+  const seenByFriend = await friend.get(`/api/servers/${serverId}/members`);
+  const ownerAsSeen = (seenByFriend.json?.members ?? []).find((m: any) => m.user?.username === ownerName);
+  check('a friend sees the new name and status', ownerAsSeen?.user?.displayName === 'Wes H' && ownerAsSeen?.user?.statusText === 'running the game', ownerAsSeen);
+  const cleared = await owner.patch('/api/auth/profile', { statusText: '' });
+  check('an empty status is no status', cleared.status === 200 && cleared.json?.user?.statusText === null, cleared.json);
+  const noAvatar = await owner.get(`/api/avatars/${cleared.json?.user?.id}/nothing`);
+  check('a picture that does not exist is a 404', noAvatar.status === 404);
+
+  const pinnable = await owner.post(`/api/channels/${textChannel.id}/messages`, { content: 'the rules are here' });
+  // The friend is a Moderator by now, with Manage Messages, so pinning is theirs to do.
+  const pinned = await friend.put(`/api/messages/${pinnable.json?.message?.id}/pin`);
+  check('a moderator can pin', pinned.status === 200 && typeof pinned.json?.message?.pinnedAt === 'string', pinned.json);
+  const pinAgain = await owner.put(`/api/messages/${pinnable.json?.message?.id}/pin`);
+  check('pinning twice is harmless', pinAgain.status === 200, pinAgain.json);
+  const pinList = await friend.get(`/api/channels/${textChannel.id}/pins`);
+  check('a member can read the pins', pinList.status === 200 && pinList.json?.messages?.some((m: any) => m.id === pinnable.json?.message?.id), pinList.json);
+  const unpinned = await owner.del(`/api/messages/${pinnable.json?.message?.id}/pin`);
+  check('and unpin', unpinned.status === 200 && unpinned.json?.message?.pinnedAt === null, unpinned.json);
+  const pinListAfter = await owner.get(`/api/channels/${textChannel.id}/pins`);
+  check('the list is then empty', pinListAfter.json?.messages?.length === 0, pinListAfter.json);
+
   /* -------------------------------- summary ------------------------------ */
   console.log(`\n${passed} passed, ${failed} failed\n`);
   if (failed > 0) process.exit(1);

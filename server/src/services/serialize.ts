@@ -47,6 +47,7 @@ export function publicUser(row: User): PublicUser {
     username: row.username,
     displayName: row.displayName,
     avatarUrl: row.avatarUrl,
+    statusText: row.statusText,
     accent: accentForId(row.id),
   };
 }
@@ -158,6 +159,7 @@ export function message(
     mentionsEveryone: deleted ? false : row.mentionsEveryone,
     createdAt: isoRequired(row.createdAt),
     editedAt: iso(row.editedAt),
+    pinnedAt: deleted ? null : iso(row.pinnedAt),
     deleted,
   };
 }

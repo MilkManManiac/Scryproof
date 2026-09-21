@@ -18,6 +18,8 @@ export interface PublicUser {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  /** A line they wrote about what they are up to. Null when they have not. */
+  statusText: string | null;
   /** Colour derived from the id, so a user looks the same everywhere. */
   accent: string;
 }
@@ -175,6 +177,8 @@ export interface Message {
   mentionsEveryone: boolean;
   createdAt: Timestamp;
   editedAt: Timestamp | null;
+  /** Set while the message is pinned in its channel. */
+  pinnedAt: Timestamp | null;
   /** A soft-deleted message keeps its place in the timeline as a tombstone. */
   deleted: boolean;
 }

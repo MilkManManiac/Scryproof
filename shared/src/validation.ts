@@ -14,6 +14,9 @@ export const LIMITS = {
   roleName: { min: 1, max: 48 },
   nickname: { min: 1, max: 48 },
   topic: { max: 512 },
+  /** The line under a name: "at work", "running the game tonight". */
+  statusText: 80,
+  pinsPerChannel: 50,
   message: { max: 8000 },
   attachmentsPerMessage: 10,
   attachmentBytes: 100 * 1024 * 1024,

@@ -77,6 +77,17 @@ export const api = {
   auth: {
     context: () => get<{ firstRun: boolean; inviteRequired: boolean }>('/api/auth/context'),
     me: () => get<{ user: SelfUser }>('/api/auth/me'),
+    updateProfile: (body: { displayName?: string; statusText?: string | null }) =>
+      patch<{ user: SelfUser }>('/api/auth/profile', body),
+    async uploadAvatar(file: File): Promise<SelfUser> {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/auth/avatar', { method: 'POST', credentials: 'same-origin', body: form });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
+      return payload.user as SelfUser;
+    },
+    removeAvatar: () => del<{ user: SelfUser }>('/api/auth/avatar'),
     register: (input: {
       username: string;
       displayName?: string;
@@ -189,6 +200,9 @@ export const api = {
       channelId: string,
       body: { content?: string; replyToId?: string; attachmentIds?: string[] },
     ) => post<{ message: Message }>(`/api/channels/${channelId}/messages`, body),
+    pin: (id: string) => put<{ message: Message }>(`/api/messages/${id}/pin`),
+    unpin: (id: string) => del<{ message: Message }>(`/api/messages/${id}/pin`),
+    pins: (channelId: string) => get<{ messages: Message[] }>(`/api/channels/${channelId}/pins`),
     edit: (id: string, content: string) =>
       patch<{ message: Message }>(`/api/messages/${id}`, { content }),
     remove: (id: string) => del<{ ok: true }>(`/api/messages/${id}`),

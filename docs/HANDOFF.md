@@ -863,6 +863,34 @@ sections and the channel gear are all absent for him.
 as small uppercase captions, which turned a role name into a heading. It is
 `.field > label` now.
 
+## Profile picture, status line, pins: built 2026-09-21
+
+The "quick four" minus stream quality, which was done earlier.
+
+- `server/src/routes/profile.ts`: `PATCH /api/auth/profile` (displayName,
+  statusText), `POST`/`DELETE /api/auth/avatar`, `GET /api/avatars/:userId/:id`
+  (signed-in members only; not a public URL). New `avatars` table, `users.status_text`.
+  Every change broadcasts a new `user_update` event to every server the person
+  is in; the store rewrites members, message authors and the self user.
+- The picture is scrubbed of location data and cropped square at 512px **in
+  the browser** (`ProfileSettings.tsx`, reusing `scrub-image.ts`). The server
+  stores what it is given, 2 MB cap, image types only.
+- Status is one line, 80 chars, shown under the name in the member list and in
+  the panel at the bottom (in place of "Online" when set). Empty = null.
+- Pins: `messages.pinned_at`, `PUT`/`DELETE /api/messages/:id/pin` (Manage
+  Messages), `GET /api/channels/:id/pins` (read history). 50 per channel. A
+  pin button on the hover bar, a "pinned" tag on the row, a pin button in the
+  channel header opening `PinnedMessages.tsx` (jump-to flashes the row).
+- Migration `0007`: additive.
+- Tests: smoke test has 10 new checks (93 total). No browser test for these;
+  `docs/shots/profile.png` and `pins.png` were taken by a throwaway script.
+  **Not yet tried by a person:** the actual picture upload from a file
+  picker, and the "pinned" tag on grouped rows.
+- Found on the way, not fixed: a zod `.parse` failure in any route is a 500
+  ("Something went wrong"), because `app.setErrorHandler` does not know
+  ZodError. `profile.ts` uses `safeParse` + `badRequest` instead. Worth a
+  general fix: map ZodError to 400 in the handler.
+
 ## Desktop app updates itself: signed client updates, 2026-09-21
 
 Wes asked whether every change needs a reinstall. It did. Now it does not.
@@ -957,6 +985,33 @@ explanation; the short one:
   recoverable (denial, not disclosure; `passOn` repairs it next time a real
   device of yours opens them).
 
+## Where to pick up (written 2026-09-21, late, for a fresh context)
+
+Everything above this line is live on scryproof.com and in the installed
+desktop app (the app takes client updates by itself now; see the signed
+updates section). Wes has the new installer in Downloads and installed it.
+
+Do next, in this order:
+
+1. **Private channel switch** (item 6 below). Hidden channels already work via
+   overwrites; build the one-click "Private" toggle in channel create/settings
+   with a role/member picker. Wes asked for hidden voice and text channels.
+2. **Per-server / per-channel mute** for the bell and pop-ups. Small.
+3. **ZodError -> 400** in `app.setErrorHandler`. Ten-minute fix, then remove
+   the workaround note in profile.ts.
+4. **Global push-to-talk** in the desktop app. Needs a native key hook
+   (uiohook-napi or similar); vet it for phoning home before it ships. Then
+   **start with Windows** as an off-by-default toggle Wes flips himself.
+5. **Electron fuses**, and a plan for updating the shell itself (needs a code
+   signing decision, which costs money, so it is Wes's call).
+6. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
+7. Then: search, custom emoji, soundboard, phone version, group DMs, safety
+   number, unclaimed-upload sweep. R2 stays flagged (talk first).
+
+Deploy with `bash scripts/release.sh` (clean tree required). Local loop:
+`bash scripts/dev-restart.sh`, `npm run seed`, then the test. The sign-up
+rate limit trips if `test:smoke` runs twice within an hour; a restart clears it.
+
 ## Next, in order
 
 Rewritten 2026-09-21, after the desktop shell. The droplet, domain and M0 are
@@ -971,7 +1026,7 @@ done; the old list here was about getting onto the box.
 3. **Stream quality picker.** The streamer picks resolution and frame rate. No
    cap from us (Wes, 2026-09-21); add one only if bandwidth becomes a problem.
 4. ~~DM stage 3: recovery phrase.~~ Built 2026-09-21, see above.
-5. **The quick four:** profile picture, status, pins (stream quality is 3).
+5. ~~The quick four~~ Built 2026-09-21, see above.
 6. **Private channels in one click.** Hidden text and voice channels already
    work through permission overwrites (deny View Channel to @everyone, allow a
    role), and the server enforces it. What is missing is the Discord-style

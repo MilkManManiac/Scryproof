@@ -7,7 +7,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { LIMITS, Permission, has, validateMessageContent } from '@scryproof/shared';
@@ -495,6 +495,58 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
     );
   }
+
+  /* ---------------------------------- pins ---------------------------------- */
+
+  /**
+   * Pinning needs Manage Messages, as on Discord: it is a statement the channel
+   * makes, not one a member makes. Reading the pins needs only what reading
+   * the channel needs.
+   */
+  const setPinned = async (request: { params: unknown }, userId: string, pinned: boolean): Promise<Message> => {
+    const { messageId } = z.object({ messageId: z.string() }).parse(request.params);
+    const db = getDb();
+    const [existing] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!existing || existing.deletedAt) throw notFound('That message does not exist.', 'unknown_message');
+    const ctx = await requireChannelPermission(existing.channelId, userId, Permission.MANAGE_MESSAGES);
+    if (pinned) {
+      const [tally] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(messages)
+        .where(and(eq(messages.channelId, existing.channelId), isNotNull(messages.pinnedAt)));
+      if ((tally?.count ?? 0) >= LIMITS.pinsPerChannel) throw badRequest(`A channel can hold ${LIMITS.pinsPerChannel} pins. Unpin one first.`, 'too_many_pins');
+    }
+    const [updated] = await db
+      .update(messages)
+      .set({ pinnedAt: pinned ? new Date() : null })
+      .where(eq(messages.id, messageId))
+      .returning();
+    const [hydrated] = await hydrate(updated ? [updated] : []);
+    if (!hydrated) throw notFound('That message does not exist.', 'unknown_message');
+    await hub.broadcastToChannel(
+      ctx.serverId,
+      existing.channelId,
+      { t: 'message_update', d: hydrated },
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+    return hydrated;
+  };
+
+  app.put('/api/messages/:messageId/pin', async (request) => ({ message: await setPinned(request, requireUser(request).id, true) }));
+  app.delete('/api/messages/:messageId/pin', async (request) => ({ message: await setPinned(request, requireUser(request).id, false) }));
+
+  app.get('/api/channels/:channelId/pins', async (request) => {
+    const user = requireUser(request);
+    const { channelId } = z.object({ channelId: z.string() }).parse(request.params);
+    await requireChannelPermission(channelId, user.id, Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY);
+    const rows = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.channelId, channelId), isNotNull(messages.pinnedAt)))
+      .orderBy(desc(messages.pinnedAt))
+      .limit(LIMITS.pinsPerChannel);
+    return { messages: await hydrate(rows) };
+  });
 
   app.put('/api/messages/:messageId/reactions/:emoji', async (request) => {
     const user = requireUser(request);

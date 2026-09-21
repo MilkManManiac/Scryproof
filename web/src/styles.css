@@ -3176,3 +3176,58 @@ kbd {
   outline: none;
   border-color: var(--accent);
 }
+
+/* Profile: the line under a name, and the picture editor. */
+.member-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.member-status {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-picture {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.profile-picture .avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+.profile-picture .link-button {
+  margin-left: 10px;
+}
+
+/* Pins. */
+.message-pinned {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+.message-body > .message-pinned {
+  display: block;
+  margin-bottom: 1px;
+}
+.pins .notice.pin {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  color: var(--text);
+}
+.pin-text {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

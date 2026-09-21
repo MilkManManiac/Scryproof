@@ -60,6 +60,7 @@ export const users = pgTable(
     /** Single-use codes for getting back in without email. Argon2 hashed. */
     recoveryCodes: jsonb('recovery_codes').$type<string[]>(),
     avatarUrl: text('avatar_url'),
+    statusText: text('status_text'),
     /** Public key for Milestone 7 end-to-end encrypted text. */
     identityKey: text('identity_key'),
     createdAt: createdAt(),
@@ -293,6 +294,8 @@ export const messages = pgTable(
     keyEpoch: integer('key_epoch'),
 
     replyToId: text('reply_to_id'),
+    /** Set while pinned. Kept on the row: a pin is a fact about the message, not a list of its own. */
+    pinnedAt: timestamp('pinned_at', { withTimezone: true, mode: 'date' }),
     /**
      * Who this message pings, resolved once when it is written. Always empty
      * in an encrypted channel: the server cannot read that body, and it does
@@ -311,6 +314,18 @@ export const messages = pgTable(
     index('messages_author_idx').on(table.authorId),
   ],
 );
+
+/** Profile pictures. One row per picture ever uploaded; the current one is named by `users.avatar_url`. */
+export const avatars = pgTable('avatars', {
+  id: id(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  storageKey: text('storage_key').notNull(),
+  contentType: text('content_type').notNull(),
+  size: integer('size').notNull(),
+  createdAt: createdAt(),
+});
 
 export const attachments = pgTable(
   'attachments',

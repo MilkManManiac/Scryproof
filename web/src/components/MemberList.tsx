@@ -109,8 +109,11 @@ export function MemberList({ server }: { server: ServerDetail }) {
                 }
               >
                 <Avatar user={member.user} small presence={presence} />
-                <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>
-                  {member.nickname ?? member.user.displayName}
+                <span className="member-text">
+                  <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>
+                    {member.nickname ?? member.user.displayName}
+                  </span>
+                  {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
                 </span>
               </div>
             );

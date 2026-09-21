@@ -23,6 +23,7 @@ import { Composer } from './components/Composer';
 import { DmPane, DmSidebar } from './components/DirectMessages';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
+import { PinnedMessages } from './components/PinnedMessages';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { ServerRail } from './components/ServerRail';
 import { ShortcutHelp } from './components/ShortcutHelp';
@@ -98,7 +99,7 @@ function Shell() {
   const channel = useSelectedChannel();
   const { state: dms } = useDms();
   const [channelSettings, setChannelSettings] = useState(false);
-  const [overlay, setOverlay] = useState<'switcher' | 'help' | null>(null);
+  const [overlay, setOverlay] = useState<'switcher' | 'help' | 'pins' | null>(null);
 
   // The keyboard steps through the same list the sidebar draws, so Alt+Down
   // always lands on the row below the one being looked at.
@@ -217,6 +218,11 @@ function Shell() {
                   <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>
                     {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
                   </span>
+                  {channel.type === 'text' ? (
+                    <button type="button" className="icon-button" title="Pinned messages" onClick={() => setOverlay('pins')}>
+                      &#128204;
+                    </button>
+                  ) : null}
                   {can(mask, Permission.MANAGE_ROLES) || can(mask, Permission.MANAGE_CHANNELS) ? (
                     <button
                       type="button"
@@ -258,7 +264,8 @@ function Shell() {
         {server && !dms.active ? <MemberList server={server} /> : null}
 
         {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
-        {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
+        {overlay === 'pins' && channel ? <PinnedMessages channelId={channel.id} onClose={() => setOverlay(null)} /> : null}
+      {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
       </div>
 
       {channelSettings && server && channel ? (

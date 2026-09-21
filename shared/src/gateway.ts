@@ -22,6 +22,7 @@ import type {
   ServerDetail,
   Snowflake,
   VoiceState,
+  PublicUser,
 } from './types.js';
 
 export const GATEWAY_PATH = '/gateway';
@@ -46,6 +47,8 @@ export type ServerEvent =
   | { t: 'read_state_update'; d: ReadState }
   | { t: 'typing_start'; d: { channelId: Snowflake; userId: Snowflake; at: number } }
   | { t: 'presence_update'; d: Presence }
+  /** Somebody changed their name, picture or status. Sent to everyone who shares a server with them. */
+  | { t: 'user_update'; d: PublicUser }
   | { t: 'server_create'; d: ServerDetail }
   | { t: 'server_update'; d: Server }
   | { t: 'server_delete'; d: { id: Snowflake } }

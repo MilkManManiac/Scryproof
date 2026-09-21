@@ -408,6 +408,7 @@ function MessageRow({
   const selfId = state.user?.id;
   const mine = message.authorId === selfId;
   const canDelete = mine || can(mask, Permission.MANAGE_MESSAGES);
+  const canPin = can(mask, Permission.MANAGE_MESSAGES) && !message.deleted;
   const canReact = can(mask, Permission.ADD_REACTIONS);
   const canReply = can(mask, Permission.SEND_MESSAGES);
   const at = new Date(message.createdAt);
@@ -475,8 +476,10 @@ function MessageRow({
             <time className="message-time" dateTime={message.createdAt}>
               {timeFormat.format(at)}
             </time>
+            {message.pinnedAt ? <span className="message-pinned" title="Pinned in this channel">pinned</span> : null}
           </div>
         )}
+        {grouped && message.pinnedAt ? <span className="message-pinned" title="Pinned in this channel">pinned</span> : null}
 
         {message.deleted ? (
           <div className="message-text deleted">Message deleted</div>
@@ -604,6 +607,16 @@ function MessageRow({
               }}
             >
               &#9998;
+            </button>
+          ) : null}
+          {canPin ? (
+            <button
+              type="button"
+              className={message.pinnedAt ? 'icon-button on' : 'icon-button'}
+              title={message.pinnedAt ? 'Unpin' : 'Pin'}
+              onClick={() => void (message.pinnedAt ? api.messages.unpin(message.id) : api.messages.pin(message.id)).catch(() => undefined)}
+            >
+              &#128204;
             </button>
           ) : null}
           {canDelete ? (

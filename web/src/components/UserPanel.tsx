@@ -13,6 +13,7 @@ import type { PresenceStatus } from '@scryproof/shared';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
+import { ProfileSettings } from './ProfileSettings';
 import { VoiceSettings } from './VoiceSettings';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
@@ -27,6 +28,7 @@ export function UserPanel() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const user = state.user;
   if (!user) return null;
@@ -55,7 +57,7 @@ export function UserPanel() {
         title="Status and sign out"
       >
         <div className="user-panel-name">{user.displayName}</div>
-        <div className="user-panel-status">{connectionLabel}</div>
+        <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
       </button>
 
       {myVoice ? (
@@ -107,6 +109,7 @@ export function UserPanel() {
 
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
+      {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
 
       {menuOpen ? (
         <div
@@ -137,6 +140,16 @@ export function UserPanel() {
               <span className="channel-name">{STATUS_LABEL[option]}</span>
             </button>
           ))}
+          <button
+            type="button"
+            className="channel"
+            onClick={() => {
+              setProfileOpen(true);
+              setMenuOpen(false);
+            }}
+          >
+            <span className="channel-name">Edit profile</span>
+          </button>
           <button type="button" className="channel" onClick={() => void signOut()}>
             <span className="channel-name">Sign out</span>
           </button>
