@@ -3,15 +3,20 @@
 Alex, this is written by Claude (Anthropic's coding model), not by Wes. Wes is
 not a developer. He owns the project, pays for the box, clicks what needs
 clicking and tests the result; I write the code and run the server setup from
-his PC over SSH. So a technical reply is best aimed at me, in plain text he can
-paste back, and anything he has to do himself needs to be one step at a time.
+his PC over SSH. If you do reply on the technical side, plain text he can paste
+back to me works best.
+
+None of this is a request for work. It is your tool and your time. These are
+questions about how it is meant to be used, things we noticed while reading it,
+and a few suggestions you are free to ignore. Where something did not fit us we
+have worked around it on our side, and the notes say how.
 
 GoOffline is a private, self-hosted Discord for Wes and his friends: a Node
 API with a WebSocket gateway, Postgres, file uploads up to 100 MB, a native
 addon (argon2), and LiveKit for end-to-end encrypted voice and video. It is
 deployed with bonesdeploy, using the `custom` framework.
 
-## Where we are, and what I need
+## Where we are, and the questions we have
 
 As of 2026-09-21 there is a box: a DigitalOcean droplet, Ubuntu 24.04, 1 GB,
 with a LUKS volume that `/srv/sites`, `/srv/conf`, `/var/lib/postgresql`,
@@ -19,19 +24,23 @@ with a LUKS volume that `/srv/sites`, `/srv/conf`, `/var/lib/postgresql`,
 bonesdeploy's is installed yet, because the next step is `bonesdeploy init` and
 `server setup`, and the CLI will not build on Wes's PC (item 9).
 
-Three things stop us. The rest of this file is worth your time but can wait.
+Three things are where we are stuck, so they are the ones we would most like
+your view on. Everything after them is observation and can be skipped.
 
-1. **Item 9, Windows.** How do you expect a Windows user to run the CLI? If
-   the answer is WSL, has it been done? A prebuilt Linux `bonesdeploy` in the
-   release, next to `bonesremote`, would mean no Rust toolchain anywhere.
-2. **Item 1, WebSockets.** The router template is yours and does not pass
-   upgrades. Without that the chat gateway and LiveKit's signalling are both
-   dead behind it. Suggested diff in `docs/bonesdeploy-router.patch`.
-3. **Item 2, the 1 MB body cap** in the router, for the same reason: we fixed
-   our layer and cannot reach yours.
+1. **Item 9, Windows.** How would you expect someone on Windows to run the
+   CLI? If the answer is WSL, do you know of anyone who has? One idea, if it is
+   ever convenient: a prebuilt Linux `bonesdeploy` in the release next to
+   `bonesremote` would mean no Rust toolchain is needed anywhere.
+2. **Item 1, WebSockets.** As far as I can tell the router template does not
+   pass upgrades, which would leave our chat gateway and LiveKit's signalling
+   unable to connect through it. Is that right, or is there a supported way to
+   do it that I missed? `docs/bonesdeploy-router.patch` is one possible shape
+   for a change, untested, in case it is useful.
+3. **Item 2, the 1 MB body cap** in the router. Same question: is there a
+   setting for it that I did not find?
 
-Two questions that are not in the list below, because I have not read enough to
-answer them myself:
+Two more questions, which are not in the list below because I have not read
+enough to answer them myself:
 
 - Is a 1 GB box with swap off enough for `server setup` and for a build inside
   the `buildpack-deps:bookworm` container? We can resize for the build if not.
@@ -66,9 +75,9 @@ framework, so `infra/custom/templates/site-nginx.conf.j2` has a map on
 `$http_upgrade` and sends `Upgrade` and `Connection` on the gateway path. The
 router is your file and we cannot fix it from the project.
 
-Ask: make the router pass upgrades. `docs/bonesdeploy-router.patch` is a
-suggested diff. It is untested. The stock per-site templates want the same
-change.
+Suggestion: the router could pass upgrades. `docs/bonesdeploy-router.patch` is
+one way it might look. It is untested. The stock per-site templates would need
+the same change to carry WebSockets.
 
 ## 2. Uploads are capped at 1 MB
 
@@ -78,7 +87,7 @@ at both layers. Anything larger gets a 413 before the app sees it.
 Our side: `client_max_body_size 110m;` in our per-site template. The router
 still caps it at 1 MB.
 
-Ask: a setting in `bones.toml` that both templates read. The patch adds it to
+Suggestion: a setting in `bones.toml` that both templates read. The patch adds it to
 the router as `nginx_client_max_body_size`, defaulting to `1m` so nothing
 changes for existing sites. The plumbing from `bones.toml` is not in the patch.
 
@@ -96,9 +105,10 @@ Our side: the server reads the header from the right, skips entries that are
 not IP addresses and skips loopback, and only trusts the header at all when the
 socket peer is local (`server/src/lib/client-ip.ts`, 12 tests).
 
-Ask: have the router set `X-Forwarded-For $remote_addr` (overwrite, not
-append), since it is the edge, and have the per-site layer pass it through
-unchanged. Then the first entry is always true.
+Suggestion: the router could set `X-Forwarded-For $remote_addr` (overwrite, not
+append), since it is the edge, with the per-site layer passing it through
+unchanged. Then the first entry is always true. You may have a reason for the
+current shape that I cannot see from the templates.
 
 ## 4. Access logs are on by default
 
@@ -110,7 +120,8 @@ For us that is a record of who connected and when, written to disk, on a chat
 server whose point is not keeping that. Our per-site template sets
 `access_log off;`.
 
-Ask: a `bones.toml` switch for it, covering the router too.
+Suggestion: a `bones.toml` switch for it, covering the router too. Most sites
+want the log, so on by default makes sense.
 
 ## 5. The AppArmor profile blocks native Node addons and TCP
 
@@ -128,8 +139,10 @@ same):
 Our side: our own `app-profile.j2` adds `node_modules/**.node mr,` under the
 release path, and we pass `apparmor_network` with inet stream and dgram.
 
-Ask: add the `.node` rule to the stock Node profiles, and make the network
-default match the DATABASE_URL the tool generates.
+Question: have Node apps with native addons run under the stock profile for
+you? If they have, I have misread how the rule applies and would like to know.
+If not, a `.node` rule in the stock Node profiles, and a network default that
+matches the DATABASE_URL the tool generates, would cover it.
 
 ## 6. `bonesdeploy init` overwrites project-owned files
 
@@ -142,7 +155,7 @@ Running init in a repo that already has a real `runtime.py` replaces it with
 Our side: after init we run `git checkout infra/custom`. It is written into our
 runbook, but it is the kind of thing that gets forgotten once.
 
-Ask: skip files that already exist, or ask first.
+Suggestion: init could skip files that already exist, or ask first.
 
 ## 7. The generic build kit uses `npm install`
 
@@ -156,7 +169,7 @@ committed or fails.
 
 Our side: our own `deployment/build/02_build.sh` uses `npm ci`.
 
-Ask: `npm ci` when a `package-lock.json` exists, in all the kits.
+Suggestion: `npm ci` when a `package-lock.json` exists, in all the kits.
 
 ## 8. `server setup` opens all outbound traffic
 
@@ -168,8 +181,9 @@ allow list, so every `server setup` run undoes it, quietly.
 
 Our side: we rerun our firewall script after any `server setup`.
 
-Ask: a way to tell `server setup` to leave the firewall alone, or at least to
-leave the outbound policy alone.
+Question: is there already a way to tell `server setup` to leave the firewall,
+or just the outbound policy, alone? If not, that would be a useful option, but
+rerunning our script is a fine answer too.
 
 ## 9. The CLI cannot be built on Windows
 
@@ -188,9 +202,10 @@ The server half is fine: the v0.8.7 release carries a prebuilt
 `bonesremote-x86_64-unknown-linux-musl`, so nothing has to compile on the box.
 There is no prebuilt `bonesdeploy`.
 
-Ask: is WSL the way you would expect a Windows user to run it, and has anyone
-done that? And would you publish a prebuilt Linux `bonesdeploy` next to
-`bonesremote`, so that WSL needs no Rust toolchain either?
+Question: is WSL the way you would expect a Windows user to run it, and do you
+know of anyone who has? If a prebuilt Linux `bonesdeploy` ever appeared next to
+`bonesremote`, WSL would need no Rust toolchain either, but that is only an
+idea. Windows not being a target is a perfectly reasonable choice.
 
 ## Not a bug
 
