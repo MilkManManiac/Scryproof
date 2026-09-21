@@ -138,6 +138,27 @@ Our side: we rerun our firewall script after any `server setup`.
 Ask: a way to tell `server setup` to leave the firewall alone, or at least to
 leave the outbound policy alone.
 
+## 9. The CLI cannot be built on Windows
+
+Found 2026-09-21, the day the box came to exist. Wes's PC is Windows 11 with no
+WSL. `crates/bonesdeploy/Cargo.toml` depends on `openssh` 0.11.6 with
+`native-mux`, and that crate's `src/lib.rs` (lines 159-160) says:
+
+    #[cfg(not(unix))]
+    compile_error!("This crate can only be used on unix");
+
+So `cargo install ... bonesdeploy` cannot succeed on Windows whatever is
+installed. This is from reading the source; the build was not attempted,
+because Rust was never installed once this turned up.
+
+The server half is fine: the v0.8.7 release carries a prebuilt
+`bonesremote-x86_64-unknown-linux-musl`, so nothing has to compile on the box.
+There is no prebuilt `bonesdeploy`.
+
+Ask: is WSL the way you would expect a Windows user to run it, and has anyone
+done that? And would you publish a prebuilt Linux `bonesdeploy` next to
+`bonesremote`, so that WSL needs no Rust toolchain either?
+
 ## Not a bug
 
 The two-layer nginx design, the unix socket per site, the release/current
