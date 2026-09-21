@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-21, evening. The box exists, bonesdeploy has provisioned it, and http://scryproof.com/ serves the placeholder. Nothing of ours is deployed yet; see "M0 so far" below.
+**Last updated:** 2026-09-21, evening. The box exists, bonesdeploy has provisioned it, and http://scryproof.com/ serves the placeholder. The app is deployed over plain HTTP; TLS is next; see "M0 so far" below.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -17,7 +17,7 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Provisioned, not deployed.** Runbook steps 1 to 7 have run for real. bonesdeploy runs from WSL. `server setup` and `site setup` pass and the firewall is on, outbound default-deny, tested. Still to do: the app `.env` on the box, first deploy, TLS, LiveKit, gating, the reboot test. |
+| M0 infra | **Deployed over HTTP, no TLS yet.** Runbook steps 1 to 7 have run for real. bonesdeploy runs from WSL. `server setup` and `site setup` pass and the firewall is on, outbound default-deny, tested. Still to do: the app `.env` on the box, first deploy, TLS, LiveKit, gating, the reboot test. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
@@ -84,16 +84,27 @@ Living state. Update this at the end of every working session.
   a local-only database login, but it is a secret off the box, so decide
   whether that stands before the real `.env` goes up. Do not run
   `bonesdeploy secrets push` without reading what it would overwrite.
-- **Next, in order:** `bonesdeploy skill next` says `git push production main`,
-  `site ssl --domain scryproof.com --email ...`, `deploy`. Before deploy: the
-  app's `.env` in the site's `shared/` on the box, and check what lands in
-  `/root/.config/bonesremote/` and `/home/git/` (both on the root disk, not
-  the vault). The build is capped at 80% of memory with no swap, about 800 MB
-  here; if it dies, resize "CPU and RAM only", which costs money and is Wes's
-  call. Then `60-livekit-install.sh` (hash still to fill in),
-  `30-gate-services.sh`, and the reboot-stays-locked test.
-- **Untested still:** whether the router passes WebSockets and large uploads.
-  The router template is in our repo now, so it is fixable here if not.
+- **First deploy done, same night.** The app runs on the box on Postgres,
+  built there in the Podman container without a resize. `http://scryproof.com/`
+  serves it and `/api/health` answers. To ship: `bash ~/ship.sh` in WSL (pulls
+  from the Windows repo, pushes to the box, deploys, logs to `~/deploy.log`).
+  Build scripts moved to `infra/deployment/build/`, where 0.8.7 looks.
+- **The app's `.env` is on the box, on the vault**, at
+  `/srv/sites/gooffline/shared/.env`, root:gooffline 0640: `NODE_ENV`,
+  `PUBLIC_URL=https://scryproof.com`, `DATABASE_URL`, `SESSION_SECRET` (made on
+  the box with openssl). No value passed through the session. **Never run
+  `bonesdeploy secrets push`**: it replaces that file whole with the
+  tool-generated one, which has no `SESSION_SECRET`. LiveKit's three lines get
+  appended by hand after `60-livekit-install.sh`.
+- **The router is patched in `infra/.framework/`** for WebSocket upgrades and
+  110 MB bodies, tested before and after from outside. After changing anything
+  in `infra/`, `bonesdeploy site runtime --yes` reapplies it without a deploy.
+- **Next, in order:** TLS (`bonesdeploy site ssl --yes --domain scryproof.com
+  --email ...`; the email goes to Let's Encrypt, so Wes picks it). Nobody can
+  sign in until then: cookies are secure-only and WebCrypto needs HTTPS. Then
+  the first account, `60-livekit-install.sh` (hash still to fill in),
+  `30-gate-services.sh`, and the reboot-stays-locked test. Check what sits in
+  `/root/.config/bonesremote/` and `/home/git/`, both on the root disk.
 - **Passphrase steps run in Wes's own Git Bash window**, never through the
   session: `cd /c/Users/weshu/CodeProjects/GoOffline && bash scripts/box.sh ...`.
 

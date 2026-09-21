@@ -119,7 +119,39 @@ Also seen:
 - Our `infra/custom/runtime.py` and templates ran without changes. The
   `custom` hook did what the docs say.
 
-Still not run: `git push production`, `deploy`, `site ssl`.
+### Night: first deploy, and items 1 and 2 confirmed by test
+
+- **The build fits in 1 GB.** `npm ci`, esbuild and a Vite build ran inside the
+  Podman container on the 1 GB box with swap off, first try, about a minute.
+  No resize. That closes the memory question.
+- **Build scripts live in `infra/deployment/build/` on 0.8.7**, not the
+  top-level `deployment/build/` the README describes. With ours in the old
+  place the deploy said "No deployment scripts ... running build steps directly
+  on the exported source tree", built nothing, then failed safely at
+  "New release web root does not exist" and removed the release. Good failure;
+  the README section is stale.
+- **Item 1 confirmed, layer by layer, on the box.** Same WebSocket handshake
+  sent three ways: to the app on 127.0.0.1:8787 it gets the app's 401 (upgrade
+  understood, no session); to the per-site nginx socket, 401; to the router on
+  port 80, 404, because the router forwarded it as a plain GET. After the
+  change in `docs/bonesdeploy-router.patch` (now applied to
+  `infra/.framework/.../nginx/router.conf.j2`, and `project_name` is in the
+  render context as assumed), the router gives 401 too. The patch is no longer
+  untested.
+- **Item 2 confirmed.** A 2 MB POST through the router: 413. A 1-byte POST to
+  the same URL: 404 from the app. With `client_max_body_size` in the router it
+  reaches the app. We defaulted ours to 110m in our copy; upstream would want
+  1m and a setting. `ctx.runtime.data` already flows into the template context,
+  so the plumbing may be one line.
+- **Item 5 (native addons under AppArmor): not a problem with our own profile.**
+  argon2 loads in the build and the service runs under the enforced profile.
+  The stock profile was never tried, so that item stays a reading, not a finding.
+- **Secrets.** `init` generates `POSTGRES_URL` and friends into
+  `infra/secrets/.env.gpg`. We did not use `secrets push`, because it replaces
+  `shared/.env` whole and our rule is that app secrets are made on the box. We
+  piped `POSTGRES_URL` over SSH and built the rest of `.env` there.
+
+Still not run: `site ssl`.
 
 ## Still to find out, and report back
 
