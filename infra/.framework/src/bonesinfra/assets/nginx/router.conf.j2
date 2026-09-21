@@ -1,3 +1,12 @@
+# WebSocket upgrade. The variable is named per project because every site's
+# router file is included into the same http block, and nginx refuses a second
+# map that defines the same variable.
+{% set ws_connection = "bones_" ~ (project_name | replace("-", "_") | replace(".", "_")) ~ "_connection" %}
+map $http_upgrade ${{ ws_connection }} {
+    default upgrade;
+    ""      "";
+}
+
 {% if preview_domain and ssl_domain and preview_domain != ssl_domain %}
 # When a real domain is configured, preview_domain redirects to it.
 server {
@@ -22,6 +31,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection ${{ ws_connection }};
+        # GoOffline: uploads go to 100 MB. Upstream would want this defaulting to 1m.
+        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
     }
 
     location ^~ /.well-known/acme-challenge/ {
@@ -48,6 +62,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection ${{ ws_connection }};
+        # GoOffline: uploads go to 100 MB. Upstream would want this defaulting to 1m.
+        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
     }
 }
 {% endif %}
