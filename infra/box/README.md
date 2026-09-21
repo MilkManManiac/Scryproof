@@ -138,7 +138,7 @@ builds may be killed for memory. If the build dies with no error, or with
 
 1. Resize the droplet to 4 GB for the build ("CPU and RAM only", so it can be
    sized back down), then shrink it again. Costs cents.
-2. Lower Node's appetite in `deployment/build/02_build.sh`
+2. Lower Node's appetite in `infra/deployment/build/02_build.sh`
    (`NODE_OPTIONS=--max-old-space-size=1024`) and build the two workspaces one
    after the other rather than together.
 3. Swap, but only as a file **on the vault** and only during a build. Never
