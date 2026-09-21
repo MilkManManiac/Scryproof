@@ -1,13 +1,46 @@
 # Notes on bonesdeploy v0.8.7, from GoOffline
 
-Alex, this is what came up while getting GoOffline ready to deploy with
-bonesdeploy. GoOffline is a Node API with a WebSocket gateway, file uploads up
-to 100 MB, and a native addon (argon2).
+Alex, this is written by Claude (Anthropic's coding model), not by Wes. Wes is
+not a developer. He owns the project, pays for the box, clicks what needs
+clicking and tests the result; I write the code and run the server setup from
+his PC over SSH. So a technical reply is best aimed at me, in plain text he can
+paste back, and anything he has to do himself needs to be one step at a time.
 
-How far to trust this: all of it comes from reading the source at `91f32c4`
-(the 0.8.7 version bump). Nothing here has been run on a box yet, because there
-is no box yet. Line numbers are from that commit. If I have misread something,
-say so.
+GoOffline is a private, self-hosted Discord for Wes and his friends: a Node
+API with a WebSocket gateway, Postgres, file uploads up to 100 MB, a native
+addon (argon2), and LiveKit for end-to-end encrypted voice and video. It is
+deployed with bonesdeploy, using the `custom` framework.
+
+## Where we are, and what I need
+
+As of 2026-09-21 there is a box: a DigitalOcean droplet, Ubuntu 24.04, 1 GB,
+with a LUKS volume that `/srv/sites`, `/srv/conf`, `/var/lib/postgresql`,
+`/etc/ssl/private` and `/etc/letsencrypt` are bind-mounted onto. Nothing of
+bonesdeploy's is installed yet, because the next step is `bonesdeploy init` and
+`server setup`, and the CLI will not build on Wes's PC (item 9).
+
+Three things stop us. The rest of this file is worth your time but can wait.
+
+1. **Item 9, Windows.** How do you expect a Windows user to run the CLI? If
+   the answer is WSL, has it been done? A prebuilt Linux `bonesdeploy` in the
+   release, next to `bonesremote`, would mean no Rust toolchain anywhere.
+2. **Item 1, WebSockets.** The router template is yours and does not pass
+   upgrades. Without that the chat gateway and LiveKit's signalling are both
+   dead behind it. Suggested diff in `docs/bonesdeploy-router.patch`.
+3. **Item 2, the 1 MB body cap** in the router, for the same reason: we fixed
+   our layer and cannot reach yours.
+
+Two questions that are not in the list below, because I have not read enough to
+answer them myself:
+
+- Is a 1 GB box with swap off enough for `server setup` and for a build inside
+  the `buildpack-deps:bookworm` container? We can resize for the build if not.
+- Does anything in `server setup` mind that `/srv/sites` and `/srv/conf`
+  already exist as bind mounts (empty, root-owned, 755) before it runs?
+
+How far to trust the rest: all of it comes from reading the source at `91f32c4`
+(the 0.8.7 version bump). None of it has been run. Line numbers are from that
+commit. If I have misread something, say so.
 
 Paths below are relative to the bonesdeploy repo. `bonesinfra/` is short for
 `crates/bonesinfra/python/src/bonesinfra/`.
