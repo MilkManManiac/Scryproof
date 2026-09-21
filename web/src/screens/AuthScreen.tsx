@@ -83,6 +83,12 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
           password,
           inviteCode: inviteCode.trim() || undefined,
         });
+        // A server's invite link also admitted them to the instance. Finish the
+        // job so they land inside the server instead of an empty screen. An
+        // account-only invite has no server behind it and fails here, harmlessly.
+        if (inviteCode.trim()) {
+          await api.invites.accept(inviteCode.trim()).catch(() => undefined);
+        }
         onAuthenticated(user);
         return;
       }
