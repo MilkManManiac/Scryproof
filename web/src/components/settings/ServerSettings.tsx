@@ -16,6 +16,7 @@ import { LIMITS, Permission, toNames, decodeMask } from '@scryproof/shared';
 import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
+import { publicOrigin } from '../../lib/desktop';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
@@ -645,7 +646,7 @@ function InvitesPane({
                 className="button secondary inline"
                 onClick={() => {
                   void navigator.clipboard.writeText(
-                    `${window.location.origin}/invite/${invite.code}`,
+                    `${publicOrigin()}/invite/${invite.code}`,
                   );
                 }}
               >

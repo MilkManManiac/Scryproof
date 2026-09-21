@@ -17,6 +17,7 @@ import {
   encodeEvent,
 } from '@scryproof/shared';
 import type { ClientEvent, ServerEvent } from '@scryproof/shared';
+import { gatewayUrl } from './desktop';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -40,8 +41,7 @@ export class Gateway {
     this.closedByUs = false;
     this.clearTimers();
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${protocol}://${window.location.host}${GATEWAY_PATH}`;
+    const url = gatewayUrl(GATEWAY_PATH);
 
     this.handlers.onStatus(this.attempt === 0 ? 'connecting' : 'reconnecting');
 

@@ -220,6 +220,51 @@ Discord overall is `docs/discord-features.md`. `npm run test:dm` passes all 21 c
 - **Known gaps, by design for stage 1:** a new device shows older DMs as locked (stage 3 adds the
   recovery phrase); your own second device reads nothing until your first one
   accepts it.
+- **Fixed 2026-09-21:** a DM to somebody who has not loaded the site since DMs
+  shipped (so has no key) now says exactly that, at the top of the conversation
+  and in the send error. Wes hit this with a real friend.
+
+## The desktop app, moved up: a working shell, 2026-09-21
+
+Wes's call: the app is how people will mostly use this, so build it first and
+fit everything after it to both. Order now: shell (done) -> notifications,
+push-to-talk, tray, stream quality picker (the streamer picks, no cap from us
+until it is a problem), recovery phrase -> quick four -> UI pass.
+
+- `desktop/` is **not** a workspace, on purpose: the box's build must never
+  download Electron. It has its own `package.json` and lockfile. Electron
+  44.4.3, electron-builder 26.15.3, pinned exactly.
+- **How it works** (`desktop/src/main.js`, read its header): the client is
+  served from inside the installer at `app://scryproof`. `/api/*` on that
+  origin is forwarded by the main process to the server with the session
+  cookie kept in Electron's jar, so the client code is unchanged: still
+  relative paths. **No server change was needed**: no CORS, no SameSite=None.
+  The forwarder sends no Origin (the server's CSRF hook allows that, and was
+  written expecting it). The gateway socket is opened by the page; a
+  `webRequest` hook adds the cookie and strips the Origin on that one URL.
+- Client changes, two: `web/src/lib/desktop.ts` gives the gateway URL and the
+  public origin for invite links. Everything else is the same build.
+- Hardening so far: sandbox, context isolation, no navigation off `app://`,
+  links open in the real browser (http/https only), permissions granted to our
+  origin only, CSP sent with every file, packaged builds exit if started with a
+  debugging switch. **Not yet:** Electron fuses (RunAsNode and friends), signed
+  updates (key on Wes's PC, never the box), code signing (costs money: Wes's
+  call; without it Windows SmartScreen warns on install).
+- Screen share picker is a plain native menu of screens and windows. Works, is
+  ugly, gets thumbnails later. With sound = whole-machine audio (loopback).
+- `npm run test:desktop` (11 checks): starts the real app against the local API
+  and proves sign-in, cookie not readable by the page, still signed in after
+  reload, gateway open, a file up and back byte-for-byte, no navigating away.
+  Needs `npm run build --workspace web` first. Shot: `docs/shots/desktop-shell.png`.
+- Build the installer: `cd desktop && npm run dist` ->
+  `desktop/release/Scryproof-Setup-0.1.0.exe` (111 MB, gitignored). The packaged
+  app was run against scryproof.com: loads, health ok, login POST reaches the
+  server (401 for a bad password, not 403). **Nobody has signed in for real in
+  it yet, and voice in it is untested.** That is Wes's first look.
+- Trap: the desktop app is a new device to DMs. Old DMs show locked in it until
+  stage 3 (recovery phrase). Expected, and the reason stage 3 moved up.
+- Trap: an invite link opened in the app does nothing yet (`/invite/<code>`
+  is a browser path). Joining by invite still happens in the browser.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 

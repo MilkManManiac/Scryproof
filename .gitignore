@@ -25,3 +25,6 @@ desktop/target/
 # Python bytecode from the deploy tool
 __pycache__/
 *.pyc
+
+# The desktop app: installers and unpacked builds.
+desktop/release/

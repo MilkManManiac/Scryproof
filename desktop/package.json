@@ -1,0 +1,27 @@
+{
+  "name": "scryproof-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
+  "author": "Scryproof",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "client": "cd .. && npm run build --workspace web",
+    "start": "electron .",
+    "dist": "npm run client && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.scryproof.desktop",
+    "productName": "Scryproof",
+    "directories": { "output": "release" },
+    "files": ["src/**", "assets/icon.png", "package.json"],
+    "extraResources": [{ "from": "../web/dist", "to": "client" }],
+    "win": { "icon": "assets/icon.png", "target": "nsis" },
+    "nsis": { "oneClick": true, "perMachine": false, "artifactName": "Scryproof-Setup-${version}.exe" }
+  }
+}
