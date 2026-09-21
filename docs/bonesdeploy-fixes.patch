@@ -1,0 +1,163 @@
+
+--- a/crates/bonesinfra/python/src/bonesinfra/assets/nginx/default-deny.conf.j2	2026-09-21 14:06:32.782895084 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/assets/nginx/default-deny.conf.j2	2026-09-21 14:05:45.701375835 -0400
+@@ -2,6 +2,8 @@
+     listen 80 default_server;
+     listen [::]:80 default_server;
+     server_name _;
++    # Scryproof: no record of who connected and when.
++    access_log off;
+ 
+     return 444;
+ }
+@@ -10,6 +12,8 @@
+     listen 443 ssl default_server;
+     listen [::]:443 ssl default_server;
+     server_name _;
++    # Scryproof: no record of who connected and when.
++    access_log off;
+ 
+     ssl_certificate {{ paths.nginx_default_deny_ssl_certificate }};
+     ssl_certificate_key {{ paths.nginx_default_deny_ssl_certificate_key }};
+
+--- a/crates/bonesinfra/python/src/bonesinfra/assets/nginx/router.conf.j2	2026-09-21 14:06:32.784015789 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/assets/nginx/router.conf.j2	2026-09-21 14:05:45.701375835 -0400
+@@ -1,9 +1,20 @@
++# WebSocket upgrade. The variable is named per project because every site's
++# router file is included into the same http block, and nginx refuses a second
++# map that defines the same variable.
++{% set ws_connection = "bones_" ~ (project_name | replace("-", "_") | replace(".", "_")) ~ "_connection" %}
++map $http_upgrade ${{ ws_connection }} {
++    default upgrade;
++    ""      "";
++}
++
+ {% if preview_domain and ssl_domain and preview_domain != ssl_domain %}
+ # When a real domain is configured, preview_domain redirects to it.
+ server {
+     listen 80;
+     listen [::]:80;
+     server_name {{ preview_domain }};
++    # Scryproof: no record of who connected and when.
++    access_log off;
+     return 301 https://{{ ssl_domain }}$request_uri;
+ }
+ 
+@@ -12,7 +23,15 @@
+     listen 80;
+     listen [::]:80;
+     server_name {{ nginx_server_name }};
++    # Scryproof: no record of who connected and when.
++    access_log off;
+ 
++{% if nginx_ssl_enabled %}
++    # Scryproof: once there is a certificate, plain HTTP only redirects.
++    location / {
++        return 301 https://$host$request_uri;
++    }
++{% else %}
+     location / {
+         proxy_pass http://unix:{{ paths.runtime_nginx_socket }};
+         proxy_buffer_size 16k;
+@@ -22,7 +41,13 @@
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection ${{ ws_connection }};
++        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
++        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
+     }
++{% endif %}
+ 
+     location ^~ /.well-known/acme-challenge/ {
+         root {{ paths.acme_webroot }};
+@@ -35,6 +60,8 @@
+     listen 443 ssl;
+     listen [::]:443 ssl;
+     server_name {{ nginx_server_name }};
++    # Scryproof: no record of who connected and when.
++    access_log off;
+ 
+     ssl_certificate {{ nginx_ssl_certificate_path }};
+     ssl_certificate_key {{ nginx_ssl_certificate_key_path }};
+@@ -48,6 +75,11 @@
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection ${{ ws_connection }};
++        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
++        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
+     }
+ }
+ {% endif %}
+
+--- a/crates/bonesinfra/python/src/bonesinfra/assets/scripts/configure-postgres-project.sh.j2	2026-09-21 14:06:32.785345572 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/assets/scripts/configure-postgres-project.sh.j2	2026-09-21 13:30:45.983026021 -0400
+@@ -1,7 +1,6 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+ 
+-USER="{{ user }}"
+ DATABASE="{{ database }}"
+ USERNAME="{{ username }}"
+ PASSWORD="{{ password }}"
+@@ -17,5 +16,7 @@
+ END
+ \$\$;
+ SQL
+-sudo -u postgres psql -v database="$DATABASE" -v user="$USERNAME" -c "SELECT format('CREATE DATABASE %I OWNER %I', :'database', :'user') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'database') \\gexec"
++sudo -u postgres psql -v ON_ERROR_STOP=1 -v database="$DATABASE" -v user="$USERNAME" <<'SQL'
++SELECT format('CREATE DATABASE %I OWNER %I', :'database', :'user') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'database') \gexec
++SQL
+ sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = 'localhost'"
+
+--- a/crates/bonesinfra/python/src/bonesinfra/assets/scripts/ensure-default-deny-ssl.sh.j2	2026-09-21 14:06:32.785450385 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/assets/scripts/ensure-default-deny-ssl.sh.j2	2026-09-21 13:59:44.593044138 -0400
+@@ -9,7 +9,7 @@
+ fi
+ 
+ install -d -m 0755 /etc/ssl/certs
+-install -d -m 0700 /etc/ssl/private
++install -d -m 0710 /etc/ssl/private
+ 
+ openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+   -subj /CN=bonesdeploy-default-deny.invalid \
+
+--- a/crates/bonesinfra/python/src/bonesinfra/services/linux/apparmor/app.py	2026-09-21 14:06:32.803848248 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/services/linux/apparmor/app.py	2026-09-21 13:33:11.345129460 -0400
+@@ -35,7 +35,7 @@
+     )
+     server.shell(
+         name=f"Enforce {runtime} AppArmor profile",
+-        commands=[f"aa-enforce {profile_name}"],
++        commands=[f'grep -qxF "{profile_name} (enforce)" /sys/kernel/security/apparmor/profiles'],
+         _sudo=True,
+     )
+     return profile_name
+
+--- a/crates/bonesinfra/python/src/bonesinfra/services/linux/apparmor/nginx.py	2026-09-21 14:06:32.803870968 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/services/linux/apparmor/nginx.py	2026-09-21 13:33:11.344976131 -0400
+@@ -30,6 +30,6 @@
+     )
+     server.shell(
+         name="Ensure nginx profile is in enforce mode",
+-        commands=[f"aa-enforce {profile_path}"],
++        commands=[f'grep -qxF "{profile_name} (enforce)" /sys/kernel/security/apparmor/profiles'],
+         _sudo=True,
+     )
+
+--- a/crates/bonesinfra/python/src/bonesinfra/services/runtime/postgres.py	2026-09-21 14:06:32.804939174 -0400
++++ b/crates/bonesinfra/python/src/bonesinfra/services/runtime/postgres.py	2026-09-21 13:29:16.696468320 -0400
+@@ -19,7 +19,6 @@
+         server.script_template(
+             name="Configure PostgreSQL for project",
+             src=str(SCRIPTS_DIR / "configure-postgres-project.sh.j2"),
+-            user=f"{project}_postgres",
+             project=project,
+             database=creds.get("database", project),
+             username=creds.get("username", f"{project}_postgres"),
+Only in scryproof/infra/.framework/src: bonesinfra.egg-info

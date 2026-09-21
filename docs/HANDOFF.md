@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-21, evening. The box exists, bonesdeploy has provisioned it, and http://scryproof.com/ serves the placeholder. The app is deployed over plain HTTP; TLS is next; see "M0 so far" below.
+**Last updated:** 2026-09-21, night. **https://scryproof.com is live**: the app, Postgres, TLS, LiveKit, all gated behind the vault. The project was renamed from GoOffline to Scryproof the same day. What is left of M0 is the reboot test and Wes making the owner account; see "M0 so far" below.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -17,7 +17,7 @@ Living state. Update this at the end of every working session.
 
 | Milestone | State |
 |---|---|
-| M0 infra | **Deployed over HTTP, no TLS yet.** Runbook steps 1 to 7 have run for real. bonesdeploy runs from WSL. `server setup` and `site setup` pass and the firewall is on, outbound default-deny, tested. Still to do: the app `.env` on the box, first deploy, TLS, LiveKit, gating, the reboot test. |
+| M0 infra | **Live at https://scryproof.com, one test short of done.** Every runbook script has now run for real. Deployed with bonesdeploy from WSL, TLS from Let's Encrypt, LiveKit up with TURN over TLS, every secret-holding service gated behind the vault, firewall default-deny both ways. Left: the reboot-stays-locked test (needs Wes and the passphrase), and Wes creating the owner account. |
 | M1 text skeleton | **Done. Runs locally, end to end.** |
 | M2 roles and permissions | **Done.** Server, settings UI, hierarchy reordering, category permissions, audit log. Covered by tests. |
 | M3 voice | **Three browsers hold an encrypted call against a local LiveKit, and a test proves it** (`npm run test:voice`, 28 checks). Voice settings exist: microphone and speaker choice, a live meter, always-on / threshold / push-to-talk, per-person volume to 200%, join and leave chimes (`docs/shots/voice-settings.png`). **Not done:** never on a real box, no TURN path tested, three participants at most. |
@@ -30,83 +30,98 @@ Living state. Update this at the end of every working session.
 
 ## M0 so far (2026-09-21)
 
-- **The box:** DigitalOcean droplet `Scryproof`, **NYC1** (ATL1 had no Basic
-  plans to sell), Ubuntu 24.04, **1 GB / 1 vCPU, $6** — Wes's choice, smaller
-  than the 2 GB planned. IPv4 `68.183.16.145`, in the gitignored `.env.box`.
-  Expect the first build to need a temporary resize ("CPU and RAM only").
-- **The domain: `scryproof.com`**, bought at Cloudflare Registrar, which forces
-  Cloudflare DNS. One A record, **DNS only (grey cloud)**, verified from here to
-  resolve straight to the droplet. If it ever resolves to a Cloudflare address,
-  someone turned the proxy on and non-negotiable 1 is broken. The project may
-  be renamed to match; the box, volume, key and vault labels say `scryproof`
-  and can stay that way.
-- **Vault:** LUKS2 on the 10 GB volume `scryproof-vault`, argon2id capped at
-  256 MB (it settled near 103 MB). Passphrase is in Wes's Bitwarden and nowhere
-  else. Header backup is at `Documents\Scryproof-keep\` on his PC, checksum
-  matched, deleted from the box. cryptsetup's "requires more than available
-  memory" warning at open is harmless at this size.
+![The live site, first run](shots/m0-live.png)
+
+**Renamed GoOffline to Scryproof on 2026-09-21**, at Wes's word: packages, UI,
+scripts, docs, the GitHub repo (`MilkManManiac/Scryproof`), the SSH key
+(`~/.ssh/scryproof`), the vault labels, everything on the box. Still carrying
+the old name, because only Wes can change them: the droplet and the volume in
+the DigitalOcean panel (both cosmetic; the scripts find the volume without its
+name), and the project folder on his PC, which cannot be renamed from inside a
+session running in it. `docs/for-alex.md` keeps the old name because it is the
+note as sent.
+
+- **The box:** DigitalOcean droplet (named `GoOffline` in the panel), **NYC1**,
+  Ubuntu 24.04, **1 GB / 1 vCPU, $6**. IPv4 `68.183.16.145`, in the gitignored
+  `.env.box`. 1 GB turned out to be enough for everything including the build;
+  about 500 MB in use at rest with LiveKit running.
+- **The domain: `scryproof.com`**, Cloudflare Registrar, one A record, **DNS
+  only (grey cloud)**. If it ever resolves to a Cloudflare address, someone
+  turned the proxy on and non-negotiable 1 is broken.
+- **Vault:** LUKS2 on the 10 GB volume, label `scryproof-vault`, argon2id
+  capped at 256 MB. Passphrase in Wes's Bitwarden and nowhere else. Header
+  backup at `Documents\Scryproof-keep\` on his PC (taken before the label
+  change; it still restores the keyslots, it would only put the old label
+  back). `/mnt/vault` is 711 so the livekit user can reach its config;
+  `binds/` under it is 700.
 - **Bound onto the vault before anything was installed:** `/srv/sites`,
   `/srv/conf`, `/var/lib/postgresql`, `/etc/ssl/private`, `/etc/letsencrypt`.
-- **Scripts that have now really run:** `00-facts`, `50-host-hygiene`,
-  `10-vault-create`, `20-vault-adopt`. Two needed fixes (a missing `mkdir`, and
-  a chmod that ran before the mount). Everything from `30-` on is still
-  unverified. `docs/box/facts-before.txt` is the "before".
-- **bonesdeploy runs from WSL** (Wes allowed it, 2026-09-21). Ubuntu 26.04 in
-  WSL2, Rust and the CLI at v0.8.7 inside it, nothing on the Windows side. The
-  CLI cannot work on the Windows drive (no chmod on `/mnt/c`), so there is a
-  second clone at `~/scryproof` in WSL whose `origin` is the Windows repo. Flow:
-  commit here, `git pull` there, run `bonesdeploy` there. To bring its commits
-  back: `git pull //wsl.localhost/Ubuntu/home/weshu/scryproof main`. Drive it
-  from this session with `wsl.exe -d Ubuntu -- bash -lc '. ~/.cargo/env; cd ~/scryproof && ...'`
-  (root without a password: `wsl.exe -d Ubuntu -u root`). The box's SSH key is
-  copied to `~/.ssh/scryproof` there.
-- **`init` only scaffolds when there is no `infra/` folder.** Ours existed, so
-  it had to be moved aside, init run fresh, and `box/`, `livekit/`, `custom/`
-  put back. It writes the whole provisioning engine into `infra/.framework/`
-  (190 files, committed, and that copy is what runs). bonesdeploy's own config
-  is the gitignored root `.env` in the WSL clone: template `custom`, web root
-  `web/dist`, domain `scryproof.com`, service `postgres`.
-- **Three fixes live in `infra/.framework/`** and `bonesdeploy update` would
-  wipe them: two bugs in its Postgres step, and `aa-enforce`, which cannot
-  parse a profile Ubuntu 24.04 ships with Podman. Details, for Alex, in
-  `docs/for-alex-updates.md`. `docs/for-alex.md` was sent as written and two of
-  its claims have since turned out wrong; that log says which.
-- **On the box now:** nginx (router plus per-site), Postgres 16 with its data
-  on the vault, Node 24.19.0, rootless Podman, fail2ban, the `git` deploy user,
-  `bonesremote`, and the placeholder service `scryproof-scryproof`. About
-  450 MB of the 1 GB in use at rest.
-- **Firewall on and tested** (`40-firewall.sh 22`, first real run, no fixes
-  needed): inbound deny, outbound deny with logging, a fresh SSH connection
-  still works, HTTPS out works, an unlisted port out is blocked and logged.
-  Only `server setup` resets outbound to allow; `site setup` leaves ufw alone.
-- **The Postgres password** was generated by `init` into
-  `infra/secrets/.env.gpg` in the WSL clone (gitignored, GPG key in WSL). It is
-  a local-only database login, but it is a secret off the box, so decide
-  whether that stands before the real `.env` goes up. Do not run
-  `bonesdeploy secrets push` without reading what it would overwrite.
-- **First deploy done, same night.** The app runs on the box on Postgres,
-  built there in the Podman container without a resize. `http://scryproof.com/`
-  serves it and `/api/health` answers. To ship: `bash ~/ship.sh` in WSL (pulls
-  from the Windows repo, pushes to the box, deploys, logs to `~/deploy.log`).
-  Build scripts moved to `infra/deployment/build/`, where 0.8.7 looks.
+- **Every box script has now really run:** `00`, `50`, `10`, `20`, `40`, `60`,
+  `30`. Fixes along the way: a missing `mkdir` (50), a chmod before the mount
+  and then 700 where 711 was needed (10), and 60 now writes LiveKit's key and
+  secret straight into the app's `.env` instead of printing them, and installs
+  a certbot deploy hook that copies the certificate to where the livekit user
+  can read it. Never yet run: `scryproof-unlock` and `scryproof-lock`.
+- **bonesdeploy runs from WSL** (Wes allowed it). Ubuntu 26.04 in WSL2, Rust
+  and the CLI at v0.8.7 inside it, nothing on the Windows side. The CLI cannot
+  work on the Windows drive, so there is a second clone at `~/scryproof` in WSL
+  whose `origin` is the Windows repo. Drive it from a session with
+  `wsl.exe -d Ubuntu -- bash -lc '. ~/.cargo/env; cd ~/scryproof && ...'`
+  (root, no password: `wsl.exe -d Ubuntu -u root`). Shell variables get eaten
+  on the way through `wsl.exe ... bash -lc`, and `\\` collapses in Git Bash
+  heredocs: put anything non-trivial in a script file and run that.
+  - **To ship:** commit here, then `bash ~/ship.sh` in WSL. It pulls from the
+    Windows repo, pushes to the box, deploys, and logs to `~/deploy.log`.
+  - **After changing anything under `infra/`:** `bonesdeploy site runtime --yes`
+    reapplies nginx, units and profiles without a deploy.
+  - **If the Windows project folder is renamed**, fix the WSL clone's origin:
+    `git -C ~/scryproof remote set-url origin /mnt/c/Users/weshu/CodeProjects/<new>`.
+- **`init` only scaffolds when there is no `infra/` folder.** Move `infra/`
+  aside, init, put ours back, `git checkout -- .`. It writes the provisioning
+  engine into `infra/.framework/` (committed; that copy is what runs). Its
+  config is the gitignored root `.env` in the WSL clone.
+- **Seven files in `infra/.framework/` are patched** and `bonesdeploy update`
+  would wipe them: Postgres provisioning (two bugs), `/etc/ssl/private` mode,
+  `aa-enforce` on Ubuntu 24.04, and in the router: WebSocket upgrades, 110 MB
+  bodies, HTTP to HTTPS redirect, no access log. `docs/bonesdeploy-fixes.patch`
+  is the whole diff; reapply it after any update.
+- **For Alex:** `docs/for-alex.md` was sent on 2026-09-21 and two of its claims
+  were wrong. `docs/for-alex-followup.md` plus `docs/bonesdeploy-fixes.patch`
+  is the one follow-up, written to need no reply. Whether and when it goes is
+  Wes's call. `docs/for-alex-updates.md` is the raw log behind it.
 - **The app's `.env` is on the box, on the vault**, at
   `/srv/sites/scryproof/shared/.env`, root:scryproof 0640: `NODE_ENV`,
-  `PUBLIC_URL=https://scryproof.com`, `DATABASE_URL`, `SESSION_SECRET` (made on
-  the box with openssl). No value passed through the session. **Never run
-  `bonesdeploy secrets push`**: it replaces that file whole with the
-  tool-generated one, which has no `SESSION_SECRET`. LiveKit's three lines get
-  appended by hand after `60-livekit-install.sh`.
-- **The router is patched in `infra/.framework/`** for WebSocket upgrades and
-  110 MB bodies, tested before and after from outside. After changing anything
-  in `infra/`, `bonesdeploy site runtime --yes` reapplies it without a deploy.
-- **Next, in order:** TLS (`bonesdeploy site ssl --yes --domain scryproof.com
-  --email ...`; the email goes to Let's Encrypt, so Wes picks it). Nobody can
-  sign in until then: cookies are secure-only and WebCrypto needs HTTPS. Then
-  the first account, `60-livekit-install.sh` (hash still to fill in),
-  `30-gate-services.sh`, and the reboot-stays-locked test. Check what sits in
-  `/root/.config/bonesremote/` and `/home/git/`, both on the root disk.
-- **Passphrase steps run in Wes's own Git Bash window**, never through the
-  session: `cd /c/Users/weshu/CodeProjects/Scryproof && bash scripts/box.sh ...`.
+  `PUBLIC_URL`, `DATABASE_URL`, `SESSION_SECRET` (made on the box), and the
+  three LiveKit lines. No value passed through a session. **Never run
+  `bonesdeploy secrets push`**: it replaces that file with the tool's own,
+  which has none of ours. The Postgres password also sits GPG-encrypted in the
+  WSL clone (`infra/secrets/.env.gpg`, gitignored), because `site setup` needs
+  it; the database only listens on loopback.
+- **Gated behind the vault, in start order** (`/etc/scryproof/units.list`):
+  the journal archive, livekit, `postgresql@16-main`, `postgresql`, `nginx`,
+  `scryproof-nginx`, `scryproof-scryproof`, `scryproof.target`, `certbot.timer`.
+  A locked box answers on SSH and nothing else.
+- **Firewall on and tested:** inbound deny, outbound deny with logging. Only
+  `server setup` resets outbound to allow; rerun `40-firewall.sh 22` after it.
+- **Checked from outside:** HTTP redirects to HTTPS; `/api/health` answers; a
+  WebSocket handshake reaches the app at `/gateway` and LiveKit at `/rtc`; a
+  2 MB body gets through; the router writes no access log.
+- **On the root disk, not the vault:** `/home/git/scryproof.git` (source, no
+  secrets), `/root/.config/bonesremote/`, `/var/log/bonesdeploy/`, and nginx's
+  `error.log`, which can hold client IPs. Looked at, nothing secret found;
+  `error.log` is worth a second thought.
+
+### What is left of M0
+
+1. **Wes makes the owner account** at https://scryproof.com. The first account
+   needs no invite and owns the instance, so until he does, anyone who finds
+   the address could. His password is his; it never goes through a session.
+2. **The reboot-stays-locked test.** Reboot the box, confirm SSH works and
+   nothing else answers, then Wes runs `bash scripts/unlock.sh` in his own Git
+   Bash window and pastes the passphrase. First real run of `scryproof-unlock`,
+   so expect to fix something.
+3. **A call between two real machines**, which is M3's proof rather than M0's:
+   TURN has still never carried one.
 
 ## Found on 2026-09-17, late: LiveKit hands out Google and Twilio STUN by default
 

@@ -165,3 +165,13 @@ Still not run: `site ssl`.
 - Item 6: does `init` overwrite `infra/custom/runtime.py` as read?
 - The two open questions: 1 GB with swap off for `server setup` and the build;
   `/srv/sites` and `/srv/conf` pre-existing as bind mounts.
+
+### Late night: renamed to Scryproof, TLS, and the follow-up written
+
+Everything after the first deploy is folded into `docs/for-alex-followup.md`,
+which is the one document meant for him, with `docs/bonesdeploy-fixes.patch`.
+New since the last entry: `/etc/ssl/private` set to 0700 by
+`ensure-default-deny-ssl.sh.j2` breaks the next Postgres restart; no way to
+remove or rename a site; stock router serves plain HTTP after a certificate
+exists; the router's access log is on (item 4 confirmed, and turned off here).
+`site ssl` worked first time.
