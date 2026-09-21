@@ -117,11 +117,24 @@ const spaced = (fingerprint: string): string => (fingerprint.slice(0, 16).match(
 
 function DeviceWarnings({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
   const { state, acceptDevice } = useDms();
-  const waiting = (state.devices[dm.id] ?? []).filter((entry) => !isTrusted(entry.verdict) && entry.verdict !== 'invalid');
-  if (waiting.length === 0) return null;
+  const known = state.devices[dm.id];
+  const waiting = (known ?? []).filter((entry) => !isTrusted(entry.verdict) && entry.verdict !== 'invalid');
+  // Somebody whose browser has not made a key yet. Said here, before anything is typed.
+  const absent = known
+    ? dm.members.filter((member) => member.id !== selfId && !known.some((entry) => entry.device.userId === member.id))
+    : [];
+  if (waiting.length === 0 && absent.length === 0) return null;
 
   return (
     <div className="dm-warnings">
+      {absent.map((member) => (
+        <div className="dm-warning" key={member.id}>
+          <div>
+            <strong>{member.displayName} cannot get messages here yet.</strong> They have not opened Scryproof since DMs
+            were added, so their browser has not made a key to lock anything to. It will work once they have signed in.
+          </div>
+        </div>
+      ))}
       {waiting.map((entry) => {
         const person = dm.members.find((member) => member.id === entry.device.userId);
         return (

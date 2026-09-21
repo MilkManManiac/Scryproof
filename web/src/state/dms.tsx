@@ -525,6 +525,12 @@ export function DmProvider({ children }: { children: ReactNode }) {
       const dm = stateRef.current.dms[dmId];
       const others = dm?.members.filter((member) => member.id !== self.userId) ?? [];
       for (const other of others) {
+        if (!known.some((entry) => entry.device.userId === other.id)) {
+          // Their browser makes its key the first time it loads a build that has DMs.
+          throw new Error(
+            `${other.displayName} has not opened Scryproof since DMs were added, so there is no key to lock this to yet. It will work once they have signed in.`,
+          );
+        }
         if (!recipients.some((entry) => entry.userId === other.id)) {
           throw new Error(
             `${other.displayName} has no device you have accepted, so there is nothing to lock this message to. If a warning is showing above, that is why.`,
