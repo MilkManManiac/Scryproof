@@ -202,10 +202,22 @@ Discord overall is `docs/discord-features.md`. `npm run test:dm` passes all 21 c
 - **Found on the way:** the quoted line above a reply had zero width, in
   channels too, since `.message` became a grid: the quote took the avatar's
   40px column. Fixed in `styles.css`; the DM test measures it now.
-- **Still to do in stage 2:** attachments locked in the browser before upload.
-  Desktop notifications do not exist anywhere in the app yet; that is build-list
-  item 6 and should cover channels and DMs together ("who, not what" for DMs).
-- **Known gaps, by design for stage 1:** no files in DMs yet (rest of stage 2); a new device shows older DMs as locked (stage 3 adds the
+- **Stage 2, part two (2026-09-21, shipped): files.** A file is locked in the
+  browser under a key of its own (`sealFile`), the locked bytes are uploaded to
+  `POST /api/dms/:dmId/files`, and the name, type, size and key travel inside
+  the sealed message. The `dm_files` row (migration `0005`) holds a size and a
+  storage key and nothing else. Photos are scrubbed of EXIF first, as in
+  channels. Pictures of five known types are opened and drawn in place; anything
+  else, SVG included, is a download. 50 MB limit, because a file is locked and
+  opened whole in memory. Deleting a message removes its files from the store.
+  `npm run test:dm` is 42 checks (`docs/shots/dm-files.png`).
+- **Stage 2 is done except notifications.** Desktop notifications do not exist
+  anywhere in the app yet; that is build-list item 6 and should cover channels
+  and DMs together ("who, not what" for DMs).
+- **Small gap:** a file uploaded and then abandoned without clicking its X
+  (tab closed) stays in the store unclaimed. Channels have the same gap. A
+  sweep of unclaimed rows older than a day would close both.
+- **Known gaps, by design for stage 1:** a new device shows older DMs as locked (stage 3 adds the
   recovery phrase); your own second device reads nothing until your first one
   accepts it.
 

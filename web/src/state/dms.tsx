@@ -30,6 +30,7 @@ import {
   type AssessedDevice,
   type DmBody,
   type DmDevice,
+  type DmFileRef,
   assessDevices,
   createDmKeypair,
   describeDevice,
@@ -61,6 +62,7 @@ export interface DmView {
   unverified: boolean;
   /** The message this one answers. Read from inside the sealed body. */
   replyTo: string | null;
+  files: DmFileRef[];
   editedAt: string | null;
 }
 
@@ -168,7 +170,9 @@ function reducer(state: DmState, action: Action): DmState {
         messages: {
           ...state.messages,
           [action.dmId]: existing.map((view) =>
-            view.id === action.id ? { ...view, deleted: true, text: null, problem: null, editedAt: null } : view,
+            view.id === action.id
+              ? { ...view, deleted: true, text: null, problem: null, editedAt: null, files: [] }
+              : view,
           ),
         },
       };
@@ -197,7 +201,7 @@ interface DmValue {
   openDm: (dmId: string) => void;
   /** Open the conversation with a person, making it if need be. */
   openWith: (userId: string) => Promise<void>;
-  send: (dmId: string, text: string, replyTo?: string | null) => Promise<void>;
+  send: (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => Promise<void>;
   /** Seal the message again with new text. What it replied to stays. */
   edit: (dmId: string, messageId: string, text: string) => Promise<void>;
   /** Add this emoji, or take it back if it is already yours. */
@@ -311,6 +315,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       createdAt: message.createdAt,
       deleted: message.deleted,
       replyTo: null,
+      files: [],
       editedAt: message.deleted ? null : message.editedAt,
     };
     const self = device.current;
@@ -339,6 +344,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       ...base,
       text: opened.body.text,
       replyTo: opened.body.replyTo ?? null,
+      files: opened.body.files ?? [],
       problem: null,
       unverified: !isTrusted(sender.verdict),
     };
@@ -531,9 +537,12 @@ export function DmProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async (dmId: string, text: string, replyTo?: string | null) => {
-      const { known, message } = await seal(dmId, replyTo ? { v: 1, text, replyTo } : { v: 1, text });
-      const { message: created } = await api.dms.send(dmId, message);
+    async (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => {
+      const body: DmBody = { v: 1, text };
+      if (replyTo) body.replyTo = replyTo;
+      if (files && files.length > 0) body.files = files;
+      const { known, message } = await seal(dmId, body);
+      const { message: created } = await api.dms.send(dmId, { ...message, fileIds: files?.map((file) => file.id) });
       remember([created]);
       dispatch({ type: 'touched', dmId, messageId: created.id });
       dispatch({ type: 'read', dmId, messageId: created.id });
@@ -546,10 +555,11 @@ export function DmProvider({ children }: { children: ReactNode }) {
     async (dmId: string, messageId: string, text: string) => {
       const current = stateRef.current.messages[dmId]?.find((view) => view.id === messageId);
       if (!current || current.text === null) return;
-      const { known, message } = await seal(
-        dmId,
-        current.replyTo ? { v: 1, text, replyTo: current.replyTo } : { v: 1, text },
-      );
+      // Everything but the words is carried over: what it answered, what it came with.
+      const body: DmBody = { v: 1, text };
+      if (current.replyTo) body.replyTo = current.replyTo;
+      if (current.files.length > 0) body.files = current.files;
+      const { known, message } = await seal(dmId, body);
       const { message: updated } = await api.dms.edit(dmId, messageId, message);
       remember([updated]);
       dispatch({ type: 'messages', dmId, views: [await toView(updated, known)], replace: false });

@@ -11,8 +11,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { DmChannel, PublicUser } from '@scryproof/shared';
 import { LIMITS } from '@scryproof/shared';
 
-import type { AssessedDevice } from '../lib/dm-crypto';
-import { isTrusted } from '../lib/dm-crypto';
+import { api, ApiError } from '../lib/api';
+import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
+import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
+import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -334,6 +336,92 @@ function DmMessages({
   );
 }
 
+/* ---------------------------------- files ---------------------------------- */
+
+/**
+ * Only these are drawn in place. Anything else, SVG above all, is handed over
+ * as a download and never given to the page to interpret.
+ */
+const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
+/** Past this a picture waits to be asked for rather than opening itself. */
+const AUTO_OPEN_BYTES = 15 * 1024 * 1024;
+
+/** Opened files, kept for the life of the tab so scrolling does not decrypt twice. */
+const openedFiles = new Map<string, Promise<string | null>>();
+
+function objectUrlFor(dmId: string, file: DmFileRef): Promise<string | null> {
+  const existing = openedFiles.get(file.id);
+  if (existing) return existing;
+  const made = (async () => {
+    const opened = await openFile(dmId, file, await api.dms.downloadFile(dmId, file.id));
+    if (!opened) return null;
+    // The type is only ever one of ours or a plain download: never what the sender typed.
+    const type = PICTURE_TYPES.has(file.type) ? file.type : 'application/octet-stream';
+    return URL.createObjectURL(new Blob([opened as BlobPart], { type }));
+  })();
+  made.catch(() => openedFiles.delete(file.id));
+  openedFiles.set(file.id, made);
+  return made;
+}
+
+const sizeLabel = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+function DmFile({ dmId, file }: { dmId: string; file: DmFileRef }) {
+  const picture = PICTURE_TYPES.has(file.type);
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle');
+
+  useEffect(() => {
+    if (!picture || file.size > AUTO_OPEN_BYTES) return;
+    let cancelled = false;
+    setState('working');
+    objectUrlFor(dmId, file)
+      .then((made) => {
+        if (cancelled) return;
+        setUrl(made);
+        setState(made ? 'idle' : 'failed');
+      })
+      .catch(() => !cancelled && setState('failed'));
+    return () => {
+      cancelled = true;
+    };
+  }, [dmId, file, picture]);
+
+  async function save() {
+    setState('working');
+    try {
+      const made = await objectUrlFor(dmId, file);
+      if (!made) {
+        setState('failed');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = made;
+      link.download = file.name;
+      link.click();
+      setState('idle');
+    } catch {
+      setState('failed');
+    }
+  }
+
+  if (picture && url) return <img className="attachment-image" src={url} alt={file.name} />;
+
+  return (
+    <button type="button" className="attachment-file dm-file" disabled={state === 'working'} onClick={() => void save()}>
+      {file.name}
+      <span style={{ color: 'var(--text-dim)' }}>
+        {state === 'failed'
+          ? 'could not be opened'
+          : state === 'working'
+            ? 'unlocking'
+            : sizeLabel(file.size)}
+      </span>
+    </button>
+  );
+}
+
 /** Reactions as the row draws them: one chip per emoji, in the order first used. */
 function grouped(reactions: DmReactionView[]): { emoji: string; userIds: string[] }[] {
   const chips: { emoji: string; userIds: string[] }[] = [];
@@ -434,15 +522,22 @@ function DmRow({
     );
   } else {
     body = (
-      <div className="message-text">
-        {withLinks(view.text)}
-        {view.editedAt ? <span className="message-edited">edited</span> : null}
-        {view.unverified ? (
-          <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
-            unaccepted device
-          </span>
+      <>
+        {view.text || view.editedAt || view.unverified ? (
+          <div className="message-text">
+            {withLinks(view.text)}
+            {view.editedAt ? <span className="message-edited">edited</span> : null}
+            {view.unverified ? (
+              <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
+                unaccepted device
+              </span>
+            ) : null}
+          </div>
         ) : null}
-      </div>
+        {view.files.map((file) => (
+          <DmFile key={file.id} dmId={view.dmId} file={file} />
+        ))}
+      </>
     );
   }
 
@@ -574,8 +669,48 @@ function DmComposer({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Record<string, DmFileRef[]>>({});
+  const [locking, setLocking] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
   const text = drafts[dm.id] ?? '';
+  const files = pending[dm.id] ?? [];
+
+  async function attach(list: FileList | File[] | null) {
+    const chosen = list ? Array.from(list) : [];
+    if (chosen.length === 0 || !state.ready) return;
+    if (files.length + chosen.length > LIMITS.attachmentsPerMessage) {
+      setError(`Up to ${LIMITS.attachmentsPerMessage} files per message.`);
+      return;
+    }
+    setLocking(true);
+    setError(null);
+    try {
+      for (const file of chosen) {
+        if (file.size > LIMITS.dmFileBytes) {
+          throw new Error(`Files here are limited to ${Math.floor(LIMITS.dmFileBytes / (1024 * 1024))} MB.`);
+        }
+        // Same as in channels: a photo is re-encoded first so where it was
+        // taken never leaves this machine, even locked.
+        const clean = await scrubImage(file);
+        const { sealed, key, iv } = await sealFile(dm.id, new Uint8Array(await clean.arrayBuffer()));
+        const stored = await api.dms.uploadFile(dm.id, sealed);
+        const ref: DmFileRef = { id: stored.id, name: clean.name, type: clean.type, size: clean.size, key, iv };
+        setPending((current) => ({ ...current, [dm.id]: [...(current[dm.id] ?? []), ref] }));
+      }
+    } catch (problem) {
+      if (problem instanceof ScrubError || problem instanceof ApiError || problem instanceof Error) setError(problem.message);
+      else setError('Upload failed.');
+    } finally {
+      setLocking(false);
+      if (filePicker.current) filePicker.current.value = '';
+    }
+  }
+
+  function discard(file: DmFileRef) {
+    setPending((current) => ({ ...current, [dm.id]: (current[dm.id] ?? []).filter((entry) => entry.id !== file.id) }));
+    void api.dms.discardFile(dm.id, file.id).catch(() => undefined);
+  }
 
   useEffect(() => {
     setError(null);
@@ -596,11 +731,12 @@ function DmComposer({
 
   async function submit() {
     const body = text.trim();
-    if (!body || busy) return;
+    if ((!body && files.length === 0) || busy || locking) return;
     setBusy(true);
     setError(null);
     try {
-      await send(dm.id, body, target && !target.deleted ? target.id : null);
+      await send(dm.id, body, target && !target.deleted ? target.id : null, files);
+      setPending((current) => ({ ...current, [dm.id]: [] }));
       onCancelReply();
       setDrafts((current) => ({ ...current, [dm.id]: '' }));
     } catch (problem) {
@@ -629,7 +765,36 @@ function DmComposer({
           </button>
         </div>
       ) : null}
-      <div className={state.ready ? 'composer-box' : 'composer-box denied'}>
+      {files.length > 0 ? (
+        <div className="composer-pending">
+          {files.map((file) => (
+            <span className="pending-file" key={file.id}>
+              {file.name}
+              <button type="button" className="icon-button" style={{ width: 18, height: 18 }} title="Remove" onClick={() => discard(file)}>
+                &#10005;
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div
+        className={state.ready ? 'composer-box' : 'composer-box denied'}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          void attach(event.dataTransfer.files);
+        }}
+      >
+        <input ref={filePicker} type="file" multiple hidden onChange={(event) => void attach(event.target.files)} />
+        <button
+          type="button"
+          className="icon-button"
+          title="Attach a file. It is locked here before it is uploaded."
+          disabled={!state.ready || locking}
+          onClick={() => filePicker.current?.click()}
+        >
+          {locking ? <span className="spinner" /> : '+'}
+        </button>
         <textarea
           ref={input}
           className="composer-input"
@@ -639,6 +804,12 @@ function DmComposer({
           maxLength={LIMITS.message.max}
           placeholder={state.ready ? `Message ${name}` : 'Setting up keys for this device'}
           onChange={(event) => setDrafts((current) => ({ ...current, [dm.id]: event.target.value }))}
+          onPaste={(event) => {
+            const pasted = Array.from(event.clipboardData.files);
+            if (pasted.length === 0) return;
+            event.preventDefault();
+            void attach(pasted);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Escape' && target) {
               onCancelReply();

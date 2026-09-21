@@ -18,7 +18,9 @@
  *   6. Wes accepts it. The next message opens there
  *   7. Wes edits a message, Alex replies to one, Wes reacts to the reply and
  *      takes it back; the server is never shown the emoji
- *   8. Wes deletes a message and it goes from Alex's screen
+ *   8. Alex sends a picture and a text file. Wes sees the picture and can open
+ *      the file; what the server stores is neither
+ *   9. Wes deletes a message and it goes from Alex's screen
  *
  * Needs `npm run dev` and a seeded database (`npm run seed --workspace server`).
  *
@@ -26,9 +28,10 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { crc32, deflateSync } from 'node:zlib';
 
 import { WebSocket } from 'ws';
 
@@ -54,6 +57,32 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `\n      ${detail}` : ''}`);
 };
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** A square PNG with a gradient in it, built by hand so the test needs no image on disk. */
+function makePng(size) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body) >>> 0, body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const rows = Buffer.alloc(size * (size * 3 + 1));
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) rows.set([x * 2, 120, y * 2], y * (size * 3 + 1) + 1 + x * 3);
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 /** One device: its own browser process and profile, so its own keys. */
 class Device {
@@ -186,6 +215,13 @@ class Device {
     for (const type of ['keyDown', 'keyUp']) {
       await this.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
     }
+  }
+
+  /** Put files into the composer's hidden picker, as choosing them in the dialog would. */
+  async attach(paths) {
+    const { root } = await this.send('DOM.getDocument');
+    const { nodeId } = await this.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.composer input[type=file]' });
+    await this.send('DOM.setFileInputFiles', { nodeId, files: paths });
   }
 
   /** Press a button in the hover bar of the message containing some text. */
@@ -338,11 +374,71 @@ try {
     check('the server holds the reaction', JSON.parse(held).reactions.length === 1);
     check('and was never shown which emoji, the edit or the reply', !held.includes(emoji) && !held.includes(stamp));
   }
-  if (process.env.DM_CHECK_SHOT) await alex.shot(process.env.DM_CHECK_SHOT);
   await wes.click('.reaction', emoji);
   check('taking the reaction back removes it for Alex', Boolean(await alex.until(`document.querySelector('.reaction') === null`)));
 
   /* 8 */
+  {
+    const folder = mkdtempSync(join(tmpdir(), 'scryproof-dm-files-'));
+    const picture = join(folder, 'map.png');
+    const notes = join(folder, 'notes.txt');
+    // A real PNG made here, and a text file whose contents the server must never hold.
+    writeFileSync(picture, makePng(96));
+    writeFileSync(notes, `the vault is under the ${stamp} juniper`);
+
+    // Note the ids the server hands back, to ask it for the same bytes later.
+    await alex.evaluate(`(() => {
+      window.__fileIds = [];
+      const real = window.fetch;
+      window.fetch = async (...args) => {
+        const reply = await real(...args);
+        if (String(args[0]).includes('/files') && args[1]?.method === 'POST') {
+          reply.clone().json().then((body) => window.__fileIds.push(body.file.id));
+        }
+        return reply;
+      };
+    })()`);
+    await alex.attach([picture, notes]);
+    check('both files are locked and waiting in the composer', Boolean(await alex.until(`document.querySelectorAll('.pending-file').length === 2`)));
+    await alex.say(`files-${stamp}`);
+
+    check('Wes sees the picture, opened in his browser', Boolean(await wes.until(`(() => {
+      const img = document.querySelector('img.attachment-image');
+      return img && img.src.startsWith('blob:') && img.naturalWidth === 96;
+    })()`)));
+    check('and the text file, by its name', Boolean(await wes.until(`Array.from(document.querySelectorAll('.dm-file')).some((el) => el.textContent.includes('notes.txt'))`)));
+
+    const held = await alex.evaluate(`(async () => {
+      const { dms } = await fetch('/api/dms', { credentials: 'include' }).then((r) => r.json());
+      const out = [];
+      for (const id of window.__fileIds) {
+        const bytes = new Uint8Array(await fetch('/api/dms/' + dms[0].id + '/files/' + id, { credentials: 'include' }).then((r) => r.arrayBuffer()));
+        out.push(Array.from(bytes).map((b) => String.fromCharCode(b)).join(''));
+      }
+      return out;
+    })()`);
+    check('the server holds two files', held.length === 2);
+    check('neither is a picture or readable text', held.every((bytes) => !bytes.includes('PNG') && !bytes.includes('juniper')));
+    const listing = await alex.evaluate(`
+      fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
+        .then((body) => fetch('/api/dms/' + body.dms[0].id + '/messages', { credentials: 'include' }))
+        .then((r) => r.text())
+    `);
+    check('and it was never told their names', !listing.includes('notes.txt') && !listing.includes('map.png'));
+
+    if (process.env.DM_CHECK_SHOT) await wes.shot(process.env.DM_CHECK_SHOT);
+
+    await alex.act(`files-${stamp}`, 'Delete');
+    await wes.until(`document.querySelector('img.attachment-image') === null`);
+    const after = await alex.evaluate(`(async () => {
+      const { dms } = await fetch('/api/dms', { credentials: 'include' }).then((r) => r.json());
+      return (await fetch('/api/dms/' + dms[0].id + '/files/' + window.__fileIds[0], { credentials: 'include', cache: 'no-store' })).status;
+    })()`);
+    check('deleting the message removes its files from the server', after === 404, String(after));
+    rmSync(folder, { recursive: true, force: true });
+  }
+
+  /* 9 */
   await wes.act(THIRD, 'Delete');
   check('a deleted message goes from the other screen', Boolean(await alex.until(`!document.querySelector('.main').innerText.includes(${JSON.stringify(THIRD)})`)));
 

@@ -17,6 +17,11 @@ export const LIMITS = {
   message: { max: 8000 },
   attachmentsPerMessage: 10,
   attachmentBytes: 100 * 1024 * 1024,
+  /**
+   * A file in a DM is locked and opened whole, in the browser's memory, so it
+   * is held to a size a laptop can do that with.
+   */
+  dmFileBytes: 50 * 1024 * 1024,
 } as const;
 
 /** Lowercase, digits, underscore, dot, hyphen. No leading or trailing marks. */

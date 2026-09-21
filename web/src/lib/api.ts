@@ -262,7 +262,14 @@ export const api = {
       ),
     send: (
       dmId: string,
-      sealed: { senderDeviceId: string; iv: string; ciphertext: string; keys: DmWrappedKey[]; reactionTo?: string },
+      sealed: {
+        senderDeviceId: string;
+        iv: string;
+        ciphertext: string;
+        keys: DmWrappedKey[];
+        reactionTo?: string;
+        fileIds?: string[];
+      },
     ) => post<{ message: DmMessage }>(`/api/dms/${dmId}/messages`, sealed),
     edit: (
       dmId: string,
@@ -271,6 +278,23 @@ export const api = {
     ) => patch<{ message: DmMessage }>(`/api/dms/${dmId}/messages/${messageId}`, sealed),
     remove: (dmId: string, messageId: string) => del<{ ok: true }>(`/api/dms/${dmId}/messages/${messageId}`),
     markRead: (dmId: string, messageId: string) => put<{ ok: true }>(`/api/dms/${dmId}/read`, { messageId }),
+    /** Bytes already locked in this browser. The server is told nothing about them. */
+    async uploadFile(dmId: string, sealed: Uint8Array): Promise<{ id: string; size: number }> {
+      const form = new FormData();
+      form.append('file', new Blob([sealed as BlobPart], { type: 'application/octet-stream' }), 'sealed.bin');
+      const response = await fetch(`/api/dms/${dmId}/files`, { method: 'POST', credentials: 'same-origin', body: form });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
+      }
+      return payload.file as { id: string; size: number };
+    },
+    async downloadFile(dmId: string, fileId: string): Promise<Uint8Array> {
+      const response = await fetch(`/api/dms/${dmId}/files/${fileId}`, { credentials: 'same-origin' });
+      if (!response.ok) throw new ApiError(response.status, 'download_failed', 'That file could not be fetched.');
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    discardFile: (dmId: string, fileId: string) => del<{ ok: true }>(`/api/dms/${dmId}/files/${fileId}`),
   },
 
   users: {

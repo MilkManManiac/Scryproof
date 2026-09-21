@@ -43,6 +43,7 @@ import {
 const DEVICE_CONTEXT = 'scryproof/dm/device/v1';
 const WRAP_CONTEXT = 'scryproof/dm/wrap/v1';
 const BODY_CONTEXT = 'scryproof/dm/body/v1';
+const FILE_CONTEXT = 'scryproof/dm/file/v1';
 
 const subtle = (): SubtleCrypto => globalThis.crypto.subtle;
 const text = new TextEncoder();
@@ -209,8 +210,37 @@ export async function assessDevices(
  * is: the server is told only that a row is a reaction, and to what.
  */
 export type DmBody =
-  | { v: 1; kind?: undefined; text: string; replyTo?: string }
+  | { v: 1; kind?: undefined; text: string; replyTo?: string; files?: DmFileRef[] }
   | { v: 1; kind: 'reaction'; target: string; emoji: string };
+
+/**
+ * A file, as the message that carries it describes it. The server holds the
+ * locked bytes under `id` and nothing else: the name, the type and the key
+ * that opens it are all in here, inside the seal.
+ */
+export interface DmFileRef {
+  id: string;
+  name: string;
+  type: string;
+  /** Of the file itself, not of the locked copy. */
+  size: number;
+  /** base64. A key used for this one file and never again. */
+  key: string;
+  iv: string;
+}
+
+function parseFiles(raw: unknown): DmFileRef[] | null {
+  if (!Array.isArray(raw) || raw.length > 10) return null;
+  const files: DmFileRef[] = [];
+  for (const entry of raw as Record<string, unknown>[]) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    const { id, name, type, size, key, iv } = entry;
+    if (typeof id !== 'string' || typeof name !== 'string' || typeof type !== 'string') return null;
+    if (typeof size !== 'number' || typeof key !== 'string' || typeof iv !== 'string') return null;
+    files.push({ id, name: name.slice(0, 200), type: type.slice(0, 100), size, key, iv });
+  }
+  return files;
+}
 
 /** Only the shapes above come out. Anything else is treated as a message that did not open. */
 function parseBody(raw: unknown): DmBody | null {
@@ -223,9 +253,55 @@ function parseBody(raw: unknown): DmBody | null {
     return { v: 1, kind: 'reaction', target: body.target, emoji: body.emoji };
   }
   if (body.kind !== undefined || typeof body.text !== 'string') return null;
-  return typeof body.replyTo === 'string'
-    ? { v: 1, text: body.text, replyTo: body.replyTo }
-    : { v: 1, text: body.text };
+  const out: DmBody = { v: 1, text: body.text };
+  if (typeof body.replyTo === 'string') out.replyTo = body.replyTo;
+  if (body.files !== undefined) {
+    const files = parseFiles(body.files);
+    if (!files) return null;
+    if (files.length > 0) out.files = files;
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Files.
+ * ------------------------------------------------------------------ */
+
+const fileAad = (dmId: string): Uint8Array => concatLabelled(FILE_CONTEXT, dmId);
+
+/**
+ * Lock a file under a key of its own. The key goes into the message body, so
+ * whoever can open the message can open the file and nobody else can. The
+ * locked bytes are what gets uploaded.
+ */
+export async function sealFile(
+  dmId: string,
+  bytes: Uint8Array,
+): Promise<{ sealed: Uint8Array; key: string; iv: string }> {
+  const keyBytes = randomBytes(32);
+  const iv = randomBytes(12);
+  const key = await subtle().importKey('raw', keyBytes as BufferSource, 'AES-GCM', false, ['encrypt']);
+  const sealed = await subtle().encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource, additionalData: fileAad(dmId) as BufferSource },
+    key,
+    bytes as BufferSource,
+  );
+  return { sealed: new Uint8Array(sealed), key: toBase64(keyBytes), iv: toBase64(iv) };
+}
+
+/** Null when the bytes are not what the message said they would be. */
+export async function openFile(dmId: string, ref: Pick<DmFileRef, 'key' | 'iv'>, sealed: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const key = await subtle().importKey('raw', fromBase64(ref.key) as BufferSource, 'AES-GCM', false, ['decrypt']);
+    const opened = await subtle().decrypt(
+      { name: 'AES-GCM', iv: fromBase64(ref.iv) as BufferSource, additionalData: fileAad(dmId) as BufferSource },
+      key,
+      sealed as BufferSource,
+    );
+    return new Uint8Array(opened);
+  } catch {
+    return null;
+  }
 }
 
 export interface SealedMessage {

@@ -2973,3 +2973,14 @@ kbd {
 .dm-failed {
   cursor: help;
 }
+
+/* A DM file is a button, not a link: there is no address that would open it. */
+.dm-file {
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.dm-file:disabled {
+  cursor: progress;
+}

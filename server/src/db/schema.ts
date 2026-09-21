@@ -528,6 +528,32 @@ export const dmMessageKeys = pgTable(
   (table) => [primaryKey({ columns: [table.messageId, table.userId, table.deviceId] })],
 );
 
+/**
+ * A file sent in a direct message. The bytes in the store were locked in the
+ * sender's browser, and the key is inside the sealed message, so this row is
+ * all the server knows: that a file of this size exists and which message it
+ * hangs from. No name and no type; those are content.
+ */
+export const dmFiles = pgTable(
+  'dm_files',
+  {
+    id: id(),
+    dmId: text('dm_id')
+      .notNull()
+      .references(() => dmChannels.id, { onDelete: 'cascade' }),
+    uploaderId: text('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Null while uploaded but not yet sent, as with channel attachments. */
+    messageId: text('message_id').references(() => dmMessages.id, { onDelete: 'cascade' }),
+    storageKey: text('storage_key').notNull(),
+    size: integer('size').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index('dm_files_message_id_idx').on(table.messageId)],
+);
+
+export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
 export type DmChannelRow = typeof dmChannels.$inferSelect;
 export type DmMessageRow = typeof dmMessages.$inferSelect;

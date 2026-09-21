@@ -21,6 +21,7 @@ import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { DeviceKey, DmChannel, DmMessage, DmWrappedKey } from '@scryproof/shared';
+import { LIMITS } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { config } from '../config.js';
@@ -28,6 +29,7 @@ import { getDb } from '../db/index.js';
 import {
   deviceKeys,
   dmChannels,
+  dmFiles,
   dmMembers,
   dmMessageKeys,
   dmMessages,
@@ -40,6 +42,7 @@ import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../l
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
 import * as serialize from '../services/serialize.js';
+import { buildStorageKey, deleteObject, readFromS3, readStream, saveStream } from '../services/storage.js';
 
 /** Browsers come and go. Past this many, the one unseen longest is forgotten. */
 const MAX_DEVICES_PER_USER = 20;
@@ -205,6 +208,32 @@ const sealedShape = {
     .min(1)
     .max(MAX_DEVICES_PER_USER * 10),
 };
+
+const fileIdsShape = z.array(z.string().max(64)).max(LIMITS.attachmentsPerMessage).optional();
+
+/**
+ * Hang uploaded files from a message. Only files this person uploaded, to this
+ * conversation, that are not already part of something: the same rule that
+ * makes claiming a channel attachment a permission check rather than a guess.
+ */
+async function claimFiles(fileIds: string[] | undefined, dmId: string, userId: string, messageId: string): Promise<void> {
+  if (!fileIds || fileIds.length === 0) return;
+  const claimed = await getDb()
+    .update(dmFiles)
+    .set({ messageId })
+    .where(
+      and(
+        inArray(dmFiles.id, fileIds),
+        eq(dmFiles.dmId, dmId),
+        eq(dmFiles.uploaderId, userId),
+        isNull(dmFiles.messageId),
+      ),
+    )
+    .returning({ id: dmFiles.id });
+  if (claimed.length !== new Set(fileIds).size) {
+    throw badRequest('One of those files is not yours to send.', 'invalid_file');
+  }
+}
 
 type SealedKeys = { userId: string; deviceId: string; iv: string; key: string }[];
 
@@ -426,7 +455,10 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/dms/:dmId/messages', async (request) => {
     const user = requireUser(request);
     const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
-    const body = z.object({ ...sealedShape, reactionTo: z.string().max(64).optional() }).parse(request.body);
+    const body = z
+      .object({ ...sealedShape, reactionTo: z.string().max(64).optional(), fileIds: fileIdsShape })
+      .parse(request.body);
+    if (body.reactionTo && body.fileIds?.length) throw badRequest('A reaction carries no files.', 'invalid_file');
 
     const { memberIds } = await requireDmMember(dmId, user.id);
 
@@ -466,6 +498,13 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     if (!created) throw badRequest('Could not send the message.', 'send_failed');
 
     const keyRows = await db.insert(dmMessageKeys).values(keyValues(messageId, body.keys)).returning();
+    try {
+      await claimFiles(body.fileIds, dmId, user.id, messageId);
+    } catch (problem) {
+      // Nobody has been told about this message yet. Take it back whole.
+      await db.delete(dmMessages).where(eq(dmMessages.id, messageId));
+      throw problem;
+    }
 
     // A reaction does not make a conversation unread.
     if (!body.reactionTo) {
@@ -560,6 +599,9 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(dmMessages.id, messageId));
       await db.delete(dmMessageKeys).where(eq(dmMessageKeys.messageId, messageId));
       await db.delete(dmMessages).where(and(eq(dmMessages.dmId, dmId), eq(dmMessages.reactionTo, messageId)));
+      // Its files leave the store as well. Locked bytes nobody can open are still bytes.
+      const files = await db.delete(dmFiles).where(eq(dmFiles.messageId, messageId)).returning();
+      for (const file of files) await deleteObject(file.storageKey).catch(() => undefined);
     }
 
     for (const memberId of memberIds) {
@@ -568,6 +610,80 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
         d: { id: messageId, dmId, reactionTo: existing.reactionTo },
       });
     }
+    return { ok: true };
+  });
+
+  /* ---------------------------------- files --------------------------------- */
+
+  /**
+   * Bytes that were locked before they got here. There is nothing to check
+   * about them except their size, and nothing to label them with: the name,
+   * the type and the key travel inside the sealed message.
+   */
+  app.post('/api/dms/:dmId/files', async (request) => {
+    const user = requireUser(request);
+    const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
+    const { memberIds } = await requireDmMember(dmId, user.id);
+    await requireStillConnected(user.id, memberIds);
+
+    const limit = consume(`dm-files:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
+    if (!limit.allowed) throw tooManyRequests('You are uploading too quickly.', limit.retryAfterSeconds);
+
+    const file = await request.file({ limits: { fileSize: LIMITS.dmFileBytes + 64 } });
+    if (!file) throw badRequest('No file was uploaded.', 'no_file');
+
+    const storageKey = buildStorageKey('sealed.bin');
+    const stored = await saveStream(storageKey, file.file);
+    if (file.file.truncated) {
+      await deleteObject(storageKey);
+      throw badRequest(`Files here are limited to ${Math.floor(LIMITS.dmFileBytes / (1024 * 1024))} MB.`, 'file_too_large');
+    }
+
+    const [created] = await getDb()
+      .insert(dmFiles)
+      .values({ id: uuidv7(), dmId, uploaderId: user.id, messageId: null, storageKey, size: stored.size })
+      .returning();
+    if (!created) throw badRequest('Could not save the file.', 'upload_failed');
+    return { file: { id: created.id, size: created.size } };
+  });
+
+  app.get('/api/dms/:dmId/files/:fileId', async (request, reply) => {
+    const user = requireUser(request);
+    const { dmId, fileId } = z.object({ dmId: z.string(), fileId: z.string() }).parse(request.params);
+    await requireDmMember(dmId, user.id);
+
+    const [row] = await getDb()
+      .select()
+      .from(dmFiles)
+      .where(and(eq(dmFiles.id, fileId), eq(dmFiles.dmId, dmId)))
+      .limit(1);
+    // Unsent: only whoever uploaded it.
+    if (!row || (row.messageId === null && row.uploaderId !== user.id)) {
+      throw notFound('That file does not exist.', 'unknown_file');
+    }
+
+    void reply.header('Content-Type', 'application/octet-stream');
+    void reply.header('Content-Length', String(row.size));
+    void reply.header('Content-Disposition', 'attachment');
+    void reply.header('Cache-Control', 'private, max-age=86400');
+    void reply.header('X-Content-Type-Options', 'nosniff');
+    void reply.header('Content-Security-Policy', "default-src 'none'; sandbox");
+    if (config.storage.driver === 's3') return reply.send(await readFromS3(row.storageKey));
+    return reply.send(readStream(row.storageKey));
+  });
+
+  /** Changing your mind before sending. */
+  app.delete('/api/dms/:dmId/files/:fileId', async (request) => {
+    const user = requireUser(request);
+    const { dmId, fileId } = z.object({ dmId: z.string(), fileId: z.string() }).parse(request.params);
+    const [row] = await getDb()
+      .delete(dmFiles)
+      .where(
+        and(eq(dmFiles.id, fileId), eq(dmFiles.dmId, dmId), eq(dmFiles.uploaderId, user.id), isNull(dmFiles.messageId)),
+      )
+      .returning();
+    if (!row) throw forbidden('You can only discard your own unsent uploads.');
+    await deleteObject(row.storageKey).catch(() => undefined);
     return { ok: true };
   });
 

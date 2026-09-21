@@ -20,7 +20,9 @@ import {
   createDmKeypair,
   describeDevice,
   isTrusted,
+  openFile,
   openMessage,
+  sealFile,
   sealMessage,
   verifyDevice,
 } from '../lib/dm-crypto';
@@ -80,6 +82,22 @@ describe('sealing and opening', () => {
       const opened = await openMessage({ dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...sealed });
       assert.deepEqual(opened, { ok: false, reason: 'failed' });
     }
+  });
+
+  test('a file opens with the key its message carries, and with nothing else', async () => {
+    const bytes = new TextEncoder().encode('the-file-the-server-must-not-read');
+    const { sealed, key, iv } = await sealFile(DM, bytes);
+
+    assert.equal(Buffer.from(sealed).toString('latin1').includes('the-file'), false);
+    assert.deepEqual(await openFile(DM, { key, iv }, sealed), bytes);
+
+    // Moved into another conversation, changed on the way, or opened with another file's key.
+    assert.equal(await openFile('dm-somewhere-else', { key, iv }, sealed), null);
+    const changed = sealed.slice();
+    changed[0] = (changed[0] ?? 0) ^ 1;
+    assert.equal(await openFile(DM, { key, iv }, changed), null);
+    const other = await sealFile(DM, bytes);
+    assert.equal(await openFile(DM, { key: other.key, iv }, sealed), null);
   });
 
   test('what the server stores does not contain the text', async () => {
