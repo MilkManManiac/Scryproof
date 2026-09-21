@@ -119,7 +119,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
     <div className="auth">
       <div className="auth-card">
         <div className="auth-brand">
-          Go<span>Offline</span>
+          Scry<span>proof</span>
         </div>
         <p className="auth-sub">
           {firstRun

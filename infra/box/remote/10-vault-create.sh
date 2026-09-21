@@ -57,8 +57,9 @@ fi
 systemctl daemon-reload
 mount "$VAULT_MOUNT"
 # Again, after mounting: the chmod above was on the empty mount point, and the
-# new filesystem's own root arrives world-readable.
-chmod 700 "$VAULT_MOUNT"
+# new filesystem's own root arrives world-readable. 711, not 700: the livekit
+# user has to pass through to reach its config, but nobody can list what is here.
+chmod 711 "$VAULT_MOUNT"
 mkdir -p "$VAULT_MOUNT/binds" "$VAULT_MOUNT/logs"
 chmod 700 "$VAULT_MOUNT/binds"
 touch "$BINDS_FILE" "$UNITS_FILE"
