@@ -33,7 +33,11 @@ fi
 say "Encrypting. Type the vault passphrase from the password manager, twice."
 # LUKS2 defaults are what we want: AES-XTS-512 and argon2id key derivation.
 # --iter-time 4000: four seconds of key stretching per guess, paid once per unlock.
-cryptsetup luksFormat --type luks2 --iter-time 4000 --label gooffline-vault "$volume"
+# --pbkdf-memory 262144: argon2id's memory cost is written into the header and
+# every unlock must find that much free. The default takes half the machine,
+# which on a 1 GB box with swap off is an unlock that can be killed for memory.
+# 256 MB is safe here, and the passphrase is seven random words either way.
+cryptsetup luksFormat --type luks2 --iter-time 4000 --pbkdf-memory 262144 --label gooffline-vault "$volume"
 
 say "Opening it. Type the passphrase once more."
 cryptsetup open "$volume" "$VAULT_NAME"
@@ -52,6 +56,9 @@ if ! grep -q "[[:space:]]$VAULT_MOUNT[[:space:]]" /etc/fstab; then
 fi
 systemctl daemon-reload
 mount "$VAULT_MOUNT"
+# Again, after mounting: the chmod above was on the empty mount point, and the
+# new filesystem's own root arrives world-readable.
+chmod 700 "$VAULT_MOUNT"
 mkdir -p "$VAULT_MOUNT/binds" "$VAULT_MOUNT/logs"
 chmod 700 "$VAULT_MOUNT/binds"
 touch "$BINDS_FILE" "$UNITS_FILE"

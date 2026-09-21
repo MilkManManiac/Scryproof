@@ -92,6 +92,7 @@ CONF
 
 systemctl daemon-reload
 systemctl enable --now gooffline-log-expiry.timer
+mkdir -p "$STATE_DIR"
 touch "$UNITS_FILE"
 grep -qxF gooffline-journal-archive.service "$UNITS_FILE" || printf '%s\n' gooffline-journal-archive.service >> "$UNITS_FILE"
 note "archive service registered; it starts on unlock"

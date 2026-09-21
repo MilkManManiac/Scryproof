@@ -1,0 +1,44 @@
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+
+==> System
+    Ubuntu 24.04.4 LTS, kernel 6.8.0-124-generic
+    memory: 961Mi total, 661Mi available
+    root disk: 22G free of 24G
+
+==> Disks
+    NAME     SIZE TYPE FSTYPE  MOUNTPOINT
+    sda       10G disk         
+    vda       25G disk         
+    ├─vda1    24G part ext4    /
+    ├─vda14    4M part         
+    ├─vda15  106M part vfat    /boot/efi
+    └─vda16  913M part ext4    /boot
+    vdb      488K disk iso9660 
+
+==> Vault
+    locked (no /dev/mapper/vault)
+    not mounted
+    unlock flag absent (services gated on it will refuse to start)
+
+==> Gated services
+    none registered yet
+
+==> DigitalOcean agents (should both be absent)
+    PRESENT  droplet-agent
+    absent   do-agent
+
+==> Firewall
+    Status: inactive
+
+==> Listening sockets that are not loopback
+    tcp LISTEN 0      4096         0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=2198,fd=3),("systemd",pid=1,fd=112))
+    tcp LISTEN 0      4096            [::]:22    [::]:* users:(("sshd",pid=2198,fd=4),("systemd",pid=1,fd=113))
+
+==> SSH
+    port 22
+    permitrootlogin yes
+    pubkeyauthentication yes
+    passwordauthentication no
+
+==> Swap (swap on the root disk would leak memory onto it)
+    none
