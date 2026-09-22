@@ -1611,7 +1611,7 @@ ten minutes. To add a rule, add a row to `HOUSE_RULES` and a line to
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
 
-## Evening batch from lamp's notes, 2026-09-22 (client CLIENT_VERSION)
+## Evening batch from lamp's notes, 2026-09-22 (client 1790107932702)
 
 Lamp and Wes sent a second list. Built in this order, one commit each,
 released together:
