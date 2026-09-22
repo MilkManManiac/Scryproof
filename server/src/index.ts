@@ -12,6 +12,7 @@ import { attachGateway } from './gateway/index.js';
 import { logger } from './lib/logger.js';
 import { ensureStorageReady } from './services/storage.js';
 import { isLivekitConfigured } from './services/livekit.js';
+import { startUploadSweep } from './services/upload-sweep.js';
 
 async function main(): Promise<void> {
   await initDatabase();
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: config.host });
 
   const detachGateway = attachGateway(app.server);
+  const stopUploadSweep = startUploadSweep();
 
   logger.info(
     {
@@ -46,6 +48,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, 'shutting down');
 
+    stopUploadSweep();
     detachGateway();
     await app.close();
     await closeDatabase();
