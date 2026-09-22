@@ -1045,6 +1045,27 @@ Built after the recovery phrase and released together.
   tray, the update checker and its 10-minute constant, any native hook) is
   baked into the `.exe` and does not update itself, so shell changes ship as
   one installer that Wes hands out, not several.
+- **Global push-to-talk and the installer link** (2026-09-22, shell 0.2.0).
+  `desktop/src/push-to-talk.js` watches one key system-wide through
+  uiohook-napi 1.5.5, vetted by reading it: no network code, the shipped
+  `.node` imports only kernel32/user32/advapi32, and the installed binary's
+  hash matched the one read. It runs only while the page asks (voice channel,
+  push mode), reports held/released for that one key and nothing else, and
+  does not take the key from the game. Browser and older shells fall back to
+  the window's own key events (`holdPushKey` in `web/src/lib/desktop.ts`).
+  `npm run test:desktop` proves the hook starts inside real Electron.
+  electron-builder has `npmRebuild: false`: the prebuilt N-API binary is the
+  point, and there is no Visual Studio here. The installer is served at
+  **https://scryproof.com/download/Scryproof-Setup.exe** by the app from
+  `<DATA_DIR>/downloads/` on the vault (`server/src/routes/downloads.ts`,
+  `scripts/publish-installer.sh`), because GitHub refuses files over 100 MB.
+  Two traps met on the way: after an `infra/` change, `bonesdeploy site
+  runtime --yes` renders the nginx file but does not restart
+  `scryproof-nginx.service`, so `systemctl restart scryproof-nginx.service`
+  on the box is needed too; and `release.sh` curls health the instant the
+  service restarts and can see a 502 that clears in seconds. Not yet tried by
+  a person: holding the key with a game in front. Mouse buttons as the
+  push-to-talk key are not supported yet.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.
@@ -1068,12 +1089,10 @@ The stamp shows the commit the client was built from, which is the one
 
 Do next, in this order:
 
-1. **Global push-to-talk** in the desktop app. Needs a native key hook
-   (uiohook-napi or similar); vet it for phoning home before it ships. Then
-   **start with Windows** as an off-by-default toggle Wes flips himself. Both
-   change `desktop/src/*`, so they need a new installer, not a client update.
-   Fold in the shorter update check (10 to 5 minutes; suggested, not decided)
-   and ship all of it as **one** installer.
+1. ~~Global push-to-talk~~ shipped in shell 0.2.0 (above). Still to do in
+   the shell: **start with Windows** as an off-by-default toggle Wes flips
+   himself, and the shorter update check (10 to 5 minutes; suggested, not
+   decided). Both need another installer; ship them together.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
 3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.

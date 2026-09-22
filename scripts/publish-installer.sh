@@ -23,7 +23,8 @@ BOX_KEY="${BOX_KEY/#\~/$HOME}"
 built=$(ls -t "$root"/desktop/release/Scryproof-Setup-*.exe 2>/dev/null | head -1)
 [ -n "$built" ] || { echo "No installer in desktop/release. Build one: cd desktop && npm run dist" >&2; exit 1; }
 
-dir=/srv/sites/scryproof/shared/data/downloads
+data=/srv/sites/scryproof/shared/data
+dir=$data/downloads
 opts=(-i "$BOX_KEY" -p "$BOX_PORT" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new)
 sudo=""; [ "$BOX_USER" = "root" ] || sudo="sudo"
 
@@ -31,9 +32,9 @@ echo "Sending $(basename "$built") ($(du -m "$built" | cut -f1) MB)..."
 scp "${opts[@]/-p/-P}" "$built" "$BOX_USER@$BOX_HOST:/tmp/Scryproof-Setup.exe.part"
 ssh "${opts[@]}" "$BOX_USER@$BOX_HOST" "$sudo bash -s" <<EOF
 set -e
-install -d -m 0750 --owner="\$(stat -c %U $dir/..)" --group="\$(stat -c %G $dir/..)" $dir
+install -d -m 0750 --owner="\$(stat -c %U $data)" --group="\$(stat -c %G $data)" $dir
 mv /tmp/Scryproof-Setup.exe.part $dir/Scryproof-Setup.exe
-chown --reference=$dir/.. $dir/Scryproof-Setup.exe
+chown --reference=$data $dir/Scryproof-Setup.exe
 chmod 0640 $dir/Scryproof-Setup.exe
 EOF
 
