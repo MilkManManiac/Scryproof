@@ -32,6 +32,7 @@ import { registerAttachmentRoutes } from './routes/attachments.js';
 import { registerVoiceRoutes } from './routes/voice.js';
 import { registerDmRoutes } from './routes/dms.js';
 import { registerProfileRoutes } from './routes/profile.js';
+import { registerBlockRoutes } from './routes/blocks.js';
 import { registerDownloadRoutes } from './routes/downloads.js';
 
 declare module 'fastify' {
@@ -221,6 +222,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerVoiceRoutes(app);
   await registerDmRoutes(app);
   await registerProfileRoutes(app);
+  await registerBlockRoutes(app);
   await registerDownloadRoutes(app);
 
   // This process serves the API and the gateway only. The built web client is

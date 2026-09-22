@@ -280,6 +280,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const { state: app, onGatewayEvent } = useStore();
   const [state, dispatch] = useReducer(reducer, initialState);
   const selfId = app.user?.id ?? null;
+  const blocks = app.blocks;
 
   const device = useRef<DmDevice | null>(null);
   /** The phrase's key, on a device its words have been typed into. */
@@ -552,6 +553,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
         if (message.authorId === selfId) dispatch({ type: 'read', dmId: message.dmId, messageId: message.id });
 
         const looking = stateRef.current.active && stateRef.current.openId === message.dmId;
+        // A block stops new messages at the server, so this is about the ones
+        // that were already sent when it happened.
+        const blocked = blocks.has(message.authorId);
         const sound = soundFor({
           authorId: message.authorId,
           // A DM is addressed to you by definition.
@@ -564,6 +568,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
           serverId: null,
           openChannelId: looking ? message.dmId : null,
           windowFocused: document.hasFocus(),
+          blocked,
           prefs: notifyPrefs.get(),
         });
         if (sound) play(sound);
@@ -576,6 +581,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
           watching: focused && looking,
           windowFocused: focused,
           muted: false,
+          blocked,
         });
         if (verdict.list) {
           const author = stateRef.current.dms[message.dmId]?.members.find((member) => member.id === message.authorId);
@@ -611,7 +617,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     return onGatewayEvent((event) => {
       void handle(event).catch(() => undefined);
     });
-  }, [onGatewayEvent, selfId, loadDm, refreshDevices, toView, toReactions]);
+  }, [onGatewayEvent, selfId, blocks, loadDm, refreshDevices, toView, toReactions]);
 
   /* --------------------------------- intents -------------------------------- */
 

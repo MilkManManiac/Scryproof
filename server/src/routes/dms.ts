@@ -33,7 +33,6 @@ import {
   dmMembers,
   dmMessageKeys,
   dmMessages,
-  members,
   users,
 } from '../db/schema.js';
 import type { DeviceKeyRow, DmChannelRow, DmMessageKeyRow, DmMessageRow } from '../db/schema.js';
@@ -41,7 +40,9 @@ import * as hub from '../gateway/hub.js';
 import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
+import { blockBetween } from '../services/blocks.js';
 import * as serialize from '../services/serialize.js';
+import { sharesAServer } from '../services/servers.js';
 import { buildStorageKey, deleteObject, readFromS3, readStream, saveStream } from '../services/storage.js';
 
 /** Browsers come and go. Past this many, the one unseen longest is forgotten. */
@@ -151,17 +152,6 @@ const toDeviceKey = (row: DeviceKeyRow): DeviceKey => ({
 const b64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
 const pairKeyFor = (a: string, b: string): string => [a, b].sort().join(':');
-
-async function sharesAServer(a: string, b: string): Promise<boolean> {
-  const mine = await getDb().select({ serverId: members.serverId }).from(members).where(eq(members.userId, a));
-  if (mine.length === 0) return false;
-  const [shared] = await getDb()
-    .select({ serverId: members.serverId })
-    .from(members)
-    .where(and(eq(members.userId, b), inArray(members.serverId, mine.map((row) => row.serverId))))
-    .limit(1);
-  return Boolean(shared);
-}
 
 /**
  * Everyone in a conversation, or a 404 for anybody who is not one of them. A
@@ -316,6 +306,22 @@ async function requireStillConnected(userId: string, memberIds: string[]): Promi
     if (memberId !== userId && !(await sharesAServer(userId, memberId))) {
       throw forbidden('You no longer share a server with this person.');
     }
+  }
+}
+
+/**
+ * A block closes the conversation from both ends. The two refusals are worded
+ * differently because they are different facts: the blocker is reminded of
+ * what they did, and the person blocked is told only that they cannot write
+ * here. Nothing says who blocked whom or when, and the blocker is never told
+ * that an attempt was made.
+ */
+async function requireNotBlocked(userId: string, memberIds: string[]): Promise<void> {
+  for (const memberId of memberIds) {
+    if (memberId === userId) continue;
+    const { mine, theirs } = await blockBetween(userId, memberId);
+    if (mine) throw forbidden('You have blocked this person.');
+    if (theirs) throw forbidden('This person is not accepting messages from you.');
   }
 }
 
@@ -497,6 +503,9 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     if (!(await sharesAServer(user.id, userId))) {
       throw notFound('That person does not exist.', 'unknown_user');
     }
+    // Before the row is made or found: a block means there is no conversation
+    // to be had, whether or not there was one before it.
+    await requireNotBlocked(user.id, [userId]);
 
     const db = getDb();
     const pairKey = pairKeyFor(user.id, userId);
@@ -583,6 +592,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     if (!limit.allowed) throw tooManyRequests('You are sending messages too quickly.', limit.retryAfterSeconds);
 
     await requireStillConnected(user.id, memberIds);
+    await requireNotBlocked(user.id, memberIds);
     checkRecipients(body.keys, memberIds);
     await requirePublishedDevice(user.id, body.senderDeviceId);
 
@@ -665,6 +675,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     if (existing.authorId !== user.id) throw forbidden('You can only edit your own messages.');
 
     await requireStillConnected(user.id, memberIds);
+    await requireNotBlocked(user.id, memberIds);
     checkRecipients(body.keys, memberIds);
     await requirePublishedDevice(user.id, body.senderDeviceId);
 
@@ -742,6 +753,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
     const { memberIds } = await requireDmMember(dmId, user.id);
     await requireStillConnected(user.id, memberIds);
+    await requireNotBlocked(user.id, memberIds);
 
     const limit = consume(`dm-files:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
     if (!limit.allowed) throw tooManyRequests('You are uploading too quickly.', limit.retryAfterSeconds);

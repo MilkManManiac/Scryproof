@@ -13,6 +13,7 @@ import type { ReadState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { readStates } from '../db/schema.js';
+import { blockersOf, withoutBlockers } from './blocks.js';
 
 /** `mention_count` is a smallint. Past this the badge says "a lot" either way. */
 export const MENTION_COUNT_MAX = 32_767;
@@ -62,9 +63,22 @@ export async function markRead(
   return toReadState(row);
 }
 
-/** One more ping for each of these people in this channel. Returns their new states. */
-export async function bumpMentions(userIds: readonly string[], channelId: string): Promise<Map<string, ReadState>> {
+/**
+ * One more ping for each of these people in this channel. Returns their new
+ * states.
+ *
+ * The block rule is applied here as well as in `pingTargets`, and on purpose:
+ * a badge is written to the database and outlives the request that made it, so
+ * this is the gate that must not be the one somebody forgets to go through.
+ */
+export async function bumpMentions(
+  callers: readonly string[],
+  channelId: string,
+  senderId: string,
+): Promise<Map<string, ReadState>> {
   const result = new Map<string, ReadState>();
+  if (callers.length === 0) return result;
+  const userIds = withoutBlockers(callers, await blockersOf(senderId));
   if (userIds.length === 0) return result;
 
   const db = getDb();

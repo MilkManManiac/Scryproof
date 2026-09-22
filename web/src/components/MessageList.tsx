@@ -13,7 +13,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Permission, emojiNameFrom, splitContent } from '@scryproof/shared';
-import type { Channel, ContentPart, Emoji, Member, Message } from '@scryproof/shared';
+import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { jumpTo } from '../lib/jump';
@@ -485,6 +485,18 @@ function Spoiler({
   );
 }
 
+/**
+ * Reactions as this reader should see them: nothing a blocked person did, and
+ * no chip left standing with nobody behind it. Filtered before the count, so
+ * "3" never silently includes somebody whose messages are hidden.
+ */
+function visibleReactions(reactions: readonly Reaction[], blocks: ReadonlySet<string>): Reaction[] {
+  if (blocks.size === 0) return [...reactions];
+  return reactions
+    .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((userId) => !blocks.has(userId)) }))
+    .filter((reaction) => reaction.userIds.length > 0);
+}
+
 /** A message body with the people it names drawn as names. Still only ever text. */
 function MessageContent({
   content,
@@ -559,6 +571,8 @@ function MessageRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
+  /** One blocked message shown on purpose. It hides again on reload. */
+  const [shown, setShown] = useState(false);
 
   useEffect(() => {
     if (!openEditor || editing) return;
@@ -566,6 +580,17 @@ function MessageRow({
     setEditing(true);
     onEditorOpened?.();
   }, [openEditor, editing, message.content, members, onEditorOpened]);
+
+  const blocked = state.blocks.has(message.authorId);
+  if (blocked && !shown) {
+    return (
+      <div id={`message-${message.id}`} className="message blocked">
+        <button type="button" className="blocked-message" onClick={() => setShown(true)}>
+          Blocked message. Show.
+        </button>
+      </div>
+    );
+  }
 
   const selfId = state.user?.id;
   const mine = message.authorId === selfId;
@@ -577,9 +602,14 @@ function MessageRow({
   const canReact = can(mask, Permission.ADD_REACTIONS) && !timedOut;
   const canReply = can(mask, Permission.SEND_MESSAGES) && !timedOut;
   const at = new Date(message.createdAt);
-  const reactions = message.reactions ?? [];
+  const reactions = visibleReactions(message.reactions ?? [], state.blocks);
+  // A blocked person's mention is not a ping, on the server or here, so the
+  // row is not lit up even once it has been shown.
   const pingsMe =
-    !mine && !message.deleted && (message.mentionsEveryone || (selfId ? (message.mentions ?? []).includes(selfId) : false));
+    !mine &&
+    !blocked &&
+    !message.deleted &&
+    (message.mentionsEveryone || (selfId ? (message.mentions ?? []).includes(selfId) : false));
 
   function toggle(emoji: string) {
     const has = reactions.find((entry) => entry.emoji === emoji)?.userIds.includes(selfId ?? '');

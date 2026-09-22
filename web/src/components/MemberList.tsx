@@ -41,7 +41,7 @@ interface OpenMenu {
 }
 
 export function MemberList({ server }: { server: ServerDetail }) {
-  const { state } = useStore();
+  const { state, block, unblock } = useStore();
   const { openWith } = useDms();
   const members = state.members[server.id];
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -143,12 +143,12 @@ export function MemberList({ server }: { server: ServerDetail }) {
                   style={self ? undefined : { cursor: 'pointer' }}
                   onClick={self ? undefined : () => void openWith(member.userId).catch(() => undefined)}
                   onContextMenu={
-                    moderatable
-                      ? (event) => {
+                    self
+                      ? undefined
+                      : (event) => {
                           event.preventDefault();
                           setMenu({ userId: member.userId, durations: false });
                         }
-                      : undefined
                   }
                   onKeyDown={
                     self
@@ -170,10 +170,26 @@ export function MemberList({ server }: { server: ServerDetail }) {
                       &#9201;
                     </span>
                   ) : null}
+                  {self ? null : (
+                    <span className="member-menu">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="More"
+                        onClick={(event) => {
+                          // The row itself opens a conversation; this button does not.
+                          event.stopPropagation();
+                          setMenu((current) => (current?.userId === member.userId ? null : { userId: member.userId, durations: false }));
+                        }}
+                      >
+                        &#8943;
+                      </button>
+                    </span>
+                  )}
                 </div>
 
                 {open ? (
-                  <Menu onClose={() => setMenu(null)}>
+                  <Menu align="right" onClose={() => setMenu(null)}>
                     {open.durations ? (
                       DURATIONS.map((duration) => (
                         <MenuItem
@@ -195,12 +211,43 @@ export function MemberList({ server }: { server: ServerDetail }) {
                     ) : (
                       <>
                         <MenuItem
-                          note="They keep reading. No posting, reacting or voice."
-                          onClick={() => setMenu({ userId: member.userId, durations: true })}
+                          onClick={() => {
+                            setMenu(null);
+                            void openWith(member.userId).catch(() => undefined);
+                          }}
                         >
-                          Time out
+                          Message
                         </MenuItem>
-                        {until ? (
+                        {state.blocks.has(member.userId) ? (
+                          <MenuItem
+                            note="They are never told"
+                            onClick={() => {
+                              setMenu(null);
+                              void unblock(member.userId).catch(() => undefined);
+                            }}
+                          >
+                            Unblock
+                          </MenuItem>
+                        ) : (
+                          <MenuItem
+                            note="Hides them from you"
+                            onClick={() => {
+                              setMenu(null);
+                              void block(member.userId).catch(() => undefined);
+                            }}
+                          >
+                            Block
+                          </MenuItem>
+                        )}
+                        {moderatable ? (
+                          <MenuItem
+                            note="They keep reading. No posting, reacting or voice."
+                            onClick={() => setMenu({ userId: member.userId, durations: true })}
+                          >
+                            Time out
+                          </MenuItem>
+                        ) : null}
+                        {moderatable && until ? (
                           <MenuItem
                             note={`Ends on its own ${until.toLocaleString()}.`}
                             onClick={() =>

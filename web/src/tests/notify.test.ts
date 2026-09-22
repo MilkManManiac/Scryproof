@@ -27,6 +27,7 @@ const base: SoundContext = {
   serverId: 's1',
   openChannelId: 'c1',
   windowFocused: true,
+  blocked: false,
   prefs,
 };
 
@@ -78,6 +79,11 @@ describe('soundFor', () => {
 
   it('says nothing at all before anyone is signed in', () => {
     assert.equal(sound({ selfId: null, mentions: [ME] }), null);
+  });
+
+  it('stays silent for a blocked person, even a mention', () => {
+    assert.equal(sound({ mentions: [ME], windowFocused: false, blocked: true }), null);
+    assert.equal(sound({ windowFocused: false, blocked: true }), null);
   });
 
   it('stays silent for a muted server, even a mention', () => {

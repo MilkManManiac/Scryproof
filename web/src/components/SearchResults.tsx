@@ -127,11 +127,15 @@ export function SearchResults({
               {when.format(new Date(result.createdAt))}
             </span>
             <span className="search-result-text">
-              {result.content
-                ? highlight(toPlainLine(result.content, members), words)
-                : result.attachments.length > 0
-                  ? `${result.attachments.length} file(s)`
-                  : 'A locked message'}
+              {/* A hit on a blocked person's message still says where it is,
+                  without quoting them. There is nothing to reveal in a list. */}
+              {state.blocks.has(result.authorId)
+                ? 'Blocked message.'
+                : result.content
+                  ? highlight(toPlainLine(result.content, members), words)
+                  : result.attachments.length > 0
+                    ? `${result.attachments.length} file(s)`
+                    : 'A locked message'}
             </span>
           </button>
         ))}

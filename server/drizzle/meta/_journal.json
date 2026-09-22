@@ -78,6 +78,13 @@
       "when": 1790046218706,
       "tag": "0010_new_chameleon",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790046556408,
+      "tag": "0011_low_rocket_raccoon",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,15 @@ import { describe, test } from 'node:test';
 
 import { type Notice, bySource, noticeFor, previewOf, withNotice } from '../lib/notices';
 
-const base = { authorId: 'alex', selfId: 'wes', addressedToMe: true, watching: false, windowFocused: true, muted: false };
+const base = {
+  authorId: 'alex',
+  selfId: 'wes',
+  addressedToMe: true,
+  watching: false,
+  windowFocused: true,
+  muted: false,
+  blocked: false,
+};
 
 const notice = (id: string, patch: Partial<Notice> = {}): Notice => ({
   id,
@@ -54,6 +62,10 @@ describe('what counts as a notice', () => {
 
   test('a muted place still lists, it just never pops up', () => {
     assert.deepEqual(noticeFor({ ...base, windowFocused: false, muted: true }), { list: true, popup: false });
+  });
+
+  test('a blocked person is not listed at all, name or no name', () => {
+    assert.deepEqual(noticeFor({ ...base, windowFocused: false, blocked: true }), { list: false, popup: false });
   });
 });
 

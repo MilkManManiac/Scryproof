@@ -3541,3 +3541,57 @@ kbd {
   color: var(--text-faint);
   padding: 2px 12px 6px;
 }
+
+/* ---------------------------------------------------------------- blocking */
+
+/*
+ * A blocked message keeps its place in the timeline rather than vanishing: a
+ * conversation with holes in it reads as broken, and one grey line says both
+ * that something was said and that you chose not to see it.
+ */
+.message.blocked {
+  display: block;
+}
+.blocked-message {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-style: italic;
+  cursor: pointer;
+}
+.blocked-message:hover {
+  color: var(--text-dim);
+}
+
+/* The member row's own menu. Quiet until the row is under the pointer, so the
+   list stays a list of people rather than a list of buttons. */
+.member-menu {
+  position: relative;
+  margin-left: auto;
+  opacity: 0;
+}
+.member:hover .member-menu,
+.member:focus-within .member-menu {
+  opacity: 1;
+}
+
+/* Where the composer was, in a conversation with somebody you have blocked. */
+.dm-blocked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+
+/* Blocking, in the header of a conversation: on the far right, away from the
+   name, because it is not something to click by accident. */
+.dm-block-toggle {
+  margin-left: auto;
+}
