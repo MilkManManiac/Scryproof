@@ -24,6 +24,7 @@ import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
 import { DmPane, DmSidebar } from './components/DirectMessages';
 import { DockButton } from './components/DockButton';
+import { InviteJoinModal } from './components/InviteJoinModal';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { PinnedMessages } from './components/PinnedMessages';
@@ -74,6 +75,7 @@ export function App() {
           <Shell />
           <Lightbox />
           <Stage />
+          <InviteJoinModal />
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>

@@ -15,14 +15,14 @@ import { Permission } from '@scryproof/shared';
 import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import { invites, servers } from '../db/schema.js';
+import { invites, members, servers } from '../db/schema.js';
 import { badRequest, notFound } from '../lib/http-error.js';
 import { inviteCode } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { consumeInvitePreflight } from '../services/auth.js';
-import { requireMember, requireServerPermission } from '../services/permissions.js';
+import { loadMemberContext, requireMember, requireServerPermission } from '../services/permissions.js';
 import { buildServerDetail } from '../services/server-detail.js';
 import { addMember } from '../services/servers.js';
 
@@ -127,7 +127,12 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
   /**
    * Preview an invite before accepting it, so the join screen can say which
    * server this is. Unauthenticated on purpose: you need to see it before you
-   * have an account. It reveals only the server name and nothing else.
+   * have an account. It reveals the server name, icon and member count, and
+   * nothing else: no channel list, no roles, no member names.
+   *
+   * If a session cookie is present, it also says whether that user is
+   * already a member, so the invite-link screen can skip straight to the
+   * server instead of showing a Join button that would just fail.
    */
   app.get('/api/invites/:code', async (request) => {
     const { code } = z.object({ code: z.string() }).parse(request.params);
@@ -135,7 +140,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
     const row = await consumeInvitePreflight(code);
 
     if (!row.serverId) {
-      return { kind: 'instance' as const, server: null };
+      return { kind: 'instance' as const, server: null, alreadyMember: false };
     }
 
     const [server] = await getDb()
@@ -145,9 +150,24 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
       .limit(1);
     if (!server) throw notFound('That invite does not exist.', 'unknown_invite');
 
+    const memberRows = await getDb()
+      .select({ userId: members.userId })
+      .from(members)
+      .where(eq(members.serverId, row.serverId));
+
+    const alreadyMember = request.user
+      ? (await loadMemberContext(row.serverId, request.user.id)) !== null
+      : false;
+
     return {
       kind: 'server' as const,
-      server: { id: server.id, name: server.name, iconUrl: server.iconUrl },
+      server: {
+        id: server.id,
+        name: server.name,
+        iconUrl: server.iconUrl,
+        memberCount: memberRows.length,
+      },
+      alreadyMember,
     };
   });
 
