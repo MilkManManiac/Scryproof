@@ -466,6 +466,11 @@ export function ConnectionPanel() {
           TURN {stats.relayed === null ? dash : stats.relayed ? 'yes' : 'no'}
         </span>
         <span className="connection-stat">{stats.codec ?? dash}</span>
+        {stats.receiving ? (
+          <span className="connection-stat" title="The largest picture arriving right now">
+            Video {stats.receiving}
+          </span>
+        ) : null}
         {voice.phase === 'connected' ? (
           <button
             type="button"

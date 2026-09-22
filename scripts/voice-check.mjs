@@ -369,6 +369,18 @@ async function main() {
     shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
     `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);
 
+  // The watcher's choice, not the sharer's: wes asks for less and gets less,
+  // while alex changes nothing. The check reads the decoded frame width.
+  await wes.evaluate(`window.__voicePrefs.set({ receiveQuality: 'low' })`);
+  const smaller = await wes.until(`window.__voice.debugVideo().then((v) => (v['${screenKey}']?.width ?? 0) > 0 && v['${screenKey}'].width < ${shared.width} ? v['${screenKey}'].width : 0)`, 15_000);
+  check('asking for Low shrinks the screen wes receives, without touching what alex sends',
+    Boolean(smaller), `${shared.width}px wide became ${smaller || 'no smaller'}`);
+  const panelSays = await wes.evaluate(`(document.querySelector('.connection-panel')?.textContent ?? '')`);
+  check('the connection panel says what size is arriving', /Video \d+x\d+/.test(panelSays), panelSays.match(/Video \S+/)?.[0] ?? panelSays);
+  await wes.evaluate(`window.__voicePrefs.set({ receiveQuality: 'auto' })`);
+  const regrown = await wes.until(`window.__voice.debugVideo().then((v) => (v['${screenKey}']?.width ?? 0) > ${smaller} ? v['${screenKey}'].width : 0)`, 15_000);
+  check('back on Sharp, the picture grows again', Boolean(smaller) && Boolean(regrown), `${regrown || 'stayed small'}px wide`);
+
   if (process.env.VOICE_CHECK_VIDEO_SHOT) {
     const shot = await wes.send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(process.env.VOICE_CHECK_VIDEO_SHOT, Buffer.from(shot.data, 'base64'));

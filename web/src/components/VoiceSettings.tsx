@@ -20,6 +20,7 @@ import {
   type CameraFps,
   type CameraHeight,
   type InputMode,
+  type ReceiveQuality,
   type ShareFps,
   type ShareHeight,
 } from '../lib/voice-prefs';
@@ -42,6 +43,12 @@ const MODES: { id: InputMode; label: string; note: string }[] = [
       ? 'Live only while you hold a key, even with a game in front. The app watches for that one key and nothing else.'
       : 'Live only while you hold a key, while this tab is the window in front. From inside a game, use the desktop app.',
   },
+];
+
+const RECEIVE: { id: ReceiveQuality; label: string; note: string }[] = [
+  { id: 'auto', label: 'Sharp', note: 'As much picture as the tile on your screen can show. The usual choice.' },
+  { id: 'medium', label: 'Medium', note: 'A middle-sized picture whatever the tile size. Easier on a slow connection.' },
+  { id: 'low', label: 'Low', note: 'The smallest picture anyone sends. For a connection that is struggling.' },
 ];
 
 const canChooseSpeaker = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
@@ -333,7 +340,27 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
           </select>
         </div>
         <p className="field-note">
-          {shareCostLabel(prefs)} Everyone watching downloads the same. Applies the next time you start sharing.
+          {shareCostLabel(prefs)} Applies the next time you start sharing. Each watcher can ask for less, below.
+        </p>
+
+        <div className="settings-subhead">Video you receive</div>
+        <div className="voice-modes" role="radiogroup" aria-label="Video you receive">
+          {RECEIVE.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              role="radio"
+              aria-checked={prefs.receiveQuality === choice.id}
+              className={prefs.receiveQuality === choice.id ? 'voice-mode active' : 'voice-mode'}
+              onClick={() => voicePrefs.set({ receiveQuality: choice.id })}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        <p className="field-note">
+          {RECEIVE.find((choice) => choice.id === prefs.receiveQuality)?.note} Cameras and screens alike, in a call now
+          and every call after. Nobody else is affected: they keep sending, and the server hands you the smaller copy.
         </p>
       </div>
     </Modal>

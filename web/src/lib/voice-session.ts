@@ -29,9 +29,11 @@ import {
   RoomEvent,
   ScreenSharePresets,
   Track,
+  VideoQuality,
   type LocalAudioTrack,
   type Participant as LiveKitParticipant,
   type RemoteTrack,
+  type RemoteTrackPublication,
 } from 'livekit-client';
 import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 
@@ -89,6 +91,8 @@ export interface VoiceStats {
   videoCodec: string | null;
   /** True when media is going through the TURN relay rather than direct. */
   relayed: boolean | null;
+  /** The largest picture arriving right now, as "1280x720". Null while none is. */
+  receiving: string | null;
 }
 
 export interface VoiceSnapshot {
@@ -118,7 +122,15 @@ export interface VoiceSnapshot {
   can: { speak: boolean; video: boolean; screenShare: boolean };
 }
 
-const EMPTY_STATS: VoiceStats = { rttMs: null, jitterMs: null, lossPercent: null, codec: null, videoCodec: null, relayed: null };
+const EMPTY_STATS: VoiceStats = {
+  rttMs: null,
+  jitterMs: null,
+  lossPercent: null,
+  codec: null,
+  videoCodec: null,
+  relayed: null,
+  receiving: null,
+};
 
 const IDLE: VoiceSnapshot = {
   phase: 'idle',
@@ -417,7 +429,16 @@ export class VoiceSession {
           contentHint: 'motion',
           selfBrowserSurface: 'exclude',
         },
-        { screenShareEncoding: quality.encoding },
+        {
+          screenShareEncoding: quality.encoding,
+          // VP8, not the VP9 the cameras use: Chrome cannot encode a VP9 screen
+          // share in more than one size, and LiveKit 1.13.6 (ours) will not
+          // take VP9 as rid simulcast either. Two VP8 sizes let a watcher on a
+          // bad line ask for the small one. A LiveKit newer than 1.13.6 lifts
+          // this and VP9 could come back here.
+          videoCodec: 'vp8',
+          simulcast: true,
+        },
       );
     } catch (problem) {
       // Closing the picker without choosing is not an error worth a message.
@@ -572,9 +593,31 @@ export class VoiceSession {
     this.gate?.hold(false);
   }
 
+  /**
+   * The picture cap this device asked for, on one incoming picture. LiveKit
+   * keeps fitting the picture to the tile underneath the cap, so "auto" is
+   * the cap lifted, not the cap set to the top. The sender is not told to
+   * change anything: they keep sending every layer and the server forwards
+   * the one asked for, so one person on a bad line costs nobody else.
+   */
+  private capPicture(publication: RemoteTrackPublication): void {
+    if (publication.kind !== Track.Kind.Video) return;
+    const quality = voicePrefs.get().receiveQuality;
+    publication.setVideoQuality(
+      quality === 'low' ? VideoQuality.LOW : quality === 'medium' ? VideoQuality.MEDIUM : VideoQuality.HIGH,
+    );
+  }
+
+  private capPictures(): void {
+    for (const person of this.room?.remoteParticipants.values() ?? []) {
+      for (const publication of person.trackPublications.values()) this.capPicture(publication);
+    }
+  }
+
   private async applyPrefs(): Promise<void> {
     const before = this.prefs;
     const now = (this.prefs = voicePrefs.get());
+    if (before.receiveQuality !== now.receiveQuality) this.capPictures();
     if (before.inputMode !== now.inputMode || before.pushKey !== now.pushKey) void this.armGlobalHold();
 
     this.mix?.setVolume(now.outputVolume);
@@ -752,7 +795,10 @@ export class VoiceSession {
 
   private listenTo(room: Room): void {
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
-      if (track.kind !== Track.Kind.Audio) return this.refreshVideos();
+      if (track.kind !== Track.Kind.Audio) {
+        this.capPicture(publication);
+        return this.refreshVideos();
+      }
       if (!this.mix) {
         this.mix = new OutputMix();
         this.mix.setVolume(voicePrefs.get().outputVolume);
@@ -820,6 +866,8 @@ export class VoiceSession {
     let codec: string | null = null;
     let videoCodec: string | null = null;
     let relayed: boolean | null = null;
+    let receiving: string | null = null;
+    let receivingArea = 0;
     let lost = 0;
     let received = 0;
 
@@ -850,6 +898,14 @@ export class VoiceSession {
             videoCodec = described.mimeType.replace(/^video\//, '');
           }
         }
+        if (entry.type === 'inbound-rtp' && entry.kind === 'video') {
+          const width = typeof entry.frameWidth === 'number' ? entry.frameWidth : 0;
+          const height = typeof entry.frameHeight === 'number' ? entry.frameHeight : 0;
+          if (width * height > receivingArea) {
+            receivingArea = width * height;
+            receiving = `${width}x${height}`;
+          }
+        }
       }
     }
 
@@ -863,7 +919,10 @@ export class VoiceSession {
     }
     this.previousLoss = { lost, received };
 
-    this.update({ stats: { rttMs, jitterMs, lossPercent, codec, videoCodec, relayed }, encrypted: room.isE2EEEnabled });
+    this.update({
+      stats: { rttMs, jitterMs, lossPercent, codec, videoCodec, relayed, receiving },
+      encrypted: room.isE2EEEnabled,
+    });
   }
 
   /* ------------------------ for the browser test only ---------------------- */

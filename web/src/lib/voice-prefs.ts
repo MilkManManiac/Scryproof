@@ -10,6 +10,13 @@ export type ShareHeight = 720 | 1080 | 1440 | 0;
 export type ShareFps = 15 | 30 | 60;
 export type CameraHeight = 720 | 1080;
 export type CameraFps = 30 | 60;
+/**
+ * How much picture this device asks for from everyone else.
+ *   auto:   as much as the tile on screen can show, and no more
+ *   medium: the middle layer, whatever the tile size
+ *   low:    the smallest layer, for a connection that is struggling
+ */
+export type ReceiveQuality = 'auto' | 'medium' | 'low';
 
 export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
@@ -39,6 +46,7 @@ export interface VoicePrefs {
   /** Per person, 0 to 2, by user id. Missing means 1. */
   volumes: Record<string, number>;
   sounds: boolean;
+  receiveQuality: ReceiveQuality;
 }
 
 const DEFAULTS: VoicePrefs = {
@@ -58,6 +66,7 @@ const DEFAULTS: VoicePrefs = {
   outputVolume: 1,
   volumes: {},
   sounds: true,
+  receiveQuality: 'auto',
 };
 
 const STORAGE_KEY = 'scryproof.voice-prefs.v1';
