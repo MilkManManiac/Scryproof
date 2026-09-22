@@ -9,6 +9,9 @@
  * nothing else ever looks at them again. This sweep is the cleanup for that
  * abandoned half of the upload.
  *
+ * DM files (`dmFiles`) are uploaded the same way and go stale the same way,
+ * so one pass covers both tables.
+ *
  * A day is a generous grace period: nobody drafts a message with an attached
  * file for 24 hours, but it is long enough that a slow connection or a
  * person who tabbed away and came back never loses a file mid-draft.
@@ -17,7 +20,7 @@
 import { and, eq, isNull, lt } from 'drizzle-orm';
 
 import { getDb } from '../db/index.js';
-import { attachments } from '../db/schema.js';
+import { attachments, dmFiles } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { deleteObject } from './storage.js';
 
@@ -29,32 +32,45 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 60 * 1000;
 
 /**
- * Delete every attachment row that is still unclaimed and older than the
- * grace period, along with the object it points at. Returns how many were
- * removed, which is also what makes this easy to unit test without touching
- * a clock.
+ * Delete every channel attachment and DM file row that is still unclaimed
+ * and older than the grace period, along with the object each one points
+ * at. Returns the total removed across both tables, which is also what
+ * makes this easy to unit test without touching a clock.
  */
 export async function sweepUnclaimedUploads(now = new Date()): Promise<number> {
   const db = getDb();
   const cutoff = new Date(now.getTime() - UNCLAIMED_TTL_MS);
 
-  const stale = await db
+  const staleAttachments = await db
     .select({ id: attachments.id, storageKey: attachments.storageKey })
     .from(attachments)
     .where(and(isNull(attachments.messageId), lt(attachments.createdAt, cutoff)));
 
-  for (const row of stale) {
+  for (const row of staleAttachments) {
     // deleteObject already tolerates a missing object; if someone beat us to
     // it, or the box was rebuilt between upload and sweep, that is fine.
     await deleteObject(row.storageKey);
     await db.delete(attachments).where(eq(attachments.id, row.id));
   }
 
-  if (stale.length > 0) {
-    logger.info({ removed: stale.length }, 'swept unclaimed uploads');
+  const staleDmFiles = await db
+    .select({ id: dmFiles.id, storageKey: dmFiles.storageKey })
+    .from(dmFiles)
+    .where(and(isNull(dmFiles.messageId), lt(dmFiles.createdAt, cutoff)));
+
+  for (const row of staleDmFiles) {
+    await deleteObject(row.storageKey);
+    await db.delete(dmFiles).where(eq(dmFiles.id, row.id));
   }
 
-  return stale.length;
+  if (staleAttachments.length > 0 || staleDmFiles.length > 0) {
+    logger.info(
+      { attachments: staleAttachments.length, dmFiles: staleDmFiles.length },
+      'swept unclaimed uploads',
+    );
+  }
+
+  return staleAttachments.length + staleDmFiles.length;
 }
 
 /** Start the recurring sweep. Returns a function that stops it cleanly. */
