@@ -1298,9 +1298,25 @@ textarea {
 }
 
 .banner.update {
-  background: var(--bg-raised);
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13.5px;
+  padding: 10px 14px;
+}
+.banner.update .link-button {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* The build stamp at the foot of the user menu. */
+.build-label {
+  padding: 6px 10px 4px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  user-select: text;
 }
 
 .banner.bad {

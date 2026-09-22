@@ -1,5 +1,22 @@
+import { execSync } from 'node:child_process';
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+/**
+ * Which build this is, stamped in so a person can read it off the screen and
+ * compare with what was meant to ship. The commit is what release.sh signed;
+ * the time is when the files were made.
+ */
+function buildStamp(): string {
+  let commit = 'dev';
+  try {
+    commit = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    // Not a checkout. Fine: 'dev' says as much.
+  }
+  return JSON.stringify({ commit, at: Date.now() });
+}
 
 /**
  * The dev server proxies the API and the gateway to the Node process, so the
@@ -9,6 +26,7 @@ import react from '@vitejs/plugin-react';
  */
 export default defineConfig({
   plugins: [react()],
+  define: { __BUILD__: buildStamp() },
   server: {
     port: 5173,
     strictPort: true,

@@ -339,7 +339,7 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      additionalArguments: [`--scryproof-server=${SERVER.origin}`, `--scryproof-gateway=${GATEWAY}`],
+      additionalArguments: [`--scryproof-server=${SERVER.origin}`, `--scryproof-gateway=${GATEWAY}`, `--scryproof-shell=${app.getVersion()}`],
     },
   });
 

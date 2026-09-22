@@ -8,6 +8,8 @@
 interface DesktopBridge {
   server: string;
   gateway: string;
+  /** The installed shell's own version, from its package.json. Absent in older shells. */
+  shell?: string;
   /** Absent in shells built before updates existed. */
   updateState?: () => Promise<number | null>;
   onUpdateReady?: (listener: (version: number) => void) => void;
@@ -17,6 +19,17 @@ interface DesktopBridge {
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+
+declare const __BUILD__: { commit: string; at: number };
+
+/** What is on the screen: the client build, and in the app, the shell around it. */
+export function buildLabel(): string {
+  const at = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(
+    new Date(__BUILD__.at),
+  );
+  const client = `build ${__BUILD__.commit}, ${at}`;
+  return bridge ? `${client} · app ${bridge.shell || 'older than this build'}` : client;
+}
 
 /** Where a person with a browser would find this server. */
 export const publicOrigin = (): string => bridge?.server || window.location.origin;

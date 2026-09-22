@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import type { PresenceStatus } from '@scryproof/shared';
 
+import { buildLabel } from '../lib/desktop';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
@@ -153,6 +154,9 @@ export function UserPanel() {
           <button type="button" className="channel" onClick={() => void signOut()}>
             <span className="channel-name">Sign out</span>
           </button>
+          <div className="build-label" title="Which build of Scryproof this is">
+            {buildLabel()}
+          </div>
         </div>
       ) : null}
     </div>

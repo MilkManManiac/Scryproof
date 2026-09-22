@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     server: read('server'),
     gateway: read('gateway'),
+    shell: read('shell'),
     /** The version waiting, or null. */
     updateState: () => ipcRenderer.invoke('scryproof:update-state'),
     onUpdateReady: (listener) => {
