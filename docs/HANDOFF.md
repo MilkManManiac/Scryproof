@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, midday. The ridge is the default theme and a formatting pass (larger, whiter text; nothing clipped) is live; see the last section.
+**Last updated:** 2026-09-22, afternoon. Live today: ridge default, the formatting pass, the speaking ring and sharing marks in every list, and a per-watcher video quality choice; see the last section.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1523,6 +1523,54 @@ layout, group DMs, Electron fuses, soundboard, safety number.
 4. "Google Drive for the exe": already covered by the one download link
    and the client self-update. Told Wes. The Electron shell itself still
    changes only by reinstalling from that link.
+
+**Items 1 to 3 built and live the same afternoon, two clients.**
+
+*Client 1790103773366, who is talking and who is sharing.* The speaking
+ring reaches the channel list (`.voice-member.speaking`) and the member
+list (`.member.speaking`); the member list marks who is in voice
+(`.member.in-voice`, a sound glyph, tooltip names the channel); camera and
+screen get drawn marks from `components/glyphs.tsx` in both lists. All
+three read the call through `state/useVoice.ts`.
+
+Found on the way: **the ring itself was broken.** LiveKit's
+ActiveSpeakersChanged never fired in `test:voice`, so the voice tile
+never ringed either. Cause not proven (the server has only packet
+headers to go by with E2EE, and the fake microphone may sit under its
+threshold). Fix that does not depend on it: `OutputMix` in
+`voice-audio.ts` marks a person talking when a 20 ms slice of their
+decrypted sound is over -45 dBFS, held 300 ms; `voice-session.ts` merges
+that with whatever the server says. Screen-share sound never rings.
+
+*Client 1790104273801, video you receive.* Voice settings, bottom:
+"Video you receive", Sharp / Medium / Low (`receiveQuality` in
+`voice-prefs.ts`). `capPicture()` in `voice-session.ts` calls LiveKit's
+`setVideoQuality` on every incoming camera and screen, at subscribe and
+whenever the pref changes; adaptive stream still fits the tile underneath
+the cap. The connection panel shows "Video 1920x1080", the largest
+picture arriving (`stats.receiving`).
+
+The catch, and the trade made: **a screen share is now VP8 in two sizes,
+not VP9 in one.** Chrome cannot encode a VP9 screen share with more than
+one spatial layer (LiveKit forces L1T3), and LiveKit only takes VP9 as
+rid-based simulcast on a server *newer* than 1.13.6, which is exactly
+what the box and `.tools/livekit` run. So on VP9, Low had nothing smaller
+to pick (the test proved it: 960 wide stayed 960). On VP8 with two
+layers, Low takes 1920 to 960. Cameras stay VP9 SVC, whose spatial layers
+the cap can pick. To get VP9 screen share back: upgrade LiveKit on the
+box past 1.13.6 (`infra/box/remote/60-livekit-install.sh`, one version
+string) and the local binary, then drop `videoCodec: 'vp8'` in
+`setScreenShare`. Not urgent; nobody has said the share looks worse.
+
+`test:voice` is 35 checks now (was 28 this morning): the ring and the
+marks in both lists, the screen mark, Low shrinking the decoded width,
+the panel naming the size, Sharp growing it back.
+
+![Both lists during a call: in-voice marks, Alex ringed on the stage](shots/voice-lists.png)
+
+**Wes has not yet seen either on the live site.** The plan he approved
+had a third step: nothing, until he and lamp try a real call with a
+share and one of them on Low.
 
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
