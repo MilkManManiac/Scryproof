@@ -1514,5 +1514,15 @@ Wes has not yet looked at the live result.
 **Next:** Wes's pick from the backlog, offered in this order: phone
 layout, group DMs, Electron fuses, soundboard, safety number.
 
+**From the friends' chat, 2026-09-22 (milky = Wes, lamp = a friend):**
+1. Viewer chooses the video and screen quality they receive (LiveKit
+   simulcast layer selection; receive side only, no effect on E2EE).
+2. A green speaking ring on the name in the channel list and member
+   list, not only in the voice view.
+3. Camera and screen icons beside whoever is sharing.
+4. "Google Drive for the exe": already covered by the one download link
+   and the client self-update. Told Wes. The Electron shell itself still
+   changes only by reinstalling from that link.
+
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
