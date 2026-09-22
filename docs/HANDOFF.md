@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, afternoon. Live today: ridge default, the formatting pass, the speaking ring and sharing marks in every list, and a per-watcher video quality choice; see the last section.
+**Last updated:** 2026-09-22, evening. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, and the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable); see the last two sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1610,3 +1610,78 @@ ten minutes. To add a rule, add a row to `HOUSE_RULES` and a line to
 
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
+
+## Evening batch from lamp's notes, 2026-09-22 (client CLIENT_VERSION)
+
+Lamp and Wes sent a second list. Built in this order, one commit each,
+released together:
+
+**Profile card.** "Make usernames / profile pictures clickable" and "do not
+automatically open DMs... an overlay that allows you to choose message,
+add friend, see profile" (lamp, with a Discord screenshot). Every name and
+picture (member list, message authors, DM authors and header, voice rows
+under a channel, your own picture bottom left) opens
+`components/ProfileCard.tsx` beside the click: banner in their accent,
+big picture with presence, name, `@handle`, nickname vs. display name,
+status line, role chips, "In <channel>" with the sharing marks, "Here
+since <month>", Message / Block (Edit profile on your own), and a line to
+send a first message without leaving the card (`openWith` now answers
+the dm id so the card can `send` to it). One provider in `App.tsx`; one
+card at a time; placed by `lib/place.ts` (tested), a bottom sheet under
+640px. There is no "add friend": DMs are open between people who share a
+server, so there is nothing to add. The member row's right-click and the
+"..." menu still hold time out and the rest.
+
+![Alex's card from the member list](shots/profile-card.png)
+
+**Picture viewer.** "Make images clickable so you can zoom in, copy,
+save/download" (Wes). `components/Lightbox.tsx`: full screen, scroll to
+zoom around the pointer (`lib/zoom.ts`, tested), drag, click to flip
+between fitted and actual size, Copy (PNG to the clipboard, redrawn
+through a canvas when the source is not PNG), Save (download under its
+own name), Escape. Works the same on a DM picture, from the blob this
+browser decrypted. `shot.mjs` gained `--eval "<js>"` and, in dev,
+`window.__openPicture()` for the screenshot.
+
+**Text styles.** "Very basic wysiwyg text markup options" (lamp).
+`**bold**`, `*italic*`, `~~struck~~`, `` `code` `` are new part kinds in
+`splitContent()` (`shared/src/validation.ts`), nested the same way as
+spoilers, with the rule that italic must touch its text so `5 * 3 * 2`
+is arithmetic. Still no markup parsing anywhere: parts become elements.
+DMs now draw the same parts through the exported `Rich` in
+`MessageList.tsx` (their own link-only pass is gone). Four buttons under
+each composer (`components/MarkupTools.tsx`) and Ctrl+B / I / Shift+X / E
+wrap the selection (`lib/markup.ts`, tested; applying twice takes the
+mark off). Editing gives the markers back through `toDraft`.
+
+![Styles drawn, and the buttons under the box](shots/markup.png)
+
+**Phone drawers and install.** "Mobile friendly. PWA as the app. Can the
+PWA have knowledge of when an update is available" (lamp). Under 640px
+the servers and channels are a drawer from the left (the lines button in
+every header, `components/DockButton.tsx`, asks the shell through the
+`OPEN_DOCK` signal) and the members a drawer from the right (the member
+count). Picking anything closes them. On a wide screen the `.dock`
+wrappers are `display: contents`, so nothing there moved. Installable:
+`web/public/manifest.webmanifest`, icons made from the desktop icon
+(`web/public/icons`, PIL, one-off), and `web/public/sw.js`, a service
+worker that caches nothing (the page is no-store and the app already
+watches for a new build; a cache would fight both). "Install on this
+device" appears in the menu behind your name only when the browser
+offers it and never inside the desktop shell. Updates in the installed
+app: the same `watchSite` check every ten minutes and the same
+reload-when-you-choose banner, since it is the same page. **Untested on
+a real phone**; the shots are a 390x844 headless window.
+
+![Phone: the channel drawer](shots/phone-channels.png)
+
+**Not built, written up instead:** group DMs and calls inside DMs, both
+from lamp. `docs/briefs/group-dms.md` and `docs/briefs/dm-calls.md` say
+what already fits and what assumes a pair or a server. Both are
+main-session jobs (E2EE path, voice grants).
+
+**Stars.** Wes: "for the alive theme, throw some stars shining in there
+too." They were there and too faint. Brighter, 110 of them, and each one
+flares for under a second every minute or two.
+
+Tests: server 168, web 159. Nothing in this batch needed a migration.

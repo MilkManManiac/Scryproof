@@ -54,8 +54,17 @@ number.
 
 Still later: bookmarks; polls; voice messages; **voice changers** (Wes,
 2026-09-22: "nice to have"). Voice changers are a main-session job, not a
-brief: the microphone already goes through a Web Audio graph in
-`web/src/lib/voice-audio.ts` before LiveKit, so a pitch shift or a robot
-voice is a node in that graph, chosen in Voice settings, and the E2EE path
-is untouched because the effect is applied before encryption. Preview in
-the settings meter so the person hears themselves first.
+brief. Correction (2026-09-22, evening): the microphone does **not** go
+through a Web Audio graph before LiveKit today. `MicGate` in
+`web/src/lib/voice-audio.ts` listens on a clone of the track and flips the
+real track's `enabled` flag; the real track goes to LiveKit untouched. So
+a voice changer means opening the microphone ourselves, running it through
+an effects chain (ring modulator for a robot; an AudioWorklet doing
+granular pitch shift for chipmunk and deep), and publishing the chain's
+output as the microphone track. Still before encryption, so E2EE is
+untouched. Preview through the settings meter first. Roughly an afternoon,
+the pitch shifter being most of it.
+
+Two more main-session jobs, written up 2026-09-22 after lamp asked for
+them: `group-dms.md` and `dm-calls.md`. Both change the E2EE path or how
+voice rooms are granted, which is why they are not agent briefs.
