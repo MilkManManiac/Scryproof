@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, evening. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, and the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable); see the last two sections.
+**Last updated:** 2026-09-22, night. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), and the night push (What's new, the dusk theme, the join fix); see the last three sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1694,7 +1694,8 @@ Tests: server 168, web 159. Nothing in this batch needed a migration.
   Either he could not find it or he had no permission; ask which before
   changing anything. If it is discoverability, a Delete item in the
   channel's right-click menu next to the gear is the fix.
-- **"Someone" for a member who was there.** Screenshots in
+- **"Someone" for a member who was there.** FIXED in the night push, see
+  the next section; the notes below are what was known before. Screenshots in
   `Pictures\Screenshots` at 16:13: Wes had just joined lamp's server
   ("Superest Secretest Seahorse"). The header said 2 members, the member
   list showed only milky, the voice row under #important said "Someone" and
@@ -1707,3 +1708,61 @@ Tests: server 168, web 159. Nothing in this batch needed a migration.
   or against a stale list; the `member_join` fan-out not reaching a
   socket that subscribed to the server mid-session. Reproduce with
   `test:smoke`-style two-user join before guessing.
+
+## The night push, 2026-09-22 (client 1790111550396)
+
+Wes: "add like a thing somewhere that shows updates that have been pushed.
+It doesn't notify them but they can see what has changed when they are
+logged in. Also, I want you to make a theme for a user. I have two images
+in my downloads for reference. Go nuts with the 'effects' / alive feel on
+that one. Do those and whatever else you want to work on."
+
+**What's new.** `web/src/changelog.ts` is the list, newest first, written
+for a friend and not a developer (no file names, say what was wrong when
+something is fixed). "What's new" in the menu under your name opens it
+(`components/WhatsNew.tsx`, notes drawn through `Rich` so **bold** and
+`code` work in them). A dot on your name and on the menu item means there
+is an entry you have not read; opening the list clears it. Read state is
+on this device (`lib/whats-new.ts`, tested), a first visit is not news,
+nothing pops up and nothing makes a sound. **The release script now
+refuses to ship when the top entry is not from today** (`SKIP_NOTES=1`
+to override), so every release comes with a note or a deliberate
+decision not to write one. `shot.mjs` takes `--store key=value`.
+
+![The list, in the dusk](shots/whats-new.png)
+
+**The dusk.** His two reference pictures were pink clouds under a teal
+night sky with a crescent moon, and a pink dusk gradient under a starry
+black. Two paintings through imagegen; `dusk-a` (clouds, moon, dark
+bottom third) is the one; `dusk-b` came back with a paper border and is
+kept in `assets/gen/` for the record. `web/src/themes/dusk.css`: indigo
+surfaces, the clouds' pink as the accent, moonlight where the others
+have gold, lavender dim text at 7.9:1. Effects, all in `Ambient.tsx`:
+stars down to 60% of the window in warm white (`--star-color`,
+`--star-depth`, new tokens the hall names and every theme sets), a
+**shooting star** every twenty to fifty seconds, **haze** (five faint
+patches of the glow colour drifting sideways, screened so they light the
+clouds), and **glimmer** (twenty-two four-point sparkles in the accent,
+a second or two each, mostly where the clouds are). Same rules as the
+ridge: thirty frames a second, stops when the tab is hidden, never under
+reduce motion. Whether it is too much is Wes's call; the knobs are the
+constants at the top of `Ambient.tsx` and the word list in `dusk.css`.
+
+![The dusk](shots/dusk.png)
+
+**"Someone" after a join, fixed.** The cause was in the client, not the
+gateway: `member_join` for a server whose roster this browser had not
+loaded started the roster with only the joiner, and the loader in
+`App.tsx` (`if (state.members[server.id]) return`) took that for a
+complete list. So the person who just joined saw only themselves until
+something else refreshed the roster. The reducer now ignores a join for
+an unloaded roster; the roster is fetched whole when the server is
+opened. No test: the reducer is not exported. Worth one if it ever
+regresses.
+
+**Not done:** channel deletion is unchanged (still gated on
+MANAGE_CHANNELS, still the question of whether Wes lacked the permission
+on lamp's server or could not find the button). Group DMs and DM calls
+are still briefs.
+
+Tests: server 168, web 161. No migration.
