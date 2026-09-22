@@ -69,7 +69,8 @@ describe('links in a message body', () => {
         if (part.kind === 'link') return part.text;
         if (part.kind === 'everyone') return '@everyone';
         if (part.kind === 'emoji') return emojiToken(part.name);
-        if (part.kind === 'spoiler') return '';
+        if (part.kind === 'spoiler' || part.kind === 'style') return '';
+        if (part.kind === 'code') return part.text;
         return mentionToken(part.userId);
       })
       .join('');
@@ -182,11 +183,45 @@ describe('custom emoji in a message body', () => {
         if (part.kind === 'link') return part.text;
         if (part.kind === 'everyone') return '@everyone';
         if (part.kind === 'emoji') return emojiToken(part.name);
-        if (part.kind === 'spoiler') return '';
+        if (part.kind === 'spoiler' || part.kind === 'style') return '';
+        if (part.kind === 'code') return part.text;
         return mentionToken(part.userId);
       })
       .join('');
     assert.equal(rebuilt, body);
+  });
+});
+
+describe('styles in a message body', () => {
+  const only = (content: string) => splitContent(content);
+
+  it('finds bold, italic, strike and code', () => {
+    assert.deepEqual(only('**loud**'), [{ kind: 'style', style: 'bold', parts: [{ kind: 'text', text: 'loud' }] }]);
+    assert.deepEqual(only('*soft*'), [{ kind: 'style', style: 'italic', parts: [{ kind: 'text', text: 'soft' }] }]);
+    assert.deepEqual(only('~~gone~~'), [{ kind: 'style', style: 'strike', parts: [{ kind: 'text', text: 'gone' }] }]);
+    assert.deepEqual(only('`x = 1`'), [{ kind: 'code', text: 'x = 1' }]);
+  });
+
+  it('nests: a link inside bold, bold inside a spoiler', () => {
+    const bold = only('**see https://example.test/a**')[0];
+    assert.equal(bold?.kind, 'style');
+    assert.equal(bold?.kind === 'style' && bold.parts[1]?.kind, 'link');
+    const spoiler = only('||**loud**||')[0];
+    assert.equal(spoiler?.kind === 'spoiler' && spoiler.parts[0]?.kind, 'style');
+  });
+
+  it('does not interpret what is inside code', () => {
+    assert.deepEqual(only('`**not bold** :cheer:`'), [{ kind: 'code', text: '**not bold** :cheer:' }]);
+  });
+
+  it('leaves arithmetic, lone markers and empty pairs as text', () => {
+    for (const body of ['5 * 3 * 2', 'a * b', '**', '****', '*', 'un**closed', '** spaced **', '``']) {
+      assert.equal(text(only(body)), body, body);
+    }
+  });
+
+  it('keeps the text around a style', () => {
+    assert.equal(only('say **it** loud').map((part) => part.kind).join(','), 'text,style,text');
   });
 });
 

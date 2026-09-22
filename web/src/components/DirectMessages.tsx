@@ -19,6 +19,9 @@ import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmV
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { openPicture } from './Lightbox';
+import { applyMarkup, markerForKey } from '../lib/markup';
+import { MarkupTools } from './MarkupTools';
+import { Rich } from './MessageList';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
@@ -296,27 +299,6 @@ function DeviceWarning({
 
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-/** Addresses become links. Nothing else is interpreted: a DM body is only ever text. */
-function withLinks(text: string): ReactNode[] {
-  const parts: ReactNode[] = [];
-  const pattern = /https?:\/\/[^\s<>]+[^\s<>.,;:!?)\]'"]/g;
-  let cursor = 0;
-  for (const match of text.matchAll(pattern)) {
-    const at = match.index ?? 0;
-    if (at > cursor) parts.push(text.slice(cursor, at));
-    parts.push(
-      // noreferrer for the same reason as in channels: the site being opened
-      // should not learn the address of a private instance.
-      <a key={at} className="link" href={match[0]} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-        {match[0]}
-      </a>,
-    );
-    cursor = at + match[0].length;
-  }
-  if (cursor < text.length) parts.push(text.slice(cursor));
-  return parts;
 }
 
 /** One line of a message, for the strip above a reply. */
@@ -649,7 +631,9 @@ function DmRow({
       <>
         {view.text || view.editedAt || view.unverified ? (
           <div className="message-text">
-            {withLinks(view.text)}
+            {/* The same parts as a channel message. There is nobody to name here
+                and no server emoji, so those come out as the text typed. */}
+            <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
             {view.editedAt ? <span className="message-edited">edited</span> : null}
             {view.unverified ? (
               <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
@@ -958,6 +942,12 @@ function DmComposer({
             void attach(pasted);
           }}
           onKeyDown={(event) => {
+            const marker = markerForKey(event);
+            if (marker) {
+              event.preventDefault();
+              applyMarkup(event.currentTarget, marker, (value) => setDrafts((current) => ({ ...current, [dm.id]: value })));
+              return;
+            }
             if (event.key === 'Escape' && target) {
               onCancelReply();
               return;
@@ -973,7 +963,8 @@ function DmComposer({
         </button>
       </div>
       <div className="composer-hint">
-        {text.length > LIMITS.message.max - 400 ? `${LIMITS.message.max - text.length} characters left` : ''}
+        <span>{text.length > LIMITS.message.max - 400 ? `${LIMITS.message.max - text.length} characters left` : ''}</span>
+        <MarkupTools input={input} setValue={(value) => setDrafts((current) => ({ ...current, [dm.id]: value }))} disabled={!state.ready} />
       </div>
     </div>
   );

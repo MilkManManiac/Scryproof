@@ -144,9 +144,13 @@ export function hrefFor(text: string): string | null {
   return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
 }
 
-/** Body text split into plain runs, mentions, emoji, links and spoilers, for drawing. */
+/** Body text split into plain runs, mentions, emoji, links, spoilers and styles, for drawing. */
 export type ContentPart =
   | { kind: 'text'; text: string }
+  /** `**bold**`, `*italic*`, `~~struck~~`. What is inside is split the same way again. */
+  | { kind: 'style'; style: 'bold' | 'italic' | 'strike'; parts: ContentPart[] }
+  /** `` `code` ``: drawn in the mono, and nothing inside it is interpreted. */
+  | { kind: 'code'; text: string }
   | { kind: 'mention'; userId: string }
   | { kind: 'everyone' }
   /**
@@ -165,13 +169,32 @@ export type ContentPart =
  */
 const SPOILER_SOURCE = String.raw`\|\|([\s\S]+?)\|\|`;
 
-// Group 1 mention, 2 emoji, 3 spoiler. The spoiler is tried before a link so
-// `||https://…||` hides the link rather than swallowing the second `||`.
+/*
+ * The styles. Code is one line and literal. Bold and strike take anything up
+ * to their closing pair. Italic is a single star each side and must touch
+ * the text, so "5 * 3 * 2" stays arithmetic. All non-greedy and all needing
+ * their closer, so a stray marker is just a character.
+ */
+const CODE_SOURCE = String.raw`\x60([^\x60\n]+)\x60`;
+const BOLD_SOURCE = String.raw`\*\*(?!\s)([\s\S]+?)(?<!\s)\*\*`;
+const STRIKE_SOURCE = String.raw`~~(?!\s)([\s\S]+?)(?<!\s)~~`;
+const ITALIC_SOURCE = String.raw`\*(?!\s)([^*\n]+?)(?<!\s)\*`;
+
+// Group 1 mention, 2 emoji, 3 spoiler, 4 code, 5 bold, 6 strike, 7 italic.
+// The spoiler is tried before a link so `||https://…||` hides the link
+// rather than swallowing the second `||`; code before the styles so a star
+// inside backticks is a star.
 const CONTENT_SOURCE =
   String.raw`<@([0-9a-fA-F-]{36})>|:(${EMOJI_NAME_SOURCE}):|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
-  SPOILER_SOURCE +
+  [SPOILER_SOURCE, CODE_SOURCE, BOLD_SOURCE, STRIKE_SOURCE, ITALIC_SOURCE].join('|') +
   '|' +
   LINK_SOURCE;
+
+const STYLE_GROUPS: { index: number; style: 'bold' | 'strike' | 'italic' }[] = [
+  { index: 5, style: 'bold' },
+  { index: 6, style: 'strike' },
+  { index: 7, style: 'italic' },
+];
 
 export function splitContent(content: string): ContentPart[] {
   const parts: ContentPart[] = [];
@@ -211,6 +234,19 @@ export function splitContent(content: string): ContentPart[] {
       // The same things a top-level body can hold work under a spoiler too,
       // a mention or a link still needs building once it is revealed.
       parts.push({ kind: 'spoiler', parts: splitContent(match[3]) });
+      cursor = at + whole.length;
+      continue;
+    }
+    if (match[4] !== undefined) {
+      flushTextUpTo(at);
+      parts.push({ kind: 'code', text: match[4] });
+      cursor = at + whole.length;
+      continue;
+    }
+    const styled = STYLE_GROUPS.find((group) => match[group.index] !== undefined);
+    if (styled) {
+      flushTextUpTo(at);
+      parts.push({ kind: 'style', style: styled.style, parts: splitContent(match[styled.index]!) });
       cursor = at + whole.length;
       continue;
     }

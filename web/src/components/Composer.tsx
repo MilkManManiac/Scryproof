@@ -12,10 +12,12 @@ import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
+import { applyMarkup, markerForKey } from '../lib/markup';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore } from '../state/store';
+import { MarkupTools } from './MarkupTools';
 
 /** One row in the list under the box, for a person or for one of the server's emoji. */
 interface Offer {
@@ -353,6 +355,12 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             }
           }}
           onKeyDown={(event) => {
+            const marker = markerForKey(event);
+            if (marker) {
+              event.preventDefault();
+              applyMarkup(event.currentTarget, marker, setText);
+              return;
+            }
             if (offers.length > 0) {
               const offer = offers[picked];
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -403,16 +411,19 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       </div>
 
       <div className="composer-hint">
-        {text.startsWith('/') ? (
-          'Try /roll 2d6+3'
-        ) : (
-          <>
-            {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
-            {text.length > LIMITS.message.max - 400
-              ? `${LIMITS.message.max - text.length} characters left`
-              : ''}
-          </>
-        )}
+        <span>
+          {text.startsWith('/') ? (
+            'Try /roll 2d6+3'
+          ) : (
+            <>
+              {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
+              {text.length > LIMITS.message.max - 400
+                ? `${LIMITS.message.max - text.length} characters left`
+                : ''}
+            </>
+          )}
+        </span>
+        <MarkupTools input={input} setValue={setText} disabled={!mayPost} />
       </div>
     </div>
   );

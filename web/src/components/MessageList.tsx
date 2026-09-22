@@ -377,6 +377,8 @@ function plainTextOf(parts: ContentPart[], members: Member[]): string {
       if (part.kind === 'everyone') return '@everyone';
       if (part.kind === 'link') return part.text;
       if (part.kind === 'spoiler') return plainTextOf(part.parts, members);
+      if (part.kind === 'style') return plainTextOf(part.parts, members);
+      if (part.kind === 'code') return part.text;
       const member = members.find((entry) => entry.userId === part.userId);
       return `@${member ? nameOf(member) : 'someone who left'}`;
     })
@@ -427,6 +429,15 @@ function ContentPartView({
   }
   if (part.kind === 'spoiler') {
     return <Spoiler parts={part.parts} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />;
+  }
+  if (part.kind === 'code') return <code className="inline-code">{part.text}</code>;
+  if (part.kind === 'style') {
+    const inner = part.parts.map((child, index) => (
+      <ContentPartView key={index} part={child} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />
+    ));
+    if (part.style === 'bold') return <strong>{inner}</strong>;
+    if (part.style === 'italic') return <em>{inner}</em>;
+    return <s>{inner}</s>;
   }
   const member = members.find((entry) => entry.userId === part.userId);
   return (
@@ -499,8 +510,12 @@ function visibleReactions(reactions: readonly Reaction[], blocks: ReadonlySet<st
     .filter((reaction) => reaction.userIds.length > 0);
 }
 
-/** A message body with the people it names drawn as names. Still only ever text. */
-function MessageContent({
+/**
+ * A body's parts, drawn, with no box around them. Still only ever text:
+ * every part is a React element built from a string, never markup parsed
+ * from one. DMs use this too, with nobody to name and no emoji to find.
+ */
+export function Rich({
   content,
   members,
   emojis,
@@ -515,12 +530,21 @@ function MessageContent({
   everyone: boolean;
 }) {
   return (
-    <div className="message-text">
+    <>
       {splitContent(content).map((part, index) => (
         <span key={index}>
           <ContentPartView part={part} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />
         </span>
       ))}
+    </>
+  );
+}
+
+/** A message body with the people it names drawn as names. */
+function MessageContent(props: { content: string; members: Member[]; emojis: Emoji[]; selfId?: string; everyone: boolean }) {
+  return (
+    <div className="message-text">
+      <Rich {...props} />
     </div>
   );
 }

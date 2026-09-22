@@ -21,6 +21,10 @@ const SHORTCUTS: [keys: string[], what: string][] = [
   [['Esc'], 'Mark this channel read'],
   [['↑'], 'Edit your last message, with the box empty'],
   [['Shift', 'Enter'], 'A new line instead of sending'],
+  [[CTRL, 'B'], 'Bold what is selected'],
+  [[CTRL, 'I'], 'Italic'],
+  [[CTRL, 'Shift', 'X'], 'Strike through'],
+  [[CTRL, 'E'], 'Code'],
 ];
 
 export function ShortcutHelp({ onClose }: { onClose: () => void }) {

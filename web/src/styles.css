@@ -1188,9 +1188,64 @@ select {
 }
 
 .composer-hint {
-  height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
   padding: 3px 4px 0;
   font-size: 12px;
+  color: var(--text-dim);
+}
+.composer-hint > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The style buttons: small, dim, on the hint line under the box. */
+.markup-tools {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  gap: 1px;
+}
+.markup-tool {
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.markup-tool:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.markup-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.markup-tool.bold {
+  font-weight: 700;
+}
+.markup-tool.italic {
+  font-style: italic;
+}
+.markup-tool.strike {
+  text-decoration: line-through;
+}
+
+.inline-code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel-4);
+  border: 1px solid var(--line);
+}
+.message-text s {
   color: var(--text-dim);
 }
 

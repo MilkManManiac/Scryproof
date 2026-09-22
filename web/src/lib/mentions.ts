@@ -51,6 +51,11 @@ function partToDraft(part: ContentPart, members: Member[]): string {
   if (part.kind === 'spoiler') {
     return `||${part.parts.map((inner) => partToDraft(inner, members)).join('')}||`;
   }
+  if (part.kind === 'code') return `\`${part.text}\``;
+  if (part.kind === 'style') {
+    const mark = part.style === 'bold' ? '**' : part.style === 'strike' ? '~~' : '*';
+    return `${mark}${part.parts.map((inner) => partToDraft(inner, members)).join('')}${mark}`;
+  }
   const member = members.find((entry) => entry.userId === part.userId);
   return member ? `@${mentionLabel(member, members)}` : '@someone who left';
 }
