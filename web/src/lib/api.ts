@@ -10,6 +10,7 @@ import type {
   Attachment,
   AuditLogEntry,
   BlockedPerson,
+  BookmarkedMessage,
   Category,
   Channel,
   DeviceKey,
@@ -239,6 +240,8 @@ export const api = {
     pin: (id: string) => put<{ message: Message }>(`/api/messages/${id}/pin`),
     unpin: (id: string) => del<{ message: Message }>(`/api/messages/${id}/pin`),
     pins: (channelId: string) => get<{ messages: Message[] }>(`/api/channels/${channelId}/pins`),
+    bookmark: (id: string) => put<{ ok: true }>(`/api/messages/${id}/bookmark`),
+    unbookmark: (id: string) => del<{ ok: true }>(`/api/messages/${id}/bookmark`),
     edit: (id: string, content: string) =>
       patch<{ message: Message }>(`/api/messages/${id}`, { content }),
     remove: (id: string) => del<{ ok: true }>(`/api/messages/${id}`),
@@ -412,6 +415,11 @@ export const api = {
     list: () => get<{ blocks: BlockedPerson[] }>('/api/blocks'),
     add: (userId: string) => put<{ blocks: string[] }>(`/api/blocks/${userId}`),
     remove: (userId: string) => del<{ blocks: string[] }>(`/api/blocks/${userId}`),
+  },
+
+  /** Messages saved for later. DMs are out of scope: the server cannot read them to list them. */
+  bookmarks: {
+    list: () => get<{ messages: BookmarkedMessage[] }>('/api/bookmarks'),
   },
 
   /** Uploads go through FormData, so they bypass the JSON helper above. */

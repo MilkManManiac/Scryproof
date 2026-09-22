@@ -544,6 +544,31 @@ export const eventRsvps = pgTable(
 export type EventRow = typeof events.$inferSelect;
 export type EventRsvpRow = typeof eventRsvps.$inferSelect;
 
+/**
+ * A message saved for later, by the person who saved it. Nobody else, not
+ * even the message's own author, can see that it was saved: this is one row
+ * per (user, message), never surfaced beside the message itself except to
+ * the person who owns the row.
+ */
+export const bookmarks = pgTable(
+  'bookmarks',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    messageId: text('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.messageId] }),
+    // The Saved tab reads "this person's bookmarks, newest first"; the
+    // primary key alone would make that a full scan of the table.
+    index('bookmarks_user_idx').on(table.userId, table.createdAt),
+  ],
+);
+
 /* ------------------------------ direct messages ----------------------------- */
 
 /**
@@ -690,6 +715,7 @@ export type DmMessageRow = typeof dmMessages.$inferSelect;
 export type DmMessageKeyRow = typeof dmMessageKeys.$inferSelect;
 
 export type BlockRow = typeof blocks.$inferSelect;
+export type BookmarkRow = typeof bookmarks.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

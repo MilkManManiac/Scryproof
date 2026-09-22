@@ -657,6 +657,11 @@ function MessageRow({
   const timedOut = Boolean(useTimeoutEnd(members.find((entry) => entry.userId === selfId)));
   const canDelete = mine || can(mask, Permission.MANAGE_MESSAGES);
   const canPin = can(mask, Permission.MANAGE_MESSAGES) && !message.deleted;
+  // Saving is nobody's business but the saver's, so unlike pinning it needs no
+  // permission beyond being able to see the message at all. It never changes
+  // under this row from anywhere else (no gateway event exists for it), so a
+  // plain optimistic toggle on top of what the message arrived with is enough.
+  const [bookmarked, setBookmarked] = useState(message.bookmarked ?? false);
   const canReact = can(mask, Permission.ADD_REACTIONS) && !timedOut;
   const canReply = can(mask, Permission.SEND_MESSAGES) && !timedOut;
   const at = new Date(message.createdAt);
@@ -744,9 +749,11 @@ function MessageRow({
               {timeFormat.format(at)}
             </time>
             {message.pinnedAt ? <span className="message-pinned" title="Pinned in this channel">pinned</span> : null}
+            {bookmarked ? <span className="message-pinned" title="Saved">saved</span> : null}
           </div>
         )}
         {grouped && message.pinnedAt ? <span className="message-pinned" title="Pinned in this channel">pinned</span> : null}
+        {grouped && bookmarked ? <span className="message-pinned" title="Saved">saved</span> : null}
 
         {message.deleted ? (
           <div className="message-text deleted">Message deleted</div>
@@ -947,6 +954,20 @@ function MessageRow({
               &#128204;
             </button>
           ) : null}
+          <button
+            type="button"
+            className={bookmarked ? 'icon-button on' : 'icon-button'}
+            title={bookmarked ? 'Unsave' : 'Save'}
+            onClick={() => {
+              const next = !bookmarked;
+              setBookmarked(next);
+              void (next ? api.messages.bookmark(message.id) : api.messages.unbookmark(message.id)).catch(() =>
+                setBookmarked(!next),
+              );
+            }}
+          >
+            &#128278;
+          </button>
           {canDelete ? (
             <button
               type="button"
