@@ -110,11 +110,30 @@ export interface Server {
   createdAt: Timestamp;
 }
 
+/**
+ * An emoji a server uploaded for itself. `:name:` in a message body draws the
+ * image; a reaction stores the same `:name:` string.
+ *
+ * `url` points back at our own API rather than at the object store, for the
+ * reason attachments do: the bytes are handed out only to members of the
+ * server the emoji belongs to.
+ */
+export interface Emoji {
+  id: Snowflake;
+  serverId: Snowflake;
+  /** Lowercase letters, digits and underscore. Unique within the server. */
+  name: string;
+  uploaderId: Snowflake;
+  url: string;
+  createdAt: Timestamp;
+}
+
 /** A server plus everything the client needs to render it. */
 export interface ServerDetail extends Server {
   categories: Category[];
   channels: Channel[];
   roles: Role[];
+  emojis: Emoji[];
   memberCount: number;
   /** The caller's own effective server-wide permissions. */
   permissions: MaskString;

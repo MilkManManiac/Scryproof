@@ -64,6 +64,12 @@ export type ServerEvent =
   /** The whole hierarchy was renumbered at once. Carries every role in the
    * server so a client never has to reconcile a partial reorder. */
   | { t: 'roles_reorder'; d: { serverId: Snowflake; roles: Role[] } }
+  /**
+   * The server's custom emoji were added to or taken from. Carries the server
+   * id and nothing else: an open client refetches the list, which cannot be
+   * subtly wrong the way a per-emoji delta could.
+   */
+  | { t: 'emojis_changed'; d: { serverId: Snowflake } }
   | { t: 'member_join'; d: Member }
   | { t: 'member_update'; d: Member }
   | { t: 'member_leave'; d: { userId: Snowflake; serverId: Snowflake } }

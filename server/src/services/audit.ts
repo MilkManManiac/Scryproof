@@ -35,6 +35,8 @@ export type AuditAction =
   | 'role.update'
   | 'role.reorder'
   | 'role.delete'
+  | 'emoji.create'
+  | 'emoji.delete'
   | 'member.roles'
   | 'member.nickname'
   | 'member.kick'

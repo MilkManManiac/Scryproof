@@ -2531,6 +2531,75 @@ video.mirrored {
   color: var(--text-dim);
 }
 
+/* ------------------------------ custom emoji ------------------------------ */
+
+/* Drawn at the line height of the text around it rather than at a fixed size,
+   so a body with an emoji in it keeps the same rhythm as one without. */
+.custom-emoji {
+  height: 1.375em;
+  width: auto;
+  max-width: 3em;
+  vertical-align: -0.3em;
+  object-fit: contain;
+}
+
+/* In a reaction chip the emoji has no text beside it to take height from. */
+.reaction-emoji-image {
+  height: 17px;
+  width: auto;
+  max-width: 34px;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
+.reaction-picker-group {
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.reaction-picker-label {
+  padding: 2px 4px 4px;
+  font-size: 10.5px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+/* The server's row wraps: there can be fifty of them. */
+.reaction-picker-group .reaction-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 256px;
+}
+
+.emoji-rows {
+  display: flex;
+  flex-direction: column;
+}
+.emoji-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.emoji-row-image {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.emoji-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.emoji-add {
+  max-width: 420px;
+}
+
 .channel-mentions,
 .rail-mentions {
   min-width: 17px;

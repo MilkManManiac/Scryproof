@@ -20,13 +20,14 @@ import { publicOrigin } from '../../lib/desktop';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
+import { EmojiPane } from './EmojiPane';
 import { LayoutPane } from './LayoutPane';
 import { OverwritePane } from './OverwritePane';
 import { RolesPane } from './RolesPane';
 import { authorityFor } from './authority';
 import type { Authority } from './authority';
 
-type Section = 'overview' | 'layout' | 'roles' | 'categories' | 'members' | 'invites' | 'bans' | 'audit';
+type Section = 'overview' | 'layout' | 'roles' | 'categories' | 'emoji' | 'members' | 'invites' | 'bans' | 'audit';
 
 export function ServerSettings({
   server,
@@ -61,6 +62,7 @@ export function ServerSettings({
       label: 'Categories',
       visible: authority.can(Permission.MANAGE_ROLES) && server.categories.length > 0,
     },
+    { id: 'emoji', label: 'Emoji', visible: authority.can(Permission.MANAGE_SERVER) },
     { id: 'members', label: 'Members', visible: true },
     { id: 'invites', label: 'Invites', visible: authority.can(Permission.CREATE_INVITE) },
     { id: 'bans', label: 'Bans', visible: authority.can(Permission.BAN_MEMBERS) },
@@ -105,6 +107,7 @@ export function ServerSettings({
           {section === 'categories' ? (
             <CategoriesPane server={server} members={members} authority={authority} />
           ) : null}
+          {section === 'emoji' ? <EmojiPane server={server} authority={authority} /> : null}
           {section === 'members' ? (
             <MembersPane server={server} members={members} authority={authority} />
           ) : null}

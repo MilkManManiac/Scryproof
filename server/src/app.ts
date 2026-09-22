@@ -26,6 +26,7 @@ import { registerServerRoutes } from './routes/servers.js';
 import { registerChannelRoutes } from './routes/channels.js';
 import { registerMessageRoutes } from './routes/messages.js';
 import { registerRoleRoutes } from './routes/roles.js';
+import { registerEmojiRoutes } from './routes/emojis.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerAttachmentRoutes } from './routes/attachments.js';
 import { registerVoiceRoutes } from './routes/voice.js';
@@ -214,6 +215,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerChannelRoutes(app);
   await registerMessageRoutes(app);
   await registerRoleRoutes(app);
+  await registerEmojiRoutes(app);
   await registerInviteRoutes(app);
   await registerAttachmentRoutes(app);
   await registerVoiceRoutes(app);

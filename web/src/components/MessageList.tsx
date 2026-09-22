@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Permission, splitContent } from '@scryproof/shared';
-import type { Channel, Member, Message } from '@scryproof/shared';
+import { Permission, emojiNameFrom, splitContent } from '@scryproof/shared';
+import type { Channel, Emoji, Member, Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -73,6 +73,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   const loaded = state.loadedChannels[channel.id] ?? false;
   const typing = useTypingUsers(channel.id);
   const members = state.members[channel.serverId] ?? [];
+  const emojis = state.servers[channel.serverId]?.emojis ?? [];
 
   const canReadHistory = can(mask, Permission.READ_MESSAGE_HISTORY);
   const selfId = state.user?.id;
@@ -299,6 +300,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
               grouped={grouped}
               mask={mask}
               members={members}
+              emojis={emojis}
               openEditor={editRequest === message.id}
               onEditorOpened={() => setEditRequest(null)}
             />
@@ -324,15 +326,36 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   );
 }
 
+/**
+ * One of the server's own emoji, drawn at text height.
+ *
+ * Only ever an `<img>` pointing at our own API, with the `:name:` as its alt
+ * text, so a reader with images off or a screen reader still gets what was
+ * written rather than nothing.
+ */
+export function CustomEmoji({ emoji, className }: { emoji: Emoji; className?: string }) {
+  return (
+    <img
+      className={className ?? 'custom-emoji'}
+      src={emoji.url}
+      alt={`:${emoji.name}:`}
+      title={`:${emoji.name}:`}
+      loading="lazy"
+    />
+  );
+}
+
 /** A message body with the people it names drawn as names. Still only ever text. */
 function MessageContent({
   content,
   members,
+  emojis,
   selfId,
   everyone,
 }: {
   content: string;
   members: Member[];
+  emojis: Emoji[];
   selfId?: string;
   /** Whether the server accepted this message's @everyone. Typing the word is not enough. */
   everyone: boolean;
@@ -341,6 +364,13 @@ function MessageContent({
     <div className="message-text">
       {splitContent(content).map((part, index) => {
         if (part.kind === 'text') return <span key={index}>{part.text}</span>;
+        if (part.kind === 'emoji') {
+          const known = emojis.find((entry) => entry.name === part.name);
+          // A name this server has no emoji for was never an emoji. It goes
+          // back out as the text somebody typed.
+          if (!known) return <span key={index}>:{part.name}:</span>;
+          return <CustomEmoji key={index} emoji={known} />;
+        }
         if (part.kind === 'everyone') {
           if (!everyone) return <span key={index}>@everyone</span>;
           return (
@@ -382,6 +412,7 @@ function MessageRow({
   grouped,
   mask,
   members,
+  emojis,
   openEditor,
   onEditorOpened,
 }: {
@@ -389,6 +420,7 @@ function MessageRow({
   grouped: boolean;
   mask: bigint;
   members: Member[];
+  emojis: Emoji[];
   /** Set when the composer asked for this one, the last thing this person said. */
   openEditor?: boolean;
   onEditorOpened?: () => void;
@@ -508,6 +540,7 @@ function MessageRow({
               <MessageContent
                 content={message.content}
                 members={members}
+                emojis={emojis}
                 selfId={selfId}
                 everyone={message.mentionsEveryone ?? false}
               />
@@ -544,6 +577,10 @@ function MessageRow({
               <div className="reactions">
                 {reactions.map((reaction) => {
                   const included = reaction.userIds.includes(selfId ?? '');
+                  // A reaction outlives the emoji it names. One that has been
+                  // removed since falls back to the `:name:` that was stored.
+                  const name = emojiNameFrom(reaction.emoji);
+                  const custom = name ? emojis.find((entry) => entry.name === name) : undefined;
                   const who = reaction.userIds
                     .map((userId) => {
                       const member = members.find((entry) => entry.userId === userId);
@@ -559,7 +596,11 @@ function MessageRow({
                       disabled={!included && !canReact}
                       onClick={() => toggle(reaction.emoji)}
                     >
-                      <span className="reaction-emoji">{reaction.emoji}</span>
+                      {custom ? (
+                        <CustomEmoji emoji={custom} className="reaction-emoji-image" />
+                      ) : (
+                        <span className="reaction-emoji">{reaction.emoji}</span>
+                      )}
                       <span className="reaction-count">{reaction.userIds.length}</span>
                     </button>
                   );
@@ -589,6 +630,7 @@ function MessageRow({
           ) : null}
           {picking ? (
             <ReactionPicker
+              emojis={emojis}
               onClose={() => setPicking(false)}
               onPick={(emoji) => {
                 setPicking(false);

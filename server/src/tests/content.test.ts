@@ -9,7 +9,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { hrefFor, mentionToken, splitContent } from '@scryproof/shared';
+import { emojiToken, hrefFor, isEmojiToken, mentionToken, splitContent, validateEmojiName } from '@scryproof/shared';
 import type { ContentPart } from '@scryproof/shared';
 
 const ALEX = '018f0000-0000-7000-8000-000000000002';
@@ -68,6 +68,7 @@ describe('links in a message body', () => {
         if (part.kind === 'text') return part.text;
         if (part.kind === 'link') return part.text;
         if (part.kind === 'everyone') return '@everyone';
+        if (part.kind === 'emoji') return emojiToken(part.name);
         return mentionToken(part.userId);
       })
       .join('');
@@ -84,6 +85,83 @@ describe('links in a message body', () => {
       (part) => part.kind,
     );
     assert.deepEqual(kinds, ['mention', 'text', 'link', 'text', 'everyone']);
+  });
+});
+
+/**
+ * Custom emoji.
+ *
+ * The split says only "this is shaped like `:name:`". Whether the server has
+ * one by that name is not knowable here, and the renderer draws an unknown one
+ * as plain text, so the tests below are about the shape and about not eating
+ * anything that was never an emoji.
+ */
+describe('custom emoji in a message body', () => {
+  const names = (content: string) =>
+    splitContent(content)
+      .filter((part): part is Extract<ContentPart, { kind: 'emoji' }> => part.kind === 'emoji')
+      .map((part) => part.name);
+
+  it('finds one in the middle of a sentence', () => {
+    assert.deepEqual(splitContent('nice :cheer: work'), [
+      { kind: 'text', text: 'nice ' },
+      { kind: 'emoji', name: 'cheer' },
+      { kind: 'text', text: ' work' },
+    ]);
+  });
+
+  it('finds one with no spaces around it, and several in a row', () => {
+    assert.deepEqual(names(':a1::b_2:'), ['a1', 'b_2']);
+  });
+
+  it('leaves a name that cannot be an emoji as text', () => {
+    // Too short, too long, a capital, a hyphen, and an unclosed pair.
+    for (const body of [':a:', `:${'x'.repeat(33)}:`, ':Cheer:', ':not-ok:', ':cheer']) {
+      assert.deepEqual(names(body), [], `${body} should not be an emoji`);
+      assert.equal(text(splitContent(body)), body, `${body} should survive as text`);
+    }
+  });
+
+  it('does not take a colon out of a link', () => {
+    const body = 'https://example.test:8080/a:cheer:b';
+    assert.deepEqual(names(body), []);
+    assert.equal(links(body)[0]?.text, body);
+  });
+
+  it('puts the body back together unchanged', () => {
+    const body = `hi ${mentionToken(ALEX)} :cheer: see https://example.test/a`;
+    const rebuilt = splitContent(body)
+      .map((part) => {
+        if (part.kind === 'text') return part.text;
+        if (part.kind === 'link') return part.text;
+        if (part.kind === 'everyone') return '@everyone';
+        if (part.kind === 'emoji') return emojiToken(part.name);
+        return mentionToken(part.userId);
+      })
+      .join('');
+    assert.equal(rebuilt, body);
+  });
+});
+
+describe('emoji names', () => {
+  it('accepts lowercase, digits and underscore', () => {
+    for (const name of ['ok', 'cheer', 'd20', 'nat_20', 'a'.repeat(32)]) {
+      assert.equal(validateEmojiName(name).ok, true, name);
+    }
+  });
+
+  it('refuses anything that would make `:name:` ambiguous', () => {
+    for (const name of ['a', 'a'.repeat(33), 'Cheer', 'not-ok', 'with space', 'colon:inside', '']) {
+      assert.equal(validateEmojiName(name).ok, false, name);
+    }
+  });
+
+  it('recognises a whole token, which is how a custom reaction is stored', () => {
+    assert.equal(isEmojiToken(':cheer:'), true);
+    assert.equal(isEmojiToken('cheer'), false);
+    assert.equal(isEmojiToken(':cheer: '), false);
+    assert.equal(isEmojiToken('a :cheer: b'), false);
+    assert.equal(isEmojiToken('👍'), false);
   });
 });
 

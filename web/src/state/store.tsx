@@ -22,6 +22,7 @@ import {
 } from 'react';
 
 import type {
+  Emoji,
   Member,
   Message,
   Presence,
@@ -94,6 +95,7 @@ type Action =
   | { type: 'messages-loaded'; channelId: string; messages: Message[]; prepend?: boolean }
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
+  | { type: 'emojis-loaded'; serverId: string; emojis: Emoji[] }
   | { type: 'voice-states-refreshed'; serverId: string; voiceStates: VoiceState[] }
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
@@ -203,6 +205,15 @@ function reducer(state: State, action: Action): State {
 
     case 'server-refreshed':
       return upsertServer(state, action.server);
+
+    // The emoji arrive with the server and are replaced wholesale when they
+    // change, for the same reason roles are reordered in one event: the answer
+    // just fetched is complete, and a merge could keep one that was removed.
+    case 'emojis-loaded': {
+      const server = state.servers[action.serverId];
+      if (!server) return state;
+      return upsertServer(state, { ...server, emojis: action.emojis });
+    }
 
     /**
      * Voice presence only reaches people who can see the channel it is about,
@@ -520,6 +531,11 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       return upsertServer(state, { ...server, roles: event.d.roles });
     }
 
+    // The list itself is fetched by the effect in the provider, which then
+    // dispatches 'emojis-loaded'. Nothing to do from the event alone.
+    case 'emojis_changed':
+      return state;
+
     case 'role_delete': {
       const server = state.servers[event.d.serverId];
       if (!server) return state;
@@ -741,6 +757,14 @@ export function StoreProvider({
             void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
             voice.setDeafened(event.d.selfDeaf || event.d.serverDeaf);
           }
+        }
+
+        if (event.t === 'emojis_changed') {
+          const serverId = event.d.serverId;
+          void api.emojis
+            .list(serverId)
+            .then(({ emojis }) => dispatch({ type: 'emojis-loaded', serverId, emojis }))
+            .catch(() => undefined);
         }
 
         // Any permission change anywhere means our view of that server may be
