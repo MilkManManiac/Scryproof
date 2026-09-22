@@ -16,6 +16,7 @@ import { Permission, emojiNameFrom, splitContent } from '@scryproof/shared';
 import type { Channel, ContentPart, Emoji, Member, Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { jumpTo } from '../lib/jump';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { EDIT_LAST, on } from '../lib/signals';
 import { unreadLine } from '../lib/unread-line';
@@ -50,27 +51,19 @@ function dayLabel(date: Date): string {
   return dayFormat.format(date);
 }
 
-/** Bring a message into view and flash it, for following a reply back to what it answers. */
-export function jumpTo(messageId: string): void {
-  const row = document.getElementById(`message-${messageId}`);
-  if (!row) return;
-  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  row.classList.remove('flash');
-  // Reading a layout property makes the browser notice the class went away,
-  // so adding it back restarts the animation.
-  void row.offsetWidth;
-  row.classList.add('flash');
-}
-
 export function MessageList({ channel, mask }: { channel: Channel; mask: bigint }) {
-  const { state, loadMessages, markRead } = useStore();
+  const { state, loadMessages, loadNewerMessages, markRead } = useStore();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
   const [focused, setFocused] = useState(() => document.hasFocus());
 
   const messages = state.messages[channel.id] ?? [];
   const loaded = state.loadedChannels[channel.id] ?? false;
+  // A jump landed on something old: this list is a slice of history that stops
+  // short of the newest message.
+  const windowed = state.windowedChannels[channel.id] ?? false;
   const typing = useTypingUsers(channel.id);
   const members = state.members[channel.serverId] ?? [];
   const emojis = state.servers[channel.serverId]?.emojis ?? [];
@@ -105,11 +98,12 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   }, []);
 
   // A channel counts as read when its newest message is on screen in a window
-  // you are actually looking at. Open in a background tab does not count.
+  // you are actually looking at. Open in a background tab does not count, and
+  // neither does the end of a jump window: that is not the newest message.
   const newestId = messages.at(-1)?.id;
   useEffect(() => {
-    if (newestId && loaded && focused && pinned.current) markRead(channel.id, newestId);
-  }, [channel.id, newestId, loaded, focused, markRead]);
+    if (newestId && loaded && focused && !windowed && pinned.current) markRead(channel.id, newestId);
+  }, [channel.id, newestId, loaded, focused, windowed, markRead]);
 
   // Up in an empty composer edits the last thing this person said here. Only
   // what is loaded counts: a message far enough back to be off the page is
@@ -130,18 +124,36 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
     if (element) element.scrollTop = element.scrollHeight;
   }, [channel.id]);
 
+  // A window's last row is not the bottom of the channel, so nothing is pinned
+  // to it: the jump decides where the eye goes, not this.
   useLayoutEffect(() => {
+    if (windowed) pinned.current = false;
     const element = scroller.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
-  }, [messages.length]);
+  }, [messages.length, windowed]);
 
   async function onScroll() {
     const element = scroller.current;
     if (!element) return;
 
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-    pinned.current = distanceFromBottom < 80;
+    pinned.current = !windowed && distanceFromBottom < 80;
     if (pinned.current && newestId && focused) markRead(channel.id, newestId);
+
+    // Out of a window the same way in: scrolling down fetches the page after
+    // the one on screen, until the list reaches the present and stops being a
+    // window at all.
+    if (windowed && distanceFromBottom < 200 && !loadingNewer) {
+      setLoadingNewer(true);
+      try {
+        await loadNewerMessages(channel.id);
+      } catch {
+        // Nothing to recover; the window stays on screen.
+      } finally {
+        setLoadingNewer(false);
+      }
+      return;
+    }
 
     if (element.scrollTop < 120 && !loadingOlder && messages.length >= 50) {
       const oldest = messages[0];
@@ -306,6 +318,12 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
             />
           </div>
         ))}
+
+        {loadingNewer ? (
+          <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
+            <div className="spinner" />
+          </div>
+        ) : null}
       </div>
 
       <div className="typing">

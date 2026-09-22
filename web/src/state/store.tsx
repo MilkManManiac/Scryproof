@@ -38,6 +38,7 @@ import { api } from '../lib/api';
 import { noticeFor, notices, previewOf } from '../lib/notices';
 import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
+import { jumpToSoon } from '../lib/jump';
 import { VoiceSession } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 
@@ -53,6 +54,12 @@ export interface State {
   messages: Record<string, Message[]>;
   /** Channels whose history has been fetched at least once. */
   loadedChannels: Record<string, boolean>;
+  /**
+   * Channels whose loaded list is a window around a message somebody jumped to
+   * rather than the newest messages. A window does not reach the bottom, so it
+   * is not pinned there and arriving messages are not spliced into it.
+   */
+  windowedChannels: Record<string, boolean>;
   presences: Record<string, PresenceStatus>;
   voiceStates: Record<string, VoiceState>;
   /** channelId -> userId -> last typed at (ms). */
@@ -77,6 +84,7 @@ const initialState: State = {
   members: {},
   messages: {},
   loadedChannels: {},
+  windowedChannels: {},
   presences: {},
   voiceStates: {},
   typing: {},
@@ -92,7 +100,17 @@ type Action =
   | { type: 'gateway'; event: ServerEvent }
   | { type: 'select-server'; serverId: string }
   | { type: 'select-channel'; channelId: string }
-  | { type: 'messages-loaded'; channelId: string; messages: Message[]; prepend?: boolean }
+  | {
+      type: 'messages-loaded';
+      channelId: string;
+      messages: Message[];
+      /** Older messages, fetched by scrolling up. */
+      prepend?: boolean;
+      /** Newer messages, fetched by scrolling down out of a window. */
+      append?: boolean;
+      /** Whether the list this leaves behind stops short of the newest message. Left alone when absent. */
+      windowed?: boolean;
+    }
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
   | { type: 'emojis-loaded'; serverId: string; emojis: Emoji[] }
@@ -171,8 +189,26 @@ function reducer(state: State, action: Action): State {
 
     case 'select-channel': {
       const serverId = state.selectedServerId;
+
+      // Leaving a channel while parked in a window throws the window away, so
+      // coming back lands at the bottom the way every other channel switch
+      // does. The next visit fetches the newest page again.
+      const left = state.selectedChannelId;
+      const abandoning = left && left !== action.channelId && state.windowedChannels[left];
+      const messages = abandoning ? { ...state.messages } : state.messages;
+      const loadedChannels = abandoning ? { ...state.loadedChannels } : state.loadedChannels;
+      const windowedChannels = abandoning ? { ...state.windowedChannels } : state.windowedChannels;
+      if (abandoning && left) {
+        delete messages[left];
+        delete loadedChannels[left];
+        delete windowedChannels[left];
+      }
+
       return {
         ...state,
+        messages,
+        loadedChannels,
+        windowedChannels,
         selectedChannelId: action.channelId,
         lastChannelByServer: serverId
           ? { ...state.lastChannelByServer, [serverId]: action.channelId }
@@ -184,9 +220,13 @@ function reducer(state: State, action: Action): State {
 
     case 'messages-loaded': {
       const existing = state.messages[action.channelId] ?? [];
+      // Neither flag means the answer replaces what was held: opening a channel
+      // and landing on a window both say where the list now starts and ends.
       const merged = action.prepend
         ? [...action.messages, ...existing]
-        : action.messages;
+        : action.append
+          ? [...existing, ...action.messages]
+          : action.messages;
 
       // Deduplicate by id and keep chronological order. Ids are UUIDv7, so a
       // plain string sort is a time sort.
@@ -197,6 +237,11 @@ function reducer(state: State, action: Action): State {
         ...state,
         messages: { ...state.messages, [action.channelId]: ordered },
         loadedChannels: { ...state.loadedChannels, [action.channelId]: true },
+        windowedChannels: {
+          ...state.windowedChannels,
+          [action.channelId]:
+            action.windowed ?? state.windowedChannels[action.channelId] ?? false,
+        },
       };
     }
 
@@ -308,7 +353,12 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
           event.d.authorId === state.user?.id
             ? readUpTo(state, event.d.channelId, event.d.id, state.readStates[event.d.channelId]?.mentionCount ?? 0)
             : state.readStates,
-        messages: { ...state.messages, [event.d.channelId]: [...existing, event.d] },
+        // A window stops short of the newest message, so appending to it would
+        // put this message directly after one from last week. It is dropped;
+        // scrolling down out of the window fetches it in its proper place.
+        messages: state.windowedChannels[event.d.channelId]
+          ? state.messages
+          : { ...state.messages, [event.d.channelId]: [...existing, event.d] },
         // Whoever just spoke has clearly stopped typing.
         typing: {
           ...state.typing,
@@ -619,6 +669,17 @@ interface StoreValue {
   /** The live call, if any: media, keys, and the numbers the connection panel shows. */
   voice: VoiceSession;
   loadMessages: (channelId: string, before?: string) => Promise<void>;
+  /**
+   * The next page forward from the end of a window, for scrolling down out of
+   * one. Reaching the newest message ends the window.
+   */
+  loadNewerMessages: (channelId: string) => Promise<void>;
+  /**
+   * Land on a message however old it is: scroll to it if it is loaded,
+   * otherwise fetch the window around it first. Selects the channel too, so a
+   * search hit in another channel is one call.
+   */
+  jumpToMessage: (channelId: string, messageId: string) => Promise<void>;
   /** Tell the server this channel has been read up to a message. Safe to call often. */
   markRead: (channelId: string, messageId: string) => void;
   replyTo: (channelId: string, message: Message | null) => void;
@@ -875,9 +936,49 @@ export function StoreProvider({
     });
   }, [voice, updateVoice]);
 
+  // Read by the actions below, which need the list as it is now rather than as
+  // it was when the callback was made.
+  const messagesRef = useRef(state.messages);
+  messagesRef.current = state.messages;
+
   const loadMessages = useCallback(async (channelId: string, before?: string) => {
     const { messages } = await api.messages.list(channelId, { before, limit: 50 });
-    dispatch({ type: 'messages-loaded', channelId, messages, prepend: Boolean(before) });
+    dispatch({
+      type: 'messages-loaded',
+      channelId,
+      messages,
+      prepend: Boolean(before),
+      // Paging up stays inside whatever the list already is. Loading a channel
+      // from scratch is always the newest page, so it is never a window.
+      ...(before ? {} : { windowed: false }),
+    });
+  }, []);
+
+  const loadNewerMessages = useCallback(async (channelId: string) => {
+    const newest = (messagesRef.current[channelId] ?? []).at(-1);
+    if (!newest) return;
+    const { messages } = await api.messages.list(channelId, { after: newest.id, limit: 50 });
+    dispatch({
+      type: 'messages-loaded',
+      channelId,
+      messages,
+      append: true,
+      // A short page means there was nothing more to fetch, so the list now
+      // ends at the newest message and behaves like an ordinary channel again.
+      windowed: messages.length >= 50,
+    });
+  }, []);
+
+  const jumpToMessage = useCallback(async (channelId: string, messageId: string) => {
+    const known = (messagesRef.current[channelId] ?? []).some((message) => message.id === messageId);
+    if (!known) {
+      const { messages } = await api.messages.list(channelId, { around: messageId });
+      dispatch({ type: 'messages-loaded', channelId, messages, windowed: true });
+    }
+    // After the window is in the store, so selecting the channel finds it
+    // already loaded rather than fetching the newest page over the top of it.
+    if (openChannel.current !== channelId) dispatch({ type: 'select-channel', channelId });
+    jumpToSoon(messageId);
   }, []);
 
   // The ref keeps this callback stable while still seeing the latest state,
@@ -936,6 +1037,8 @@ export function StoreProvider({
       updateVoice,
       voice,
       loadMessages,
+      loadNewerMessages,
+      jumpToMessage,
       markRead,
       replyTo,
       loadMembers,
@@ -954,6 +1057,8 @@ export function StoreProvider({
       updateVoice,
       voice,
       loadMessages,
+      loadNewerMessages,
+      jumpToMessage,
       markRead,
       replyTo,
       loadMembers,

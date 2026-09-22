@@ -14,7 +14,6 @@ import type { Message, ServerDetail } from '@scryproof/shared';
 import { api } from '../lib/api';
 import { nameOf, toPlainLine } from '../lib/mentions';
 import { useStore } from '../state/store';
-import { jumpTo } from './MessageList';
 
 /** Matches the server's page size, so a full page implies there may be more. */
 const PAGE_SIZE = 25;
@@ -42,7 +41,7 @@ export function SearchResults({
   query: string;
   onClose: () => void;
 }) {
-  const { state, selectChannel } = useStore();
+  const { state, jumpToMessage } = useStore();
   const members = state.members[server.id] ?? [];
   const words = query.trim().split(/\s+/).filter(Boolean);
 
@@ -90,12 +89,11 @@ export function SearchResults({
       .finally(() => setLoadingMore(false));
   }
 
-  // A result from a channel that is not the one open right now has to select
-  // it first; the row it is jumping to only exists once that channel has
-  // mounted and loaded, same as following a reply or a pin.
+  // The store does the whole thing: it fetches the history around a hit that
+  // is not loaded, opens the channel it lives in, and then scrolls to it. A hit
+  // from last month lands the same as one from this morning.
   function goTo(result: Message) {
-    selectChannel(result.channelId);
-    requestAnimationFrame(() => requestAnimationFrame(() => jumpTo(result.id)));
+    void jumpToMessage(result.channelId, result.id).catch(() => undefined);
   }
 
   const channelName = (channelId: string) => server.channels.find((entry) => entry.id === channelId)?.name ?? 'a channel';

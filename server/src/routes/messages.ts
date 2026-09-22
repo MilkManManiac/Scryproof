@@ -7,7 +7,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { LIMITS, Permission, has, validateMessageContent } from '@scryproof/shared';
@@ -33,6 +33,13 @@ import type { MessageRow, User } from '../db/schema.js';
 
 /** How much of a parent message rides along with a reply. */
 const REPLY_PREVIEW_LENGTH = 140;
+
+/**
+ * How many messages sit either side of the one a jump landed on. Both halves
+ * together are a page, so a window paged upward or downward behaves like any
+ * other page.
+ */
+const AROUND_HALF = 25;
 
 /**
  * Load authors, attachments, reactions and reply parents for a page of
@@ -110,9 +117,19 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .object({
         before: z.string().optional(),
         after: z.string().optional(),
+        around: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       })
       .parse(request.query);
+
+    // `around` is its own shape of answer, not a filter that stacks with the
+    // others, so asking for both is a mistake rather than something to guess at.
+    if (query.around && (query.before || query.after)) {
+      throw badRequest(
+        'Ask for messages around one message, or before or after one, not both.',
+        'conflicting_range',
+      );
+    }
 
     await requireChannelPermission(
       channelId,
@@ -121,6 +138,29 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     );
 
     const db = getDb();
+
+    // Landing on a message that is nowhere near the newest: the half up to and
+    // including it, then the half after it, in the order the timeline draws.
+    if (query.around) {
+      const target = query.around;
+      const older = (
+        await db
+          .select()
+          .from(messages)
+          .where(and(eq(messages.channelId, channelId), lte(messages.id, target)))
+          .orderBy(desc(messages.id))
+          .limit(AROUND_HALF)
+      ).reverse();
+      const newer = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.channelId, channelId), gt(messages.id, target)))
+        .orderBy(asc(messages.id))
+        .limit(AROUND_HALF);
+
+      return { messages: await hydrate([...older, ...newer]) };
+    }
+
     const conditions = [eq(messages.channelId, channelId)];
     if (query.before) conditions.push(lt(messages.id, query.before));
     if (query.after) conditions.push(gt(messages.id, query.after));
