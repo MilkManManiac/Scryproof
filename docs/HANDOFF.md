@@ -1134,7 +1134,9 @@ Do next, in this order:
    2026-09-22 (agent batch, above). Wes has not clicked through them yet.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
-3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
+3. **UI pass.** Wes asked for it 2026-09-22. Read `docs/visual-plan.md`
+   (three directions, built and screenshotted, he picks) and the-wall.md
+   first. His screenshots, if any, are in `Pictures\Screenshots`.
 4. Next agent batch (write briefs in `docs/briefs/` first): "load messages
    around an id" so pins and search hits always land; timeout a member;
    block a user; `/roll`; bookmarks. Keep for the main session: group DMs,
