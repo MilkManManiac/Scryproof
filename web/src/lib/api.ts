@@ -221,6 +221,12 @@ export const api = {
       del<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`),
     markRead: (channelId: string, messageId: string) =>
       put<{ ok: true }>(`/api/channels/${channelId}/read`, { messageId }),
+    /** Only the channels the caller can currently view and read history in. DMs are never searched. */
+    search: (serverId: string, q: string, before?: string) => {
+      const query = new URLSearchParams({ q });
+      if (before) query.set('before', before);
+      return get<{ messages: Message[] }>(`/api/servers/${serverId}/search?${query.toString()}`);
+    },
   },
 
   roles: {

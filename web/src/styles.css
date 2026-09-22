@@ -541,6 +541,23 @@ textarea {
   gap: 2px;
 }
 
+.search-box {
+  width: 200px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.search-box:focus {
+  border-color: var(--accent);
+}
+.search-box::placeholder {
+  color: var(--text-faint);
+}
+
 /* --------------------------------------------------------------- messages */
 
 .messages {
@@ -838,6 +855,76 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13.5px;
+}
+
+/* Search results, drawn in the same slot as the member list. */
+.search-results {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.search-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.search-results-list {
+  overflow-y: auto;
+  padding: 8px;
+  min-height: 0;
+}
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.search-result:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.search-result-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.search-result-meta strong {
+  color: var(--text-dim);
+}
+.search-result-text {
+  font-size: 13px;
+  line-height: 1.4;
+  color: inherit;
+  white-space: normal;
+  word-break: break-word;
+}
+.search-result-text mark {
+  background: var(--accent-dim);
+  color: var(--text);
+  border-radius: 2px;
+}
+.search-more {
+  width: 100%;
+  padding: 8px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+}
+.search-more:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.search-more:disabled {
+  opacity: 0.6;
 }
 
 /* ---------------------------------------------------------------- avatars */

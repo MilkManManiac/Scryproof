@@ -13,6 +13,7 @@ const CTRL = MAC ? '⌘' : 'Ctrl';
 const SHORTCUTS: [keys: string[], what: string][] = [
   [[CTRL, 'K'], 'Go to a channel'],
   [[CTRL, 'Shift', 'K'], 'This list'],
+  [[CTRL, 'F'], 'Search this server'],
   [['Alt', '↑'], 'Channel above'],
   [['Alt', '↓'], 'Channel below'],
   [['Alt', 'Shift', '↑'], 'Server above'],

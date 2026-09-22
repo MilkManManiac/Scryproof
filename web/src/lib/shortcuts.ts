@@ -22,6 +22,8 @@ export interface Shortcuts {
   onSwitcher: () => void;
   /** Ctrl/Cmd+Shift+K, the same door from the other side of a text box. */
   onHelp: () => void;
+  /** Ctrl/Cmd+F: open message search in the current server. */
+  onSearch: () => void;
   /** Alt+Up / Alt+Down: the channel above or below this one in the sidebar. */
   onStepChannel: (step: -1 | 1) => void;
   /** Alt+Shift+Up / Alt+Shift+Down: the server above or below. */
@@ -45,6 +47,12 @@ export function useShortcuts(handlers: Shortcuts, enabled = true): void {
       if (modified && event.shiftKey && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         return handlers.onHelp();
+      }
+      // Overrides the browser's own find-in-page: a channel's history is
+      // rarely all on screen at once, so the browser's version would miss it.
+      if (modified && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        return handlers.onSearch();
       }
 
       if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
