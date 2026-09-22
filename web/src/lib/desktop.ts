@@ -40,17 +40,55 @@ export function gatewayUrl(path: string): string {
   return `${protocol}://${window.location.host}${path}`;
 }
 
+const SITE_CHECK_MS = 10 * 60_000;
+
+/** The script this page was loaded with. A new build has a new name. */
+function loadedScript(): string | null {
+  const script = document.querySelector<HTMLScriptElement>('script[type="module"][src]');
+  return script ? new URL(script.src, window.location.href).pathname : null;
+}
+
 /**
- * Tell `listener` when the app has a newer client fetched, checked and ready.
- * The checking is the main process's job; all the page does is choose the
- * moment, because a reload in the middle of a call hangs up on everyone.
+ * In a browser there is nothing to fetch or check: the site is simply the
+ * newest files each time it is loaded. But a tab left open all day keeps
+ * running the morning's build, so every ten minutes the page asks for the
+ * front page again and looks at which script it names. Different name, newer
+ * site, same bar as the desktop app. The reload is the person's click.
+ */
+function watchSite(listener: () => void): void {
+  const mine = loadedScript();
+  if (!mine) return;
+  const look = async () => {
+    try {
+      const html = await (await fetch('/', { cache: 'no-store', credentials: 'omit' })).text();
+      const named = html.match(/src="([^"]*assets\/index-[^"]+\.js)"/)?.[1];
+      if (named && new URL(named, window.location.href).pathname !== mine) {
+        clearInterval(timer);
+        listener();
+      }
+    } catch {
+      // Offline, or the server is down. Ask again later.
+    }
+  };
+  const timer = setInterval(() => void look(), SITE_CHECK_MS);
+}
+
+/**
+ * Tell `listener` when there is a newer client to switch to. In the app the
+ * main process fetches and checks it; all the page does is choose the moment,
+ * because a reload in the middle of a call hangs up on everyone. In a browser
+ * the site itself is watched (above).
  */
 export function onClientUpdate(listener: () => void): void {
-  if (!bridge?.updateState || !bridge.onUpdateReady) return;
+  if (!bridge) return watchSite(listener);
+  if (!bridge.updateState || !bridge.onUpdateReady) return;
   bridge.onUpdateReady(() => listener());
   void bridge.updateState().then((version) => {
     if (version !== null) listener();
   });
 }
 
-export const applyClientUpdate = (): void => void bridge?.applyUpdate?.();
+export const applyClientUpdate = (): void => {
+  if (bridge) void bridge.applyUpdate?.();
+  else window.location.reload();
+};

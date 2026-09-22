@@ -70,10 +70,11 @@ export function App() {
 }
 
 /**
- * Desktop app only: a newer client has been fetched and checked, and is
- * waiting. Switching to it is a reload, which would hang up a call, so the
- * person picks the moment. Left alone, it is simply there next time the app
- * starts.
+ * A newer client is ready: in the app, fetched and checked and waiting; in a
+ * browser, published. Switching to it is a reload, which would hang up a
+ * call, so the person picks the moment. Nothing reloads on its own (Wes,
+ * 2026-09-21). Left alone, it is simply there next time the app or the tab
+ * is opened.
  */
 function UpdateBanner({ inVoice }: { inVoice: boolean }) {
   const [ready, setReady] = useState(false);
