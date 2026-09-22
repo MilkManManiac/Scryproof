@@ -3,8 +3,9 @@
  *
  * Scryproof is the tavern the party meets in. A painted hall (a hearth, a
  * long table, candles) sits behind everything; the rail, sidebar, message
- * column and member list are panels resting on it at nine-tenths opacity, so
- * the room shows through the gutters and never through the words. One rule
+ * column and member list are one surface over it at nine-tenths opacity,
+ * parted by hairlines, so the room shows through faintly and never through
+ * the words (Wes, 2026-09-22: no gaps between the panels). One rule
  * outranks every other in this file: text always wins. The backdrop is dimmed
  * three stops, the message column is the most opaque panel on screen, and no
  * text colour here drops under 4.5:1 on the panel it sits on.
@@ -53,7 +54,7 @@
 
   --radius: 6px;
   --radius-lg: 10px;
-  --radius-panel: 12px;
+  --radius-panel: 0px;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --t-fast: 140ms;
@@ -67,7 +68,7 @@
   --sidebar-width: 240px;
   --members-width: 224px;
   /* Wide enough that the room is a room between the panels, not a seam. */
-  --gutter: 12px;
+  --gutter: 0px;
 }
 
 * {
@@ -233,8 +234,9 @@ select {
 /* ------------------------------------------------------------------ shell */
 
 /*
- * Four panels on the table with the room showing between them. The grid
- * itself paints nothing; the gutters are the hall.
+ * Four panels edge to edge, one surface with a hairline where they meet. The
+ * grid itself paints nothing; --gutter is 0 and stays a token only so a
+ * theme could open the panels up again.
  */
 .app {
   display: grid;
@@ -249,8 +251,8 @@ select {
   grid-template-columns: var(--rail-width) var(--sidebar-width) 1fr var(--members-width);
 }
 
-/* What every panel shares: the tinted fill, a one-pixel inner edge catching
-   candlelight, and a soft shadow so it sits on the scene rather than in it. */
+/* What every panel shares: the tinted fill and a hairline on the side it
+   meets its neighbour. No shadow: nothing floats, it is all one table. */
 .rail,
 .sidebar,
 .main,
@@ -258,8 +260,15 @@ select {
 .search-results {
   background: var(--panel);
   border-radius: var(--radius-panel);
-  box-shadow: var(--edge), var(--shadow-2);
   min-height: 0;
+}
+.rail,
+.sidebar {
+  border-right: 1px solid var(--line);
+}
+.members,
+.search-results {
+  border-left: 1px solid var(--line);
 }
 
 /* The words live here, so this is the most opaque thing on the screen. A
@@ -1992,7 +2001,7 @@ video.mirrored {
   flex: 0 0 220px;
   background: var(--panel);
   border-radius: var(--radius-panel);
-  box-shadow: var(--edge), var(--shadow-2);
+  border-right: 1px solid var(--line);
   padding: 18px 10px;
   display: flex;
   flex-direction: column;
@@ -2048,7 +2057,6 @@ video.mirrored {
   padding: 28px 36px 80px;
   background: var(--panel-page);
   border-radius: var(--radius-panel);
-  box-shadow: var(--edge), var(--shadow-2);
 }
 
 /* Inside the page, the prose stays at a readable measure even when the panel
@@ -3875,7 +3883,6 @@ kbd {
 @media (max-width: 560px) {
   :root {
     --rail-width: 56px;
-    --gutter: 4px;
   }
   .app,
   .app.with-members {

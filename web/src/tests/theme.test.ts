@@ -21,10 +21,11 @@ function declared(css: string): string[] {
 }
 
 describe('themes', () => {
-  it('have unique ids and the hall first', () => {
+  it('have unique ids and the chamber first', () => {
     const ids = THEMES.map((theme) => theme.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(DEFAULT_THEME, 'hall');
+    assert.equal(DEFAULT_THEME, 'scry');
+    assert.equal(THEMES[0]?.id, DEFAULT_THEME);
   });
 
   it('keep the mood to one short line', () => {
@@ -43,6 +44,8 @@ describe('themes', () => {
       assert.ok(stylesheet.includes(`@import './themes/${theme.id}.css'`), `${theme.id}: not imported by styles.css`);
       const css = readFileSync(file, 'utf8');
       assert.ok(css.includes(`:root[data-theme='${theme.id}']`), `${theme.id}: no :root[data-theme] block`);
+      // Only the default paints a page that has no data-theme yet.
+      assert.equal(/^:root,\s*$/m.test(css), theme.id === DEFAULT_THEME, `${theme.id}: bare :root belongs to the default only`);
       const missing = hall.filter((token) => !declared(css).includes(token));
       assert.deepEqual(missing, [], `${theme.id}: does not set ${missing.join(', ')}`);
     }

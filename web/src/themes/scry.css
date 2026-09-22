@@ -7,9 +7,12 @@
  * blue-black surfaces, ink with a violet cast, the accent is the water's own
  * pale light, and gold stays for ornament.
  *
- * Sets every token the hall sets, and nothing the hall does not.
+ * Sets every token the hall sets, and nothing the hall does not. This is the
+ * default theme (Wes, 2026-09-22), so it also matches bare `:root`: a page
+ * before the theme script has run still paints as the chamber.
  */
 
+:root,
 :root[data-theme='scry'] {
   /* The deep of the room: what the chamber fades into at the bottom. */
   --bg: #090b13;

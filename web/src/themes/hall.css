@@ -1,17 +1,16 @@
 /*
- * The hall: the default theme, and the list every other theme must fill.
+ * The hall: the list every other theme must fill.
  *
  * A theme is one block, `:root[data-theme="<id>"]`, that sets every token
  * declared here. Nothing else in the stylesheet names a colour; it all comes
  * through these. A theme that skips one falls through to the hall's value for
  * it, which is a bug in that theme, not a feature.
  *
- * This file alone also matches bare `:root`, so a page before the theme
- * script has run (the first frame, a test) still paints as the hall. Other
- * theme files must not do that: one selector, their own id.
+ * The default theme, scry.css, also matches bare `:root`, so a page before
+ * the theme script has run (the first frame, a test) still paints. No other
+ * theme file does that: one selector, its own id.
  */
 
-:root,
 :root[data-theme='hall'] {
   /* The deep of the room: what the hall fades into at the bottom. */
   --bg: #100b09;
