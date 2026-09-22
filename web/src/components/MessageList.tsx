@@ -51,7 +51,7 @@ function dayLabel(date: Date): string {
 }
 
 /** Bring a message into view and flash it, for following a reply back to what it answers. */
-function jumpTo(messageId: string): void {
+export function jumpTo(messageId: string): void {
   const row = document.getElementById(`message-${messageId}`);
   if (!row) return;
   row.scrollIntoView({ block: 'center', behavior: 'smooth' });

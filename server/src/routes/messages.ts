@@ -24,10 +24,11 @@ import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { publicUrlFor } from '../services/storage.js';
-import { requireChannelPermission } from '../services/permissions.js';
+import { requireChannelPermission, requireMember } from '../services/permissions.js';
 import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
+import { searchMessages } from '../services/search.js';
 import type { MessageRow, User } from '../db/schema.js';
 
 /** How much of a parent message rides along with a reply. */
@@ -35,9 +36,10 @@ const REPLY_PREVIEW_LENGTH = 140;
 
 /**
  * Load authors, attachments, reactions and reply parents for a page of
- * messages in a fixed handful of queries, not a handful per message.
+ * messages in a fixed handful of queries, not a handful per message. Exported
+ * for other routes that need the same shape, such as search results.
  */
-async function hydrate(rows: MessageRow[]): Promise<Message[]> {
+export async function hydrate(rows: MessageRow[]): Promise<Message[]> {
   if (rows.length === 0) return [];
 
   const db = getDb();
@@ -141,6 +143,35 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
             .limit(query.limit)
         ).reverse();
 
+    return { messages: await hydrate(rows) };
+  });
+
+  /**
+   * Search across every channel in a server the caller can currently view and
+   * read history in. `searchMessages` works out that channel list itself, so
+   * this route never has to be the thing that gets the filter right.
+   *
+   * DMs are end-to-end encrypted; the server cannot read their content, so
+   * there is no DM search and there cannot be one.
+   */
+  app.get('/api/servers/:serverId/search', async (request) => {
+    const user = requireUser(request);
+    const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
+    const query = z
+      .object({
+        q: z.string().min(2).max(100),
+        before: z.string().optional(),
+      })
+      .parse(request.query);
+
+    const ctx = await requireMember(serverId, user.id);
+
+    const limit = consume(`search:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
+    if (!limit.allowed) {
+      throw tooManyRequests('You are searching too quickly.', limit.retryAfterSeconds);
+    }
+
+    const rows = await searchMessages(ctx, query.q, query.before);
     return { messages: await hydrate(rows) };
   });
 

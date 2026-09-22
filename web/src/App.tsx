@@ -25,6 +25,7 @@ import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { PinnedMessages } from './components/PinnedMessages';
 import { QuickSwitcher } from './components/QuickSwitcher';
+import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
 import { ShortcutHelp } from './components/ShortcutHelp';
 import { ChannelSettings } from './components/settings/ChannelSettings';
@@ -102,12 +103,24 @@ function Shell() {
   const [channelSettings, setChannelSettings] = useState(false);
   const [overlay, setOverlay] = useState<'switcher' | 'help' | 'pins' | null>(null);
 
+  // The box lives in the header and stays open across query edits; the panel
+  // it draws into only shows once a query has actually been submitted.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchDraft('');
+    setSearchQuery('');
+  }, []);
+
   // The keyboard steps through the same list the sidebar draws, so Alt+Down
   // always lands on the row below the one being looked at.
   const handlers = useMemo<Shortcuts>(
     () => ({
       onSwitcher: () => setOverlay('switcher'),
       onHelp: () => setOverlay('help'),
+      onSearch: () => setSearchOpen(true),
       onStepChannel: (step) => {
         if (!server) return;
         const order = flatChannelOrder(server);
@@ -152,6 +165,11 @@ function Shell() {
   // A channel that is closed, deleted or switched away from should not leave
   // its settings sitting open over the next one.
   useEffect(() => setChannelSettings(false), [channel?.id]);
+
+  // A search is a question about one server; carrying it to the next one
+  // would show results next to a member list and a header that no longer
+  // match what was asked.
+  useEffect(() => closeSearch(), [server?.id, closeSearch]);
 
   // Members arrive on demand rather than in the ready frame, because a large
   // instance should not pay for every roster on every connect.
@@ -219,6 +237,36 @@ function Shell() {
                   <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>
                     {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
                   </span>
+                  {channel.type === 'text' && searchOpen ? (
+                    <input
+                      type="text"
+                      className="search-box"
+                      placeholder="Search this server"
+                      value={searchDraft}
+                      maxLength={100}
+                      autoFocus
+                      onChange={(event) => setSearchDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          const trimmed = searchDraft.trim();
+                          if (trimmed.length >= 2) setSearchQuery(trimmed);
+                        } else if (event.key === 'Escape') {
+                          event.stopPropagation();
+                          closeSearch();
+                        }
+                      }}
+                    />
+                  ) : null}
+                  {channel.type === 'text' ? (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Search (Ctrl+F)"
+                      onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+                    >
+                      &#128269;
+                    </button>
+                  ) : null}
                   {channel.type === 'text' ? (
                     <button type="button" className="icon-button" title="Pinned messages" onClick={() => setOverlay('pins')}>
                       &#128204;
@@ -262,7 +310,13 @@ function Shell() {
           {inVoice ? <ConnectionPanel /> : null}
         </main>
 
-        {server && !dms.active ? <MemberList server={server} /> : null}
+        {server && !dms.active ? (
+          searchQuery ? (
+            <SearchResults server={server} query={searchQuery} onClose={closeSearch} />
+          ) : (
+            <MemberList server={server} />
+          )
+        ) : null}
 
         {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
         {overlay === 'pins' && channel ? <PinnedMessages channelId={channel.id} onClose={() => setOverlay(null)} /> : null}
