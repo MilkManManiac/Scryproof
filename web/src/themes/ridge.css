@@ -1,0 +1,66 @@
+/*
+ * Ridge: a campfire on a high ridge at night.
+ *
+ * The fire is the only warm thing in the picture; everything above it is
+ * cold. The tokens follow that: surfaces are charcoal with a red-brown cast
+ * (the ground the fire lights), the accent is the fire's orange, and the
+ * dim text is the one cold thing on a panel, the sky's grey-blue. Gold stays
+ * for ornament. Every token the hall theme sets is set here, plus the four
+ * backdrop tokens the theme contract names.
+ */
+
+:root[data-theme='ridge'] {
+  /* The dark beyond the firelight. */
+  --bg: #0c0908;
+  --bg-rgb: 12 9 8;
+
+  --panel-rgb: 27 20 18;
+  --panel-alpha: 0.82;
+  --panel-solid: #1b1412;
+  --panel-2: #251c19;
+  --panel-3: #322722;
+  --panel-4: #3e312b;
+
+  --line: #392c27;
+  --line-strong: #4e3d36;
+  --edge: inset 0 0 0 1px rgb(255 222 196 / 0.07);
+
+  --text: #eee6dc;
+  --text-muted: #c3b8ad;
+  /* Cold on purpose: the sky reaching the page. 6.2:1 on the solid panel. */
+  --text-dim: #8e97a3;
+  --text-faint: #69707a;
+
+  /* The fire. */
+  --accent: #ee8a3a;
+  --accent-bright: #f7a85a;
+  --accent-dim: #96541f;
+  --accent-wash: rgb(238 138 58 / 0.12);
+  --on-accent: #1a0f07;
+
+  /* The metal. Ornament, never a button. */
+  --gold: #d6b46d;
+  --gold-dim: #8f7746;
+
+  --good: #4ba97a;
+  --warn: #d9a441;
+  --bad: #d4614f;
+  --speaking: #57c98a;
+
+  --shadow-1: 0 1px 1px hsl(12 30% 3% / 0.55), 0 4px 10px -3px hsl(12 30% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(12 30% 3% / 0.55), 0 8px 18px -6px hsl(12 30% 3% / 0.65),
+    0 22px 44px -14px hsl(12 30% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(12 30% 3% / 0.55), 0 16px 32px -8px hsl(12 30% 3% / 0.7),
+    0 40px 80px -20px hsl(12 30% 3% / 0.75);
+  --hi: inset 0 1px 0 rgb(255 222 196 / 0.06);
+
+  /* The painting. Positioned a little high so the fire and the near ridge
+     land under the panels' middle and the sky is what shows at the top. */
+  --backdrop: url('/backdrops/ridge.svg');
+  --backdrop-position: center 30%;
+  /* The flicker layer: the fire breathing, left of centre where it burns. */
+  --glow-color: rgb(238 138 58 / 0.2);
+  --glow-position: 28% 62%;
+
+  color-scheme: dark;
+}

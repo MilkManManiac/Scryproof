@@ -1,0 +1,66 @@
+/*
+ * The scrying chamber.
+ *
+ * Scryproof is named for scrying, and this is the room it happens in: dark
+ * stone, a low basin of pale water in the middle throwing cool light up the
+ * wall, a few candles at the edges for warmth. The tokens follow the light:
+ * blue-black surfaces, ink with a violet cast, the accent is the water's own
+ * pale light, and gold stays for ornament.
+ *
+ * Sets every token the hall sets, and nothing the hall does not.
+ */
+
+:root[data-theme='scry'] {
+  /* The deep of the room: what the chamber fades into at the bottom. */
+  --bg: #090b13;
+  --bg-rgb: 9 11 19;
+
+  --panel-rgb: 19 22 35;
+  --panel-alpha: 0.82;
+  --panel-solid: #131623;
+  --panel-2: #1b1f30;
+  --panel-3: #262b3e;
+  --panel-4: #323851;
+
+  --backdrop: url('/backdrops/scry.svg');
+  --backdrop-position: center 24%;
+  /* The water breathes: the flicker layer is its light, not a fire's. */
+  --glow-color: rgb(150 205 255 / 0.2);
+  --glow-position: 50% 44%;
+
+  --line: #2b3146;
+  --line-strong: #404861;
+  --edge: inset 0 0 0 1px rgb(205 222 255 / 0.07);
+
+  /* Ink with a violet cast. */
+  --text: #e9e5f4;
+  --text-muted: #bbb4cf;
+  --text-dim: #948dab;
+  --text-faint: #6a627f;
+
+  /* The scry-light. Active, live, selected, focused. */
+  --accent: #8ec9ee;
+  --accent-bright: #b9e1fa;
+  --accent-dim: #4a7896;
+  --accent-wash: rgb(142 201 238 / 0.12);
+  --on-accent: #0a1420;
+
+  /* The metal. Ornament, never a button. */
+  --gold: #d6b46d;
+  --gold-dim: #8f7746;
+
+  --good: #4ba97a;
+  --warn: #d9a441;
+  --bad: #d4614f;
+  --speaking: #57c98a;
+
+  /* Elevation tinted with the room's own blue-black, not a grey. */
+  --shadow-1: 0 1px 1px hsl(228 40% 3% / 0.6), 0 4px 10px -3px hsl(228 40% 3% / 0.6);
+  --shadow-2: 0 1px 2px hsl(228 40% 3% / 0.6), 0 8px 18px -6px hsl(228 40% 3% / 0.7),
+    0 22px 44px -14px hsl(228 40% 3% / 0.65);
+  --shadow-3: 0 2px 4px hsl(228 40% 3% / 0.6), 0 16px 32px -8px hsl(228 40% 3% / 0.75),
+    0 40px 80px -20px hsl(228 40% 3% / 0.8);
+  --hi: inset 0 1px 0 rgb(205 222 255 / 0.06);
+
+  color-scheme: dark;
+}

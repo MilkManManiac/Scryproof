@@ -14,10 +14,12 @@ export interface Theme {
 
 export const THEMES: readonly Theme[] = [
   { id: 'hall', name: 'The hall', mood: 'A candle-lit hall, the hearth breathing behind the table.' },
+  { id: 'scry', name: 'The chamber', mood: 'A dark stone room, lit from the water.' },
+  { id: 'ridge', name: 'The ridge', mood: 'A campfire high up, under a cold sky.' },
   { id: 'plain', name: 'Plain', mood: 'The same warm room without the painting.' },
 ];
 
-export const DEFAULT_THEME = THEMES[0].id;
+export const DEFAULT_THEME = 'hall';
 
 export function isThemeId(id: unknown): id is string {
   return typeof id === 'string' && THEMES.some((theme) => theme.id === id);

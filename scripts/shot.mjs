@@ -89,6 +89,11 @@ try {
     );
     if (status !== 200) throw new Error(`sign in as ${user} answered ${status}`);
 
+    // e.g. --theme scry: the room the page paints, stored the way the
+    // Themes dialog stores it, so the next load is already in that theme.
+    const themeId = flag('theme', null);
+    if (themeId) await run(`localStorage.setItem('scryproof.theme.v1', ${JSON.stringify(themeId)}) || true`);
+
     await send('Page.navigate', { url: webUrl });
     await sleep(2500);
   }

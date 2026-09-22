@@ -17,7 +17,7 @@ const stylesheet = readFileSync(fileURLToPath(new URL('../styles.css', import.me
 
 /** The custom properties a theme block declares, in order. */
 function declared(css: string): string[] {
-  return Array.from(css.matchAll(/^\s*(--[\w-]+)\s*:/gm), (match) => match[1]);
+  return Array.from(css.matchAll(/^\s*(--[\w-]+)\s*:/gm), (match) => match[1] ?? "");
 }
 
 describe('themes', () => {
