@@ -46,11 +46,16 @@ export function ReactionPicker({
   emojis = [],
   onPick,
   onClose,
+  place = 'below-right',
+  label = 'Pick a reaction',
 }: {
   /** The server's own emoji, offered above the built-in rows. */
   emojis?: Emoji[];
   onPick: (emoji: string) => void;
   onClose: () => void;
+  /** Which corner of its parent it hangs from. */
+  place?: 'below-right' | 'below-left' | 'above-right';
+  label?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [mine] = useState(recent);
@@ -84,7 +89,7 @@ export function ReactionPicker({
   ];
 
   return (
-    <div className="reaction-picker" ref={box} role="dialog" aria-label="Pick a reaction">
+    <div className={`reaction-picker ${place}`} ref={box} role="dialog" aria-label={label}>
       {emojis.length > 0 ? (
         <div className="reaction-picker-group">
           <div className="reaction-picker-label">This server</div>

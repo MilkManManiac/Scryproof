@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, late. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-22, night, staged and not released. Commands and the Meepo characters are on the dev server for Wes to look at (last section). Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1809,7 +1809,81 @@ of flattened rings every one to four seconds, low on the water). Plus
 Eight themes now. The picker scrolls. Tests: web 161, server 168.
 
 **To-do for the next round (Wes, 2026-09-22, closing out):** rename the
-dusk theme to **"Ham"**. The display name in `web/src/lib/themes.ts` is
-the change; keep the id `dusk` so nobody's saved choice resets (a stored
-id that no longer exists falls back to the ridge). Mention it in the
-changelog entry so people know it is the same theme.
+dusk theme to **"Ham"**. Done in the next section; the id stayed `dusk`.
+
+## Commands and the characters, 2026-09-22 (staged, not yet released)
+
+Wes: "I like the idea of commands. One that i think would be cool is to
+use some of the characters from the meepo game. Maybe you can like do a
+/Tang-jump and the characters jumps across the screen." Then: "or it can
+kinda work like a soundboard where you open a panel and can click which
+one you want to spawn." Plus lamp's list from the afternoon screenshots
+(the `+` after reactions, emoji in the box with `:+1:`, styles when
+editing) and the Ham rename.
+
+**Characters.** All 27 from `CodeProjects/meepo-auto-battler` (his own
+game). `scripts/meepo-sheets.py` (PIL) glues each one's five processed
+jump frames into `web/public/meepo/<id>.png`, 640x128, transparent; 2.7 MB
+in all, fetched only when one is drawn. `lib/commands.ts` is the list.
+Rerun the script and paste its output there when a character is added
+over there.
+
+**How a jump travels.** `/tang-jump` is sent as its own text, a plain
+message, kind `text`. The server does not know it is a command, there is
+no migration, and it works inside an encrypted DM the same way. Every
+client that sees the message *arrive* (`message_create` for the channel
+being looked at; the DM store after decrypting, if that DM is open) asks
+`lib/stage.ts` to play it, and `components/Stage.tsx` draws the character
+hopping across a fixed layer over everything, five frames per hop on a
+small arc, two or three seconds, then gone. The sender's own message
+comes back through the gateway, so they see it too. In the history it is
+a pill with the face, the name, and "again" (`PlayLine` in
+`MessageList.tsx`, also used for DMs); clicking replays it locally. Under
+"reduce motion" nothing runs and the pill is all there is.
+
+**Two ways in.** Type `/` at the start of the box and the same list that
+does `@names` and `:emoji:` shows the commands with faces
+(`commandQueryAt`, `commandOffers`). Or the face button beside Send opens
+`components/Spawner.tsx`, the board: every character, one click sends.
+A click from the board leaves a half-typed draft and its files alone.
+`/shrug`, `/tableflip`, `/unflip` are text commands, replaced in the box
+before sending (`expandTextCommand`); `/roll` is unchanged (the server
+rolls it).
+
+![Tang, mid-room](shots/command-jump.png)
+
+![The board](shots/command-board.png)
+
+![The list](shots/command-list.png)
+
+**Emoji by name.** `lib/emoji.ts`: a hand-picked table of a few hundred
+names (`+1`, `fire`, `skull`, the table ones), expanded to the character
+before sending, so the wire and the history hold the emoji itself. A
+server's own `:name:` wins over the table and stays as the token. The
+`:query` list now offers the server's first and then the built-in names,
+with the emoji drawn in the row; `emojiQueryAt` allows `+` and `-` and one
+character, for `:+1:`. The smiley beside Send opens the reaction picker
+(now with a `place` prop) to put one in at the caret. Same in DMs.
+
+**The + after reactions.** Shows on hover after the last reaction (or
+while its picker is open), opens the same picker hanging left. lamp's
+red-circle screenshot, exactly.
+
+**Styles while editing.** The edit box takes Ctrl+B and friends and has
+the four buttons under it, with "Enter to save, Escape to leave it".
+
+**Ham.** `themes.ts` display name only; the id `dusk` stays so nobody's
+choice resets. Said so in the changelog.
+
+**Not done:** DMs have the two buttons and the expansions but not the
+`/` list under the box (the DM composer has no offers list at all;
+adding one is a copy of the channel one). Only the jump sheet is used:
+attack, hurt, death and idle exist for every character and are one more
+sheet each if he wants `/tang-attack`. No sound with a jump.
+
+**To look at:** `localhost:5173`, sign in as `wes` with the seed
+passphrase in `shot.mjs`. He said staging first, then live; not released
+until he says so. Tests: web 169, server 168. No migration.
+
+**Still open from earlier today:** channel deletion (ask whether he
+lacked the permission on lamp's server or could not find the button).

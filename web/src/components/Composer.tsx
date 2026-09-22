@@ -11,6 +11,8 @@ import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
 import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { commandOffers, commandQueryAt, expandTextCommand } from '../lib/commands';
+import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
@@ -18,6 +20,8 @@ import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
+import { ReactionPicker } from './ReactionPicker';
+import { Spawner } from './Spawner';
 
 /** One row in the list under the box, for a person or for one of the server's emoji. */
 interface Offer {
@@ -29,6 +33,10 @@ interface Offer {
   note: string;
   /** Set for a custom emoji, so the row shows the image it will insert. */
   imageUrl?: string;
+  /** Set for a character command, so the row shows the face. */
+  sheet?: string;
+  /** Set for a built-in emoji, drawn as itself. */
+  glyph?: string;
 }
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
@@ -43,6 +51,8 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const [cooldown, setCooldown] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
+  /** Which of the two boards beside Send is open. */
+  const [board, setBoard] = useState<'emoji' | 'spawn' | null>(null);
 
   const members = state.members[channel.serverId] ?? [];
 
@@ -62,12 +72,25 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   // the word, and only one character can sit there.
   const asking = dismissed ? null : mentionQueryAt(text, caret);
   const askingEmoji = dismissed || asking ? null : emojiQueryAt(text, caret);
+  // A `/word` at the very start: the commands.
+  const askingCommand = dismissed || asking || askingEmoji ? null : commandQueryAt(text, caret);
   const query = asking?.query;
   const emojiQuery = askingEmoji?.query;
+  const commandQuery = askingCommand?.query;
 
   const offers = useMemo<Offer[]>(() => {
+    if (commandQuery !== undefined) {
+      return commandOffers(commandQuery).map((offer) => ({
+        key: offer.key,
+        written: offer.written,
+        name: offer.name,
+        note: offer.note,
+        sheet: offer.sheet,
+      }));
+    }
     if (emojiQuery !== undefined) {
-      return emojis
+      // The server's own first, then the built-in names, seven in all.
+      const own: Offer[] = emojis
         .filter((emoji) => emoji.name.includes(emojiQuery))
         // Names that start with what was typed come before names that contain it.
         .sort((a, b) => Number(b.name.startsWith(emojiQuery)) - Number(a.name.startsWith(emojiQuery)))
@@ -79,6 +102,14 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           note: 'this server',
           imageUrl: emoji.url,
         }));
+      const builtIn: Offer[] = emojiOffers(emojiQuery, 7 - own.length).map((offer) => ({
+        key: `emoji:${offer.name}`,
+        written: offer.emoji,
+        name: `:${offer.name}:`,
+        note: '',
+        glyph: offer.emoji,
+      }));
+      return [...own, ...builtIn];
     }
     if (query === undefined) return [];
     const people: Offer[] = members
@@ -105,7 +136,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       });
     }
     return people;
-  }, [query, emojiQuery, members, emojis, mayPingEveryone]);
+  }, [query, emojiQuery, commandQuery, members, emojis, mayPingEveryone]);
   const picked = Math.min(chosen, Math.max(0, offers.length - 1));
 
   /**
@@ -114,7 +145,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
    * `:name: ` for one of the server's emoji.
    */
   function complete(written: string) {
-    const span = asking ?? askingEmoji;
+    const span = asking ?? askingEmoji ?? askingCommand;
     if (!span) return;
     const next = `${text.slice(0, span.start)}${written} ${text.slice(caret)}`;
     const position = span.start + written.length + 1;
@@ -123,6 +154,20 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     requestAnimationFrame(() => {
       input.current?.focus();
       input.current?.setSelectionRange(position, position);
+    });
+  }
+
+  /** Put something in at the caret, from one of the boards, and keep typing. */
+  function insert(piece: string) {
+    const at = Math.min(caret, text.length);
+    const next = `${text.slice(0, at)}${piece}${text.slice(at)}`;
+    const position = at + piece.length;
+    setText(next);
+    setCaret(position);
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(position, position);
+      grow();
     });
   }
 
@@ -153,28 +198,38 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     element.style.height = `${Math.min(element.scrollHeight, 340)}px`;
   }
 
-  async function send() {
-    const body = text.trim();
+  async function send(override?: string) {
+    const typed = override ?? text.trim();
+    // `:fire:` becomes the emoji unless this server has its own by that
+    // name; `/shrug` becomes its text. A character command goes as typed.
+    const body = expandTextCommand(expandShortcodes(typed, (name) => emojis.some((emoji) => emoji.name === name)));
     if ((!body && pending.length === 0) || cooldown > 0) return;
     const answering = replyingTo;
+    // From the board, the command goes on its own: whatever was half typed
+    // stays in the box, and the files waiting there stay waiting.
+    const files = override ? [] : pending;
 
-    setText('');
-    setPending([]);
+    if (!override) {
+      setText('');
+      setPending([]);
+      replyTo(channel.id, null);
+      requestAnimationFrame(grow);
+    }
     setError(null);
-    replyTo(channel.id, null);
-    requestAnimationFrame(grow);
 
     try {
       await api.messages.send(channel.id, {
         content: body ? houseRules(fromDraft(body, members)) : undefined,
-        replyToId: answering?.id,
-        attachmentIds: pending.length > 0 ? pending.map((file) => file.id) : undefined,
+        replyToId: override ? undefined : answering?.id,
+        attachmentIds: files.length > 0 ? files.map((file) => file.id) : undefined,
       });
     } catch (problem) {
       // Put the draft back rather than losing what someone typed.
-      setText(body);
-      setPending(pending);
-      replyTo(channel.id, answering);
+      if (!override) {
+        setText(typed);
+        setPending(pending);
+        replyTo(channel.id, answering);
+      }
       if (problem instanceof ApiError) {
         setError(problem.message);
         if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
@@ -244,7 +299,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         <div
           className="mention-offers"
           role="listbox"
-          aria-label={emojiQuery === undefined ? 'People to mention' : 'Emoji to insert'}
+          aria-label={commandQuery !== undefined ? 'Commands' : emojiQuery === undefined ? 'People to mention' : 'Emoji to insert'}
         >
           {offers.map((offer, index) => (
             <button
@@ -262,6 +317,12 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             >
               {offer.imageUrl ? (
                 <img className="custom-emoji" src={offer.imageUrl} alt="" loading="lazy" />
+              ) : offer.sheet ? (
+                <span className="meepo-face" style={{ backgroundImage: `url(${offer.sheet})`, backgroundSize: 'auto 100%' }} />
+              ) : offer.glyph ? (
+                <span className="reaction-emoji">{offer.glyph}</span>
+              ) : commandQuery !== undefined ? (
+                <span className="meepo-face" aria-hidden="true" />
               ) : null}
               <span className="mention-offer-name">{offer.name}</span>
               <span className="mention-offer-note">{offer.note}</span>
@@ -399,6 +460,52 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           }}
         />
 
+        {mayPost ? (
+          <span className="composer-pop">
+            <button
+              type="button"
+              className={board === 'emoji' ? 'icon-button on' : 'icon-button'}
+              title="Emoji"
+              onClick={() => setBoard((open) => (open === 'emoji' ? null : 'emoji'))}
+            >
+              &#9786;
+            </button>
+            {board === 'emoji' ? (
+              <ReactionPicker
+                emojis={emojis}
+                place="above-right"
+                label="Pick an emoji"
+                onClose={() => setBoard(null)}
+                onPick={(emoji) => {
+                  setBoard(null);
+                  insert(emoji);
+                }}
+              />
+            ) : null}
+          </span>
+        ) : null}
+        {mayPost ? (
+          <span className="composer-pop">
+            <button
+              type="button"
+              className={board === 'spawn' ? 'icon-button on' : 'icon-button'}
+              title="Send a character across the room"
+              onClick={() => setBoard((open) => (open === 'spawn' ? null : 'spawn'))}
+            >
+              <span className="meepo-face" style={{ width: 24, height: 24, backgroundImage: 'url(/meepo/tang.png)', backgroundSize: 'auto 150%', backgroundPosition: '-6px -8px' }} />
+            </button>
+            {board === 'spawn' ? (
+              <Spawner
+                onClose={() => setBoard(null)}
+                onPick={(command) => {
+                  setBoard(null);
+                  void send(command);
+                }}
+              />
+            ) : null}
+          </span>
+        ) : null}
+
         <button
           type="button"
           className="icon-button"
@@ -413,7 +520,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       <div className="composer-hint">
         <span>
           {text.startsWith('/') ? (
-            'Try /roll 2d6+3'
+            'Commands: /tang-jump, /roll 2d6+3, /shrug'
           ) : (
             <>
               {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}

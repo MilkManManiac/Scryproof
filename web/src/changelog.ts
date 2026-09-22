@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-22-commands',
+    date: '2026-09-22',
+    title: 'Commands, and the characters',
+    notes: [
+      'Type `/` at the start of a message to see the commands. `/tang-jump` sends Tang jumping across the room for everyone in the channel, and every character from the Meepo game is there. The little face button beside Send opens the whole board, one click each.',
+      '`/shrug`, `/tableflip` and `/unflip` do what they say. `/roll 2d6+3` was already here.',
+      'Emoji by name: `:+1:`, `:fire:`, `:skull:` and a few hundred more turn into the emoji when you send. A list appears as you type the name. The smiley button beside Send opens the picker to put one in.',
+      'A small `+` after the reactions on a message adds another one without hunting for the hover menu.',
+      'Editing a message has the same style buttons and keys (Ctrl+B and friends) as writing one.',
+      'The dusk theme is now called Ham. Same theme, same clouds; if you had it picked, you still do.',
+    ],
+  },
+  {
     id: '2026-09-22-loaf',
     date: '2026-09-22',
     title: 'Loaf and Forg',

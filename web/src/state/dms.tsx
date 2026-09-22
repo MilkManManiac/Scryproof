@@ -47,6 +47,8 @@ import {
 import { isRecoveryDevice, recoveryDevice } from '../lib/dm-recovery';
 import { noticeFor, notices } from '../lib/notices';
 import { notifyPrefs, play, soundFor } from '../lib/notify';
+import { spawnOf } from '../lib/commands';
+import { play as playCharacter } from '../lib/stage';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
 import {
   IndexedDbIdentityStore,
@@ -612,6 +614,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
         remember([message]);
         const view = await toView(message, await knownFor(message));
         dispatch({ type: 'messages', dmId: message.dmId, views: [view], replace: false });
+        // A character sent into the conversation you are looking at crosses the room.
+        const spawn = spawnOf(view.text);
+        if (spawn && stateRef.current.active && stateRef.current.openId === message.dmId) playCharacter(spawn.id);
       }
     };
 
@@ -684,6 +689,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'touched', dmId, messageId: created.id });
       dispatch({ type: 'read', dmId, messageId: created.id });
       dispatch({ type: 'messages', dmId, views: [await toView(created, known)], replace: false });
+      const spawn = spawnOf(text);
+      if (spawn) playCharacter(spawn.id);
     },
     [seal, toView],
   );

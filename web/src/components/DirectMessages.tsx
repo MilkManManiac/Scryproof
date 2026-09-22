@@ -22,7 +22,10 @@ import { DockButton } from './DockButton';
 import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
-import { Rich } from './MessageList';
+import { PlayLine, Rich } from './MessageList';
+import { expandTextCommand, spawnOf } from '../lib/commands';
+import { expandShortcodes } from '../lib/emoji';
+import { Spawner } from './Spawner';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
@@ -635,7 +638,11 @@ function DmRow({
           <div className="message-text">
             {/* The same parts as a channel message. There is nobody to name here
                 and no server emoji, so those come out as the text typed. */}
-            <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
+            {spawnOf(view.text) ? (
+              <PlayLine character={spawnOf(view.text)!} />
+            ) : (
+              <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
+            )}
             {view.editedAt ? <span className="message-edited">edited</span> : null}
             {view.unverified ? (
               <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
@@ -799,6 +806,7 @@ function DmComposer({
   const [locking, setLocking] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
+  const [board, setBoard] = useState<'emoji' | 'spawn' | null>(null);
   const text = drafts[dm.id] ?? '';
   const files = pending[dm.id] ?? [];
 
@@ -855,8 +863,9 @@ function DmComposer({
     element.style.height = `${Math.min(element.scrollHeight, 240)}px`;
   }, [text]);
 
-  async function submit() {
-    const body = text.trim();
+  async function submit(override?: string) {
+    // Same as a channel: `:fire:` becomes the emoji, `/shrug` its text.
+    const body = expandTextCommand(expandShortcodes(override ?? text.trim()));
     if ((!body && files.length === 0) || busy || locking) return;
     setBusy(true);
     setError(null);
@@ -960,6 +969,55 @@ function DmComposer({
             }
           }}
         />
+        <span className="composer-pop">
+          <button
+            type="button"
+            className={board === 'emoji' ? 'icon-button on' : 'icon-button'}
+            title="Emoji"
+            disabled={!state.ready}
+            onClick={() => setBoard((open) => (open === 'emoji' ? null : 'emoji'))}
+          >
+            &#9786;
+          </button>
+          {board === 'emoji' ? (
+            <ReactionPicker
+              place="above-right"
+              label="Pick an emoji"
+              onClose={() => setBoard(null)}
+              onPick={(emoji) => {
+                setBoard(null);
+                const element = input.current;
+                const at = element?.selectionStart ?? text.length;
+                const next = `${text.slice(0, at)}${emoji}${text.slice(at)}`;
+                setDrafts((current) => ({ ...current, [dm.id]: next }));
+                requestAnimationFrame(() => {
+                  element?.focus();
+                  element?.setSelectionRange(at + emoji.length, at + emoji.length);
+                });
+              }}
+            />
+          ) : null}
+        </span>
+        <span className="composer-pop">
+          <button
+            type="button"
+            className={board === 'spawn' ? 'icon-button on' : 'icon-button'}
+            title="Send a character across the room"
+            disabled={!state.ready}
+            onClick={() => setBoard((open) => (open === 'spawn' ? null : 'spawn'))}
+          >
+            <span className="meepo-face" style={{ width: 24, height: 24, backgroundImage: 'url(/meepo/tang.png)', backgroundSize: 'auto 150%', backgroundPosition: '-6px -8px' }} />
+          </button>
+          {board === 'spawn' ? (
+            <Spawner
+              onClose={() => setBoard(null)}
+              onPick={(command) => {
+                setBoard(null);
+                void submit(command);
+              }}
+            />
+          ) : null}
+        </span>
         <button type="button" className="icon-button" title="Send" disabled={!state.ready || busy} onClick={() => void submit()}>
           &#10148;
         </button>

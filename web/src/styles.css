@@ -4398,3 +4398,179 @@ kbd {
     padding: 20px 16px 60px;
   }
 }
+
+/* ------------------------------- commands ------------------------------- */
+
+/* A character's first frame, cut from its sheet. Whole pixels, no blur. */
+.meepo-face {
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  flex: none;
+}
+
+/* The line a spawn message leaves in the history. Click: it runs again. */
+.play-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 2px 12px 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 90ms linear,
+    background 90ms linear;
+}
+.play-line:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-3);
+  color: var(--text);
+}
+.play-line .meepo-face {
+  width: 40px;
+  height: 40px;
+}
+.play-line strong {
+  color: var(--accent-bright);
+  font-weight: 650;
+}
+.play-line-again {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* The command rows under the box show the face beside the name. */
+.mention-offer .meepo-face {
+  width: 28px;
+  height: 28px;
+  align-self: center;
+}
+
+/* Runners cross over everything and catch no clicks. */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  overflow: hidden;
+}
+.stage-runner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  will-change: transform;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.35));
+}
+
+/* The board of faces, above the composer. */
+.spawner {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  width: min(432px, calc(100vw - 32px));
+  padding: 8px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.spawner-title {
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.spawner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 2px;
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+}
+.spawner-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px 4px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.spawner-tile:hover {
+  background: var(--panel-4);
+  color: var(--text);
+}
+.spawner-tile .meepo-face {
+  width: 48px;
+  height: 48px;
+}
+.spawner-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where a picker hangs from: the hover tray (default), the + after the
+   reactions, or the button beside Send. */
+.reaction-picker.below-left {
+  left: 0;
+  right: auto;
+}
+.reaction-picker.above-right {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.composer-pop {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The + after the reactions: there on hover, or while its picker is open. */
+.reaction-add {
+  position: relative;
+  display: inline-flex;
+}
+.reaction.add {
+  padding: 2px 9px;
+  opacity: 0;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: opacity 90ms linear;
+}
+.message:hover .reaction.add,
+.reaction.add:focus-visible,
+.reaction-add.open .reaction.add {
+  opacity: 1;
+}
+
+/* Editing a message: the same style row as the box. */
+.edit-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.edit-tools .markup-tools {
+  margin-left: 0;
+}

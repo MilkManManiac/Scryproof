@@ -101,7 +101,8 @@ export function mentionQueryAt(text: string, caret: number): { start: number; qu
  * `:name:` and there is nothing left to complete.
  */
 export function emojiQueryAt(text: string, caret: number): { start: number; query: string } | null {
-  const match = /(^|\s):([a-z0-9_]{2,32})$/.exec(text.slice(0, caret));
+  // `+` and `-` for `:+1:` and `:-1:`; one character is enough for those.
+  const match = /(^|\s):([a-z0-9_+-]{1,32})$/i.exec(text.slice(0, caret));
   if (!match) return null;
   return { start: caret - (match[2]?.length ?? 0) - 1, query: (match[2] ?? '').toLowerCase() };
 }

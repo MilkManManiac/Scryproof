@@ -26,6 +26,11 @@ import { Avatar } from './Avatar';
 import { openPicture } from './Lightbox';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
+import { MarkupTools } from './MarkupTools';
+import { applyMarkup, markerForKey } from '../lib/markup';
+import { FRAME, sheetUrl, spawnOf } from '../lib/commands';
+import { play } from '../lib/stage';
+import type { Character } from '../lib/commands';
 
 /** Consecutive messages from one author within this window share a header. */
 const GROUP_WINDOW_MS = 7 * 60 * 1000;
@@ -575,6 +580,26 @@ function RollLine({ content }: { content: string }) {
   );
 }
 
+/**
+ * What a spawn command leaves behind: the face, the name, and a click to
+ * see it again. Everyone who was in the channel when it was sent saw it
+ * cross; everyone else gets this.
+ */
+export function PlayLine({ character }: { character: Character }) {
+  return (
+    <button type="button" className="play-line" title="Again" onClick={() => play(character.id)}>
+      <span
+        className="meepo-face"
+        style={{ backgroundImage: `url(${sheetUrl(character.id)})`, backgroundSize: `auto 100%` }}
+      />
+      <span>
+        <strong>{character.name}</strong> jumped across
+      </span>
+      <span className="play-line-again">again</span>
+    </button>
+  );
+}
+
 function MessageRow({
   message,
   grouped,
@@ -599,6 +624,9 @@ function MessageRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
+  /** The picker under the + after the reactions, as opposed to the hover tray. */
+  const [adding, setAdding] = useState(false);
+  const editBox = useRef<HTMLTextAreaElement>(null);
   /** One blocked message shown on purpose. It hides again on reload. */
   const [shown, setShown] = useState(false);
 
@@ -659,6 +687,7 @@ function MessageRow({
   }
 
   const author = members.find((entry) => entry.userId === message.authorId);
+  const spawn = message.deleted ? null : spawnOf(message.content);
   const parent = message.replyTo;
   const parentMember = parent ? members.find((entry) => entry.userId === parent.authorId) : undefined;
 
@@ -720,24 +749,39 @@ function MessageRow({
         {message.deleted ? (
           <div className="message-text deleted">Message deleted</div>
         ) : editing ? (
-          <textarea
-            className="composer-input"
-            style={{ width: '100%', background: 'var(--bg-raised)', borderRadius: 6, padding: 8 }}
-            value={draft}
-            autoFocus
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setEditing(false);
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void saveEdit();
-              }
-            }}
-          />
+          <>
+            <textarea
+              ref={editBox}
+              className="composer-input"
+              style={{ width: '100%', background: 'var(--bg-raised)', borderRadius: 6, padding: 8 }}
+              value={draft}
+              autoFocus
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                const marker = markerForKey(event);
+                if (marker) {
+                  event.preventDefault();
+                  applyMarkup(event.currentTarget, marker, setDraft);
+                  return;
+                }
+                if (event.key === 'Escape') setEditing(false);
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void saveEdit();
+                }
+              }}
+            />
+            <div className="edit-tools">
+              <MarkupTools input={editBox} setValue={setDraft} />
+              <span>Enter to save, Escape to leave it</span>
+            </div>
+          </>
         ) : (
           <>
             {message.kind === 'roll' && message.content ? (
               <RollLine content={message.content} />
+            ) : spawn ? (
+              <PlayLine character={spawn} />
             ) : message.ciphertext && !message.content ? (
               <div className="message-text deleted">
                 Encrypted message. This client cannot open it yet.
@@ -813,6 +857,24 @@ function MessageRow({
                     </button>
                   );
                 })}
+                {canReact ? (
+                  <span className={adding ? 'reaction-add open' : 'reaction-add'}>
+                    <button type="button" className="reaction add" title="Add a reaction" onClick={() => setAdding((open) => !open)}>
+                      +
+                    </button>
+                    {adding ? (
+                      <ReactionPicker
+                        emojis={emojis}
+                        place="below-left"
+                        onClose={() => setAdding(false)}
+                        onPick={(emoji) => {
+                          setAdding(false);
+                          toggle(emoji);
+                        }}
+                      />
+                    ) : null}
+                  </span>
+                ) : null}
               </div>
             ) : null}
           </>

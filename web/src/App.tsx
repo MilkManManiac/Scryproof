@@ -33,6 +33,7 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
 import { ShortcutHelp } from './components/ShortcutHelp';
+import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
@@ -72,6 +73,7 @@ export function App() {
         <ProfileCardProvider>
           <Shell />
           <Lightbox />
+          <Stage />
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>
