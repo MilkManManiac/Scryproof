@@ -973,7 +973,11 @@ export function StoreProvider({
     const known = (messagesRef.current[channelId] ?? []).some((message) => message.id === messageId);
     if (!known) {
       const { messages } = await api.messages.list(channelId, { around: messageId });
-      dispatch({ type: 'messages-loaded', channelId, messages, windowed: true });
+      // A window is only a window if the half after the target came back full;
+      // a short half means the newest message is already in hand.
+      const at = messages.findIndex((message) => message.id === messageId);
+      const windowed = at >= 0 && messages.length - at - 1 >= 25;
+      dispatch({ type: 'messages-loaded', channelId, messages, windowed });
     }
     // After the window is in the store, so selecting the channel finds it
     // already loaded rather than fetching the newest page over the top of it.
