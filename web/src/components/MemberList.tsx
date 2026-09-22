@@ -19,6 +19,7 @@ import { Menu, MenuItem } from './Menu';
 import { authorityFor } from './settings/authority';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, ScreenGlyph, VoiceGlyph } from './glyphs';
+import { useProfileCard } from './ProfileCard';
 
 interface Group {
   key: string;
@@ -57,6 +58,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
   const voiceChannelName = (channelId: string | null): string =>
     server.channels.find((channel) => channel.id === channelId)?.name ?? 'voice';
   const { openWith } = useDms();
+  const card = useProfileCard();
   const members = state.members[server.id];
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,11 +162,11 @@ export function MemberList({ server }: { server: ServerDetail }) {
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  title={self ? `@${member.user.username}` : `Message @${member.user.username}`}
-                  role={self ? undefined : 'button'}
-                  tabIndex={self ? undefined : 0}
-                  style={self ? undefined : { cursor: 'pointer' }}
-                  onClick={self ? undefined : () => void openWith(member.userId).catch(() => undefined)}
+                  title={`@${member.user.username}`}
+                  role="button"
+                  tabIndex={0}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(event) => card.show(member.user, event.currentTarget, server.id)}
                   onContextMenu={
                     self
                       ? undefined
@@ -173,13 +175,9 @@ export function MemberList({ server }: { server: ServerDetail }) {
                           setMenu({ userId: member.userId, durations: false });
                         }
                   }
-                  onKeyDown={
-                    self
-                      ? undefined
-                      : (event) => {
-                          if (event.key === 'Enter') void openWith(member.userId).catch(() => undefined);
-                        }
-                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') card.show(member.user, event.currentTarget, server.id);
+                  }}
                 >
                   <Avatar user={member.user} small presence={presence} />
                   <span className="member-text">
@@ -217,7 +215,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
                         className="icon-button"
                         title="More"
                         onClick={(event) => {
-                          // The row itself opens a conversation; this button does not.
+                          // The row itself opens the card; this button does not.
                           event.stopPropagation();
                           setMenu((current) => (current?.userId === member.userId ? null : { userId: member.userId, durations: false }));
                         }}

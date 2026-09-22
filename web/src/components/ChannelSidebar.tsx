@@ -26,10 +26,12 @@ import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, ScreenGlyph } from './glyphs';
+import { useProfileCard } from './ProfileCard';
 
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
   const live = useVoice();
+  const card = useProfileCard();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [dialog, setDialog] = useState<'channel' | 'category' | 'invite' | 'settings' | null>(null);
   const [addMenu, setAddMenu] = useState(false);
@@ -260,6 +262,17 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                 <div
                                   className={speaking ? 'voice-member speaking' : 'voice-member'}
                                   key={voice.userId}
+                                  role={member ? 'button' : undefined}
+                                  tabIndex={member ? 0 : undefined}
+                                  style={member ? { cursor: 'pointer' } : undefined}
+                                  onClick={member ? (event) => card.show(member.user, event.currentTarget, server.id) : undefined}
+                                  onKeyDown={
+                                    member
+                                      ? (event) => {
+                                          if (event.key === 'Enter') card.show(member.user, event.currentTarget, server.id);
+                                        }
+                                      : undefined
+                                  }
                                 >
                                   {member ? (
                                     <Avatar user={member.user} small />

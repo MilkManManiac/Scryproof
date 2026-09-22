@@ -221,8 +221,8 @@ interface DmValue {
   /** Back to servers. */
   hideDms: () => void;
   openDm: (dmId: string) => void;
-  /** Open the conversation with a person, making it if need be. */
-  openWith: (userId: string) => Promise<void>;
+  /** Open the conversation with a person, making it if need be. Answers its id. */
+  openWith: (userId: string) => Promise<string>;
   send: (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => Promise<void>;
   /** Seal the message again with new text. What it replied to stays. */
   edit: (dmId: string, messageId: string, text: string) => Promise<void>;
@@ -638,6 +638,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       const { dm } = await api.dms.open(userId);
       dispatch({ type: 'dm', dm });
       openDm(dm.id);
+      return dm.id;
     },
     [openDm],
   );

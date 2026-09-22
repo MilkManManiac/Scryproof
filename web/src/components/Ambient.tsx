@@ -6,7 +6,7 @@
  *
  *   embers  sparks rising from the theme's glow position, drifting, dying
  *   stars   a scatter of points in the top of the sky, each breathing on
- *           its own slow clock
+ *           its own slow clock, and now and then one of them flares
  *
  * The rules that keep it from being a screensaver: everything is small and
  * dim, it runs at thirty frames a second and not sixty, it stops dead when
@@ -34,11 +34,16 @@ interface Star {
   size: number;
   phase: number;
   rate: number;
+  /** When this star next flares, in the page's clock. */
+  flareAt: number;
 }
 
 const FRAME_MS = 1000 / 30;
 const EMBERS = 60;
-const STARS = 90;
+const STARS = 110;
+/** A flare lasts this long and comes, per star, every minute or two. */
+const FLARE_MS = 900;
+const nextFlare = (now: number) => now + 40_000 + Math.random() * 80_000;
 
 function readMotion(): Set<string> {
   const value = getComputedStyle(document.documentElement).getPropertyValue('--ambient-motion').trim();
@@ -102,9 +107,10 @@ export function Ambient() {
         ? Array.from({ length: STARS }, () => ({
             x: Math.random() * width,
             y: Math.random() * height * 0.42,
-            size: 0.5 + Math.random() * 1.1,
+            size: 0.6 + Math.random() * 1.2,
             phase: Math.random() * Math.PI * 2,
             rate: 0.15 + Math.random() * 0.35,
+            flareAt: performance.now() + Math.random() * 60_000,
           }))
         : [];
     };
@@ -131,10 +137,26 @@ export function Ambient() {
       for (const star of stars) {
         // Each star breathes on its own clock; most of the time it is faint.
         const breath = 0.5 + 0.5 * Math.sin(star.phase + (now / 1000) * star.rate);
-        const alpha = 0.12 + breath * breath * 0.5;
+        let alpha = 0.22 + breath * breath * 0.6;
+        let size = star.size;
+        // A flare: a short swell to full brightness and nearly twice the size,
+        // with a soft halo, then back. Rare enough to be caught, not watched.
+        const since = now - star.flareAt;
+        if (since >= 0) {
+          if (since > FLARE_MS) star.flareAt = nextFlare(now);
+          else {
+            const swell = Math.sin((since / FLARE_MS) * Math.PI);
+            alpha = Math.min(1, alpha + swell * 0.8);
+            size = star.size * (1 + swell * 0.9);
+            context.fillStyle = `rgb(232 236 255 / ${swell * 0.18})`;
+            context.beginPath();
+            context.arc(star.x, star.y, size * 3, 0, Math.PI * 2);
+            context.fill();
+          }
+        }
         context.fillStyle = `rgb(232 236 255 / ${alpha})`;
         context.beginPath();
-        context.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        context.arc(star.x, star.y, size, 0, Math.PI * 2);
         context.fill();
       }
 

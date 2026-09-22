@@ -23,6 +23,7 @@ import { unreadLine } from '../lib/unread-line';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
+import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 
 /** Consecutive messages from one author within this window share a header. */
@@ -568,6 +569,8 @@ function MessageRow({
   onEditorOpened?: () => void;
 }) {
   const { state, replyTo } = useStore();
+  const card = useProfileCard();
+  const serverId = members[0]?.serverId ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
@@ -658,16 +661,29 @@ function MessageRow({
         <span className="message-hover-time">{timeFormat.format(at)}</span>
       ) : (
         <div className="message-gutter">
-          <Avatar user={message.author} />
+          <button
+            type="button"
+            className="who"
+            title={`@${message.author.username}`}
+            onClick={(event) => card.show(message.author, event.currentTarget, serverId)}
+          >
+            <Avatar user={message.author} />
+          </button>
         </div>
       )}
 
       <div className="message-body">
         {grouped ? null : (
           <div className="message-meta">
-            <span className="message-author" style={{ color: message.author.accent }}>
+            <button
+              type="button"
+              className="message-author who"
+              style={{ color: message.author.accent }}
+              title={`@${message.author.username}`}
+              onClick={(event) => card.show(message.author, event.currentTarget, serverId)}
+            >
               {author ? nameOf(author) : message.author.displayName}
-            </span>
+            </button>
             <time className="message-time" dateTime={message.createdAt}>
               {timeFormat.format(at)}
             </time>

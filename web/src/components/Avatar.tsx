@@ -19,19 +19,21 @@ export function Avatar({
   user,
   name,
   small,
+  large,
   presence,
 }: {
   user: PublicUser;
   /** Override the label, e.g. a per-server nickname. */
   name?: string;
   small?: boolean;
+  large?: boolean;
   presence?: PresenceStatus;
 }) {
   const label = name ?? user.displayName ?? user.username;
 
   return (
     <span
-      className={small ? 'avatar small' : 'avatar'}
+      className={small ? 'avatar small' : large ? 'avatar large' : 'avatar'}
       style={{ background: user.accent }}
       aria-hidden="true"
     >

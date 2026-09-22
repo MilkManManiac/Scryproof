@@ -24,6 +24,7 @@ import { DmPane, DmSidebar } from './components/DirectMessages';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { PinnedMessages } from './components/PinnedMessages';
+import { ProfileCardProvider } from './components/ProfileCard';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
@@ -64,7 +65,9 @@ export function App() {
   return (
     <StoreProvider onSignedOut={onSignedOut}>
       <DmProvider>
-        <Shell />
+        <ProfileCardProvider>
+          <Shell />
+        </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>
   );

@@ -18,6 +18,7 @@ import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
 import { UserPanel } from './UserPanel';
@@ -130,6 +131,7 @@ function LockedNotice({ dmId }: { dmId: string }) {
 }
 
 export function DmPane() {
+  const card = useProfileCard();
   const { state: app, block, unblock } = useStore();
   const { state } = useDms();
   const dm = state.openId ? state.dms[state.openId] : undefined;
@@ -159,7 +161,13 @@ export function DmPane() {
       <header className="main-header">
         <div className="main-title">
           <span className="channel-sigil">@</span>
-          {other?.displayName ?? 'Conversation'}
+          {other ? (
+            <button type="button" className="who" title={`@${other.username}`} onClick={(event) => card.show(other, event.currentTarget)}>
+              {other.displayName}
+            </button>
+          ) : (
+            'Conversation'
+          )}
         </div>
         <div className="main-topic dm-lock" title="Locked on your device, opened on theirs. The server stores it and cannot read it.">
           End-to-end encrypted
@@ -569,6 +577,7 @@ function DmRow({
   onReact: (emoji: string) => void;
   onReply: () => void;
 }) {
+  const card = useProfileCard();
   const at = new Date(view.createdAt);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -677,14 +686,30 @@ function DmRow({
       {isGrouped ? (
         <span className="message-hover-time">{timeFormat.format(at)}</span>
       ) : (
-        <div className="message-gutter">{author ? <Avatar user={author} /> : null}</div>
+        <div className="message-gutter">
+          {author ? (
+            <button type="button" className="who" title={`@${author.username}`} onClick={(event) => card.show(author, event.currentTarget)}>
+              <Avatar user={author} />
+            </button>
+          ) : null}
+        </div>
       )}
       <div className="message-body">
         {isGrouped ? null : (
           <div className="message-meta">
-            <span className="message-author" style={author ? { color: author.accent } : undefined}>
-              {author?.displayName ?? 'Someone'}
-            </span>
+            {author ? (
+              <button
+                type="button"
+                className="message-author who"
+                style={{ color: author.accent }}
+                title={`@${author.username}`}
+                onClick={(event) => card.show(author, event.currentTarget)}
+              >
+                {author.displayName}
+              </button>
+            ) : (
+              <span className="message-author">Someone</span>
+            )}
             <time className="message-time" dateTime={view.createdAt}>
               {timeFormat.format(at)}
             </time>

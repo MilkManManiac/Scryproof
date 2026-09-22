@@ -14,6 +14,7 @@ import { buildLabel } from '../lib/desktop';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
+import { useProfileCard } from './ProfileCard';
 import { ProfileSettings } from './ProfileSettings';
 import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
@@ -34,6 +35,7 @@ export function UserPanel() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
+  const card = useProfileCard();
 
   const user = state.user;
   if (!user) return null;
@@ -52,7 +54,14 @@ export function UserPanel() {
 
   return (
     <div className="user-panel" style={{ position: 'relative' }}>
-      <Avatar user={user} small presence={state.connection === 'open' ? status : 'offline'} />
+      <button
+        type="button"
+        className="who"
+        title="Your profile"
+        onClick={(event) => card.show(user, event.currentTarget, state.selectedServerId)}
+      >
+        <Avatar user={user} small presence={state.connection === 'open' ? status : 'offline'} />
+      </button>
 
       <button
         type="button"
