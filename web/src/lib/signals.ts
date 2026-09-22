@@ -31,3 +31,6 @@ export function on(signal: string, handler: Handler): () => void {
 
 /** Up, in an empty composer: open the last message this person sent. */
 export const EDIT_LAST = 'edit-last';
+
+/** On a phone: slide the servers and channels in. A header asks; the shell answers. */
+export const OPEN_DOCK = 'open-dock';

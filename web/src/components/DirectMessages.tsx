@@ -18,6 +18,7 @@ import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { DockButton } from './DockButton';
 import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
@@ -163,6 +164,7 @@ export function DmPane() {
   return (
     <>
       <header className="main-header">
+        <DockButton />
         <div className="main-title">
           <span className="channel-sigil">@</span>
           {other ? (

@@ -7,10 +7,11 @@
  * members see it. Nothing in this panel grants anything; it only reports.
  */
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import type { PresenceStatus } from '@scryproof/shared';
 
-import { buildLabel } from '../lib/desktop';
+import { buildLabel, isDesktop } from '../lib/desktop';
+import { canInstall, install, subscribeInstall } from '../lib/install';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
@@ -36,6 +37,7 @@ export function UserPanel() {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
   const card = useProfileCard();
+  const installable = useSyncExternalStore(subscribeInstall, canInstall) && !isDesktop;
 
   const user = state.user;
   if (!user) return null;
@@ -189,6 +191,19 @@ export function UserPanel() {
           >
             <span className="channel-name">Themes</span>
           </button>
+          {installable ? (
+            <button
+              type="button"
+              className="channel"
+              title="Puts Scryproof on your home screen or desktop, in its own window"
+              onClick={() => {
+                setMenuOpen(false);
+                void install();
+              }}
+            >
+              <span className="channel-name">Install on this device</span>
+            </button>
+          ) : null}
           <button type="button" className="channel" onClick={() => void signOut()}>
             <span className="channel-name">Sign out</span>
           </button>

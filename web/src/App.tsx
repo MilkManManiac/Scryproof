@@ -15,12 +15,15 @@ import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
 import { applyClientUpdate, onClientUpdate } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
+import { OPEN_DOCK, on } from './lib/signals';
+import { usePhone } from './lib/usePhone';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
 import { DmPane, DmSidebar } from './components/DirectMessages';
+import { DockButton } from './components/DockButton';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { PinnedMessages } from './components/PinnedMessages';
@@ -113,6 +116,15 @@ function Shell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // On a phone the side panels are drawers: the left one holds the servers
+  // and channels, the right one the members. Picking anything closes them.
+  const phone = usePhone();
+  const [dock, setDock] = useState<'left' | 'right' | null>(null);
+  useEffect(() => on(OPEN_DOCK, () => setDock('left')), []);
+  useEffect(() => setDock(null), [state.selectedServerId, state.selectedChannelId, dms.openId, dms.active]);
+  useEffect(() => {
+    if (!phone) setDock(null);
+  }, [phone]);
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchDraft('');
@@ -213,19 +225,21 @@ function Shell() {
         className={server && !dms.active ? 'app with-members' : 'app'}
         style={{ flex: '1 1 auto', minHeight: 0, height: 'auto' }}
       >
-        <ServerRail />
+        <div className={dock === 'left' ? 'dock left open' : 'dock left'}>
+          <ServerRail />
 
-        {dms.active ? (
-          <DmSidebar />
-        ) : server ? (
-          <ChannelSidebar server={server} />
-        ) : (
-          <aside className="sidebar">
-            <div className="sidebar-header">Scryproof</div>
-            <div className="sidebar-scroll" />
-            <UserPanel />
-          </aside>
-        )}
+          {dms.active ? (
+            <DmSidebar />
+          ) : server ? (
+            <ChannelSidebar server={server} />
+          ) : (
+            <aside className="sidebar">
+              <div className="sidebar-header">Scryproof</div>
+              <div className="sidebar-scroll" />
+              <UserPanel />
+            </aside>
+          )}
+        </div>
 
         <main className="main">
           {dms.active ? (
@@ -233,15 +247,22 @@ function Shell() {
           ) : server && channel ? (
             <>
               <header className="main-header">
+                <DockButton />
                 <div className="main-title">
                   <span className="channel-sigil">{channel.type === 'voice' ? '♫' : '#'}</span>
                   {channel.name}
                 </div>
                 {channel.topic ? <div className="main-topic">{channel.topic}</div> : null}
                 <div className="main-actions">
-                  <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>
-                    {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
-                  </span>
+                  {phone ? (
+                    <button type="button" className="link-button members-open" title="Members" onClick={() => setDock('right')}>
+                      {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
+                    </button>
+                  ) : (
+                    <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>
+                      {server.memberCount} member{server.memberCount === 1 ? '' : 's'}
+                    </span>
+                  )}
                   {channel.type === 'text' && searchOpen ? (
                     <input
                       type="text"
@@ -301,6 +322,12 @@ function Shell() {
             </>
           ) : (
             <div className="empty">
+              {phone ? (
+                <header className="main-header">
+                  <DockButton />
+                  <div className="main-title">Scryproof</div>
+                </header>
+              ) : null}
               <div>
                 <h2>{server ? 'No channel selected' : 'Nothing here yet'}</h2>
                 <p>
@@ -316,12 +343,16 @@ function Shell() {
         </main>
 
         {server && !dms.active ? (
-          searchQuery ? (
-            <SearchResults server={server} query={searchQuery} onClose={closeSearch} />
-          ) : (
-            <MemberList server={server} />
-          )
+          <div className={dock === 'right' ? 'dock right open' : 'dock right'}>
+            {searchQuery ? (
+              <SearchResults server={server} query={searchQuery} onClose={closeSearch} />
+            ) : (
+              <MemberList server={server} />
+            )}
+          </div>
         ) : null}
+
+        {phone && dock ? <button type="button" className="dock-backdrop" aria-label="Close" onClick={() => setDock(null)} /> : null}
 
         {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
         {overlay === 'pins' && channel ? <PinnedMessages channelId={channel.id} onClose={() => setOverlay(null)} /> : null}

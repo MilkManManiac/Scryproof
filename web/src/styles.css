@@ -4226,16 +4226,92 @@ kbd {
   }
 }
 
-@media (max-width: 560px) {
+/* On a wide screen the docks are not there: their children sit in the grid
+   as if the wrapper did not exist. */
+.dock {
+  display: contents;
+}
+
+@media (max-width: 640px) {
   :root {
     --rail-width: 56px;
   }
   .app,
   .app.with-members {
-    grid-template-columns: var(--rail-width) 1fr;
+    grid-template-columns: 1fr;
+    padding: 0;
+    gap: 0;
   }
-  .sidebar {
-    display: none;
+
+  /* On a phone each dock is a drawer: off the edge until asked for, then
+     over the page with a dimmed backdrop, solid so it can be read. */
+  .dock {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 45;
+    display: flex;
+    max-width: 88vw;
+    transition: transform var(--t-arrive) var(--ease);
+    box-shadow: var(--shadow-3);
+  }
+  .dock.left {
+    left: 0;
+    width: 320px;
+    transform: translateX(-104%);
+  }
+  .dock.right {
+    right: 0;
+    width: 280px;
+    transform: translateX(104%);
+  }
+  .dock.open {
+    transform: none;
+  }
+  .dock .rail,
+  .dock .sidebar,
+  .dock .members,
+  .dock .search-results {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-solid);
+    height: 100%;
+  }
+  .dock .rail {
+    flex: 0 0 var(--rail-width);
+  }
+  .dock .sidebar,
+  .dock .members,
+  .dock .search-results {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .dock-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    background: rgb(var(--bg-rgb) / 0.55);
+    animation: arrive var(--t-arrive) var(--ease);
+  }
+  .dock-open {
+    flex: none;
+    margin-left: -6px;
+  }
+  .members-open {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .main {
+    border-radius: 0;
+  }
+  .empty {
+    grid-template-rows: auto 1fr;
+    place-items: stretch;
+    padding: 0;
+  }
+  .empty > div {
+    align-self: center;
+    padding: 40px 24px;
   }
   .message {
     padding: 3px 12px 3px 12px;

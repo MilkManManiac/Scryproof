@@ -13,7 +13,11 @@ import { App } from './App';
 // Sets data-theme on <html> as a side effect, before anything is drawn.
 import './lib/theme';
 import { Ambient } from './components/Ambient';
+import { registerServiceWorker } from './lib/install';
 import './styles.css';
+
+// Makes the site installable on a phone. It caches nothing; see sw.js.
+registerServiceWorker();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root.');
