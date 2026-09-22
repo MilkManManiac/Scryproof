@@ -893,6 +893,13 @@ function DmComposer({
           void attach(event.dataTransfer.files);
         }}
       >
+        {/* Who this is going to, on the line you type into. Same idea as the
+            channel label in Composer: the name is beside the caret, not a
+            screen away in the header. */}
+        <span className="composer-label" title={`@${name}`}>
+          <span className="composer-label-mark">@</span>
+          {name}
+        </span>
         <input ref={filePicker} type="file" multiple hidden onChange={(event) => void attach(event.target.files)} />
         <button
           type="button"
@@ -910,7 +917,7 @@ function DmComposer({
           value={text}
           disabled={!state.ready}
           maxLength={LIMITS.message.max}
-          placeholder={state.ready ? `Message ${name}` : 'Setting up keys for this device'}
+          placeholder={state.ready ? 'Write something' : 'Setting up keys for this device'}
           onChange={(event) => setDrafts((current) => ({ ...current, [dm.id]: event.target.value }))}
           onPaste={(event) => {
             const pasted = Array.from(event.clipboardData.files);

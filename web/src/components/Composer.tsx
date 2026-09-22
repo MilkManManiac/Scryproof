@@ -291,6 +291,14 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           void upload(event.dataTransfer.files);
         }}
       >
+        {/* Where this is going, on the line you type into. The header names
+            the channel too, but it is a screen away from the caret; this is
+            the answer to "which room am I in" at the moment of sending. */}
+        <span className="composer-label" title={`#${channel.name}`}>
+          <span className="composer-label-mark">#</span>
+          {channel.name}
+        </span>
+
         {mayAttach ? (
           <>
             <input
@@ -323,7 +331,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             mayPost
               ? cooldown > 0
                 ? `Slowmode. ${cooldown}s`
-                : `Message #${channel.name}`
+                : 'Write something'
               : timedOutUntil
                 ? `You are timed out until ${timedOutUntil.toLocaleString()}.`
                 : 'You do not have permission to post here.'
