@@ -21,12 +21,8 @@ import { useTimeoutEnd } from '../lib/usePermissions';
 import { publicOrigin } from '../lib/desktop';
 import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
-import type { VoicePerson, VoiceSnapshot, VoiceVideo } from '../lib/voice-session';
-
-function useVoice(): VoiceSnapshot {
-  const { voice } = useStore();
-  return useSyncExternalStore(voice.subscribe, voice.getSnapshot);
-}
+import type { VoicePerson, VoiceVideo } from '../lib/voice-session';
+import { useVoice } from '../state/useVoice';
 
 function useNames(): (userId: string) => string {
   const { state } = useStore();

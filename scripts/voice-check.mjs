@@ -278,6 +278,23 @@ async function main() {
   check('wes is decoding real audio from alex', clear.energy > 0.001 && clear.packets > 50,
     `+${clear.packets} packets, +${clear.energy.toFixed(4)} energy`);
 
+  // The speaking ring reaches both lists, not only the voice view. The fake
+  // microphone is a steady tone, so alex is "speaking" the whole time.
+  const ringed = await wes.until(`(() => {
+    const inList = Array.from(document.querySelectorAll('.voice-member.speaking')).some((el) => el.textContent.includes('Alex'));
+    const inMembers = Array.from(document.querySelectorAll('.member.speaking')).some((el) => el.textContent.includes('Alex'));
+    return inList && inMembers;
+  })()`, 15_000);
+  const ringReport = await wes.evaluate(`JSON.stringify({
+    speaking: window.__voice.getSnapshot().speaking,
+    tile: document.querySelectorAll('.voice-tile.speaking').length,
+    list: document.querySelectorAll('.voice-member.speaking').length,
+    members: document.querySelectorAll('.member.speaking').length,
+    channel: window.__voice.getSnapshot().channelId,
+  })`);
+  check('the channel list and the member list both ring alex while he speaks', Boolean(ringed), ringReport);
+  check('the member list marks alex as in voice', await wes.evaluate(`Array.from(document.querySelectorAll('.member.in-voice')).some((el) => el.textContent.includes('Alex'))`));
+
   await sleep(2500); // let a stats sample land
   w = await wes.snapshot();
   check('the connection panel has measured numbers, not dashes', w.stats.rttMs !== null && w.stats.codec !== null && w.stats.relayed !== null,
@@ -346,6 +363,8 @@ async function main() {
   await sleep(1500);
   const shared = sharing ? await wes.watch(screenKey) : { frames: 0, width: 0, packets: 0 };
   const alexMedia = await alex.snapshot();
+  check('both lists show the screen mark beside alex',
+    await wes.evaluate(`document.querySelector('.voice-member .voice-flag.sharing') !== null && document.querySelector('.member .voice-flag.sharing') !== null`));
   check('wes is decoding the screen alex shared, and it took over the stage',
     shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
     `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);

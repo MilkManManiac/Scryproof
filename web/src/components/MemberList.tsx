@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from 'react';
 import { Permission } from '@scryproof/shared';
-import type { Member, Role, ServerDetail } from '@scryproof/shared';
+import type { Member, Role, ServerDetail, VoiceState } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { timeoutEndsAt } from '../lib/usePermissions';
@@ -17,6 +17,8 @@ import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
 import { authorityFor } from './settings/authority';
+import { useVoice } from '../state/useVoice';
+import { CameraGlyph, ScreenGlyph, VoiceGlyph } from './glyphs';
 
 interface Group {
   key: string;
@@ -42,6 +44,18 @@ interface OpenMenu {
 
 export function MemberList({ server }: { server: ServerDetail }) {
   const { state, block, unblock } = useStore();
+  const live = useVoice();
+  // Who is in a voice channel on this server, by user. The server keeps
+  // this; it is true whether or not we are in the call ourselves.
+  const calls = useMemo(() => {
+    const byUser = new Map<string, VoiceState>();
+    for (const voice of Object.values(state.voiceStates)) {
+      if (voice.serverId === server.id && voice.channelId) byUser.set(voice.userId, voice);
+    }
+    return byUser;
+  }, [state.voiceStates, server.id]);
+  const voiceChannelName = (channelId: string | null): string =>
+    server.channels.find((channel) => channel.id === channelId)?.name ?? 'voice';
   const { openWith } = useDms();
   const members = state.members[server.id];
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -128,6 +142,8 @@ export function MemberList({ server }: { server: ServerDetail }) {
             const presence = state.presences[member.userId] ?? 'offline';
             const self = member.userId === state.user?.id;
             const until = timeoutEndsAt(member);
+            const call = calls.get(member.userId) ?? null;
+            const speaking = call !== null && live.channelId === call.channelId && live.speaking.includes(member.userId);
             // The server checks all of this again. Offering the menu only when
             // it would succeed keeps the list from handing out dead choices.
             const moderatable = mayModerate && !self && authority.canActOnMember(member);
@@ -136,7 +152,14 @@ export function MemberList({ server }: { server: ServerDetail }) {
             return (
               <div key={member.userId} style={{ position: 'relative' }}>
                 <div
-                  className={presence === 'offline' ? 'member offline' : 'member'}
+                  className={[
+                    'member',
+                    presence === 'offline' ? 'offline' : '',
+                    call ? 'in-voice' : '',
+                    speaking ? 'speaking' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   title={self ? `@${member.user.username}` : `Message @${member.user.username}`}
                   role={self ? undefined : 'button'}
                   tabIndex={self ? undefined : 0}
@@ -165,6 +188,23 @@ export function MemberList({ server }: { server: ServerDetail }) {
                     </span>
                     {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
                   </span>
+                  {call ? (
+                    <span className="member-flags">
+                      {call.sharingScreen ? (
+                        <span className="voice-flag sharing" title="Sharing their screen">
+                          <ScreenGlyph />
+                        </span>
+                      ) : null}
+                      {call.cameraOn ? (
+                        <span className="voice-flag camera" title="Camera on">
+                          <CameraGlyph />
+                        </span>
+                      ) : null}
+                      <span className="voice-flag in-voice" title={`In ${voiceChannelName(call.channelId)}`}>
+                        <VoiceGlyph />
+                      </span>
+                    </span>
+                  ) : null}
                   {until ? (
                     <span className="member-timeout" title={`Timed out until ${until.toLocaleString()}`}>
                       &#9201;

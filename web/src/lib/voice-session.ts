@@ -183,6 +183,8 @@ export class VoiceSession {
   private keyProvider: ScryproofKeyProvider | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private mix: OutputMix | null = null;
+  private ears: ReturnType<typeof setInterval> | null = null;
+  private serverSpeakers: string[] = [];
   private gate: MicGate | null = null;
   private prefs: VoicePrefs = voicePrefs.get();
   private stopWatching: (() => void) | null = null;
@@ -354,6 +356,9 @@ export class VoiceSession {
     this.gate = null;
     this.mix?.close();
     this.mix = null;
+    if (this.ears) clearInterval(this.ears);
+    this.ears = null;
+    this.serverSpeakers = [];
 
     if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) sounds.left();
     if (room) await room.disconnect().catch(() => undefined);
@@ -754,6 +759,9 @@ export class VoiceSession {
         this.mix.setDeafened(this.deafened);
         const speaker = voicePrefs.get().outputDeviceId;
         if (speaker) void this.mix.setOutputDevice(speaker);
+        // The ring: what we hear, plus whoever the server says. Screen-share
+        // sound is a game, not a voice, so it never rings anyone.
+        this.ears = setInterval(() => this.refreshSpeaking(), 100);
       }
       const volume = voicePrefs.get().volumes[participant.identity] ?? 1;
       this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume);
@@ -776,7 +784,8 @@ export class VoiceSession {
     }
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers: LiveKitParticipant[]) => {
-      this.update({ speaking: speakers.map((speaker) => speaker.identity) });
+      this.serverSpeakers = speakers.map((speaker) => speaker.identity);
+      this.refreshSpeaking();
     });
 
     room.on(RoomEvent.Disconnected, () => {
@@ -866,6 +875,15 @@ export class VoiceSession {
    * the mix, after the person's volume, because that is what would be heard.
    * Used by `npm run test:voice`.
    */
+  /** Merge the server's speaker list with our own ears, and publish only on change. */
+  private refreshSpeaking(): void {
+    const heard = (this.mix?.talking() ?? []).filter((key) => !key.endsWith(':screen'));
+    const speaking = [...new Set([...this.serverSpeakers, ...heard])].sort();
+    const before = this.snapshot.speaking;
+    if (before.length === speaking.length && before.every((id, i) => id === speaking[i])) return;
+    this.update({ speaking });
+  }
+
   async debugInbound(): Promise<Record<string, { energy: number; packets: number }>> {
     const result: Record<string, { energy: number; packets: number }> = {};
     for (const participant of this.room?.remoteParticipants.values() ?? []) {

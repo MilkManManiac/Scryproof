@@ -24,9 +24,12 @@ import type { PrivacyChoice } from './settings/PrivacyPicker';
 import { ServerSettings } from './settings/ServerSettings';
 import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
+import { useVoice } from '../state/useVoice';
+import { CameraGlyph, ScreenGlyph } from './glyphs';
 
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
+  const live = useVoice();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [dialog, setDialog] = useState<'channel' | 'category' | 'invite' | 'settings' | null>(null);
   const [addMenu, setAddMenu] = useState(false);
@@ -248,8 +251,16 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                               const member = members.find(
                                 (entry2) => entry2.userId === voice.userId,
                               );
+                              // Speaking is known only from inside the call:
+                              // LiveKit tells us who is loud, and only for the
+                              // room we are in. From outside, nobody is ringed.
+                              const speaking =
+                                live.channelId === channel.id && live.speaking.includes(voice.userId);
                               return (
-                                <div className="voice-member" key={voice.userId}>
+                                <div
+                                  className={speaking ? 'voice-member speaking' : 'voice-member'}
+                                  key={voice.userId}
+                                >
                                   {member ? (
                                     <Avatar user={member.user} small />
                                   ) : (
@@ -257,8 +268,16 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                   )}
                                   <span className="channel-name">{nameFor(voice.userId)}</span>
                                   <span className="voice-flags">
-                                    {voice.sharingScreen ? <span title="Sharing screen">&#9635;</span> : null}
-                                    {voice.cameraOn ? <span title="Camera on">&#9679;</span> : null}
+                                    {voice.sharingScreen ? (
+                                      <span className="voice-flag sharing" title="Sharing their screen">
+                                        <ScreenGlyph />
+                                      </span>
+                                    ) : null}
+                                    {voice.cameraOn ? (
+                                      <span className="voice-flag camera" title="Camera on">
+                                        <CameraGlyph />
+                                      </span>
+                                    ) : null}
                                     {voice.selfMute || voice.serverMute ? (
                                       <span className="muted" title="Muted">
                                         &#128263;

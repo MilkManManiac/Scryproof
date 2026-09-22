@@ -39,7 +39,18 @@ interface Voice {
   pump: HTMLAudioElement;
   /** Running total of sound that has reached the mix from this person, after their volume. */
   energy: number;
+  /** The clock time until which this person counts as talking. */
+  loudUntil: number;
 }
+
+/**
+ * Below this, a 20ms slice is a pause, not a word. -45 dBFS: speech at any
+ * normal distance is well above it, and the far end's own gate and noise
+ * suppression keep their room tone below it.
+ */
+const TALKING = Math.pow(10, -45 / 10);
+/** How long one loud slice keeps someone "talking", so the ring does not flicker between syllables. */
+const HOLD_MS = 300;
 
 /**
  * Everyone you can hear, each with their own volume, mixed into one output.
@@ -61,11 +72,14 @@ export class OutputMix {
     // and speech (or a test beep) is mostly gaps. The total only ever climbs
     // while decrypted sound is really arriving.
     this.sampler = setInterval(() => {
+      const now = Date.now();
       for (const voice of this.voices.values()) {
         voice.analyser.getFloatTimeDomainData(this.scratch);
         let sum = 0;
         for (const sample of this.scratch) sum += sample * sample;
-        voice.energy += sum / this.scratch.length;
+        const meanSquare = sum / this.scratch.length;
+        voice.energy += meanSquare;
+        if (meanSquare > TALKING) voice.loudUntil = now + HOLD_MS;
       }
     }, 20);
   }
@@ -85,7 +99,7 @@ export class OutputMix {
     analyser.fftSize = 1024;
     gain.gain.value = volume;
     source.connect(gain).connect(analyser).connect(this.master);
-    this.voices.set(userId, { source, gain, analyser, pump, energy: 0 });
+    this.voices.set(userId, { source, gain, analyser, pump, energy: 0, loudUntil: 0 });
   }
 
   remove(userId: string): void {
@@ -123,6 +137,19 @@ export class OutputMix {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Who is talking right now, by mix key, measured on the decrypted sound
+   * itself. This does not depend on the server noticing: with end-to-end
+   * encryption the server has only the packet headers to go by, and here it
+   * has proved unreliable, so the ring is drawn from what the ear gets.
+   */
+  talking(): string[] {
+    const now = Date.now();
+    const out: string[] = [];
+    for (const [key, voice] of this.voices) if (voice.loudUntil > now) out.push(key);
+    return out;
   }
 
   /** Sound that has reached the mix from one person so far. Flat means silence or undecryptable. */

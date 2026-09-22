@@ -586,8 +586,11 @@ select {
 .voice-member.speaking {
   color: var(--text);
 }
+/* A dark gap between avatar and ring, so the ring reads on a green avatar too. */
 .voice-member.speaking .avatar {
-  box-shadow: 0 0 0 2px var(--speaking);
+  box-shadow:
+    0 0 0 1.5px var(--panel-solid),
+    0 0 0 3.5px var(--speaking);
 }
 
 .voice-flags {
@@ -599,6 +602,33 @@ select {
 }
 .voice-flags .muted {
   color: var(--bad);
+}
+
+/* The drawn marks: camera, screen, in voice. The lists that carry them set
+   the tone; sharing is the accent, since it is the thing to look at. */
+.voice-flag {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+}
+.voice-flag.sharing,
+.voice-flag.camera {
+  color: var(--accent);
+}
+.member-flags {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.member.in-voice .member-name {
+  color: var(--text);
+}
+.member.speaking .avatar {
+  box-shadow:
+    0 0 0 1.5px var(--panel-solid),
+    0 0 0 3.5px var(--speaking);
 }
 
 /* ------------------------------------------------------------- user panel */
