@@ -559,6 +559,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
           mentionsEveryone: false,
           selfId,
           channelId: message.dmId,
+          // Mute is a server/channel idea. There is no server-wide mute that
+          // reaches a direct message, and a DM has nothing to mute it by.
+          serverId: null,
           openChannelId: looking ? message.dmId : null,
           windowFocused: document.hasFocus(),
           prefs: notifyPrefs.get(),
@@ -572,6 +575,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
           addressedToMe: true,
           watching: focused && looking,
           windowFocused: focused,
+          muted: false,
         });
         if (verdict.list) {
           const author = stateRef.current.dms[message.dmId]?.members.find((member) => member.id === message.authorId);

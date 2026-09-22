@@ -20,12 +20,17 @@ export interface NotifyPrefs {
   mention: boolean;
   /** Everything else somebody says where you can see it. */
   message: MessageSound;
+  /** Server ids that make no sound and no pop-up. The unread marks stay. */
+  mutedServers: string[];
+  /** Channel ids muted individually, whether or not their server is. */
+  mutedChannels: string[];
 }
 
-const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused' };
+const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] };
 const STORAGE_KEY = 'scryproof.notify.v1';
 
-function load(): NotifyPrefs {
+/** Exported so a prefs blob (or an old one missing the newer fields) can be checked directly, in tests and elsewhere. */
+export function load(): NotifyPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
@@ -35,8 +40,17 @@ function load(): NotifyPrefs {
   }
 }
 
+/** True when the server, or the channel itself, has been silenced. */
+export function isMuted(prefs: NotifyPrefs, serverId: string | null, channelId: string): boolean {
+  return (serverId !== null && prefs.mutedServers.includes(serverId)) || prefs.mutedChannels.includes(channelId);
+}
+
 let current = load();
 const listeners = new Set<() => void>();
+
+function toggle(list: readonly string[], id: string): string[] {
+  return list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id];
+}
 
 export const notifyPrefs = {
   get: (): NotifyPrefs => current,
@@ -53,6 +67,12 @@ export const notifyPrefs = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
+  toggleServer(serverId: string): void {
+    notifyPrefs.set({ mutedServers: toggle(current.mutedServers, serverId) });
+  },
+  toggleChannel(channelId: string): void {
+    notifyPrefs.set({ mutedChannels: toggle(current.mutedChannels, channelId) });
+  },
 };
 
 /* -------------------------------- the rules -------------------------------- */
@@ -65,6 +85,8 @@ export interface SoundContext {
   selfId: string | null;
   /** The channel this arrived in, and the one being looked at. */
   channelId: string;
+  /** The server this channel belongs to. Null for a direct message. */
+  serverId: string | null;
   openChannelId: string | null;
   windowFocused: boolean;
   prefs: NotifyPrefs;
@@ -73,6 +95,11 @@ export interface SoundContext {
 export function soundFor(input: SoundContext): 'mention' | 'message' | null {
   // Your own words, on this device or another one, are never news.
   if (!input.selfId || input.authorId === input.selfId) return null;
+
+  // Muting is about noise, not about hiding: a muted place still marks
+  // unread and still counts toward the mention badge, it just never makes a
+  // sound, even for a mention.
+  if (isMuted(input.prefs, input.serverId, input.channelId)) return null;
 
   const pingsMe = input.mentionsEveryone || input.mentions.includes(input.selfId);
   if (pingsMe) return input.prefs.mention ? 'mention' : null;

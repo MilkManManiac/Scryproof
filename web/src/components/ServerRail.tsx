@@ -7,12 +7,14 @@
  * a name you could ask about.
  */
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { notifyPrefs } from '../lib/notify';
 import { unreadDmCount, useDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
+import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
 
@@ -36,6 +38,9 @@ export function ServerRail() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Which server's right-click menu (mute/unmute) is open, if any.
+  const [serverMenu, setServerMenu] = useState<string | null>(null);
+  const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
 
   function close() {
     setCreating(false);
@@ -102,26 +107,53 @@ export function ServerRail() {
         // The pip is the server's own news. Looking at it is not reading it,
         // so an open server still shows one until its channels are read.
         const { unread, mentions } = unreadForServer(state, id);
+        const muted = notifyState.mutedServers.includes(id);
 
         const classes = ['rail-item'];
         if (active) classes.push('active');
         if (unread) classes.push('unread');
+        if (muted) classes.push('muted');
+
+        const titleText = muted
+          ? `${server.name} — muted`
+          : mentions > 0
+            ? `${server.name} — ${countLabel(mentions)}`
+            : server.name;
 
         return (
-          <button
-            key={id}
-            type="button"
-            className={classes.join(' ')}
-            title={mentions > 0 ? `${server.name} — ${countLabel(mentions)}` : server.name}
-            aria-current={active ? 'true' : undefined}
-            onClick={() => {
-              hideDms();
-              selectServer(id);
-            }}
-          >
-            {tile(server.name)}
-            {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}
-          </button>
+          <span key={id} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className={classes.join(' ')}
+              title={titleText}
+              aria-current={active ? 'true' : undefined}
+              onClick={() => {
+                hideDms();
+                selectServer(id);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setServerMenu(id);
+              }}
+            >
+              {tile(server.name)}
+              {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}
+            </button>
+
+            {serverMenu === id ? (
+              <Menu onClose={() => setServerMenu(null)}>
+                <MenuItem
+                  note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up, for the whole server.'}
+                  onClick={() => {
+                    notifyPrefs.toggleServer(id);
+                    setServerMenu(null);
+                  }}
+                >
+                  {muted ? 'Unmute server' : 'Mute server'}
+                </MenuItem>
+              </Menu>
+            ) : null}
+          </span>
         );
       })}
 

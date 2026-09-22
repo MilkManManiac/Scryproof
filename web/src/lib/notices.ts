@@ -55,6 +55,12 @@ export interface NoticeContext {
   /** The conversation is on screen in a window somebody is sitting at. */
   watching: boolean;
   windowFocused: boolean;
+  /**
+   * The server or the channel this arrived in has been muted. It still goes
+   * on the list behind the bell — muting silences, it does not hide — but it
+   * never pops up.
+   */
+  muted: boolean;
 }
 
 /**
@@ -62,13 +68,13 @@ export interface NoticeContext {
  *
  * Something you watched arrive is not news. Something that arrived in another
  * channel while you were here goes on the list quietly. A pop-up is only for
- * when the window is not the one you are in.
+ * when the window is not the one you are in, and never for a muted place.
  */
 export function noticeFor(input: NoticeContext): { list: boolean; popup: boolean } {
   if (!input.selfId || input.authorId === input.selfId || !input.addressedToMe || input.watching) {
     return { list: false, popup: false };
   }
-  return { list: true, popup: !input.windowFocused };
+  return { list: true, popup: !input.windowFocused && !input.muted };
 }
 
 export function previewOf(text: string | null): string | null {

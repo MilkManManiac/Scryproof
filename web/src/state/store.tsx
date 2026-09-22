@@ -35,7 +35,7 @@ import type {
 
 import { api } from '../lib/api';
 import { noticeFor, notices, previewOf } from '../lib/notices';
-import { notifyPrefs, play, soundFor } from '../lib/notify';
+import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { VoiceSession } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
@@ -663,12 +663,20 @@ export function StoreProvider({
         for (const listener of eventListeners.current) listener(event);
 
         if (event.t === 'message_create') {
+          // Looked up once and reused: the sound decision, the pop-up decision,
+          // and the notice's own server/channel names all need it.
+          const server = Object.values(serversRef.current).find((entry) =>
+            entry.channels.some((channel) => channel.id === event.d.channelId),
+          );
+          const muted = isMuted(notifyPrefs.get(), server?.id ?? null, event.d.channelId);
+
           const sound = soundFor({
             authorId: event.d.authorId,
             mentions: event.d.mentions ?? [],
             mentionsEveryone: event.d.mentionsEveryone ?? false,
             selfId: selfId.current,
             channelId: event.d.channelId,
+            serverId: server?.id ?? null,
             openChannelId: openChannel.current,
             windowFocused: document.hasFocus(),
             prefs: notifyPrefs.get(),
@@ -684,11 +692,9 @@ export function StoreProvider({
               (message.mentionsEveryone ?? false) || (message.mentions ?? []).includes(selfId.current ?? ''),
             watching: focused && message.channelId === openChannel.current,
             windowFocused: focused,
+            muted,
           });
           if (verdict.list) {
-            const server = Object.values(serversRef.current).find((entry) =>
-              entry.channels.some((channel) => channel.id === message.channelId),
-            );
             const channel = server?.channels.find((entry) => entry.id === message.channelId);
             notices.arrived(
               {

@@ -231,6 +231,20 @@ textarea {
   height: 8px;
 }
 
+/* A small dot in the corner, not a badge: it says "quiet" without competing
+ * with the unread pip or the mention count, both of which still show. */
+.rail-item.muted::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  box-shadow: 0 0 0 2px var(--bg-rail);
+}
+
 .rail-divider {
   width: 28px;
   height: 1px;
@@ -339,6 +353,15 @@ textarea {
 .channel.unread {
   color: var(--text);
   font-weight: 560;
+}
+
+/* Quieter, not gone: unread still shows through a mute, this just dims the
+ * name so a muted channel reads as "off to the side" rather than missing. */
+.channel.muted {
+  color: var(--text-faint);
+}
+.channel.muted.unread {
+  color: var(--text-dim);
 }
 
 .channel-sigil {

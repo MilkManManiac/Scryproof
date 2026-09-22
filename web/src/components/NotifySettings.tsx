@@ -12,6 +12,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { notices } from '../lib/notices';
 import { notifyPrefs, play } from '../lib/notify';
 import type { MessageSound } from '../lib/notify';
+import { useStore } from '../state/store';
 import { Modal } from './Modal';
 
 const MESSAGE_CHOICES: [value: MessageSound, label: string, note: string][] = [
@@ -25,6 +26,18 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
   useEffect(() => notifyPrefs.subscribe(() => setPrefs(notifyPrefs.get())), []);
   const popups = useSyncExternalStore(notices.subscribe, notices.prefs);
   const [refused, setRefused] = useState(false);
+  const { state } = useStore();
+
+  // Names for whatever is muted, so a mute from months ago is still findable.
+  // A server or channel that has since been left or deleted just shows its id.
+  const mutedServers = prefs.mutedServers.map((id) => ({ id, name: state.servers[id]?.name ?? id }));
+  const mutedChannels = prefs.mutedChannels.map((id) => {
+    for (const server of Object.values(state.servers)) {
+      const channel = server.channels.find((entry) => entry.id === id);
+      if (channel) return { id, name: `#${channel.name}`, server: server.name };
+    }
+    return { id, name: id, server: null as string | null };
+  });
 
   return (
     <Modal
@@ -114,6 +127,41 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
           A burst of messages is one sound, not one each.
         </p>
       </div>
+
+      {mutedServers.length > 0 || mutedChannels.length > 0 ? (
+        <>
+          <div className="settings-subhead">Muted</div>
+          <div className="radio-group">
+            {mutedServers.map((entry) => (
+              <label className="toggle-row" key={`server-${entry.id}`}>
+                <span>{entry.name}</span>
+                <button
+                  type="button"
+                  className="button secondary inline"
+                  onClick={() => notifyPrefs.toggleServer(entry.id)}
+                >
+                  Unmute
+                </button>
+              </label>
+            ))}
+            {mutedChannels.map((entry) => (
+              <label className="toggle-row" key={`channel-${entry.id}`}>
+                <span>
+                  {entry.name}
+                  {entry.server ? <span className="field-note">{entry.server}</span> : null}
+                </span>
+                <button
+                  type="button"
+                  className="button secondary inline"
+                  onClick={() => notifyPrefs.toggleChannel(entry.id)}
+                >
+                  Unmute
+                </button>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
     </Modal>
   );
 }
