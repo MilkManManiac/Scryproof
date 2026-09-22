@@ -24,7 +24,7 @@ describe('themes', () => {
   it('have unique ids and the chamber first', () => {
     const ids = THEMES.map((theme) => theme.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(DEFAULT_THEME, 'scry');
+    assert.equal(DEFAULT_THEME, 'ridge');
     assert.equal(THEMES[0]?.id, DEFAULT_THEME);
   });
 

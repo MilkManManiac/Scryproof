@@ -6,9 +6,12 @@
  * (the ground the fire lights), the accent is the fire's orange, and the
  * dim text is the one cold thing on a panel, the sky's grey-blue. Gold stays
  * for ornament. Every token the hall theme sets is set here, plus the four
- * backdrop tokens the theme contract names.
+ * backdrop tokens the theme contract names. This is the default theme (Wes,
+ * 2026-09-22), so it also matches bare `:root`: a page before the theme script
+ * has run still paints as the ridge.
  */
 
+:root,
 :root[data-theme='ridge'] {
   /* The dark beyond the firelight. */
   --bg: #0c0908;

@@ -16,7 +16,7 @@ import type { NotifyPrefs, SoundContext } from '../lib/notify';
 const ME = 'me';
 const THEM = 'them';
 
-const prefs: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] };
+const prefs: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1 };
 
 const base: SoundContext = {
   authorId: THEM,
