@@ -1598,5 +1598,15 @@ one). A river would want the chamber's basin, not the ridge.
 
 ![The ridge, alive: embers over the fire, stars overhead](shots/theme-ember.png)
 
+**House rule, live (client 1790105624485).** Wes: "auto-censor the words
+bigballer, big baller, bigballa, bigballah. Or like replace it with 'I'm
+an idiot'. It's an inside joke." `shared/src/house-rules.ts`, one regex
+and the line to say; applied by the sender's client in `Composer.tsx`
+(send), `MessageList.tsx` (edit), and `state/dms.tsx` (DM send and
+edit), so it holds inside E2EE DMs and the server reads nothing. A
+client older than this one would not apply it; they all update within
+ten minutes. To add a rule, add a row to `HOUSE_RULES` and a line to
+`web/src/tests/house-rules.test.ts`.
+
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
