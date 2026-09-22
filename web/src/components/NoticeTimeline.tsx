@@ -8,7 +8,10 @@
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import type { BookmarkedMessage } from '@scryproof/shared';
 
+import { api } from '../lib/api';
+import { toPlainLine } from '../lib/mentions';
 import { bySource, notices } from '../lib/notices';
 import type { Notice } from '../lib/notices';
 import { useDms } from '../state/dms';
@@ -90,6 +93,7 @@ export function NoticeBell() {
 }
 
 function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: () => void }) {
+  const [tab, setTab] = useState<'notices' | 'saved'>('notices');
   const [source, setSource] = useState<string | null>(null);
   const sources = useMemo(() => bySource(list), [list]);
   const shown = source ? list.filter((entry) => (entry.serverId ?? 'dm') === source) : list;
@@ -106,68 +110,151 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
 
   return (
     <div className="switcher-backdrop" onMouseDown={onClose}>
-      <div className="switcher notices" role="dialog" aria-label="Notifications" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className={tab === 'saved' ? 'switcher notices pins' : 'switcher notices'}
+        role="dialog"
+        aria-label="Notifications"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="notices-head">
           <strong>Notifications</strong>
-          <span className="notices-actions">
-            <button type="button" className="link-button" disabled={!list.some((entry) => !entry.read)} onClick={() => notices.readAll()}>
-              Mark all read
-            </button>
-            <button type="button" className="link-button" disabled={list.length === 0} onClick={() => notices.clear()}>
-              Clear
-            </button>
-          </span>
-        </div>
-
-        {sources.length > 1 ? (
-          <div className="notices-sources">
-            <button type="button" className={source === null ? 'notices-source active' : 'notices-source'} onClick={() => setSource(null)}>
-              Everywhere <span>{list.length}</span>
-            </button>
-            {sources.map((entry) => (
-              <button
-                type="button"
-                key={entry.key}
-                className={source === entry.key ? 'notices-source active' : 'notices-source'}
-                onClick={() => setSource(entry.key)}
-              >
-                {entry.label} <span>{entry.total}</span>
+          {tab === 'notices' ? (
+            <span className="notices-actions">
+              <button type="button" className="link-button" disabled={!list.some((entry) => !entry.read)} onClick={() => notices.readAll()}>
+                Mark all read
               </button>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="notices-list">
-          {shown.length === 0 ? (
-            <p className="notices-empty">
-              Mentions and direct messages that arrive while you are somewhere else are listed here, with where they
-              came from. The list is kept on this device only.
-            </p>
+              <button type="button" className="link-button" disabled={list.length === 0} onClick={() => notices.clear()}>
+                Clear
+              </button>
+            </span>
           ) : null}
-          {shown.map((entry) => {
-            const day = dayLabel(entry.at);
-            const heading = day !== lastDay ? <div className="notices-day">{day}</div> : null;
-            lastDay = day;
-            return (
-              <div key={entry.id}>
-                {heading}
-                <button type="button" className={entry.read ? 'notice' : 'notice unread'} onClick={() => notices.open(entry)}>
-                  <span className="notice-time">{timeFormat.format(entry.at)}</span>
-                  <span className="notice-body">
-                    <span className="notice-where">
-                      {entry.kind === 'dm' ? 'Direct message' : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
-                    </span>
-                    <span className="notice-what">
-                      <strong>{entry.authorName}</strong>{' '}
-                      {entry.kind === 'dm' ? 'sent you a message' : (entry.preview ?? 'mentioned you')}
-                    </span>
-                  </span>
-                </button>
-              </div>
-            );
-          })}
         </div>
+
+        <div className="notices-sources">
+          <button type="button" className={tab === 'notices' ? 'notices-source active' : 'notices-source'} onClick={() => setTab('notices')}>
+            Notifications
+          </button>
+          <button type="button" className={tab === 'saved' ? 'notices-source active' : 'notices-source'} onClick={() => setTab('saved')}>
+            Saved
+          </button>
+        </div>
+
+        {tab === 'saved' ? (
+          <SavedTab onClose={onClose} />
+        ) : (
+          <>
+            {sources.length > 1 ? (
+              <div className="notices-sources">
+                <button type="button" className={source === null ? 'notices-source active' : 'notices-source'} onClick={() => setSource(null)}>
+                  Everywhere <span>{list.length}</span>
+                </button>
+                {sources.map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.key}
+                    className={source === entry.key ? 'notices-source active' : 'notices-source'}
+                    onClick={() => setSource(entry.key)}
+                  >
+                    {entry.label} <span>{entry.total}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="notices-list">
+              {shown.length === 0 ? (
+                <p className="notices-empty">
+                  Mentions and direct messages that arrive while you are somewhere else are listed here, with where they
+                  came from. The list is kept on this device only.
+                </p>
+              ) : null}
+              {shown.map((entry) => {
+                const day = dayLabel(entry.at);
+                const heading = day !== lastDay ? <div className="notices-day">{day}</div> : null;
+                lastDay = day;
+                return (
+                  <div key={entry.id}>
+                    {heading}
+                    <button type="button" className={entry.read ? 'notice' : 'notice unread'} onClick={() => notices.open(entry)}>
+                      <span className="notice-time">{timeFormat.format(entry.at)}</span>
+                      <span className="notice-body">
+                        <span className="notice-where">
+                          {entry.kind === 'dm' ? 'Direct message' : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
+                        </span>
+                        <span className="notice-what">
+                          <strong>{entry.authorName}</strong>{' '}
+                          {entry.kind === 'dm' ? 'sent you a message' : (entry.preview ?? 'mentioned you')}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Messages saved for later, fetched fresh each time this tab opens: like the
+ * pins list, a bookmark changes on one device by one click, so there is
+ * nothing to keep in sync and a short wait beats a stale answer.
+ */
+function SavedTab({ onClose }: { onClose: () => void }) {
+  const { state, selectServer, jumpToMessage } = useStore();
+  const dms = useDms();
+  const [saved, setSaved] = useState<BookmarkedMessage[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.bookmarks
+      .list()
+      .then(({ messages }) => {
+        if (!cancelled) setSaved(messages);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function jump(message: BookmarkedMessage) {
+    dms.hideDms();
+    if (message.serverId !== state.selectedServerId) selectServer(message.serverId);
+    void jumpToMessage(message.channelId, message.id).catch(() => undefined);
+    onClose();
+  }
+
+  return (
+    <div className="notices-list">
+      {error ? <p className="notices-empty">The saved list could not be fetched.</p> : null}
+      {saved && saved.length === 0 && !error ? (
+        <p className="notices-empty">Nothing saved. Hover a message and pick Save.</p>
+      ) : null}
+      {(saved ?? []).map((message) => (
+        <button type="button" className="notice pin" key={message.id} title="Go to this message" onClick={() => jump(message)}>
+          <span className="notice-body">
+            <span className="notice-where">
+              {state.servers[message.serverId]?.name ?? 'A server'} › #{message.channelName}
+            </span>
+            <span className="pin-text">
+              {state.blocks.has(message.authorId)
+                ? 'Blocked message.'
+                : message.content
+                  ? toPlainLine(message.content, [])
+                  : message.attachments.length > 0
+                    ? `${message.attachments.length} file(s)`
+                    : 'A locked message'}
+            </span>
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

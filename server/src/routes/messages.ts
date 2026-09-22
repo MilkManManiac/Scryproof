@@ -15,7 +15,7 @@ import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/sha
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { attachments, channels, messages, reactions, users } from '../db/schema.js';
+import { attachments, bookmarks, channels, messages, reactions, users } from '../db/schema.js';
 import { badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { rollDie } from '../lib/crypto.js';
 import { uuidv7 } from '../lib/ids.js';
@@ -30,6 +30,7 @@ import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../s
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
 import { searchMessages } from '../services/search.js';
+import { bookmarksFor, isBookmarked } from '../services/bookmarks.js';
 import type { MessageRow, User } from '../db/schema.js';
 
 /** How much of a parent message rides along with a reply. */
@@ -50,7 +51,7 @@ const AROUND_HALF = 25;
  * messages in a fixed handful of queries, not a handful per message. Exported
  * for other routes that need the same shape, such as search results.
  */
-export async function hydrate(rows: MessageRow[]): Promise<Message[]> {
+export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Message[]> {
   if (rows.length === 0) return [];
 
   const db = getDb();
@@ -90,6 +91,10 @@ export async function hydrate(rows: MessageRow[]): Promise<Message[]> {
     .from(attachments)
     .where(inArray(attachments.messageId, messageIds));
   const reactionsByMessage = await reactionsForMessages(messageIds);
+  // Only asked for when the caller is a signed-in person reading their own
+  // view of the page; a hydrate with nobody to ask on behalf of (an internal
+  // one-off, or a message being broadcast to everyone) leaves it out.
+  const bookmarked = viewerId ? await isBookmarked(viewerId, messageIds) : null;
 
   const byMessage = new Map<string, Attachment[]>();
   for (const row of attachmentRows) {
@@ -108,6 +113,7 @@ export async function hydrate(rows: MessageRow[]): Promise<Message[]> {
       return serialize.message(row, author, byMessage.get(row.id) ?? [], {
         reactions: reactionsByMessage.get(row.id) ?? [],
         replyTo: previewOf(row.replyToId),
+        bookmarked: bookmarked ? bookmarked.has(row.id) : undefined,
       });
     })
     .filter((message): message is Message => message !== null);
@@ -162,7 +168,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         .orderBy(asc(messages.id))
         .limit(AROUND_HALF);
 
-      return { messages: await hydrate([...older, ...newer]) };
+      return { messages: await hydrate([...older, ...newer], user.id) };
     }
 
     const conditions = [eq(messages.channelId, channelId)];
@@ -187,7 +193,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
             .limit(query.limit)
         ).reverse();
 
-    return { messages: await hydrate(rows) };
+    return { messages: await hydrate(rows, user.id) };
   });
 
   /**
@@ -216,7 +222,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     }
 
     const rows = await searchMessages(ctx, query.q, query.before);
-    return { messages: await hydrate(rows) };
+    return { messages: await hydrate(rows, user.id) };
   });
 
   app.post('/api/channels/:channelId/messages', async (request) => {
@@ -379,7 +385,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         );
     }
 
-    const [hydrated] = await hydrate([created]);
+    const [hydrated] = await hydrate([created], user.id);
     if (!hydrated) throw badRequest('Could not send the message.', 'send_failed');
 
     await hub.broadcastToChannel(
@@ -481,7 +487,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
 
     if (!updated) throw notFound('That message does not exist.', 'unknown_message');
 
-    const [hydrated] = await hydrate([updated]);
+    const [hydrated] = await hydrate([updated], user.id);
     if (!hydrated) throw notFound('That message does not exist.', 'unknown_message');
 
     await hub.broadcastToChannel(
@@ -612,7 +618,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .set({ pinnedAt: pinned ? new Date() : null })
       .where(eq(messages.id, messageId))
       .returning();
-    const [hydrated] = await hydrate(updated ? [updated] : []);
+    const [hydrated] = await hydrate(updated ? [updated] : [], userId);
     if (!hydrated) throw notFound('That message does not exist.', 'unknown_message');
     await hub.broadcastToChannel(
       ctx.serverId,
@@ -636,7 +642,52 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .where(and(eq(messages.channelId, channelId), isNotNull(messages.pinnedAt)))
       .orderBy(desc(messages.pinnedAt))
       .limit(LIMITS.pinsPerChannel);
-    return { messages: await hydrate(rows) };
+    return { messages: await hydrate(rows, user.id) };
+  });
+
+  /* -------------------------------- bookmarks -------------------------------- */
+
+  /**
+   * Saving a message needs nothing but being able to see it: unlike pinning,
+   * this is not a statement the channel makes, only something one person is
+   * doing for themselves. Nobody else, including the message's author, is
+   * told.
+   */
+  const setBookmarked = async (request: { params: unknown }, userId: string, saved: boolean): Promise<void> => {
+    const { messageId } = z.object({ messageId: z.string() }).parse(request.params);
+    const db = getDb();
+    const [existing] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!existing || existing.deletedAt) throw notFound('That message does not exist.', 'unknown_message');
+    await requireChannelPermission(
+      existing.channelId,
+      userId,
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+    if (saved) {
+      await db.insert(bookmarks).values({ userId, messageId }).onConflictDoNothing();
+    } else {
+      await db.delete(bookmarks).where(and(eq(bookmarks.userId, userId), eq(bookmarks.messageId, messageId)));
+    }
+  };
+
+  app.put('/api/messages/:messageId/bookmark', async (request) => {
+    await setBookmarked(request, requireUser(request).id, true);
+    return { ok: true };
+  });
+  app.delete('/api/messages/:messageId/bookmark', async (request) => {
+    await setBookmarked(request, requireUser(request).id, false);
+    return { ok: true };
+  });
+
+  /**
+   * Everything this person has saved, newest bookmark first, across every
+   * server they are still a member of. A message in a channel they lost
+   * access to since saving it is left off rather than turned into an error:
+   * see `bookmarksFor`.
+   */
+  app.get('/api/bookmarks', async (request) => {
+    const user = requireUser(request);
+    return { messages: await bookmarksFor(user.id) };
   });
 
   app.put('/api/messages/:messageId/reactions/:emoji', async (request) => {

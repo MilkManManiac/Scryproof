@@ -228,6 +228,19 @@ export interface Message {
   pinnedAt: Timestamp | null;
   /** A soft-deleted message keeps its place in the timeline as a tombstone. */
   deleted: boolean;
+  /**
+   * Whether the person asking has saved this message for themselves. Private
+   * to them: filled in on the read path the way a viewer's own reaction would
+   * be, and absent (not merely false) when nobody asked from a signed-in
+   * context that resolves it.
+   */
+  bookmarked?: boolean;
+}
+
+/** A saved message, with where it lives added so a list of them across servers can say so. */
+export interface BookmarkedMessage extends Message {
+  serverId: Snowflake;
+  channelName: string;
 }
 
 export interface Invite {

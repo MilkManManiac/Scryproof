@@ -155,7 +155,7 @@ export function message(
   row: MessageRow,
   author: User,
   attachments: Attachment[] = [],
-  extras: { reactions?: Reaction[]; replyTo?: ReplyPreview | null } = {},
+  extras: { reactions?: Reaction[]; replyTo?: ReplyPreview | null; bookmarked?: boolean } = {},
 ): Message {
   const deleted = row.deletedAt !== null;
 
@@ -181,6 +181,7 @@ export function message(
     editedAt: iso(row.editedAt),
     pinnedAt: deleted ? null : iso(row.pinnedAt),
     deleted,
+    bookmarked: extras.bookmarked,
   };
 }
 
