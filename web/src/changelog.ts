@@ -20,12 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-09-22-dm-commands',
+    id: '2026-09-22-big-one',
     date: '2026-09-22',
-    title: 'Commands in messages too, and Delete on the right-click',
+    title: 'The big one',
     notes: [
-      'Typing `/` or `:` in a direct message now shows the same list as in a channel. `/roll` stays out of messages: dice are rolled by the server, and it cannot read what you send there.',
-      'Right-click a channel for Delete channel, if you may manage channels. It asks once more before it goes. The same thing is still at the bottom of the channel settings.',
+      'Polls. `/poll Which night? | Friday | Saturday | Sunday` and everyone votes by clicking. `/poll*` lets people pick more than one. The author, or a moderator, can close it.',
+      "Coming up. A server can plan sessions, at the top of the channel list, and everyone says Going, Maybe or Can't. An hour before, the people who said yes get a reminder in their notifications. Planning needs the new Manage events permission.",
+      'Voice messages. Hold the microphone beside Send, talk, let go. It plays in place with a waveform. In a direct message the clip is locked like any other file there.',
+      'Saved. Hover a message and pick Save. They are behind the Saved tab in your notifications, and nobody else knows.',
+      "Invite links open a join screen now, with the server's name and a Join button, instead of dropping you on the normal screen to type the code again.",
+      'Typing `/` or `:` in a direct message shows the same list as in a channel. Right-click a channel for Delete channel, if you may manage channels; it asks once more before it goes.',
     ],
   },
   {
