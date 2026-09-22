@@ -144,12 +144,44 @@ export interface Emoji {
   createdAt: Timestamp;
 }
 
+/** An answer to "are you coming". `no` is the one the buttons call "Can't". */
+export type RsvpAnswer = 'going' | 'maybe' | 'no';
+
+export const RSVP_ANSWERS: readonly RsvpAnswer[] = ['going', 'maybe', 'no'];
+
+/**
+ * An event as everyone in the server sees it. The caller's own answer is not
+ * part of this, because the same copy is broadcast to every member.
+ */
+export interface ScheduledEventBase {
+  id: Snowflake;
+  serverId: Snowflake;
+  /**
+   * Where it happens. Null when none was set, and also when this member may
+   * not see the channel: the id of a hidden channel is not theirs to be told.
+   */
+  channelId: Snowflake | null;
+  title: string;
+  note: string;
+  startsAt: Timestamp;
+  createdBy: Snowflake;
+  createdAt: Timestamp;
+  counts: Record<RsvpAnswer, number>;
+}
+
+/** An event plus the answer of whoever is looking at it. */
+export interface ScheduledEvent extends ScheduledEventBase {
+  myAnswer: RsvpAnswer | null;
+}
+
 /** A server plus everything the client needs to render it. */
 export interface ServerDetail extends Server {
   categories: Category[];
   channels: Channel[];
   roles: Role[];
   emojis: Emoji[];
+  /** Upcoming events, soonest first. Past ones are never sent. */
+  events: ScheduledEvent[];
   memberCount: number;
   /** The caller's own effective server-wide permissions. */
   permissions: MaskString;

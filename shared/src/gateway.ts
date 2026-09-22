@@ -17,6 +17,9 @@ import type {
   Reaction,
   ReadState,
   Role,
+  RsvpAnswer,
+  ScheduledEvent,
+  ScheduledEventBase,
   SelfUser,
   Server,
   ServerDetail,
@@ -74,6 +77,27 @@ export type ServerEvent =
    * subtly wrong the way a per-emoji delta could.
    */
   | { t: 'emojis_changed'; d: { serverId: Snowflake } }
+  /**
+   * Events in the "Coming up" list. A create carries nobody's answer, since
+   * nobody has given one yet; an update carries none either, and each client
+   * keeps its own. `channelId` is null for anyone who cannot see the channel.
+   */
+  | { t: 'event_create'; d: ScheduledEvent }
+  | { t: 'event_update'; d: ScheduledEventBase }
+  | { t: 'event_delete'; d: { id: Snowflake; serverId: Snowflake } }
+  /** Somebody answered, or took their answer back (`answer` null). The counts are whole. */
+  | {
+      t: 'event_rsvp';
+      d: {
+        eventId: Snowflake;
+        serverId: Snowflake;
+        userId: Snowflake;
+        answer: RsvpAnswer | null;
+        counts: Record<RsvpAnswer, number>;
+      };
+    }
+  /** Sent once, about an hour before, to each member who said Going or Maybe. */
+  | { t: 'event_reminder'; d: { eventId: Snowflake; serverId: Snowflake; title: string; startsAt: string } }
   | { t: 'member_join'; d: Member }
   | { t: 'member_update'; d: Member }
   | { t: 'member_leave'; d: { userId: Snowflake; serverId: Snowflake } }

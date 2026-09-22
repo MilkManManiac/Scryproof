@@ -496,6 +496,54 @@ export const blocks = pgTable(
   ],
 );
 
+/**
+ * Things a server has planned: "Session 12, Friday 7pm, #voice-table".
+ *
+ * `reminded_at` is the whole reminder mechanism. The minute-by-minute pass in
+ * `services/events.ts` claims an event by setting it, so a reminder goes out
+ * once however many passes see the event, and moving an event clears it so
+ * the new time gets a reminder of its own.
+ */
+export const events = pgTable(
+  'events',
+  {
+    id: id(),
+    serverId: text('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    /** Where it happens, if anywhere in particular. Deleting the channel keeps the event. */
+    channelId: text('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    note: text('note').notNull().default(''),
+    startsAt: timestamp('starts_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+    remindedAt: timestamp('reminded_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [index('events_server_starts_idx').on(table.serverId, table.startsAt)],
+);
+
+/** One answer per person per event. The key is what makes answering twice a change of mind. */
+export const eventRsvps = pgTable(
+  'event_rsvps',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 'going' | 'maybe' | 'no' */
+    answer: text('answer').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.eventId, table.userId] })],
+);
+
+export type EventRow = typeof events.$inferSelect;
+export type EventRsvpRow = typeof eventRsvps.$inferSelect;
+
 /* ------------------------------ direct messages ----------------------------- */
 
 /**

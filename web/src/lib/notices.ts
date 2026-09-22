@@ -16,11 +16,16 @@
  */
 
 export interface Notice {
-  /** The message id, so the same message is never listed twice. */
+  /**
+   * The message id, so the same message is never listed twice. For an event
+   * reminder, `event-` and the event id: each event is reminded about once.
+   */
   id: string;
   at: number;
-  kind: 'mention' | 'dm';
+  kind: 'mention' | 'dm' | 'event';
+  /** For an event, whoever planned it. */
   authorId: string;
+  /** For an event, its title. */
   authorName: string;
   /** Where it came from. A DM has neither. */
   serverId: string | null;
@@ -28,7 +33,10 @@ export interface Notice {
   channelId: string | null;
   channelName: string | null;
   dmId: string | null;
-  /** What it said, for channel messages only, and only if that is switched on. */
+  /**
+   * What it said, for channel messages only, and only if that is switched on.
+   * For an event, when it starts, which is always kept: it is the reminder.
+   */
   preview: string | null;
   read: boolean;
 }
@@ -80,6 +88,16 @@ export function noticeFor(input: NoticeContext): { list: boolean; popup: boolean
     return { list: false, popup: false };
   }
   if (input.blocked) return { list: false, popup: false };
+  return { list: true, popup: !input.windowFocused && !input.muted };
+}
+
+/**
+ * An event reminder is treated like a mention: it always goes on the list,
+ * since the person asked for it by saying they were coming, and it pops up
+ * when the window is elsewhere and the server (or the event's channel) is
+ * not muted.
+ */
+export function eventNoticeFor(input: { windowFocused: boolean; muted: boolean }): { list: boolean; popup: boolean } {
   return { list: true, popup: !input.windowFocused && !input.muted };
 }
 
@@ -143,11 +161,13 @@ const changed = (): void => {
 
 function popup(notice: Notice): void {
   if (!prefs.popups || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const where = notice.kind === 'dm' ? notice.authorName : `${notice.authorName} in #${notice.channelName}`;
+  const where =
+    notice.kind === 'mention' ? `${notice.authorName} in #${notice.channelName}` : notice.authorName;
   const body =
     notice.kind === 'dm'
       ? 'Sent you a message.'
-      : [notice.preview, notice.serverName].filter(Boolean).join('\n') || 'Mentioned you.';
+      : [notice.preview, notice.serverName].filter(Boolean).join('\n') ||
+        (notice.kind === 'event' ? 'Starts within the hour.' : 'Mentioned you.');
   try {
     // The tag lets a second message from the same place replace the first
     // rather than stack up beside it.
@@ -179,7 +199,8 @@ export const notices = {
 
   arrived(notice: Notice, show: boolean): void {
     if (list.some((entry) => entry.id === notice.id)) return;
-    const kept = prefs.previews ? notice : { ...notice, preview: null };
+    // An event's preview is its start time, not anything somebody wrote.
+    const kept = prefs.previews || notice.kind === 'event' ? notice : { ...notice, preview: null };
     list = withNotice(list, kept);
     changed();
     if (show) popup(kept);
@@ -195,6 +216,12 @@ export const notices = {
     });
     if (touched) changed();
   },
+  /** An event reminder is not read by reading a channel, so it is marked on its own. */
+  readOne(id: string): void {
+    if (!list.some((entry) => entry.id === id && !entry.read)) return;
+    list = list.map((entry) => (entry.id === id ? { ...entry, read: true } : entry));
+    changed();
+  },
   readAll(): void {
     if (!list.some((entry) => !entry.read)) return;
     list = list.map((entry) => (entry.read ? entry : { ...entry, read: true }));
@@ -209,7 +236,8 @@ export const notices = {
     opener = handler;
   },
   open(notice: Notice): void {
-    notices.readWhere(notice.dmId ? { dmId: notice.dmId } : { channelId: notice.channelId ?? undefined });
+    if (notice.kind === 'event') notices.readOne(notice.id);
+    else notices.readWhere(notice.dmId ? { dmId: notice.dmId } : { channelId: notice.channelId ?? undefined });
     opener?.(notice);
   },
 

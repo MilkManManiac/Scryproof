@@ -53,6 +53,11 @@ export const Permission = {
   MANAGE_SERVER: 1n << 23n,
   VIEW_AUDIT_LOG: 1n << 24n,
   ADMINISTRATOR: 1n << 25n,
+
+  // Events
+  // Numbered 27, the next bit free after MODERATE_MEMBERS, for the same reason:
+  // every bit below is already stored on roles and cannot move.
+  MANAGE_EVENTS: 1n << 27n,
 } as const;
 
 export type PermissionName = keyof typeof Permission;

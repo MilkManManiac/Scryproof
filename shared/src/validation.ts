@@ -34,6 +34,13 @@ export const LIMITS = {
    * is a kick or a ban, and those already exist.
    */
   timeoutDays: 28,
+  eventTitle: { min: 1, max: 100 },
+  eventNote: { max: 1000 },
+  /**
+   * Upcoming events a server may hold at once. Far more than a group plans
+   * ahead, and small enough that the list sent with every server stays small.
+   */
+  eventsPerServer: 50,
 } as const;
 
 /** Lowercase, digits, underscore, dot, hyphen. No leading or trailing marks. */

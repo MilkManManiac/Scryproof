@@ -35,9 +35,10 @@ import type {
 } from '@scryproof/shared';
 
 import { api } from '../lib/api';
-import { noticeFor, notices, previewOf } from '../lib/notices';
+import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
 import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
+import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { VoiceSession } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
@@ -600,6 +601,35 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     case 'emojis_changed':
       return state;
 
+    case 'event_create':
+    case 'event_update': {
+      const server = state.servers[event.d.serverId];
+      if (!server) return state;
+      return upsertServer(state, { ...server, events: withEvent(server.events ?? [], event.d) });
+    }
+
+    case 'event_delete': {
+      const server = state.servers[event.d.serverId];
+      if (!server) return state;
+      return upsertServer(state, {
+        ...server,
+        events: (server.events ?? []).filter((entry) => entry.id !== event.d.id),
+      });
+    }
+
+    case 'event_rsvp': {
+      const server = state.servers[event.d.serverId];
+      if (!server) return state;
+      return upsertServer(state, {
+        ...server,
+        events: withAnswer(server.events ?? [], event.d, state.user?.id ?? null),
+      });
+    }
+
+    // Nothing to change in the list: it goes to the notices, in the provider below.
+    case 'event_reminder':
+      return state;
+
     case 'role_delete': {
       const server = state.servers[event.d.serverId];
       if (!server) return state;
@@ -818,6 +848,39 @@ export function StoreProvider({
               verdict.popup,
             );
           }
+        }
+
+        if (event.t === 'event_reminder') {
+          const server = serversRef.current[event.d.serverId];
+          // The channel comes from the list this member already holds, where it
+          // is null if they cannot see it; the reminder itself never names one.
+          const planned = server?.events?.find((entry) => entry.id === event.d.eventId);
+          const channelId = planned?.channelId ?? null;
+          const channel = channelId ? server?.channels.find((entry) => entry.id === channelId) : undefined;
+          const prefs = notifyPrefs.get();
+          const muted =
+            prefs.mutedServers.includes(event.d.serverId) || (channelId !== null && prefs.mutedChannels.includes(channelId));
+
+          // Treated as a mention: the same sound, and the same rule for the pop-up.
+          if (!muted && prefs.mention) play('mention');
+          const verdict = eventNoticeFor({ windowFocused: document.hasFocus(), muted });
+          notices.arrived(
+            {
+              id: `event-${event.d.eventId}`,
+              at: Date.now(),
+              kind: 'event',
+              authorId: planned?.createdBy ?? '',
+              authorName: event.d.title,
+              serverId: event.d.serverId,
+              serverName: server?.name ?? null,
+              channelId,
+              channelName: channel?.name ?? null,
+              dmId: null,
+              preview: `Starts ${fullWhen(event.d.startsAt)}`,
+              read: false,
+            },
+            verdict.popup,
+          );
         }
 
         if (event.t === 'ready') {

@@ -23,11 +23,20 @@ import type {
   Message,
   PublicUser,
   Role,
+  RsvpAnswer,
+  ScheduledEvent,
   SelfUser,
   Server,
   ServerDetail,
   VoiceState,
 } from '@scryproof/shared';
+
+export interface EventInput {
+  title: string;
+  note: string;
+  startsAt: string;
+  channelId: string | null;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -292,6 +301,23 @@ export const api = {
     },
     remove: (serverId: string, emojiId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/emojis/${emojiId}`),
+  },
+
+  events: {
+    list: (serverId: string) => get<{ events: ScheduledEvent[] }>(`/api/servers/${serverId}/events`),
+    /** `startsAt` is an ISO string in UTC; see `toUtcIso` in lib/events.ts. */
+    create: (serverId: string, body: EventInput) =>
+      post<{ event: ScheduledEvent }>(`/api/servers/${serverId}/events`, body),
+    update: (serverId: string, eventId: string, body: Partial<EventInput>) =>
+      patch<{ event: ScheduledEvent }>(`/api/servers/${serverId}/events/${eventId}`, body),
+    remove: (serverId: string, eventId: string) =>
+      del<{ ok: true }>(`/api/servers/${serverId}/events/${eventId}`),
+    /** Null takes the answer back. */
+    answer: (serverId: string, eventId: string, answer: RsvpAnswer | null) =>
+      put<{ answer: RsvpAnswer | null; counts: Record<RsvpAnswer, number> }>(
+        `/api/servers/${serverId}/events/${eventId}/rsvp`,
+        { answer },
+      ),
   },
 
   invites: {

@@ -164,6 +164,43 @@ export async function broadcastToChannel(
 }
 
 /**
+ * Everyone in a server, with one copy of an event for those who can see a
+ * channel and another for those who cannot.
+ *
+ * For server-wide things that merely mention a channel, such as a planned
+ * event held in #voice-table. Everyone should hear about the event; only the
+ * people who can see the channel should hear which channel it is.
+ */
+export async function broadcastToServerSplitByChannel(
+  serverId: string,
+  channelId: string,
+  forViewers: ServerEvent,
+  forOthers: ServerEvent,
+): Promise<void> {
+  const targets = [...connections.values()].filter((c) => c.servers.has(serverId));
+  if (targets.length === 0) return;
+
+  const byUserId = new Map<string, Connection[]>();
+  for (const connection of targets) {
+    const list = byUserId.get(connection.userId) ?? [];
+    list.push(connection);
+    byUserId.set(connection.userId, list);
+  }
+
+  await Promise.all(
+    [...byUserId.values()].map(async (userConnections) => {
+      const first = userConnections[0];
+      if (!first) return;
+      const permissions = await permissionsForChannel(first, serverId, channelId);
+      // Null means no longer a member; they hear nothing at all.
+      if (permissions === null && !first.servers.has(serverId)) return;
+      const event = permissions !== null && has(permissions, Permission.VIEW_CHANNEL) ? forViewers : forOthers;
+      for (const connection of userConnections) send(connection, event);
+    }),
+  );
+}
+
+/**
  * Everyone in a server who may be told this category exists.
  *
  * A category event carries a name, and a name is information: broadcasting

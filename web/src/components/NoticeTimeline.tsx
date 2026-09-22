@@ -61,11 +61,14 @@ export function NoticeBell() {
         flashWhenThere(`dm-message-${notice.id}`);
         return;
       }
-      if (!notice.serverId || !notice.channelId || !state.servers[notice.serverId]) return;
+      if (!notice.serverId || !state.servers[notice.serverId]) return;
+      // An event reminder may have no channel: it goes to the server, where
+      // the event is at the top of the sidebar.
+      if (!notice.channelId && notice.kind !== 'event') return;
       dms.hideDms();
       if (notice.serverId !== state.selectedServerId) selectServer(notice.serverId);
-      selectChannel(notice.channelId);
-      flashWhenThere(`message-${notice.id}`);
+      if (notice.channelId) selectChannel(notice.channelId);
+      if (notice.kind !== 'event') flashWhenThere(`message-${notice.id}`);
     });
     return () => notices.onOpen(null);
   }, [dms, state.servers, state.selectedServerId, selectServer, selectChannel]);
@@ -140,7 +143,7 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
         <div className="notices-list">
           {shown.length === 0 ? (
             <p className="notices-empty">
-              Mentions and direct messages that arrive while you are somewhere else are listed here, with where they
+              Mentions, direct messages and reminders for events you are going to that arrive while you are somewhere else are listed here, with where they
               came from. The list is kept on this device only.
             </p>
           ) : null}
@@ -155,11 +158,19 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
                   <span className="notice-time">{timeFormat.format(entry.at)}</span>
                   <span className="notice-body">
                     <span className="notice-where">
-                      {entry.kind === 'dm' ? 'Direct message' : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
+                      {entry.kind === 'dm'
+                        ? 'Direct message'
+                        : entry.kind === 'event'
+                          ? `${entry.serverName ?? 'A server'} › Coming up`
+                          : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
                     </span>
                     <span className="notice-what">
                       <strong>{entry.authorName}</strong>{' '}
-                      {entry.kind === 'dm' ? 'sent you a message' : (entry.preview ?? 'mentioned you')}
+                      {entry.kind === 'dm'
+                        ? 'sent you a message'
+                        : entry.kind === 'event'
+                          ? `${(entry.preview ?? 'starts within the hour').replace(/^Starts/, 'starts')}${entry.channelName ? ` in #${entry.channelName}` : ''}`
+                          : (entry.preview ?? 'mentioned you')}
                     </span>
                   </span>
                 </button>
