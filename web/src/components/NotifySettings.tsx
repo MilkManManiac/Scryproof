@@ -109,6 +109,19 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
 
       <div className="settings-subhead">Sounds for everything else</div>
       <div className="radio-group">
+        <p className="field-note">
+          One short note.{' '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={(event) => {
+              event.preventDefault();
+              play('message');
+            }}
+          >
+            Hear it
+          </button>
+        </p>
         {MESSAGE_CHOICES.map(([value, label, note]) => (
           <label className="radio-row" key={value}>
             <input
@@ -126,6 +139,29 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         <p className="field-note">
           A burst of messages is one sound, not one each.
         </p>
+      </div>
+
+      <div className="settings-subhead">Volume</div>
+      <div className="toggle-row">
+        <span>
+          How loud the sounds are
+          <span className="field-note">Both of them. Your computer&rsquo;s own volume still applies on top.</span>
+        </span>
+        <span className="voice-volume">
+          <input
+            type="range"
+            className="voice-range"
+            min={0}
+            max={200}
+            step={5}
+            value={Math.round(prefs.volume * 100)}
+            onChange={(event) => notifyPrefs.set({ volume: Number(event.target.value) / 100 })}
+            onMouseUp={() => play('mention')}
+            onKeyUp={() => play('mention')}
+            aria-label="Volume of the message and mention sounds"
+          />
+          <span className="voice-volume-number">{Math.round(prefs.volume * 100)}%</span>
+        </span>
       </div>
 
       {mutedServers.length > 0 || mutedChannels.length > 0 ? (

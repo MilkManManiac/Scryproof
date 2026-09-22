@@ -24,9 +24,16 @@ export interface NotifyPrefs {
   mutedServers: string[];
   /** Channel ids muted individually, whether or not their server is. */
   mutedChannels: string[];
+  /** How loud both sounds are: 1 is as designed, 0 is silent, 2 is twice the level. */
+  volume: number;
 }
 
-const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] };
+const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1 };
+
+/** A stored volume is trusted only if it is a number on the slider's range. */
+function clampVolume(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : DEFAULTS.volume;
+}
 const STORAGE_KEY = 'scryproof.notify.v1';
 
 /** Exported so a prefs blob (or an old one missing the newer fields) can be checked directly, in tests and elsewhere. */
@@ -34,7 +41,8 @@ export function load(): NotifyPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<NotifyPrefs>) };
+    const stored = JSON.parse(raw) as Partial<NotifyPrefs>;
+    return { ...DEFAULTS, ...stored, volume: clampVolume(stored.volume) };
   } catch {
     return DEFAULTS;
   }
@@ -125,6 +133,9 @@ export function soundFor(input: SoundContext): 'mention' | 'message' | null {
 function tones(notes: readonly number[], peak: number): void {
   const context = audioContext();
   const start = context.currentTime + 0.01;
+  // The slider scales the designed level; at 2 the sine still cannot clip.
+  peak *= current.volume;
+  if (peak <= 0) return;
   notes.forEach((frequency, index) => {
     const oscillator = context.createOscillator();
     const envelope = context.createGain();
@@ -142,9 +153,10 @@ function tones(notes: readonly number[], peak: number): void {
 
 export const notifySounds = {
   /** Two notes rising. It has to be findable across a room. */
-  mention: () => tones([698.46, 1046.5], 0.1),
-  /** One short note, quiet enough to hear thirty of without minding. */
-  message: () => tones([880], 0.045),
+  mention: () => tones([698.46, 1046.5], 0.16),
+  /** One short note, quiet enough to hear thirty of without minding. Both
+      levels went up by half on 2026-09-22 (Wes: "a little quiet"). */
+  message: () => tones([880], 0.07),
 };
 
 /**

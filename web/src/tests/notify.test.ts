@@ -126,7 +126,22 @@ describe('loading saved prefs', () => {
     const previous = globalWithStorage.localStorage;
     globalWithStorage.localStorage = fakeStorage(JSON.stringify({ mention: false, message: 'off' }));
     try {
-      assert.deepEqual(load(), { mention: false, message: 'off', mutedServers: [], mutedChannels: [] });
+      assert.deepEqual(load(), { mention: false, message: 'off', mutedServers: [], mutedChannels: [], volume: 1 });
+    } finally {
+      globalWithStorage.localStorage = previous;
+    }
+  });
+
+  it('keeps a saved volume only when it is a number on the slider', () => {
+    const globalWithStorage = globalThis as { localStorage?: unknown };
+    const previous = globalWithStorage.localStorage;
+    try {
+      globalWithStorage.localStorage = fakeStorage(JSON.stringify({ volume: 1.5 }));
+      assert.equal(load().volume, 1.5);
+      globalWithStorage.localStorage = fakeStorage(JSON.stringify({ volume: 9 }));
+      assert.equal(load().volume, 2);
+      globalWithStorage.localStorage = fakeStorage(JSON.stringify({ volume: 'loud' }));
+      assert.equal(load().volume, 1);
     } finally {
       globalWithStorage.localStorage = previous;
     }
@@ -137,7 +152,7 @@ describe('loading saved prefs', () => {
     const previous = globalWithStorage.localStorage;
     globalWithStorage.localStorage = fakeStorage(null);
     try {
-      assert.deepEqual(load(), { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] });
+      assert.deepEqual(load(), { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1 });
     } finally {
       globalWithStorage.localStorage = previous;
     }
