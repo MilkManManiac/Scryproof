@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, morning. Themes and the no-gap layout are live; see the last section.
+**Last updated:** 2026-09-22, morning. Themes, the no-gap layout and real paintings are live; see the last section.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1432,6 +1432,24 @@ now". The generated SVG backdrops are a placeholder in his eyes; a better
 painting is a later job, not a rebuild.
 
 ![The chamber, no gaps, as shipped](shots/app.png)
+
+**Later the same morning, live (client 1790083800713): real paintings.**
+Wes: "Can you just find some cool free images instead? Or log in to Gemini
+and make some?" Three made through the `imagegen` skill (Gemini web, no
+API, nothing in the data path; the JPGs are served from our box like any
+other static file): the chamber (two variants, he picked B, a wizard's
+room with a basin and a window), the hall (hearth and long tables), the
+ridge (campfire under the milky way). Originals in `assets/gen/`, served
+copies in `web/public/backdrops/`. The SVG generators are deleted. Panel
+alpha on the three painted themes is 0.6 ("b open", chosen over 0.72 by
+screenshot); at 0.82 the picture was a smudge and A and B were
+indistinguishable in the app. Plain is unchanged.
+
+![The chamber](shots/theme-scry.png)
+
+![The hall](shots/theme-hall.png)
+
+![The ridge](shots/theme-ridge.png)
 
 **Next:** the Firefox voice-refusal text in `voice-key-provider.ts`:
 shorter, and the installer link under it.
