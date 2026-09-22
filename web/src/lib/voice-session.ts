@@ -414,6 +414,28 @@ export class VoiceSession {
     return () => void track.detach(element);
   }
 
+  /**
+   * What your own camera is doing, in its own words: what was asked of it,
+   * what it is giving, and the most it says it can do. When the picture is
+   * slower than asked, this says whether the camera cannot, or will not in
+   * this light (cameras slow their shutter in a dim room).
+   */
+  cameraReport(): string | null {
+    const track = this.room?.localParticipant.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack;
+    if (!track) return null;
+    const asked = cameraOptions(voicePrefs.get()).resolution;
+    const giving = track.getSettings();
+    const can = typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+    const fps = giving.frameRate ? Math.round(giving.frameRate) : null;
+    const parts = [`asked for ${asked.height}p at ${asked.frameRate}`];
+    if (giving.height && fps !== null) parts.push(`camera is giving ${giving.height}p at ${fps}`);
+    if (can.frameRate?.max) parts.push(`it says it can do up to ${Math.round(can.frameRate.max)} fps`);
+    if (fps !== null && fps < asked.frameRate && (!can.frameRate?.max || can.frameRate.max >= asked.frameRate)) {
+      parts.push('slower than it could be usually means the room is too dark for it');
+    }
+    return parts.join('; ');
+  }
+
   private refreshVideos(): void {
     const room = this.room;
     if (!room) return;

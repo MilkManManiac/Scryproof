@@ -183,6 +183,9 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
               Make small
             </button>
           </div>
+          {big.source === 'camera' && big.userId === state.user?.id && picture ? (
+            <div className="voice-focus-report">{session.cameraReport()}</div>
+          ) : null}
         </div>
       ) : null}
 

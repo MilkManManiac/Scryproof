@@ -3328,3 +3328,10 @@ kbd {
   font-variant-numeric: tabular-nums;
   margin-left: 10px;
 }
+
+/* Your own camera, in its own words, under the focused view. */
+.voice-focus-report {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 2px 12px 6px;
+}
