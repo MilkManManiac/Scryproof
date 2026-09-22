@@ -32,6 +32,8 @@
 @import './themes/ridge.css';
 @import './themes/ember.css';
 @import './themes/dusk.css';
+@import './themes/forg.css';
+@import './themes/loaf.css';
 
 @font-face {
   font-family: 'Cormorant Garamond';

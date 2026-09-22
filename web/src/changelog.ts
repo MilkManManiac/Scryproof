@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-22-loaf',
+    date: '2026-09-22',
+    title: 'Loaf and Forg',
+    notes: [
+      'Two themes made for two people. Loaf: a hundred of his face, cut out and glued down like a five-year-old did it, and a few of them float around. Forg: a pond at dusk with fireflies, ripples on the water, and a frog who is very pleased with himself.',
+    ],
+  },
+  {
     id: '2026-09-22-dusk',
     date: '2026-09-22',
     title: 'The dusk, and this list',

@@ -78,6 +78,8 @@
      triplet, and how far down the window they reach, as a fraction. */
   --star-color: 232 236 255;
   --star-depth: 0.42;
+  /* A sheet of square frames in a row, for the `faces` word, or none. */
+  --ambient-sprite: none;
 
   color-scheme: dark;
 }

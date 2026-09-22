@@ -1,0 +1,72 @@
+/*
+ * Forg: a pond at dusk, a frog on a lily pad.
+ *
+ * Wes, 2026-09-22: "Frog vibe. Go nuts with the 'Alive' effects too."
+ * Reference pictures were a green frog among lily pads and one with pink
+ * water lilies. Surfaces are the dark water, the accent is the frog's
+ * green, the metal is the lilies' pink. Dim text is a pale leaf grey,
+ * 7.5:1 on the solid panel. Every token the hall sets is set here.
+ *
+ * What moves: fireflies wandering and blinking over the water, ripples
+ * spreading where something touched the pond, a slow warm haze over the
+ * sunset, and a few stars in the strip of sky. See Ambient.tsx.
+ */
+
+:root[data-theme='forg'] {
+  --bg: #08120c;
+  --bg-rgb: 8 18 12;
+
+  --panel-rgb: 18 32 24;
+  --panel-alpha: 0.6;
+  --panel-solid: #122018;
+  --panel-2: #1a2c21;
+  --panel-3: #24392c;
+  --panel-4: #2f4838;
+
+  --line: #26392d;
+  --line-strong: #3a5443;
+  --edge: inset 0 0 0 1px rgb(214 255 190 / 0.07);
+  --hi: inset 0 1px 0 rgb(214 255 190 / 0.06);
+
+  --text: #f1f5ee;
+  --text-muted: #cfdccf;
+  --text-dim: #a3b8a6;
+  --text-faint: #7d907f;
+
+  /* The frog. */
+  --accent: #8fd45a;
+  --accent-bright: #a9e77a;
+  --accent-dim: #4f8a2c;
+  --accent-wash: rgb(143 212 90 / 0.14);
+  --on-accent: #10200a;
+
+  /* The lilies, where the other themes have gold. */
+  --gold: #eab8c9;
+  --gold-dim: #9c7a87;
+
+  --good: #5cc48f;
+  --warn: #e3b04d;
+  --bad: #e46a6a;
+  --speaking: #62d39a;
+
+  --shadow-1: 0 1px 1px hsl(140 40% 3% / 0.55), 0 4px 10px -3px hsl(140 40% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(140 40% 3% / 0.55), 0 8px 18px -6px hsl(140 40% 3% / 0.65),
+    0 22px 44px -14px hsl(140 40% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(140 40% 3% / 0.55), 0 16px 32px -8px hsl(140 40% 3% / 0.7),
+    0 40px 80px -20px hsl(140 40% 3% / 0.75);
+
+  /* The frog sits right of centre, a little below the middle; the sunset
+     is the strip along the top; the bottom is dark water. */
+  --backdrop: url('/backdrops/forg.jpg');
+  --backdrop-position: center 45%;
+  /* The glow breathes over the sunset, warm. */
+  --glow-color: rgb(255 170 90 / 0.2);
+  --glow-position: 50% 8%;
+  --ambient-motion: fireflies ripples haze stars;
+  /* Stars only in the strip of sky above the trees. */
+  --star-color: 236 240 220;
+  --star-depth: 0.16;
+  --ambient-sprite: none;
+
+  color-scheme: dark;
+}

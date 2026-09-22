@@ -1,0 +1,71 @@
+/*
+ * Loaf: a hundred of his face, cut out and glued down.
+ *
+ * Wes, 2026-09-22: "Just have 100 versions of his face plastered everywhere
+ * in the background. Like a 5 year old would do." The collage is made on
+ * Wes's PC from the pictures in Desktop\loaf (scratchpad script, kept in
+ * docs/HANDOFF.md); nothing of his went to any service. Surfaces are dark
+ * brown paper, the accent is a crayon orange, the metal a crayon yellow.
+ * The panels are a step more opaque than the painted themes because a
+ * hundred faces is busier than any painting; dim text is 6.9:1 on the
+ * solid panel. Every token the hall sets is set here.
+ *
+ * What moves: a few of the cutouts drift across the room and bounce off
+ * the edges, slowly spinning, and glitter in crayon yellow.
+ */
+
+:root[data-theme='loaf'] {
+  --bg: #1c1410;
+  --bg-rgb: 28 20 16;
+
+  --panel-rgb: 40 30 24;
+  --panel-alpha: 0.72;
+  --panel-solid: #281e18;
+  --panel-2: #34281f;
+  --panel-3: #423328;
+  --panel-4: #503e31;
+
+  --line: #4a3a2e;
+  --line-strong: #62503f;
+  --edge: inset 0 0 0 1px rgb(255 230 200 / 0.07);
+  --hi: inset 0 1px 0 rgb(255 230 200 / 0.06);
+
+  --text: #fbf5ea;
+  --text-muted: #e0d4c4;
+  --text-dim: #b8a892;
+  --text-faint: #958773;
+
+  /* Crayon orange. */
+  --accent: #f0863c;
+  --accent-bright: #ffa45c;
+  --accent-dim: #a0521f;
+  --accent-wash: rgb(240 134 60 / 0.14);
+  --on-accent: #21120a;
+
+  /* Crayon yellow, where the other themes have gold. */
+  --gold: #f0c74a;
+  --gold-dim: #9c8030;
+
+  --good: #5cc48f;
+  --warn: #e3b04d;
+  --bad: #e46a6a;
+  --speaking: #62d39a;
+
+  --shadow-1: 0 1px 1px hsl(20 40% 3% / 0.55), 0 4px 10px -3px hsl(20 40% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(20 40% 3% / 0.55), 0 8px 18px -6px hsl(20 40% 3% / 0.65),
+    0 22px 44px -14px hsl(20 40% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(20 40% 3% / 0.55), 0 16px 32px -8px hsl(20 40% 3% / 0.7),
+    0 40px 80px -20px hsl(20 40% 3% / 0.75);
+
+  --backdrop: url('/backdrops/loaf.jpg');
+  --backdrop-position: center center;
+  /* No fire here; a faint warm breath in the middle. */
+  --glow-color: rgb(240 134 60 / 0.12);
+  --glow-position: 50% 50%;
+  --ambient-motion: faces glimmer;
+  --star-color: 232 236 255;
+  --star-depth: 0.42;
+  --ambient-sprite: url('/backdrops/loaf-faces.png');
+
+  color-scheme: dark;
+}

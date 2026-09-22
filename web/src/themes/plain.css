@@ -55,6 +55,7 @@
   --ambient-motion: none;
   --star-color: 232 236 255;
   --star-depth: 0.42;
+  --ambient-sprite: none;
 
   color-scheme: dark;
 }

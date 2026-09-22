@@ -14,6 +14,13 @@
  *             through the lower half, as if lit cloud were moving
  *   glimmer   glitter: small four-point sparkles that appear anywhere, swell
  *             for a second or two, and are gone, in the accent colour
+ *   fireflies small lights wandering over the lower half, each blinking on
+ *             its own clock, in the accent colour
+ *   ripples   rings spreading on water where something touched it, seen
+ *             from low across the pond, so they are wide and flat
+ *   faces     cutouts from `--ambient-sprite` (a row of square frames)
+ *             drifting across the room, spinning slowly, bouncing off the
+ *             edges the way a screensaver logo does
  *
  * The rules that keep it from being a screensaver: everything is small and
  * dim, it runs at thirty frames a second and not sixty, it stops dead when
@@ -75,7 +82,40 @@ interface Sparkle {
   tilt: number;
 }
 
+interface Firefly {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  phase: number;
+  /** Seconds per blink cycle. */
+  period: number;
+}
+
+interface Ripple {
+  x: number;
+  y: number;
+  life: number;
+  span: number;
+  reach: number;
+}
+
+interface Face {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  angle: number;
+  spin: number;
+  frame: number;
+}
+
 const FRAME_MS = 1000 / 30;
+const FIREFLIES = 26;
+const FACES = 9;
+/** A ripple every one to four seconds. */
+const nextRipple = (now: number) => now + 1000 + Math.random() * 3000;
 const EMBERS = 60;
 const STARS = 110;
 const HAZES = 5;
@@ -122,6 +162,12 @@ function readAccent(): string {
   return [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16)).join(' ');
 }
 
+/** The sprite sheet's URL, or null when the theme has none. */
+function readSprite(): string | null {
+  const match = readToken('--ambient-sprite').match(/^url\((['"]?)(.+?)\1\)$/);
+  return match ? match[2]! : null;
+}
+
 /** The glow colour with its own alpha replaced, for a spark at a given brightness. */
 function tint(base: string, alpha: number): string {
   const match = base.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);
@@ -154,6 +200,12 @@ export function Ambient() {
     let stars: Star[] = [];
     let hazes: Haze[] = [];
     let sparkles: Sparkle[] = [];
+    let fireflies: Firefly[] = [];
+    let ripples: Ripple[] = [];
+    let rippleAt = Infinity;
+    let faces: Face[] = [];
+    let sprite: HTMLImageElement | null = null;
+    let spriteUrl: string | null = null;
     let meteor: Meteor | null = null;
     let meteorAt = 0;
     let frame = 0;
@@ -201,8 +253,50 @@ export function Ambient() {
       };
     };
 
+    const seedFace = (face: Face): Face => {
+      face.size = 64 + Math.random() * 90;
+      face.x = Math.random() * (width - face.size);
+      face.y = Math.random() * (height - face.size);
+      const speed = 0.35 + Math.random() * 0.45;
+      const heading = Math.random() * Math.PI * 2;
+      face.vx = Math.cos(heading) * speed;
+      face.vy = Math.sin(heading) * speed;
+      face.angle = Math.random() * Math.PI * 2;
+      face.spin = (Math.random() - 0.5) * 0.012;
+      face.frame = Math.floor(Math.random() * 1000);
+      return face;
+    };
+
+    const loadSprite = () => {
+      const url = readSprite();
+      if (url === spriteUrl) return;
+      spriteUrl = url;
+      sprite = null;
+      if (!url) return;
+      const image = new Image();
+      image.onload = () => {
+        if (spriteUrl === url) sprite = image;
+      };
+      image.src = url;
+    };
+
     const seed = () => {
       const now = performance.now();
+      fireflies = motion.has('fireflies')
+        ? Array.from({ length: FIREFLIES }, () => ({
+            x: Math.random() * width,
+            y: height * (0.3 + Math.random() * 0.65),
+            vx: (Math.random() - 0.5) * 0.3,
+            vy: (Math.random() - 0.5) * 0.2,
+            phase: Math.random() * Math.PI * 2,
+            period: 2.5 + Math.random() * 4,
+          }))
+        : [];
+      ripples = [];
+      rippleAt = motion.has('ripples') ? now + Math.random() * 2000 : Infinity;
+      faces = motion.has('faces') && spriteUrl
+        ? Array.from({ length: FACES }, () => seedFace({ x: 0, y: 0, vx: 0, vy: 0, size: 1, angle: 0, spin: 0, frame: 0 }))
+        : [];
       embers = motion.has('embers')
         ? Array.from({ length: EMBERS }, () => seedEmber({ x: 0, y: 0, vx: 0, vy: 0, life: 0, span: 1, size: 1 }, true))
         : [];
@@ -375,6 +469,97 @@ export function Ambient() {
       }
     };
 
+    const drawFireflies = (now: number, dt: number) => {
+      for (const fly of fireflies) {
+        // A wander: the velocity drifts, and is pulled back toward slow.
+        fly.vx += (Math.random() - 0.5) * 0.04;
+        fly.vy += (Math.random() - 0.5) * 0.03;
+        fly.vx *= 0.985;
+        fly.vy *= 0.985;
+        fly.x += fly.vx * (dt / 16);
+        fly.y += fly.vy * (dt / 16);
+        if (fly.x < -10) fly.x = width + 10;
+        if (fly.x > width + 10) fly.x = -10;
+        if (fly.y < height * 0.25) fly.vy += 0.02;
+        if (fly.y > height) fly.vy -= 0.02;
+        // The blink: on for a third of the cycle, sharp in and slow out.
+        const t = ((now / 1000 + fly.phase) % fly.period) / fly.period;
+        const on = t < 0.33 ? Math.sin((t / 0.33) * Math.PI) : 0;
+        if (on <= 0.02) continue;
+        context.fillStyle = `rgb(${accent} / ${0.22 * on})`;
+        context.beginPath();
+        context.arc(fly.x, fly.y, 7, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = `rgb(${accent} / ${0.95 * on})`;
+        context.beginPath();
+        context.arc(fly.x, fly.y, 1.6, 0, Math.PI * 2);
+        context.fill();
+      }
+    };
+
+    const drawRipples = (now: number, dt: number) => {
+      if (now >= rippleAt) {
+        ripples.push({
+          x: Math.random() * width,
+          y: height * (0.45 + Math.random() * 0.5),
+          life: 0,
+          span: 2200 + Math.random() * 1200,
+          reach: 40 + Math.random() * 60,
+        });
+        rippleAt = nextRipple(now);
+      }
+      ripples = ripples.filter((ripple) => ripple.life <= ripple.span);
+      for (const ripple of ripples) {
+        ripple.life += dt;
+        const t = ripple.life / ripple.span;
+        // Two rings, the second a little behind, both flattened by the
+        // low view across the water.
+        for (const lag of [0, 0.18]) {
+          const u = t - lag;
+          if (u <= 0) continue;
+          const radius = ripple.reach * Math.sqrt(u);
+          context.strokeStyle = `rgb(${starColour} / ${0.28 * (1 - u) * (lag ? 0.6 : 1)})`;
+          context.lineWidth = 1;
+          context.beginPath();
+          context.ellipse(ripple.x, ripple.y, radius, radius * 0.32, 0, 0, Math.PI * 2);
+          context.stroke();
+        }
+      }
+    };
+
+    const drawFaces = (dt: number) => {
+      if (!sprite) return;
+      const frames = Math.max(1, Math.floor(sprite.width / sprite.height));
+      const cell = sprite.height;
+      const step = dt / 16;
+      for (const face of faces) {
+        face.x += face.vx * step;
+        face.y += face.vy * step;
+        face.angle += face.spin * step;
+        // Bounce. The corner is the whole point.
+        if (face.x < 0) {
+          face.x = 0;
+          face.vx = Math.abs(face.vx);
+        } else if (face.x > width - face.size) {
+          face.x = width - face.size;
+          face.vx = -Math.abs(face.vx);
+        }
+        if (face.y < 0) {
+          face.y = 0;
+          face.vy = Math.abs(face.vy);
+        } else if (face.y > height - face.size) {
+          face.y = height - face.size;
+          face.vy = -Math.abs(face.vy);
+        }
+        context.save();
+        context.translate(face.x + face.size / 2, face.y + face.size / 2);
+        context.rotate(face.angle);
+        context.globalAlpha = 0.9;
+        context.drawImage(sprite, (face.frame % frames) * cell, 0, cell, cell, -face.size / 2, -face.size / 2, face.size, face.size);
+        context.restore();
+      }
+    };
+
     const drawEmbers = (dt: number) => {
       for (const ember of embers) {
         ember.life += dt;
@@ -402,13 +587,24 @@ export function Ambient() {
       if (hazes.length) drawHaze(now, dt);
       drawStars(now);
       if (meteorAt !== Infinity) drawMeteor(now, dt);
+      if (rippleAt !== Infinity) drawRipples(now, dt);
+      drawFireflies(now, dt);
       drawSparkles(dt);
       drawEmbers(dt);
+      drawFaces(dt);
     };
 
     const start = () => {
       stop();
-      const nothing = embers.length === 0 && stars.length === 0 && hazes.length === 0 && sparkles.length === 0 && meteorAt === Infinity;
+      const nothing =
+        embers.length === 0 &&
+        stars.length === 0 &&
+        hazes.length === 0 &&
+        sparkles.length === 0 &&
+        fireflies.length === 0 &&
+        faces.length === 0 &&
+        meteorAt === Infinity &&
+        rippleAt === Infinity;
       if (still.matches || document.hidden || nothing) return;
       last = performance.now();
       frame = requestAnimationFrame(draw);
@@ -425,11 +621,13 @@ export function Ambient() {
       starColour = readStarColor();
       starDepth = readStarDepth();
       accent = readAccent();
+      loadSprite();
       seed();
       context.clearRect(0, 0, width, height);
       start();
     };
 
+    loadSprite();
     resize();
     start();
     const unsubscribe = theme.subscribe(rethink);
