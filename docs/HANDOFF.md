@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, morning. Themes, the no-gap layout and real paintings are live; see the last section.
+**Last updated:** 2026-09-22, morning. Themes, the no-gap layout, real paintings and the Firefox refusal are live; see the last section.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1451,8 +1451,18 @@ indistinguishable in the app. Plain is unchanged.
 
 ![The ridge](shots/theme-ridge.png)
 
-**Next:** the Firefox voice-refusal text in `voice-key-provider.ts`:
-shorter, and the installer link under it.
+**Firefox refusal, live (client 1790084289597):** two sentences and a
+link to the installer under them (`voice-key-provider.ts` returns
+`installer: true`, the snapshot carries it, `VoicePanel.tsx` draws the
+link). Photographed from Chrome with the new `--user-agent` flag on
+`shot.mjs`; channel buttons now carry their type as a class
+(`button.channel.voice`) so the script can pick the voice channel.
+
+![What Firefox is told](shots/voice-firefox.png)
+
+**Next:** nothing queued from Wes. The build list in
+`docs/briefs/README.md` still holds Electron fuses, group DMs, soundboard,
+phone layout and push, safety number, global push-to-talk.
 
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
