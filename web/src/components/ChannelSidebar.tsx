@@ -57,13 +57,10 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span
-          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          title={server.name}
-        >
+        <span className="sidebar-header-name" title={server.name}>
           {server.name}
         </span>
-        <span style={{ display: 'flex', gap: 2 }}>
+        <span className="sidebar-header-tools">
           <button
             type="button"
             className="icon-button"

@@ -65,6 +65,7 @@ export function UserPanel() {
         <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
       </button>
 
+      <span className="user-panel-tools">
       {myVoice ? (
         <>
           <button
@@ -111,6 +112,7 @@ export function UserPanel() {
       >
         &#9881;
       </button>
+      </span>
 
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}

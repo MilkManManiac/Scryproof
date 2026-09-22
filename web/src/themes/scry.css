@@ -36,10 +36,10 @@
   --edge: inset 0 0 0 1px rgb(205 222 255 / 0.07);
 
   /* Ink with a violet cast. */
-  --text: #e9e5f4;
-  --text-muted: #bbb4cf;
-  --text-dim: #948dab;
-  --text-faint: #6a627f;
+  --text: #f2eff9;
+  --text-muted: #cfc9e0;
+  --text-dim: #aaa3c1;
+  --text-faint: #7f7796;
 
   /* The scry-light. Active, live, selected, focused. */
   --accent: #8ec9ee;

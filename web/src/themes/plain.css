@@ -22,10 +22,10 @@
   --edge: inset 0 0 0 1px rgb(255 232 205 / 0.07);
   --hi: inset 0 1px 0 rgb(255 232 205 / 0.06);
 
-  --text: #efe6d8;
-  --text-muted: #c4b5a2;
-  --text-dim: #9d8e7a;
-  --text-faint: #74675a;
+  --text: #f5efe5;
+  --text-muted: #d4c7b6;
+  --text-dim: #b2a48f;
+  --text-faint: #877a6b;
 
   --accent: #e08a3c;
   --accent-bright: #f2a75c;

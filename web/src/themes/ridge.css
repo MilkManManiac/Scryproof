@@ -28,11 +28,11 @@
   --line-strong: #4e3d36;
   --edge: inset 0 0 0 1px rgb(255 222 196 / 0.07);
 
-  --text: #eee6dc;
-  --text-muted: #c3b8ad;
+  --text: #f5efe7;
+  --text-muted: #d5cdc3;
   /* Cold on purpose: the sky reaching the page. 6.2:1 on the solid panel. */
-  --text-dim: #8e97a3;
-  --text-faint: #69707a;
+  --text-dim: #a8b1bd;
+  --text-faint: #7f8792;
 
   /* The fire. */
   --accent: #ee8a3a;
