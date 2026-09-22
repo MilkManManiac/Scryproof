@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-21, night. **M0 is done: https://scryproof.com is live and the reboot-stays-locked test passed, twice.** The project was renamed from GoOffline to Scryproof the same day. The one thing outstanding is Wes creating the owner account; see "M0 so far" below.
+**Last updated:** 2026-09-22, morning. Wave two of the visual pass is on `main`: four themes, not yet deployed; see the last section. **M0 is done: https://scryproof.com is live and the reboot-stays-locked test passed, twice.** The project was renamed from GoOffline to Scryproof the same day. The one thing outstanding is Wes creating the owner account; see "M0 so far" below.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1398,29 +1398,38 @@ agents from `docs/briefs/visual.md`; branches `visual-a` (finished room +
 four themes, Paper is the good one), `visual-c` (no rail, members drawer,
 call strip) still exist for parts. Side-by-side: `docs/shots/visual-directions.png`.
 
-**Wave two (`docs/briefs/visual-2.md`) was cut off by the session limit
-mid-work.** Each agent's partial work is a WIP commit on its branch, in
-its worktree under `.claude/worktrees/`:
+**Wave two (`docs/briefs/visual-2.md`) is finished on `main` (commit
+`6eac9ea`, 2026-09-22 morning), not deployed.** Four themes, chosen from
+the user menu at the bottom of the sidebar (Themes): the hall (default,
+direction B), the chamber (`scry`: a dark stone room lit from a basin of
+water), the ridge (a campfire under a cold sky) and plain (the warm room
+with no painting). The choice lives in this browser only, key
+`scryproof.theme.v1`. Adding a theme is one file in `web/src/themes/`, an
+`@import` at the top of `styles.css`, and an entry in `lib/themes.ts`;
+`npm test` checks every theme sets every token the hall sets.
 
-- `visual-themes` (agent-ad718343b347edd29): `lib/theme.ts`, `lib/themes.ts`,
-  `ThemePicker.tsx`, a test, hooks in `styles.css`/`UserPanel`/`main.tsx`.
-  Unknown whether it typechecks. This one defines the contract; finish it
-  first.
-- `visual-scry` (agent-ac7fadd24e5c8fcc8): `gen-scry-backdrop.mjs`,
-  `backdrops/scry.svg`, `themes/scry.css`; first shot `docs/shots/scry-1.png`
-  looks right (cool blue chamber, candles). `web/index.html` still has the
-  forced `data-theme`; revert before merging.
-- `visual-ridge` (agent-a03562f5b57b5c0fd): same shape, `ridge-2.png` is a
-  campfire under stars with tree silhouettes. Same index.html caveat.
+![The Themes dialog](shots/theme-picker.png)
 
-To finish: resume each agent (or do it by hand): finish themes, then merge
-scry and ridge onto it (each is one css file + svg + generator + a
-`themes.ts` entry), run one vite for Wes to switch between hall / scry /
-ridge / plain, he picks the default, then the full local loop and
-`release.sh`. Then the Firefox text. The three demo vites are stopped;
-the local API on 8787 is still up with a seeded DB that now has ~20
-"new device" notices for wes from headless shots (shot.mjs should reuse a
-device; noted by the composer agent).
+![The chamber](shots/theme-scry.png)
 
-Memory on this PC was critically low during the wave (Claude Code killed a
-background shell for it); run two agents, not four, next time.
+![The ridge](shots/theme-ridge.png)
+
+Each theme card in the dialog is painted by reading its own token block out
+of the loaded stylesheets and setting them inline (`ThemePicker.tsx`), so
+the card looks like the room before you click it. The screenshot script has
+`--theme <id>`. Branches `visual-themes`, `visual-scry`, `visual-ridge` and
+their worktrees can be deleted; `visual-a` (Paper theme) and `visual-c`
+(no rail, members drawer, call strip) still hold parts worth lifting.
+
+**Next, in order:**
+
+1. Wes opens http://localhost:5190 (vite is up, API on 8787 seeded, sign in
+   as `wes`), switches between the four, and says which is the default.
+   The default is the first entry in `lib/themes.ts` and the bare `:root`
+   copy in `themes/hall.css`; if he picks another, that bare block moves.
+2. Full local loop, then `bash ~/ship.sh` from WSL.
+3. The Firefox voice-refusal text in `voice-key-provider.ts`: shorter, and
+   the installer link under it.
+
+The seeded local database still has ~20 "new device" notices for wes from
+headless shots; `shot.mjs` should reuse a device profile.
