@@ -18,7 +18,15 @@
  * for the server's name and the headings that name a place; a clean system
  * sans for every word anyone types or reads. Machine text (times, counts,
  * codes) in the mono.
+ *
+ * Every colour in this file comes through a token, and the tokens come from a
+ * theme: one file each in themes/, switched by `data-theme` on <html> (see
+ * lib/theme.ts). hall.css is the default and the list of what a theme sets.
+ * Nothing below names a colour a theme might want to change.
  */
+
+@import './themes/hall.css';
+@import './themes/plain.css';
 
 @font-face {
   font-family: 'Cormorant Garamond';
@@ -28,56 +36,22 @@
   src: url('/fonts/cormorant-garamond-600.woff2') format('woff2');
 }
 
+/* What is not a theme's to change: shape, motion, type, and the layout
+   widths. The colours live in themes/. */
 :root {
-  /* The deep of the room: what the hall fades into at the bottom. */
-  --bg: #100b09;
-  --bg-rgb: 16 11 9;
+  /* The four panels on the table, composed from the theme's fill and alpha.
+     The one that carries the words is a step more opaque than the others, and
+     a flat theme (alpha 1) makes them all solid. */
+  --panel: rgb(var(--panel-rgb) / var(--panel-alpha));
+  --panel-page: rgb(var(--panel-rgb) / min(1, calc(var(--panel-alpha) + 0.11)));
 
-  /* Panel fills. The rgb triplet exists so a panel can be composed with an
-     alpha; the solid one is for dialogs and anything that must not ghost. */
-  --panel-rgb: 27 19 15;
-  --panel: rgb(var(--panel-rgb) / 0.82);
-  --panel-solid: #1b130f;
-  --panel-2: #261b15;
-  --panel-3: #33261e;
-  --panel-4: #3f2f26;
-
-  --line: #3a2a21;
-  --line-strong: #4f3b2f;
-  --edge: inset 0 0 0 1px rgb(255 232 205 / 0.07);
-
-  --text: #efe6d8;
-  --text-muted: #c4b5a2;
-  --text-dim: #9d8e7a;
-  --text-faint: #74675a;
-
-  /* The fire. */
-  --accent: #e08a3c;
-  --accent-bright: #f2a75c;
-  --accent-dim: #8f5424;
-  --accent-wash: rgb(224 138 60 / 0.12);
-
-  /* The metal. Ornament, never a button. */
-  --gold: #d6b46d;
-  --gold-dim: #8f7746;
-
-  --good: #4ba97a;
-  --warn: #d9a441;
-  --bad: #d4614f;
-  --speaking: #57c98a;
+  /* Older names a few components still use inline. */
+  --bg-raised: var(--panel-2);
+  --border-strong: var(--line-strong);
 
   --radius: 6px;
   --radius-lg: 10px;
   --radius-panel: 12px;
-
-  /* Elevation tinted with the room's own black, not a grey. Tight layers for
-     the contact edge, one wide one for the lift. */
-  --shadow-1: 0 1px 1px hsl(18 45% 3% / 0.55), 0 4px 10px -3px hsl(18 45% 3% / 0.55);
-  --shadow-2: 0 1px 2px hsl(18 45% 3% / 0.55), 0 8px 18px -6px hsl(18 45% 3% / 0.65),
-    0 22px 44px -14px hsl(18 45% 3% / 0.6);
-  --shadow-3: 0 2px 4px hsl(18 45% 3% / 0.55), 0 16px 32px -8px hsl(18 45% 3% / 0.7),
-    0 40px 80px -20px hsl(18 45% 3% / 0.75);
-  --hi: inset 0 1px 0 rgb(255 232 205 / 0.06);
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --t-fast: 140ms;
@@ -92,8 +66,6 @@
   --members-width: 224px;
   /* Wide enough that the room is a room between the panels, not a seam. */
   --gutter: 12px;
-
-  color-scheme: dark;
 }
 
 * {
@@ -126,17 +98,16 @@ body {
 /* ---------------------------------------------------------------- the hall */
 
 /*
- * Three layers, back to front: the painting, a gradient down into --bg so the
- * bottom third (where the composer and the user panel sit) is nearly solid,
- * and a vignette pulling the edges down. Fixed, so nothing scrolls it.
+ * Three layers, back to front: the theme's painting (--backdrop, or none), a
+ * gradient down into --bg so the bottom third (where the composer and the
+ * user panel sit) is nearly solid, and a vignette pulling the edges down.
+ * Fixed, so nothing scrolls it. The settings screen paints the same layers
+ * over the chat, so the two share this rule.
  */
 /* It is rendered inside #root, which is its own stacking context, so a
    negative z-index puts it under everything else in the tree. */
-.ambient {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
+.ambient,
+.settings-backdrop {
   background-color: var(--bg);
   background-image:
     radial-gradient(120% 90% at 50% 10%, transparent 40%, rgb(0 0 0 / 0.4) 100%),
@@ -147,24 +118,36 @@ body {
       rgb(var(--bg-rgb) / 0.72) 82%,
       rgb(var(--bg-rgb) / 0.94) 100%
     ),
-    url('/backdrops/hall.svg');
+    var(--backdrop);
   background-size: auto, auto, cover;
-  background-position: center, center, center 22%;
+  background-position: center, center, var(--backdrop-position);
   background-repeat: no-repeat;
   background-attachment: fixed;
 }
 
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
 /*
- * The one moving thing on the screen: the hearth breathes. A warm radial
- * over where the fire sits, wandering between half and full over thirty
- * seconds. Under reduced motion it holds at its brightest frame, so the fire
- * is still lit, just still.
+ * The one moving thing on the screen: the hearth breathes. A radial in the
+ * theme's glow colour over where its light source sits, wandering between
+ * half and full over thirty seconds. Under reduced motion it holds at its
+ * brightest frame, so the fire is still lit, just still. A theme with no fire
+ * sets the colour transparent and nothing moves.
  */
 .ambient::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(38vw 30vh at 50% 52%, rgb(240 144 58 / 0.2), transparent 70%);
+  background: radial-gradient(
+    38vw 30vh at var(--glow-position),
+    color-mix(in srgb, var(--glow-color) 20%, transparent),
+    transparent 70%
+  );
   opacity: 0.95;
   animation: hearth 30s var(--ease) infinite alternate;
 }
@@ -229,13 +212,13 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #4a382c;
+  background: var(--line-strong);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5e483a;
+  background: var(--text-faint);
   background-clip: content-box;
 }
 
@@ -281,8 +264,8 @@ select {
    faint warmth at its top edge is the hearth's light reaching the page. */
 .main {
   background:
-    radial-gradient(70% 220px at 50% 0%, rgb(224 138 60 / 0.07), transparent 100%),
-    rgb(var(--panel-rgb) / 0.93);
+    radial-gradient(70% 220px at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 100%),
+    var(--panel-page);
 }
 
 /* ------------------------------------------------------------- server rail */
@@ -337,7 +320,9 @@ select {
 .rail-item.active {
   background: var(--accent-wash);
   color: var(--accent-bright);
-  box-shadow: inset 0 0 0 1px rgb(224 138 60 / 0.3), 0 0 22px -6px rgb(224 138 60 / 0.4);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 0 22px -6px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .rail-item.active::before,
@@ -739,7 +724,7 @@ select {
   position: relative;
 }
 .message:hover {
-  background: rgb(255 232 205 / 0.025);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
 }
 
 .message.grouped {
@@ -783,7 +768,8 @@ select {
 .message-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: #e6dccd;
+  /* A hair under --text: talk, not headings. */
+  color: color-mix(in srgb, var(--text) 80%, var(--text-muted));
   font-size: 15px;
   line-height: 1.45;
   max-width: 84ch;
@@ -962,8 +948,8 @@ select {
   box-shadow:
     var(--hi),
     var(--shadow-2),
-    0 0 0 3px rgb(224 138 60 / 0.09),
-    0 0 30px -8px rgb(224 138 60 / 0.35);
+    0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent),
+    0 0 30px -8px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .composer-box.denied {
   opacity: 0.6;
@@ -1290,7 +1276,7 @@ select {
   place-items: center;
   font-weight: 640;
   font-size: 14px;
-  color: #120c08;
+  color: var(--on-accent);
   flex: 0 0 auto;
   user-select: none;
   position: relative;
@@ -1323,7 +1309,7 @@ select {
   background: var(--bad);
 }
 .presence-dot.offline {
-  background: #6a5d52;
+  background: var(--text-faint);
 }
 
 /* ------------------------------------------------------------------- auth */
@@ -1342,7 +1328,7 @@ select {
   width: 100%;
   max-width: 420px;
   padding: 26px 30px 24px;
-  background: rgb(var(--panel-rgb) / 0.93);
+  background: var(--panel-page);
   border-radius: var(--radius-panel);
   box-shadow: var(--edge), var(--shadow-3);
   animation: arrive 480ms var(--ease);
@@ -1425,7 +1411,7 @@ select {
 .button {
   width: 100%;
   background: var(--accent);
-  color: #1a1108;
+  color: var(--on-accent);
   font-weight: 660;
   border-radius: var(--radius);
   padding: 10px 14px;
@@ -1689,7 +1675,7 @@ select {
   display: grid;
   place-items: center;
   background: var(--panel-solid);
-  color: #120c08;
+  color: var(--on-accent);
   font-weight: 600;
   font-size: 18px;
 }
@@ -1912,18 +1898,18 @@ video.mirrored {
   font-size: 12.5px;
   text-align: center;
   background: var(--warn);
-  color: #1a1408;
+  color: var(--on-accent);
   font-weight: 560;
 }
 
 .banner.update {
   background: var(--accent);
-  color: #1a1108;
+  color: var(--on-accent);
   font-size: 13.5px;
   padding: 10px 14px;
 }
 .banner.update .link-button {
-  color: #1a1108;
+  color: var(--on-accent);
   font-weight: 700;
   text-decoration: underline;
 }
@@ -1985,23 +1971,8 @@ video.mirrored {
 .settings-backdrop {
   position: fixed;
   inset: 0;
-  /* Opaque, so the chat underneath is gone; then the hall is painted again
-     on it (same layers as .ambient) so settings are still in the room. */
-  background-color: var(--bg);
-  background-image:
-    radial-gradient(120% 90% at 50% 10%, transparent 40%, rgb(0 0 0 / 0.4) 100%),
-    linear-gradient(
-      180deg,
-      rgb(var(--bg-rgb) / 0.08) 0%,
-      rgb(var(--bg-rgb) / 0.22) 50%,
-      rgb(var(--bg-rgb) / 0.72) 82%,
-      rgb(var(--bg-rgb) / 0.94) 100%
-    ),
-    url('/backdrops/hall.svg');
-  background-size: auto, auto, cover;
-  background-position: center, center, center 22%;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  /* Opaque, so the chat underneath is gone; the room is painted again on it
+     by the rule it shares with .ambient, so settings are still in the room. */
   z-index: 60;
   display: flex;
 }
@@ -2073,7 +2044,7 @@ video.mirrored {
   min-width: 0;
   overflow-y: auto;
   padding: 28px 36px 80px;
-  background: rgb(var(--panel-rgb) / 0.95);
+  background: var(--panel-page);
   border-radius: var(--radius-panel);
   box-shadow: var(--edge), var(--shadow-2);
 }
@@ -3045,7 +3016,7 @@ video.mirrored {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--accent);
-  color: #1a1108;
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   font-family: var(--font);
@@ -3327,7 +3298,7 @@ kbd {
   padding: 0 4px 0 10px;
   border-radius: 0 0 var(--radius) var(--radius);
   background: var(--accent-dim);
-  color: #f6ead8;
+  color: var(--text);
   font-size: 12px;
   font-weight: 560;
 }
@@ -3769,6 +3740,116 @@ kbd {
   .privacy-lists {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------------------------------- themes ---------------------------------- */
+
+/*
+ * Each card is painted in its own theme: ThemePicker copies that theme's
+ * tokens onto the card as inline custom properties, so every var() below
+ * resolves to the card's theme, not the page's. The scene is the theme's
+ * backdrop with one of its panels on it, the same way the app is built.
+ */
+.modal.themes {
+  max-width: 640px;
+}
+
+.theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  padding: 2px 0 10px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  text-align: left;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--hi), var(--shadow-1);
+  transition:
+    border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.theme-card:hover {
+  border-color: var(--text-dim);
+  transform: translateY(-1px);
+}
+.theme-card.in-use {
+  border-color: var(--accent);
+}
+
+.theme-card-scene {
+  aspect-ratio: 2 / 1;
+  padding: 12px 14px 0;
+  display: flex;
+  align-items: flex-end;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(180deg, rgb(var(--bg-rgb) / 0.08) 0%, rgb(var(--bg-rgb) / 0.55) 100%),
+    var(--backdrop);
+  background-size: auto, cover;
+  background-position: center, var(--backdrop-position);
+  background-repeat: no-repeat;
+}
+
+.theme-card-page {
+  width: 100%;
+  padding: 8px 12px 10px;
+  border-radius: 6px 6px 0 0;
+  background: rgb(var(--panel-rgb) / min(1, calc(var(--panel-alpha) + 0.11)));
+  box-shadow: var(--edge);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.theme-card-page strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.01em;
+}
+.theme-card-page span {
+  color: var(--text-dim);
+}
+.theme-card-page em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.theme-card-text {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+}
+.theme-card-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.theme-card-name small {
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.theme-card-mood {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 /* -------------------------------- narrow windows ------------------------------- */

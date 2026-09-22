@@ -1,0 +1,79 @@
+/*
+ * The hall: the default theme, and the list every other theme must fill.
+ *
+ * A theme is one block, `:root[data-theme="<id>"]`, that sets every token
+ * declared here. Nothing else in the stylesheet names a colour; it all comes
+ * through these. A theme that skips one falls through to the hall's value for
+ * it, which is a bug in that theme, not a feature.
+ *
+ * This file alone also matches bare `:root`, so a page before the theme
+ * script has run (the first frame, a test) still paints as the hall. Other
+ * theme files must not do that: one selector, their own id.
+ */
+
+:root,
+:root[data-theme='hall'] {
+  /* The deep of the room: what the hall fades into at the bottom. */
+  --bg: #100b09;
+  --bg-rgb: 16 11 9;
+
+  /* Panel fills. The rgb triplet is composed with --panel-alpha for the four
+     panels on the table; the solid one is for dialogs and anything that must
+     not ghost. --panel-alpha is 0.82 for a theme with a painting behind it
+     and 1 for a flat one. */
+  --panel-rgb: 27 19 15;
+  --panel-alpha: 0.82;
+  --panel-solid: #1b130f;
+  --panel-2: #261b15;
+  --panel-3: #33261e;
+  --panel-4: #3f2f26;
+
+  --line: #3a2a21;
+  --line-strong: #4f3b2f;
+  /* The one-pixel inner edge catching candlelight, and the lighter top edge
+     on anything that floats. Both are the light's colour, not white. */
+  --edge: inset 0 0 0 1px rgb(255 232 205 / 0.07);
+  --hi: inset 0 1px 0 rgb(255 232 205 / 0.06);
+
+  --text: #efe6d8;
+  --text-muted: #c4b5a2;
+  --text-dim: #9d8e7a;
+  --text-faint: #74675a;
+
+  /* The fire. --on-accent is the ink for anything written on it. */
+  --accent: #e08a3c;
+  --accent-bright: #f2a75c;
+  --accent-dim: #8f5424;
+  --accent-wash: rgb(224 138 60 / 0.12);
+  --on-accent: #1a1108;
+
+  /* The metal. Ornament, never a button. */
+  --gold: #d6b46d;
+  --gold-dim: #8f7746;
+
+  --good: #4ba97a;
+  --warn: #d9a441;
+  --bad: #d4614f;
+  --speaking: #57c98a;
+
+  /* Elevation tinted with the room's own black, not a grey. Tight layers for
+     the contact edge, one wide one for the lift. */
+  --shadow-1: 0 1px 1px hsl(18 45% 3% / 0.55), 0 4px 10px -3px hsl(18 45% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(18 45% 3% / 0.55), 0 8px 18px -6px hsl(18 45% 3% / 0.65),
+    0 22px 44px -14px hsl(18 45% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(18 45% 3% / 0.55), 0 16px 32px -8px hsl(18 45% 3% / 0.7),
+    0 40px 80px -20px hsl(18 45% 3% / 0.75);
+
+  /* The painting behind the panels, or `none`. Position is where the
+     composition sits in the window; the bottom third of every backdrop is
+     dark because the composer and the user panel live there. */
+  --backdrop: url('/backdrops/hall.svg');
+  --backdrop-position: center 22%;
+
+  /* The one moving thing: a slow glow over the fire. `transparent` turns it
+     off. Position is where the light source is in the painting. */
+  --glow-color: #f0903a;
+  --glow-position: 50% 52%;
+
+  color-scheme: dark;
+}

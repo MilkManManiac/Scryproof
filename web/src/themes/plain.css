@@ -1,0 +1,57 @@
+/*
+ * Plain: the room without the painting.
+ *
+ * The hall's warm palette on flat, fully opaque panels, no backdrop and no
+ * glow. For anyone who wants the colours and not the picture, and the theme to
+ * copy when starting a flat one. Every token the hall sets is set here.
+ */
+
+:root[data-theme='plain'] {
+  --bg: #100b09;
+  --bg-rgb: 16 11 9;
+
+  --panel-rgb: 27 19 15;
+  --panel-alpha: 1;
+  --panel-solid: #1b130f;
+  --panel-2: #261b15;
+  --panel-3: #33261e;
+  --panel-4: #3f2f26;
+
+  --line: #3a2a21;
+  --line-strong: #4f3b2f;
+  --edge: inset 0 0 0 1px rgb(255 232 205 / 0.07);
+  --hi: inset 0 1px 0 rgb(255 232 205 / 0.06);
+
+  --text: #efe6d8;
+  --text-muted: #c4b5a2;
+  --text-dim: #9d8e7a;
+  --text-faint: #74675a;
+
+  --accent: #e08a3c;
+  --accent-bright: #f2a75c;
+  --accent-dim: #8f5424;
+  --accent-wash: rgb(224 138 60 / 0.12);
+  --on-accent: #1a1108;
+
+  --gold: #d6b46d;
+  --gold-dim: #8f7746;
+
+  --good: #4ba97a;
+  --warn: #d9a441;
+  --bad: #d4614f;
+  --speaking: #57c98a;
+
+  --shadow-1: 0 1px 1px hsl(18 45% 3% / 0.55), 0 4px 10px -3px hsl(18 45% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(18 45% 3% / 0.55), 0 8px 18px -6px hsl(18 45% 3% / 0.65),
+    0 22px 44px -14px hsl(18 45% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(18 45% 3% / 0.55), 0 16px 32px -8px hsl(18 45% 3% / 0.7),
+    0 40px 80px -20px hsl(18 45% 3% / 0.75);
+
+  --backdrop: none;
+  --backdrop-position: center;
+
+  --glow-color: transparent;
+  --glow-position: 50% 52%;
+
+  color-scheme: dark;
+}
