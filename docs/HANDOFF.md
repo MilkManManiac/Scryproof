@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, morning. Themes, the no-gap layout, real paintings and the Firefox refusal are live; see the last section.
+**Last updated:** 2026-09-22, midday. The ridge is the default theme and a formatting pass (larger, whiter text; nothing clipped) is live; see the last section.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1473,9 +1473,46 @@ that browser to notify. Desktop app: `main.js` grants `notifications` to
 our origin and sets the AppUserModelId, so the toggle just works, but no
 person has yet seen a pop-up from the desktop app.
 
-**Next:** nothing queued from Wes. The build list in
-`docs/briefs/README.md` still holds Electron fuses, group DMs, soundboard,
-phone layout and push, safety number, global push-to-talk.
+**The ridge is the default theme, live (client 1790096728918).** Wes,
+mid-morning: "Make the ridge the default theme for people." `ridge.css`
+matches bare `:root`, `scry.css` only its own attribute, THEMES leads
+with the ridge. A saved choice in localStorage still wins.
+
+**Formatting pass, live in the same client.** Wes: "Some of the text is
+getting cut off. Some of the buttons aren't centered. I think in General
+the text can be larger... more bold or more white on text so it's clearer
+on background." His five screenshots showed the composer label clipping
+"# ideas-suggestion", the server name ellipsized in the sidebar header,
+and the hover tray's glyphs off centre. Shipped, all in `styles.css` and
+the four theme files:
+
+- Message text 16px in full `--text` (was 15px at 80% of it); author
+  15px; timestamps 12.5px; "edited" 12px in muted. Body face 15px. Every
+  readable size under 12px became 12px, 12.5 became 13, 13.5 became 14
+  (glyph and avatar sizes left alone).
+- Every theme's `--text`, `--text-muted`, `--text-dim`, `--text-faint`
+  one step brighter. Not measured against the paintings; judged by eye
+  on the four theme shots. If a theme's dim text still reads badly over
+  its brightest patch, lift that theme's `--text-dim` alone.
+- Composer label up to 32 characters before ellipsis; attach and send
+  buttons 46px tall so they sit on the input's first line.
+- Hover tray buttons 28px square, glyph on one line box (`line-height:
+  1` on every `.icon-button`).
+- Server name in `.sidebar-header-name` wraps to two lines, then clips;
+  the three header buttons are 26px wide in `.sidebar-header-tools`.
+- `.modal-body` has 16px under its last row.
+- `.user-panel` wraps: identity first, the buttons in `.user-panel-tools`
+  drop to a second row on the right when the five call buttons are up.
+
+Before is in his screenshots (Pictures\Screenshots, 2026-09-22 11:33 to
+11:35); after is every shot in `docs/shots/` retaken this morning:
+
+![The ridge, default, after the pass](shots/app.png)
+
+Wes has not yet looked at the live result.
+
+**Next:** Wes's pick from the backlog, offered in this order: phone
+layout, group DMs, Electron fuses, soundboard, safety number.
 
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
