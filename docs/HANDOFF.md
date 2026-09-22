@@ -985,40 +985,82 @@ explanation; the short one:
   recoverable (denial, not disclosure; `passOn` repairs it next time a real
   device of yours opens them).
 
-## Where to pick up (written 2026-09-21, late, for a fresh context)
+## Private channels, mutes, the build stamp, and cheaper agents: 2026-09-21, later
 
-Everything above this line is live on scryproof.com and in the installed
-desktop app (the app takes client updates by itself now; see the signed
-updates section). Wes has the new installer in Downloads and installed it.
+Built after the recovery phrase and released together.
+
+- **Private switch.** "Private channel" checkbox in the new-channel dialog
+  and on a channel's Overview tab, with a roles list and a people list. It
+  writes plain overwrites (deny View channel to @everyone, allow it to the
+  chosen) and touches only that one bit, so the Permissions tab shows exactly
+  what it did. Whoever flips it is always let in. `Channel.private` is read
+  from the overwrites, never stored on its own. Server: `services/privacy.ts`
+  (pure `planPrivacy`/`readPrivacy` with 8 unit tests), `GET`/`PUT
+  /api/channels/:id/privacy` (Manage Channels), `private` in the create body.
+  Client: `settings/PrivacyPicker.tsx`. 11 smoke checks. A private channel
+  shows a small dot before its name in the list.
+- **Mute a server or a channel.** Right-click a server icon or a channel for
+  Mute/Unmute. Muted means no sound and no pop-up from there, even for a
+  mention; the unread mark and mention badge still show. The notification
+  timeline still lists it. Muted things are listed at the bottom of the
+  notification settings with an Unmute button. Stored in localStorage with
+  the other notify prefs, per browser.
+- **Bad input is a 400.** `ZodError` in `app.setErrorHandler` now answers
+  `invalid_request` with a plain sentence instead of a 500.
+- **Forgotten uploads are swept.** `services/upload-sweep.ts`: attachments
+  never attached to a message, older than 24 hours, are deleted (object then
+  row), a minute after start and hourly. DM files (`dmFiles`) have the same
+  shape and are NOT swept yet.
+- **Build stamp.** The foot of the user menu (bottom-left, click your name)
+  says `build <commit>, <time>` and, in the desktop app, `app <shell version>`.
+  Wes asked for it so what he sees can be compared with what shipped. The
+  update banner is the accent colour now: the first one was a thin grey strip
+  and he did not spot it.
+- **How the work was split.** Three of these (Zod, sweep, mute) were built by
+  cheaper agents in git worktrees from a written brief, each ran the unit
+  tests and committed on its own branch; the main session reviewed and merged.
+  Lesson: never `git add -A` while `.claude/worktrees/` exists (it is
+  gitignored now). The briefs that worked said: read CLAUDE.md, one job,
+  which files, which tests, do not push, report exact test output.
+
+## Where to pick up (written 2026-09-21, later still, for a fresh context)
+
+Everything above this line is live on scryproof.com and reaches the
+installed desktop app by itself within ten minutes (accent-coloured banner,
+"Reload now").
+
+Not yet tried by a person: the private switch in a real dialog, the
+right-click mute menus, the build stamp in Wes's app, avatar upload from a
+real file picker, real pop-ups on Windows, 1440p60 share.
 
 Do next, in this order:
 
-1. **Private channel switch** (item 6 below). Hidden channels already work via
-   overwrites; build the one-click "Private" toggle in channel create/settings
-   with a role/member picker. Wes asked for hidden voice and text channels.
-2. **Per-server / per-channel mute** for the bell and pop-ups. Small.
-3. **ZodError -> 400** in `app.setErrorHandler`. Ten-minute fix, then remove
-   the workaround note in profile.ts.
-4. **Global push-to-talk** in the desktop app. Needs a native key hook
+1. **Global push-to-talk** in the desktop app. Needs a native key hook
    (uiohook-napi or similar); vet it for phoning home before it ships. Then
-   **start with Windows** as an off-by-default toggle Wes flips himself.
-5. **Electron fuses**, and a plan for updating the shell itself (needs a code
+   **start with Windows** as an off-by-default toggle Wes flips himself. Both
+   change `desktop/src/*`, so they need a new installer, not a client update.
+2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
-6. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
-7. Then: search, custom emoji, soundboard, phone version, group DMs, safety
-   number, unclaimed-upload sweep. R2 stays flagged (talk first).
+3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
+4. Good for a cheaper agent, each with a brief like the ones above: sweep
+   unclaimed `dmFiles` the same way as attachments; message search (server
+   `ILIKE` over a channel the person can see, client box in the header);
+   custom emoji upload per server. Keep for the main session: group DMs,
+   safety number, soundboard, phone layout. R2 stays flagged (talk first).
 
 Deploy with `bash scripts/release.sh` (clean tree required). Local loop:
-`bash scripts/dev-restart.sh`, `npm run seed`, then the test. The sign-up
-rate limit trips if `test:smoke` runs twice within an hour; a restart clears it.
+`bash scripts/dev-restart.sh` then `npm run test:smoke` on the clean
+database; then `npm run seed` and `test:dm` / `test:desktop`. The seed
+refuses a database that already has accounts, and the smoke test needs one
+with none, so the order is restart, smoke, restart, seed, the rest.
 
 ## Next, in order
 
 Rewritten 2026-09-21, after the desktop shell. The droplet, domain and M0 are
 done; the old list here was about getting onto the box.
 
-1. ~~Notifications, with a timeline.~~ Built and live. Left over: muting one
-   server or channel. Original note: Desktop pop-ups for mentions and DMs
+1. ~~Notifications, with a timeline.~~ Built and live, and muting one server
+   or channel followed on 2026-09-21. Original note: Desktop pop-ups for mentions and DMs
    ("who, not what" for DMs), plus Wes's idea: an inbox that lists what you
    got, when, and from which server and channel, so a busy day can be traced.
    Built once for browser and desktop app.
