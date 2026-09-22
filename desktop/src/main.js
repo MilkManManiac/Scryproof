@@ -47,7 +47,7 @@ const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}
 const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (process.env.SCRYPROOF_UPDATE_URL ?? '');
 const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
 const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
-const UPDATE_EVERY_MS = app.isPackaged ? 10 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 10 * 60_000);
+const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -304,6 +304,21 @@ let tray = null;
 /** Closing the window leaves the app in the tray, so a call or a pop-up survives it. Quit is in the tray menu. */
 let quitting = false;
 
+/* ----------------------------- start with Windows ----------------------------- */
+
+/**
+ * Off until the person turns it on in the tray menu. Turning it on writes one
+ * Run entry for this account (HKCU, nothing machine-wide), and Windows then
+ * starts the app at sign-in with `--hidden`: into the tray, no window in
+ * anyone's face. An installed copy only; a development run is electron.exe and
+ * must not be put in anyone's start-up.
+ */
+const HIDDEN_ARG = '--hidden';
+const loginItem = { openAtLogin: false, args: [HIDDEN_ARG] };
+const startsWithWindows = () => app.isPackaged && app.getLoginItemSettings({ args: loginItem.args }).openAtLogin;
+const setStartsWithWindows = (on) => app.setLoginItemSettings({ ...loginItem, openAtLogin: on });
+const startedHidden = process.argv.includes(HIDDEN_ARG);
+
 function show() {
   if (!win) return createWindow();
   if (win.isMinimized()) win.restore();
@@ -311,27 +326,41 @@ function show() {
   win.focus();
 }
 
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Open Scryproof', click: show },
+    { type: 'separator' },
+    {
+      label: 'Start with Windows (in the tray)',
+      type: 'checkbox',
+      checked: startsWithWindows(),
+      enabled: app.isPackaged,
+      click: (item) => {
+        setStartsWithWindows(item.checked);
+        // Read back what Windows has, not what was asked for.
+        tray.setContextMenu(trayMenu());
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        quitting = true;
+        app.quit();
+      },
+    },
+  ]);
+}
+
 function createTray() {
   const icon = nativeImage.createFromPath(join(here, '..', 'assets', 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
   tray.setToolTip('Scryproof');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Open Scryproof', click: show },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => {
-          quitting = true;
-          app.quit();
-        },
-      },
-    ]),
-  );
+  tray.setContextMenu(trayMenu());
   tray.on('click', show);
 }
 
-function createWindow() {
+function createWindow(visible = true) {
   win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -340,6 +369,9 @@ function createWindow() {
     backgroundColor: '#14161c',
     title: 'Scryproof',
     autoHideMenuBar: true,
+    // Started by Windows at sign-in: load the page (so the gateway connects and
+    // pop-ups arrive) but stay in the tray until clicked.
+    show: visible,
     webPreferences: {
       preload: join(here, 'preload.cjs'),
       contextIsolation: true,
@@ -399,7 +431,7 @@ void app.whenReady().then(async () => {
   protocol.handle('app', handle);
   armGateway(session.defaultSession);
   armPermissions(session.defaultSession);
-  createWindow();
+  createWindow(!startedHidden);
   armUpdates();
   armPushToTalk(ipcMain, ours, () => win);
 });

@@ -1035,14 +1035,14 @@ Built after the recovery phrase and released together.
   shit or is the app capping it" (the app never caps; the camera does).
 - **Updates never act on their own** (Wes, 2026-09-21: "I don't want to auto
   open/close anything on anyones setups"). A reload-when-idle was built and
-  reverted the same hour. The rule: the app checks every 10 minutes and shows
-  the bar; a browser tab does the same by fetching `/` every 10 minutes and
+  reverted the same hour. The rule: the app checks every 5 minutes (shell
+  0.3.0; 10 before) and shows the bar; a browser tab does the same by fetching `/` every 10 minutes and
   comparing the `assets/index-*.js` name (`watchSite` in `web/src/lib/desktop.ts`);
   the reload is always the person's click. Left alone, the new client is
   simply there next launch or next page load.
 - **Two layers, one rule for installers.** Everything in `web/` reaches every
   app through the bar with no installer. Everything in `desktop/` (shell,
-  tray, the update checker and its 10-minute constant, any native hook) is
+  tray, the update checker and its 5-minute constant, any native hook) is
   baked into the `.exe` and does not update itself, so shell changes ship as
   one installer that Wes hands out, not several.
 - **Global push-to-talk and the installer link** (2026-09-22, shell 0.2.0).
@@ -1066,6 +1066,17 @@ Built after the recovery phrase and released together.
   service restarts and can see a 502 that clears in seconds. Not yet tried by
   a person: holding the key with a game in front. Mouse buttons as the
   push-to-talk key are not supported yet.
+- **Start with Windows, and the 5-minute check** (2026-09-22, shell 0.3.0).
+  A checkbox in the tray menu, "Start with Windows (in the tray)", off until
+  the person ticks it. Ticking it writes one Run entry for that Windows
+  account (`app.setLoginItemSettings`, HKCU, nothing machine-wide) with
+  `--hidden`, so at sign-in the app loads the page (gateway connects,
+  pop-ups arrive) but stays in the tray until clicked: nothing appears in
+  anyone's face. Unticking removes the entry. The menu re-reads what
+  Windows has after each click rather than trusting the click. A development
+  run (electron.exe) has the item greyed out. Same installer carries the
+  update check moved from 10 to 5 minutes. Not yet tried by a person: the
+  toggle itself, and a sign-in with it on.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.
@@ -1076,8 +1087,8 @@ Built after the recovery phrase and released together.
 ## Where to pick up (written 2026-09-21, later still, for a fresh context)
 
 Everything above this line is live on scryproof.com and reaches the
-installed desktop app by itself within ten minutes (accent-coloured banner,
-"Reload now").
+installed desktop app by itself within five minutes (ten on shell 0.2.0;
+accent-coloured banner, "Reload now").
 
 Not yet tried by a person: the private switch in a real dialog, the
 right-click mute menus, avatar upload from a real file picker, real pop-ups
@@ -1089,10 +1100,9 @@ The stamp shows the commit the client was built from, which is the one
 
 Do next, in this order:
 
-1. ~~Global push-to-talk~~ shipped in shell 0.2.0 (above). Still to do in
-   the shell: **start with Windows** as an off-by-default toggle Wes flips
-   himself, and the shorter update check (10 to 5 minutes; suggested, not
-   decided). Both need another installer; ship them together.
+1. ~~Global push-to-talk~~ shipped in shell 0.2.0; ~~start with Windows and
+   the 5-minute check~~ shipped in shell 0.3.0 (both above). The link always
+   hands out the newest: https://scryproof.com/download/Scryproof-Setup.exe.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
 3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
