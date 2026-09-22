@@ -837,6 +837,10 @@ function AuditPane({ server, members }: { server: ServerDetail; members: Member[
         return `changed the nickname of ${target}`;
       case 'member.kick':
         return `kicked ${target}`;
+      case 'member.timeout':
+        return entry.changes?.until
+          ? `timed out ${target} until ${new Date(String(entry.changes.until)).toLocaleString()}`
+          : `ended the timeout on ${target}`;
       case 'member.ban':
         return `banned ${target}`;
       case 'member.unban':

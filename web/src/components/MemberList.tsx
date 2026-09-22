@@ -6,12 +6,17 @@
  * lands; showing the roster of a server you belong to is not a leak.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Permission } from '@scryproof/shared';
 import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
+import { ApiError, api } from '../lib/api';
+import { timeoutEndsAt } from '../lib/usePermissions';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { Menu, MenuItem } from './Menu';
+import { authorityFor } from './settings/authority';
 
 interface Group {
   key: string;
@@ -20,10 +25,40 @@ interface Group {
   members: Member[];
 }
 
+/** What the row menu offers. Anything longer than a week is a kick or a ban. */
+const DURATIONS: { label: string; minutes: number }[] = [
+  { label: '1 minute', minutes: 1 },
+  { label: '5 minutes', minutes: 5 },
+  { label: '1 hour', minutes: 60 },
+  { label: '1 day', minutes: 60 * 24 },
+  { label: '1 week', minutes: 60 * 24 * 7 },
+];
+
+/** Which row's menu is open, and whether it is showing the durations yet. */
+interface OpenMenu {
+  userId: string;
+  durations: boolean;
+}
+
 export function MemberList({ server }: { server: ServerDetail }) {
   const { state } = useStore();
   const { openWith } = useDms();
   const members = state.members[server.id];
+  const [menu, setMenu] = useState<OpenMenu | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const authority = authorityFor(server, members ?? [], state.user?.id ?? null);
+  const mayModerate = authority.can(Permission.MODERATE_MEMBERS);
+
+  async function run(work: Promise<unknown>, failure: string) {
+    setMenu(null);
+    setError(null);
+    try {
+      await work;
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : failure);
+    }
+  }
 
   const groups = useMemo<Group[]>(() => {
     if (!members) return [];
@@ -83,6 +118,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
 
   return (
     <aside className="members" aria-label="Members">
+      {error ? <div className="error">{error}</div> : null}
       {groups.map((entry) => (
         <div className="members-group" key={entry.key}>
           <div className="members-heading">
@@ -91,30 +127,96 @@ export function MemberList({ server }: { server: ServerDetail }) {
           {entry.members.map((member) => {
             const presence = state.presences[member.userId] ?? 'offline';
             const self = member.userId === state.user?.id;
+            const until = timeoutEndsAt(member);
+            // The server checks all of this again. Offering the menu only when
+            // it would succeed keeps the list from handing out dead choices.
+            const moderatable = mayModerate && !self && authority.canActOnMember(member);
+            const open = menu?.userId === member.userId ? menu : null;
+
             return (
-              <div
-                className={presence === 'offline' ? 'member offline' : 'member'}
-                key={member.userId}
-                title={self ? `@${member.user.username}` : `Message @${member.user.username}`}
-                role={self ? undefined : 'button'}
-                tabIndex={self ? undefined : 0}
-                style={self ? undefined : { cursor: 'pointer' }}
-                onClick={self ? undefined : () => void openWith(member.userId).catch(() => undefined)}
-                onKeyDown={
-                  self
-                    ? undefined
-                    : (event) => {
-                        if (event.key === 'Enter') void openWith(member.userId).catch(() => undefined);
-                      }
-                }
-              >
-                <Avatar user={member.user} small presence={presence} />
-                <span className="member-text">
-                  <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>
-                    {member.nickname ?? member.user.displayName}
+              <div key={member.userId} style={{ position: 'relative' }}>
+                <div
+                  className={presence === 'offline' ? 'member offline' : 'member'}
+                  title={self ? `@${member.user.username}` : `Message @${member.user.username}`}
+                  role={self ? undefined : 'button'}
+                  tabIndex={self ? undefined : 0}
+                  style={self ? undefined : { cursor: 'pointer' }}
+                  onClick={self ? undefined : () => void openWith(member.userId).catch(() => undefined)}
+                  onContextMenu={
+                    moderatable
+                      ? (event) => {
+                          event.preventDefault();
+                          setMenu({ userId: member.userId, durations: false });
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    self
+                      ? undefined
+                      : (event) => {
+                          if (event.key === 'Enter') void openWith(member.userId).catch(() => undefined);
+                        }
+                  }
+                >
+                  <Avatar user={member.user} small presence={presence} />
+                  <span className="member-text">
+                    <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>
+                      {member.nickname ?? member.user.displayName}
+                    </span>
+                    {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
                   </span>
-                  {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
-                </span>
+                  {until ? (
+                    <span className="member-timeout" title={`Timed out until ${until.toLocaleString()}`}>
+                      &#9201;
+                    </span>
+                  ) : null}
+                </div>
+
+                {open ? (
+                  <Menu onClose={() => setMenu(null)}>
+                    {open.durations ? (
+                      DURATIONS.map((duration) => (
+                        <MenuItem
+                          key={duration.minutes}
+                          onClick={() =>
+                            void run(
+                              api.servers.timeout(
+                                server.id,
+                                member.userId,
+                                new Date(Date.now() + duration.minutes * 60_000),
+                              ),
+                              'Could not time them out.',
+                            )
+                          }
+                        >
+                          {duration.label}
+                        </MenuItem>
+                      ))
+                    ) : (
+                      <>
+                        <MenuItem
+                          note="They keep reading. No posting, reacting or voice."
+                          onClick={() => setMenu({ userId: member.userId, durations: true })}
+                        >
+                          Time out
+                        </MenuItem>
+                        {until ? (
+                          <MenuItem
+                            note={`Ends on its own ${until.toLocaleString()}.`}
+                            onClick={() =>
+                              void run(
+                                api.servers.endTimeout(server.id, member.userId),
+                                'Could not end their timeout.',
+                              )
+                            }
+                          >
+                            End timeout
+                          </MenuItem>
+                        ) : null}
+                      </>
+                    )}
+                  </Menu>
+                ) : null}
               </div>
             );
           })}

@@ -177,6 +177,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         scope: 'both',
       },
       {
+        name: 'MODERATE_MEMBERS',
+        bit: Permission.MODERATE_MEMBERS,
+        label: 'Time out members',
+        description:
+          'Quiet someone for up to 28 days. They keep reading, but cannot post, react, edit or join voice until it ends.',
+        scope: 'both',
+      },
+      {
         name: 'BAN_MEMBERS',
         bit: Permission.BAN_MEMBERS,
         label: 'Ban members',

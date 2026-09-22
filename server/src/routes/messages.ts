@@ -24,7 +24,7 @@ import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { publicUrlFor } from '../services/storage.js';
-import { requireChannelPermission, requireMember } from '../services/permissions.js';
+import { assertNotTimedOut, requireChannelPermission, requireMember } from '../services/permissions.js';
 import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
@@ -230,6 +230,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .parse(request.body);
 
     const ctx = await requireChannelPermission(channelId, user.id, Permission.SEND_MESSAGES);
+    assertNotTimedOut(ctx);
 
     const limit = consume(
       `messages:${user.id}`,
@@ -415,6 +416,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       user.id,
       Permission.SEND_MESSAGES,
     );
+    assertNotTimedOut(ctx);
 
     const content = body.content?.trim() ?? null;
     if (content) {
@@ -628,6 +630,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       user.id,
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY | Permission.ADD_REACTIONS,
     );
+    assertNotTimedOut(ctx);
     if (existing.deletedAt) throw badRequest('That message was deleted.', 'message_deleted');
 
     const limit = consume(`reactions:${user.id}`, config.rateLimits.messagesPerMinute * 2, 60_000);

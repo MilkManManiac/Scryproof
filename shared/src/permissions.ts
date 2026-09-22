@@ -43,6 +43,9 @@ export const Permission = {
   BAN_MEMBERS: 1n << 18n,
   CHANGE_NICKNAME: 1n << 19n,
   MANAGE_NICKNAMES: 1n << 20n,
+  // Grouped with membership but numbered 26, the next bit free: the
+  // administration bits below are already stored on roles and cannot move.
+  MODERATE_MEMBERS: 1n << 26n,
 
   // Administration
   MANAGE_CHANNELS: 1n << 21n,

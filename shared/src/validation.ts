@@ -29,6 +29,11 @@ export const LIMITS = {
   emojisPerServer: 50,
   /** An emoji is drawn at text height, so anything larger is wasted bytes. */
   emojiBytes: 256 * 1024,
+  /**
+   * The far end of a timeout. Longer than this is not a timeout any more, it
+   * is a kick or a ban, and those already exist.
+   */
+  timeoutDays: 28,
 } as const;
 
 /** Lowercase, digits, underscore, dot, hyphen. No leading or trailing marks. */

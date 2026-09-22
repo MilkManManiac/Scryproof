@@ -54,6 +54,12 @@ export interface Member {
   nickname: string | null;
   roleIds: Snowflake[];
   joinedAt: Timestamp;
+  /**
+   * When a timeout on this member runs out, or null. A time in the past means
+   * the timeout is over: nothing clears the column, so both sides read an
+   * expired value as no timeout at all.
+   */
+  timeoutUntil: Timestamp | null;
   user: PublicUser;
 }
 

@@ -28,6 +28,7 @@ import {
   roomNameForChannel,
 } from '../services/livekit.js';
 import {
+  assertNotTimedOut,
   requireChannelPermission,
   requireHigherThan,
   requireServerPermission,
@@ -45,6 +46,9 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const { channelId } = z.object({ channelId: z.string() }).parse(request.params);
 
     const ctx = await requireChannelPermission(channelId, user.id, Permission.CONNECT);
+    // No token, so a timed-out member cannot reach the media server at all:
+    // hiding the Join button alone would leave the room one fetch away.
+    assertNotTimedOut(ctx);
 
     const [channel] = await getDb().select().from(channels).where(eq(channels.id, channelId)).limit(1);
     if (!channel) throw notFound('That channel does not exist.', 'unknown_channel');
