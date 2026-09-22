@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Permission, emojiNameFrom, splitContent } from '@scryproof/shared';
+import { Permission, emojiNameFrom, houseRules, splitContent } from '@scryproof/shared';
 import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
 
 import { api } from '../lib/api';
@@ -618,7 +618,7 @@ function MessageRow({
   }
 
   async function saveEdit() {
-    const next = fromDraft(draft.trim(), members);
+    const next = houseRules(fromDraft(draft.trim(), members));
     if (!next || next === message.content) {
       setEditing(false);
       return;

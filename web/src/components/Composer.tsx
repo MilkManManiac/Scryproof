@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LIMITS, Permission, emojiToken } from '@scryproof/shared';
+import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
 import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
@@ -164,7 +164,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
     try {
       await api.messages.send(channel.id, {
-        content: body ? fromDraft(body, members) : undefined,
+        content: body ? houseRules(fromDraft(body, members)) : undefined,
         replyToId: answering?.id,
         attachmentIds: pending.length > 0 ? pending.map((file) => file.id) : undefined,
       });

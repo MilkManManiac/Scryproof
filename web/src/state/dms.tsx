@@ -23,6 +23,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { houseRules } from '@scryproof/shared';
 import type { DeviceKey, DmChannel, DmMessage, PublicUser, ServerEvent } from '@scryproof/shared';
 
 import { api, ApiError } from '../lib/api';
@@ -673,7 +674,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
   const send = useCallback(
     async (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => {
-      const body: DmBody = { v: 1, text };
+      const body: DmBody = { v: 1, text: houseRules(text) };
       if (replyTo) body.replyTo = replyTo;
       if (files && files.length > 0) body.files = files;
       const { known, message } = await seal(dmId, body);
@@ -691,7 +692,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       const current = stateRef.current.messages[dmId]?.find((view) => view.id === messageId);
       if (!current || current.text === null) return;
       // Everything but the words is carried over: what it answered, what it came with.
-      const body: DmBody = { v: 1, text };
+      const body: DmBody = { v: 1, text: houseRules(text) };
       if (current.replyTo) body.replyTo = current.replyTo;
       if (current.files.length > 0) body.files = current.files;
       const { known, message } = await seal(dmId, body);
