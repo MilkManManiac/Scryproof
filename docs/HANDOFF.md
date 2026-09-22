@@ -1460,6 +1460,19 @@ link). Photographed from Chrome with the new `--user-agent` flag on
 
 ![What Firefox is told](shots/voice-firefox.png)
 
+**Notification volume, live (client 1790085165824):** Wes: "They are a
+little quite right now." Notifications settings has a Volume row, 0 to
+200%, in `notifyPrefs.volume`; both designed levels went up by half
+(`notifySounds` in `notify.ts`). Not touched: the call join and leave
+chimes in `voice-audio.ts`, which have no slider.
+
+**Desktop pop-ups, as Wes asked how they work:** off by default; the
+toggle in Notifications settings asks the browser for permission (must
+come from a click). Browser: the site's permission plus Windows allowing
+that browser to notify. Desktop app: `main.js` grants `notifications` to
+our origin and sets the AppUserModelId, so the toggle just works, but no
+person has yet seen a pop-up from the desktop app.
+
 **Next:** nothing queued from Wes. The build list in
 `docs/briefs/README.md` still holds Electron fuses, group DMs, soundboard,
 phone layout and push, safety number, global push-to-talk.
