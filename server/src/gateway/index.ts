@@ -24,6 +24,7 @@ import { config } from '../config.js';
 import { resolveSession } from '../services/auth.js';
 import { loadAllServerDetails, memberIdsForServers } from '../services/server-detail.js';
 import { readStatesFor } from '../services/read-state.js';
+import { blockedBy } from '../services/blocks.js';
 import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
@@ -204,6 +205,9 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
         .allVoiceStatesFor(serverIds)
         .filter((state) => visibleChannelIds.has(state.channelId ?? '')),
       readStates: await readStatesFor(connection.userId),
+      // Here rather than fetched after the first paint, or a blocked person's
+      // messages would be drawn and then taken away again.
+      blocks: await blockedBy(connection.userId),
       sessionId: connection.sessionId,
     },
   };

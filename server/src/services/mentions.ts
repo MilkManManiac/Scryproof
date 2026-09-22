@@ -18,6 +18,7 @@ import { Permission, has, parseMentions } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { members } from '../db/schema.js';
+import { blockersOf, withoutBlockers } from './blocks.js';
 import { computePermissionsInChannel, loadMemberContext } from './permissions.js';
 
 export interface ResolvedMentions {
@@ -59,7 +60,12 @@ export async function serverMemberIds(serverId: string): Promise<Set<string>> {
   return new Set(rows.map((row) => row.userId));
 }
 
-/** The people whose mention count goes up: pinged, able to see the channel, and not the sender. */
+/**
+ * The people whose mention count goes up: pinged, able to see the channel, not
+ * the sender, and not anyone who has blocked the sender. Somebody who blocked
+ * this author stays a member of the server and is still in `@everyone`; what
+ * blocking takes away is being reached by them.
+ */
 export async function pingTargets(input: {
   serverId: string;
   channelId: string;
@@ -68,7 +74,8 @@ export async function pingTargets(input: {
   mentions: ResolvedMentions;
   memberIds: ReadonlySet<string>;
 }): Promise<string[]> {
-  const candidates = input.mentions.everyone ? [...input.memberIds] : input.mentions.userIds;
+  const wanted = input.mentions.everyone ? [...input.memberIds] : input.mentions.userIds;
+  const candidates = withoutBlockers(wanted, await blockersOf(input.senderId));
 
   const targets: string[] = [];
   for (const userId of candidates) {

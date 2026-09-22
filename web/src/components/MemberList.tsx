@@ -6,12 +6,13 @@
  * lands; showing the roster of a server you belong to is not a leak.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { Menu, MenuItem } from './Menu';
 
 interface Group {
   key: string;
@@ -21,9 +22,11 @@ interface Group {
 }
 
 export function MemberList({ server }: { server: ServerDetail }) {
-  const { state } = useStore();
+  const { state, block, unblock } = useStore();
   const { openWith } = useDms();
   const members = state.members[server.id];
+  /** The member whose row menu is open, if any. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const groups = useMemo<Group[]>(() => {
     if (!members) return [];
@@ -115,6 +118,55 @@ export function MemberList({ server }: { server: ServerDetail }) {
                   </span>
                   {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
                 </span>
+                {self ? null : (
+                  <span className="member-menu">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="More"
+                      onClick={(event) => {
+                        // The row itself opens a conversation; this button does not.
+                        event.stopPropagation();
+                        setMenuFor((open) => (open === member.userId ? null : member.userId));
+                      }}
+                    >
+                      &#8943;
+                    </button>
+                    {menuFor === member.userId ? (
+                      <Menu align="right" onClose={() => setMenuFor(null)}>
+                        <MenuItem
+                          onClick={() => {
+                            setMenuFor(null);
+                            void openWith(member.userId).catch(() => undefined);
+                          }}
+                        >
+                          Message
+                        </MenuItem>
+                        {state.blocks.has(member.userId) ? (
+                          <MenuItem
+                            note="They are never told"
+                            onClick={() => {
+                              setMenuFor(null);
+                              void unblock(member.userId).catch(() => undefined);
+                            }}
+                          >
+                            Unblock
+                          </MenuItem>
+                        ) : (
+                          <MenuItem
+                            note="Hides them from you"
+                            onClick={() => {
+                              setMenuFor(null);
+                              void block(member.userId).catch(() => undefined);
+                            }}
+                          >
+                            Block
+                          </MenuItem>
+                        )}
+                      </Menu>
+                    ) : null}
+                  </span>
+                )}
               </div>
             );
           })}

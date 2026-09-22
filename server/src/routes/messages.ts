@@ -341,7 +341,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       mentions,
       memberIds,
     });
-    for (const [userId, state] of await bumpMentions(pinged, channelId)) {
+    for (const [userId, state] of await bumpMentions(pinged, channelId, user.id)) {
       hub.sendToUser(userId, { t: 'read_state_update', d: state });
     }
 

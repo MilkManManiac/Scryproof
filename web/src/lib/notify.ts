@@ -89,12 +89,18 @@ export interface SoundContext {
   serverId: string | null;
   openChannelId: string | null;
   windowFocused: boolean;
+  /** The author is blocked. Nothing they send makes a sound, mention or not. */
+  blocked: boolean;
   prefs: NotifyPrefs;
 }
 
 export function soundFor(input: SoundContext): 'mention' | 'message' | null {
   // Your own words, on this device or another one, are never news.
   if (!input.selfId || input.authorId === input.selfId) return null;
+
+  // Blocking is stronger than muting: a muted place still counts and still
+  // marks unread, while a blocked person reaches nothing at all.
+  if (input.blocked) return null;
 
   // Muting is about noise, not about hiding: a muted place still marks
   // unread and still counts toward the mention badge, it just never makes a

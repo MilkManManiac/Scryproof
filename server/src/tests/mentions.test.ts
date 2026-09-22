@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 
 import { mentionToken } from '@scryproof/shared';
 
+import { withoutBlockers } from '../services/blocks';
 import { resolveMentions } from '../services/mentions';
 import { groupReactions, isValidEmoji } from '../services/reactions';
 
@@ -76,6 +77,31 @@ describe('resolveMentions', () => {
   it('a message with no body can still ping through its reply', () => {
     const result = resolveMentions({ ...base, content: null, replyAuthorId: ALEX });
     assert.deepEqual(result, { userIds: [ALEX], everyone: false });
+  });
+});
+
+/**
+ * The rule `pingTargets` and `bumpMentions` both go through. Blocking is
+ * subtraction at the last moment: the mention is resolved and stored as it
+ * always was, and the person who blocked the author simply is not reached.
+ */
+describe('who a blocked author reaches', () => {
+  it('drops whoever has blocked the sender and keeps everyone else', () => {
+    assert.deepEqual(withoutBlockers([ALEX, MARA], new Set([MARA])), [ALEX]);
+  });
+
+  it('changes nothing when nobody has blocked them', () => {
+    assert.deepEqual(withoutBlockers([ALEX, MARA], new Set()), [ALEX, MARA]);
+  });
+
+  it('an @everyone from a blocked author reaches everyone but the blocker', () => {
+    assert.deepEqual(withoutBlockers([...memberIds], new Set([ALEX])), [WES, MARA]);
+  });
+
+  it('blocking is one way: the set is who blocked the sender, not who they blocked', () => {
+    // WES has blocked ALEX. Nobody has blocked WES, so a message from WES
+    // still pings ALEX: what WES chose was what WES sees.
+    assert.deepEqual(withoutBlockers([ALEX], new Set()), [ALEX]);
   });
 });
 

@@ -9,6 +9,7 @@
 import type {
   Attachment,
   AuditLogEntry,
+  BlockedPerson,
   Category,
   Channel,
   DeviceKey,
@@ -357,6 +358,16 @@ export const api = {
 
   users: {
     lookup: (ids: string[]) => post<{ users: PublicUser[] }>('/api/users/lookup', { ids }),
+  },
+
+  /**
+   * Blocking. Each of these answers with the whole list of ids afterwards, so
+   * the client replaces what it holds instead of guessing at the new state.
+   */
+  blocks: {
+    list: () => get<{ blocks: BlockedPerson[] }>('/api/blocks'),
+    add: (userId: string) => put<{ blocks: string[] }>(`/api/blocks/${userId}`),
+    remove: (userId: string) => del<{ blocks: string[] }>(`/api/blocks/${userId}`),
   },
 
   /** Uploads go through FormData, so they bypass the JSON helper above. */

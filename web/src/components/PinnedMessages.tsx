@@ -78,7 +78,15 @@ export function PinnedMessages({ channelId, onClose }: { channelId: string; onCl
                     <strong style={{ color: pin.author.accent }}>{pin.author.displayName}</strong> {when.format(new Date(pin.createdAt))}
                   </span>
                   <span className="pin-text">
-                    {pin.content ? toPlainLine(pin.content, members) : pin.attachments.length > 0 ? `${pin.attachments.length} file(s)` : 'A locked message'}
+                    {/* A pin by a blocked person is still a pin, but it is not
+                        quoted here. There is nothing to reveal in a list. */}
+                    {state.blocks.has(pin.authorId)
+                      ? 'Blocked message.'
+                      : pin.content
+                        ? toPlainLine(pin.content, members)
+                        : pin.attachments.length > 0
+                          ? `${pin.attachments.length} file(s)`
+                          : 'A locked message'}
                   </span>
                 </span>
               </button>

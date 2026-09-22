@@ -29,6 +29,16 @@ export interface SelfUser extends PublicUser {
   createdAt: Timestamp;
 }
 
+/**
+ * Somebody you have blocked, as your own list of them shows them. Only ever
+ * sent to the person who did the blocking: nobody else is told about it, least
+ * of all the person blocked.
+ */
+export interface BlockedPerson {
+  id: Snowflake;
+  displayName: string;
+}
+
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
 
 export interface Presence {

@@ -36,7 +36,11 @@ export const HEARTBEAT_TIMEOUT_MS = 60_000;
 
 export type ServerEvent =
   /** First frame after a successful connection. Everything to paint the app. */
-  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; sessionId: string } }
+  /**
+   * `blocks` is the ids this person has blocked, so the first paint already
+   * collapses their messages rather than showing them and taking them back.
+   */
+  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string } }
   | { t: 'heartbeat_ack'; d: { at: number } }
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }

@@ -61,6 +61,12 @@ export interface State {
   readStates: Record<string, ReadState>;
   /** The message being replied to, per channel, so a half-written reply survives a channel switch. */
   replyingTo: Record<string, Message>;
+  /**
+   * The people this person has blocked. It arrives in the ready frame so the
+   * first paint already collapses them; the server does the part that matters
+   * (no ping, no direct message) and this only hides.
+   */
+  blocks: Set<string>;
 
   selectedServerId: string | null;
   selectedChannelId: string | null;
@@ -82,6 +88,7 @@ const initialState: State = {
   typing: {},
   readStates: {},
   replyingTo: {},
+  blocks: new Set<string>(),
   selectedServerId: null,
   selectedChannelId: null,
   lastChannelByServer: {},
@@ -99,6 +106,7 @@ type Action =
   | { type: 'voice-states-refreshed'; serverId: string; voiceStates: VoiceState[] }
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
+  | { type: 'blocks'; blocks: string[] }
   | { type: 'signed-out' };
 
 const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
@@ -236,6 +244,11 @@ function reducer(state: State, action: Action): State {
     case 'marked-read':
       return { ...state, readStates: readUpTo(state, action.channelId, action.messageId) };
 
+    // The whole list, as the server just gave it back, rather than one id
+    // added or taken away: there is nothing to reconcile that way.
+    case 'blocks':
+      return { ...state, blocks: new Set(action.blocks) };
+
     case 'reply-to': {
       const { [action.channelId]: removed, ...rest } = state.replyingTo;
       void removed;
@@ -291,6 +304,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         presences,
         voiceStates,
         readStates,
+        blocks: new Set(event.d.blocks ?? []),
         selectedServerId,
         selectedChannelId,
       };
@@ -624,6 +638,9 @@ interface StoreValue {
   replyTo: (channelId: string, message: Message | null) => void;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
+  /** Block or unblock somebody. The list the server answers with is the one kept. */
+  block: (userId: string) => Promise<void>;
+  unblock: (userId: string) => Promise<void>;
   /**
    * Hear every gateway event, after the reducer has. For state that lives
    * beside this store rather than in it; direct messages are the first.
@@ -653,6 +670,9 @@ export function StoreProvider({
   // Same reason: a notice names the server and channel a message came from.
   const serversRef = useRef(state.servers);
   serversRef.current = state.servers;
+  // And the same again: nothing a blocked person says makes a sound or a notice.
+  const blocksRef = useRef(state.blocks);
+  blocksRef.current = state.blocks;
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
   // One session object for the life of the app. It is idle until a call is
@@ -685,6 +705,7 @@ export function StoreProvider({
             entry.channels.some((channel) => channel.id === event.d.channelId),
           );
           const muted = isMuted(notifyPrefs.get(), server?.id ?? null, event.d.channelId);
+          const blocked = blocksRef.current.has(event.d.authorId);
 
           const sound = soundFor({
             authorId: event.d.authorId,
@@ -695,6 +716,7 @@ export function StoreProvider({
             serverId: server?.id ?? null,
             openChannelId: openChannel.current,
             windowFocused: document.hasFocus(),
+            blocked,
             prefs: notifyPrefs.get(),
           });
           if (sound) play(sound);
@@ -709,6 +731,7 @@ export function StoreProvider({
             watching: focused && message.channelId === openChannel.current,
             windowFocused: focused,
             muted,
+            blocked,
           });
           if (verdict.list) {
             const channel = server?.channels.find((entry) => entry.id === message.channelId);
@@ -907,6 +930,16 @@ export function StoreProvider({
     dispatch({ type: 'server-refreshed', server });
   }, []);
 
+  const block = useCallback(async (userId: string) => {
+    const { blocks } = await api.blocks.add(userId);
+    dispatch({ type: 'blocks', blocks });
+  }, []);
+
+  const unblock = useCallback(async (userId: string) => {
+    const { blocks } = await api.blocks.remove(userId);
+    dispatch({ type: 'blocks', blocks });
+  }, []);
+
   const onGatewayEvent = useCallback((listener: (event: ServerEvent) => void) => {
     eventListeners.current.add(listener);
     return () => {
@@ -940,6 +973,8 @@ export function StoreProvider({
       replyTo,
       loadMembers,
       refreshServer,
+      block,
+      unblock,
       onGatewayEvent,
       signOut,
     }),
@@ -958,6 +993,8 @@ export function StoreProvider({
       replyTo,
       loadMembers,
       refreshServer,
+      block,
+      unblock,
       onGatewayEvent,
       signOut,
     ],

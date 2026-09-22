@@ -130,7 +130,7 @@ function LockedNotice({ dmId }: { dmId: string }) {
 }
 
 export function DmPane() {
-  const { state: app } = useStore();
+  const { state: app, block, unblock } = useStore();
   const { state } = useDms();
   const dm = state.openId ? state.dms[state.openId] : undefined;
   const selfId = app.user?.id ?? null;
@@ -153,6 +153,7 @@ export function DmPane() {
   }
 
   const other = otherMember(dm, selfId);
+  const blocked = Boolean(other && app.blocks.has(other.id));
   return (
     <>
       <header className="main-header">
@@ -163,16 +164,43 @@ export function DmPane() {
         <div className="main-topic dm-lock" title="Locked on your device, opened on theirs. The server stores it and cannot read it.">
           End-to-end encrypted
         </div>
+        {other ? (
+          <button
+            type="button"
+            className="link-button dm-block-toggle"
+            title={blocked ? 'Let them write to you again' : 'They are not told. Their messages collapse and they cannot write here.'}
+            onClick={() => void (blocked ? unblock(other.id) : block(other.id)).catch(() => undefined)}
+          >
+            {blocked ? 'Unblock' : 'Block'}
+          </button>
+        ) : null}
       </header>
       <DeviceWarnings dm={dm} selfId={selfId} />
       <LockedNotice dmId={dm.id} />
       <DmMessages dm={dm} selfId={selfId} onReply={(id) => setReplying((current) => ({ ...current, [dm.id]: id }))} />
-      <DmComposer
-        dm={dm}
-        name={other?.displayName ?? 'them'}
-        replyingTo={replying[dm.id] ?? null}
-        onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
-      />
+      {blocked && other ? (
+        // The conversation stays where it was and stays readable. What goes is
+        // the way to add to it, which the server would refuse anyway.
+        <div className="composer">
+          <div className="dm-blocked">
+            <span>You have blocked this person.</span>
+            <button
+              type="button"
+              className="button secondary inline"
+              onClick={() => void unblock(other.id).catch(() => undefined)}
+            >
+              Unblock
+            </button>
+          </div>
+        </div>
+      ) : (
+        <DmComposer
+          dm={dm}
+          name={other?.displayName ?? 'them'}
+          replyingTo={replying[dm.id] ?? null}
+          onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
+        />
+      )}
     </>
   );
 }

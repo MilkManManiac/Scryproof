@@ -2,7 +2,7 @@
  * Creating and tearing down servers, and moving members in and out.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { DEFAULT_EVERYONE_PERMISSIONS, validateServerName } from '@scryproof/shared';
 
@@ -106,6 +106,27 @@ export async function isMember(serverId: string, userId: string): Promise<boolea
     .where(and(eq(members.serverId, serverId), eq(members.userId, userId)))
     .limit(1);
   return Boolean(row);
+}
+
+/**
+ * Whether two people belong to any server in common.
+ *
+ * This is the whole of "do you know this person" in an app with no friends
+ * list and no directory. Anybody who does not share a server is reported as
+ * not existing, so nothing here can be used to find out who has an account.
+ */
+export async function sharesAServer(a: string, b: string): Promise<boolean> {
+  const mine = await getDb()
+    .select({ serverId: members.serverId })
+    .from(members)
+    .where(eq(members.userId, a));
+  if (mine.length === 0) return false;
+  const [shared] = await getDb()
+    .select({ serverId: members.serverId })
+    .from(members)
+    .where(and(eq(members.userId, b), inArray(members.serverId, mine.map((row) => row.serverId))))
+    .limit(1);
+  return Boolean(shared);
 }
 
 export async function isBanned(serverId: string, userId: string): Promise<boolean> {

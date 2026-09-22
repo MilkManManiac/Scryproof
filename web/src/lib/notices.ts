@@ -61,6 +61,11 @@ export interface NoticeContext {
    * never pops up.
    */
   muted: boolean;
+  /**
+   * The author is somebody this person has blocked. Unlike muting, this does
+   * hide: a blocked person cannot put anything on the list or on the screen.
+   */
+  blocked: boolean;
 }
 
 /**
@@ -74,6 +79,7 @@ export function noticeFor(input: NoticeContext): { list: boolean; popup: boolean
   if (!input.selfId || input.authorId === input.selfId || !input.addressedToMe || input.watching) {
     return { list: false, popup: false };
   }
+  if (input.blocked) return { list: false, popup: false };
   return { list: true, popup: !input.windowFocused && !input.muted };
 }
 

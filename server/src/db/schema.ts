@@ -460,6 +460,33 @@ export const readStates = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.channelId] })],
 );
 
+/**
+ * Who each person has blocked.
+ *
+ * One row per direction, keyed on the pair, so blocking twice is harmless and
+ * one person blocking another says nothing about the other way round. Nothing
+ * in this table is ever shown to the person blocked: it governs what reaches
+ * the blocker, and it stops a direct message in both directions.
+ */
+export const blocks = pgTable(
+  'blocks',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blockedId: text('blocked_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.blockedId] }),
+    // "Who has blocked me" is asked on the way out of every message that pings
+    // somebody, which the primary key alone would not answer cheaply.
+    index('blocks_blocked_idx').on(table.blockedId),
+  ],
+);
+
 /* ------------------------------ direct messages ----------------------------- */
 
 /**
@@ -604,6 +631,8 @@ export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
 export type DmChannelRow = typeof dmChannels.$inferSelect;
 export type DmMessageRow = typeof dmMessages.$inferSelect;
 export type DmMessageKeyRow = typeof dmMessageKeys.$inferSelect;
+
+export type BlockRow = typeof blocks.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

@@ -16,6 +16,7 @@ import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
 import { ProfileSettings } from './ProfileSettings';
 import { VoiceSettings } from './VoiceSettings';
+import { BlockedPeople } from './settings/BlockedPeople';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
   online: 'Online',
@@ -30,6 +31,7 @@ export function UserPanel() {
   const [audioOpen, setAudioOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
 
   const user = state.user;
   if (!user) return null;
@@ -111,6 +113,7 @@ export function UserPanel() {
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
       {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
+      {blockedOpen ? <BlockedPeople onClose={() => setBlockedOpen(false)} /> : null}
 
       {menuOpen ? (
         <div
@@ -150,6 +153,16 @@ export function UserPanel() {
             }}
           >
             <span className="channel-name">Edit profile</span>
+          </button>
+          <button
+            type="button"
+            className="channel"
+            onClick={() => {
+              setBlockedOpen(true);
+              setMenuOpen(false);
+            }}
+          >
+            <span className="channel-name">Blocked people</span>
           </button>
           <button type="button" className="channel" onClick={() => void signOut()}>
             <span className="channel-name">Sign out</span>
