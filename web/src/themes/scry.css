@@ -30,6 +30,7 @@
   /* The water breathes: the flicker layer is its light, not a fire's. */
   --glow-color: rgb(150 205 255 / 0.2);
   --glow-position: 50% 44%;
+  --ambient-motion: none;
 
   --line: #2b3146;
   --line-strong: #404861;

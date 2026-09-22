@@ -11,14 +11,14 @@ export interface Theme {
   id: string;
   name: string;
   /** One line, under twelve words: what the room feels like. */
-  mood: string;
 }
 
 export const THEMES: readonly Theme[] = [
-  { id: 'ridge', name: 'The ridge', mood: 'A campfire high up, under a cold sky.' },
-  { id: 'scry', name: 'The chamber', mood: 'A dark stone room, lit from the water.' },
-  { id: 'hall', name: 'The hall', mood: 'A candle-lit hall, the hearth breathing behind the table.' },
-  { id: 'plain', name: 'Plain', mood: 'The same warm room without the painting.' },
+  { id: 'ridge', name: 'The ridge' },
+  { id: 'ember', name: 'The ridge, alive' },
+  { id: 'scry', name: 'The chamber' },
+  { id: 'hall', name: 'The hall' },
+  { id: 'plain', name: 'Plain' },
 ];
 
 export const DEFAULT_THEME = 'ridge';

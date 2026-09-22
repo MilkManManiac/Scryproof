@@ -1572,5 +1572,31 @@ the panel naming the size, Sharp growing it back.
 had a third step: nothing, until he and lamp try a real call with a
 share and one of them on Low.
 
+**Evening: the picker fixed, and a theme that moves (client below).**
+Wes: every card's preview said "# the-hall" (now the theme's own name),
+and the one-line moods are gone ("they don't need to read anything
+really about the theme"). Then: "try something a little more fancy on a
+new one. Maybe its like a video... fire flies / stars shining / embers /
+maybe a river. Super subtle."
+
+Not a video: a video file behind 60% panels would be megabytes for a
+smudge, and it would cost battery on every laptop. Instead
+`components/Ambient.tsx` owns the `.ambient` painting and a canvas over
+it, and a theme asks for motion with `--ambient-motion` (every theme
+declares it; the hall contract test enforces that). Words so far:
+`embers` (sparks rising from `--glow-position` in `--glow-color`, dying
+over 5 to 11 s) and `stars` (points in the top of the sky, each on its
+own slow breath). Thirty frames a second, stops when the tab is hidden,
+never starts under "reduce motion". The new theme `ember` ("The ridge,
+alive") is the ridge's tokens plus `--ambient-motion: embers stars`.
+The ridge stays the default and stays still.
+
+Not built yet, and cheap if he wants them: `fireflies` (slow, greenish,
+low in the trees), `smoke` (a soft column above the glow), `river`
+(a shimmer band; needs a painting with water, none of the three have
+one). A river would want the chamber's basin, not the ridge.
+
+![The ridge, alive: embers over the fire, stars overhead](shots/theme-ember.png)
+
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.

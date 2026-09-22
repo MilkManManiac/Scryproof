@@ -1,7 +1,7 @@
 /**
  * The theme list and what a stored choice resolves to. The CSS itself is
  * checked by eye; this guards the contract around it: ids are unique, every
- * id has a file, moods stay one short line, and junk in storage is harmless.
+ * id has a file, and junk in storage is harmless.
  */
 
 import { strict as assert } from 'node:assert';
@@ -28,12 +28,6 @@ describe('themes', () => {
     assert.equal(THEMES[0]?.id, DEFAULT_THEME);
   });
 
-  it('keep the mood to one short line', () => {
-    for (const theme of THEMES) {
-      assert.ok(theme.mood.split(/\s+/).length < 12, `${theme.id}: mood is too long`);
-      assert.ok(!theme.mood.includes('\n'), `${theme.id}: mood is more than a line`);
-    }
-  });
 
   it('each have a stylesheet that is imported and sets every token the hall sets', () => {
     const hall = declared(readFileSync(`${themesDir}hall.css`, 'utf8'));

@@ -73,7 +73,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
                 <div className="theme-card-page">
                   <strong>Scryproof</strong>
                   <span>
-                    <em>#</em> the-hall
+                    <em>#</em> {entry.name.toLowerCase().replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '')}
                   </span>
                 </div>
               </div>
@@ -82,7 +82,6 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
                   {entry.name}
                   {inUse ? <small>In use</small> : null}
                 </div>
-                <div className="theme-card-mood">{entry.mood}</div>
               </div>
             </button>
           );

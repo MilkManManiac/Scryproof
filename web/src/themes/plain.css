@@ -52,6 +52,7 @@
 
   --glow-color: transparent;
   --glow-position: 50% 52%;
+  --ambient-motion: none;
 
   color-scheme: dark;
 }

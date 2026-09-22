@@ -30,6 +30,7 @@
 @import './themes/plain.css';
 @import './themes/scry.css';
 @import './themes/ridge.css';
+@import './themes/ember.css';
 
 @font-face {
   font-family: 'Cormorant Garamond';
@@ -129,6 +130,15 @@ body {
 }
 
 .ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* What moves in the room, drawn by Ambient.tsx when the theme asks. Under
+   the panels like the painting, so it shows only through their glass. */
+.ambient-motion {
   position: fixed;
   inset: 0;
   z-index: -1;
@@ -3931,12 +3941,6 @@ kbd {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
-}
-.theme-card-mood {
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.4;
 }
 
 /* -------------------------------- narrow windows ------------------------------- */
