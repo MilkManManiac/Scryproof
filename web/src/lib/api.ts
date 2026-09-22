@@ -15,6 +15,7 @@ import type {
   DmChannel,
   DmMessage,
   DmWrappedKey,
+  Emoji,
   Invite,
   MaskString,
   Member,
@@ -249,6 +250,31 @@ export const api = {
     reorder: (serverId: string, roleIds: string[]) =>
       patch<{ roles: Role[] }>(`/api/servers/${serverId}/roles/order`, { roleIds }),
     members: (id: string) => get<{ members: PublicUser[] }>(`/api/roles/${id}/members`),
+  },
+
+  emojis: {
+    list: (serverId: string) => get<{ emojis: Emoji[] }>(`/api/servers/${serverId}/emojis`),
+    /**
+     * The name goes in before the file. The server reads it off the fields the
+     * parser has already seen when the file arrives, so the order matters.
+     */
+    async add(serverId: string, name: string, file: File): Promise<Emoji> {
+      const form = new FormData();
+      form.append('name', name);
+      form.append('file', file);
+      const response = await fetch(`/api/servers/${serverId}/emojis`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
+      }
+      return payload.emoji as Emoji;
+    },
+    remove: (serverId: string, emojiId: string) =>
+      del<{ ok: true }>(`/api/servers/${serverId}/emojis/${emojiId}`),
   },
 
   invites: {

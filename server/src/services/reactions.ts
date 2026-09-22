@@ -9,7 +9,7 @@
 
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
-import { REACTIONS_PER_MESSAGE, REACTION_MAX_LENGTH } from '@scryproof/shared';
+import { REACTIONS_PER_MESSAGE, REACTION_MAX_LENGTH, isEmojiToken } from '@scryproof/shared';
 import type { Reaction } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
@@ -17,8 +17,17 @@ import { reactions } from '../db/schema.js';
 import type { ReactionRow } from '../db/schema.js';
 import { badRequest } from '../lib/http-error.js';
 
-/** A length and shape guard. It does not try to decide what counts as an emoji. */
+/**
+ * A length and shape guard. It does not try to decide what counts as an emoji.
+ *
+ * A custom emoji is stored as the `:name:` it is written as, which at full
+ * length is two characters past the cap this guard exists to impose, so it is
+ * allowed on its own terms. Whether the server it came from still has an emoji
+ * by that name is not checked: a reaction outlives the emoji it names, and the
+ * client already draws an unknown `:name:` as text.
+ */
 export function isValidEmoji(emoji: string): boolean {
+  if (isEmojiToken(emoji)) return true;
   return emoji.length > 0 && emoji.length <= REACTION_MAX_LENGTH && !/\s/.test(emoji);
 }
 

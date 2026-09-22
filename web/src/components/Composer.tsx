@@ -7,15 +7,27 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LIMITS, Permission } from '@scryproof/shared';
+import { LIMITS, Permission, emojiToken } from '@scryproof/shared';
 import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
-import { fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
+import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
 import { can } from '../lib/usePermissions';
 import { useStore } from '../state/store';
+
+/** One row in the list under the box, for a person or for one of the server's emoji. */
+interface Offer {
+  key: string;
+  /** What is written into the draft when this row is picked. */
+  written: string;
+  /** What the row reads as. */
+  name: string;
+  note: string;
+  /** Set for a custom emoji, so the row shows the image it will insert. */
+  imageUrl?: string;
+}
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, sendTyping, replyTo } = useStore();
@@ -35,14 +47,34 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
 
   const members = state.members[channel.serverId] ?? [];
+  const emojis = state.servers[channel.serverId]?.emojis ?? [];
   const replyingTo = state.replyingTo[channel.id] ?? null;
 
-  // The list under the box while an @name is being typed.
+  // The list under the box while an @name or a :emoji is being typed. Only one
+  // can be open at a time: each pattern needs its own mark immediately before
+  // the word, and only one character can sit there.
   const asking = dismissed ? null : mentionQueryAt(text, caret);
+  const askingEmoji = dismissed || asking ? null : emojiQueryAt(text, caret);
   const query = asking?.query;
-  const offers = useMemo(() => {
+  const emojiQuery = askingEmoji?.query;
+
+  const offers = useMemo<Offer[]>(() => {
+    if (emojiQuery !== undefined) {
+      return emojis
+        .filter((emoji) => emoji.name.includes(emojiQuery))
+        // Names that start with what was typed come before names that contain it.
+        .sort((a, b) => Number(b.name.startsWith(emojiQuery)) - Number(a.name.startsWith(emojiQuery)))
+        .slice(0, 7)
+        .map((emoji) => ({
+          key: emoji.id,
+          written: emojiToken(emoji.name),
+          name: emojiToken(emoji.name),
+          note: 'this server',
+          imageUrl: emoji.url,
+        }));
+    }
     if (query === undefined) return [];
-    const people = members
+    const people: Offer[] = members
       .filter((member) =>
         [nameOf(member), member.user.displayName, member.user.username].some((name) =>
           name.toLowerCase().includes(query),
@@ -51,18 +83,34 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       // Names that start with what was typed come before names that contain it.
       .sort((a, b) => Number(nameOf(b).toLowerCase().startsWith(query)) - Number(nameOf(a).toLowerCase().startsWith(query)))
       .slice(0, 7)
-      .map((member) => ({ key: member.userId, label: mentionLabel(member, members), name: nameOf(member), note: member.user.username }));
+      .map((member) => ({
+        key: member.userId,
+        written: `@${mentionLabel(member, members)}`,
+        name: `@${nameOf(member)}`,
+        note: member.user.username,
+      }));
     if (mayPingEveryone && 'everyone'.startsWith(query)) {
-      people.push({ key: 'everyone', label: 'everyone', name: 'everyone', note: 'pings every person who can see this channel' });
+      people.push({
+        key: 'everyone',
+        written: '@everyone',
+        name: '@everyone',
+        note: 'pings every person who can see this channel',
+      });
     }
     return people;
-  }, [query, members, mayPingEveryone]);
+  }, [query, emojiQuery, members, emojis, mayPingEveryone]);
   const picked = Math.min(chosen, Math.max(0, offers.length - 1));
 
-  function complete(label: string) {
-    if (!asking) return;
-    const next = `${text.slice(0, asking.start)}@${label} ${text.slice(caret)}`;
-    const position = asking.start + label.length + 2;
+  /**
+   * Put the chosen completion in place of what was being typed and leave the
+   * caret after it. `written` is what lands in the box: `@Name ` for a person,
+   * `:name: ` for one of the server's emoji.
+   */
+  function complete(written: string) {
+    const span = asking ?? askingEmoji;
+    if (!span) return;
+    const next = `${text.slice(0, span.start)}${written} ${text.slice(caret)}`;
+    const position = span.start + written.length + 1;
     setText(next);
     setCaret(position);
     requestAnimationFrame(() => {
@@ -186,7 +234,11 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       ) : null}
 
       {offers.length > 0 ? (
-        <div className="mention-offers" role="listbox" aria-label="People to mention">
+        <div
+          className="mention-offers"
+          role="listbox"
+          aria-label={emojiQuery === undefined ? 'People to mention' : 'Emoji to insert'}
+        >
           {offers.map((offer, index) => (
             <button
               key={offer.key}
@@ -197,11 +249,14 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
               // mousedown, not click: a click would take focus from the box first.
               onMouseDown={(event) => {
                 event.preventDefault();
-                complete(offer.label);
+                complete(offer.written);
               }}
               onMouseEnter={() => setChosen(index)}
             >
-              <span className="mention-offer-name">@{offer.name}</span>
+              {offer.imageUrl ? (
+                <img className="custom-emoji" src={offer.imageUrl} alt="" loading="lazy" />
+              ) : null}
+              <span className="mention-offer-name">{offer.name}</span>
               <span className="mention-offer-note">{offer.note}</span>
             </button>
           ))}
@@ -293,7 +348,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
               }
               if ((event.key === 'Enter' || event.key === 'Tab') && offer) {
                 event.preventDefault();
-                complete(offer.label);
+                complete(offer.written);
                 return;
               }
               if (event.key === 'Escape') {

@@ -12,6 +12,7 @@ import type {
   Attachment,
   Category,
   Channel,
+  Emoji,
   Invite,
   Member,
   Message,
@@ -28,6 +29,7 @@ import type {
   AttachmentRow,
   CategoryRow,
   ChannelRow,
+  EmojiRow,
   InviteRow,
   MemberRow,
   MessageRow,
@@ -106,6 +108,21 @@ export function channel(row: ChannelRow, isPrivate = false): Channel {
     encrypted: row.encrypted,
     private: isPrivate,
     lastMessageId: row.lastMessageId,
+    createdAt: isoRequired(row.createdAt),
+  };
+}
+
+/**
+ * The address is built from the id alone. An id never comes to point at
+ * different bytes, which is what lets the image route cache for a long time.
+ */
+export function emoji(row: EmojiRow): Emoji {
+  return {
+    id: row.id,
+    serverId: row.serverId,
+    name: row.name,
+    uploaderId: row.uploaderId,
+    url: `/api/emojis/${row.id}/image`,
     createdAt: isoRequired(row.createdAt),
   };
 }

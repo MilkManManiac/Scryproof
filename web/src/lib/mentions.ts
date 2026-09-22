@@ -6,7 +6,7 @@
  * file converts in both directions.
  */
 
-import { mentionToken, splitContent } from '@scryproof/shared';
+import { emojiToken, mentionToken, splitContent } from '@scryproof/shared';
 import type { ContentPart, Member } from '@scryproof/shared';
 
 export const nameOf = (member: Member): string => member.nickname ?? member.user.displayName;
@@ -45,6 +45,9 @@ function partToDraft(part: ContentPart, members: Member[]): string {
   // A link was never rewritten on the way in, so it goes back as it was.
   if (part.kind === 'link') return part.text;
   if (part.kind === 'everyone') return '@everyone';
+  // An emoji is typed as `:name:` and stored as `:name:`, so editing gets
+  // the text back exactly as it was written.
+  if (part.kind === 'emoji') return emojiToken(part.name);
   if (part.kind === 'spoiler') {
     return `||${part.parts.map((inner) => partToDraft(inner, members)).join('')}||`;
   }
@@ -81,6 +84,19 @@ export function toPlainLine(content: string, members: Member[]): string {
 /** The @word being typed just before the caret, if there is one. */
 export function mentionQueryAt(text: string, caret: number): { start: number; query: string } | null {
   const match = /(^|\s)@([^\s@]{0,32})$/.exec(text.slice(0, caret));
+  if (!match) return null;
+  return { start: caret - (match[2]?.length ?? 0) - 1, query: (match[2] ?? '').toLowerCase() };
+}
+
+/**
+ * The half-typed `:name` just before the caret, if there is one.
+ *
+ * Two letters at least, so a colon in ordinary prose does not open a list, and
+ * nothing once the closing colon is typed: by then the text is already a whole
+ * `:name:` and there is nothing left to complete.
+ */
+export function emojiQueryAt(text: string, caret: number): { start: number; query: string } | null {
+  const match = /(^|\s):([a-z0-9_]{2,32})$/.exec(text.slice(0, caret));
   if (!match) return null;
   return { start: caret - (match[2]?.length ?? 0) - 1, query: (match[2] ?? '').toLowerCase() };
 }

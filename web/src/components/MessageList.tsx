@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Permission, splitContent } from '@scryproof/shared';
-import type { Channel, ContentPart, Member, Message } from '@scryproof/shared';
+import { Permission, emojiNameFrom, splitContent } from '@scryproof/shared';
+import type { Channel, ContentPart, Emoji, Member, Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -73,6 +73,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   const loaded = state.loadedChannels[channel.id] ?? false;
   const typing = useTypingUsers(channel.id);
   const members = state.members[channel.serverId] ?? [];
+  const emojis = state.servers[channel.serverId]?.emojis ?? [];
 
   const canReadHistory = can(mask, Permission.READ_MESSAGE_HISTORY);
   const selfId = state.user?.id;
@@ -299,6 +300,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
               grouped={grouped}
               mask={mask}
               members={members}
+              emojis={emojis}
               openEditor={editRequest === message.id}
               onEditorOpened={() => setEditRequest(null)}
             />
@@ -324,11 +326,31 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   );
 }
 
+/**
+ * One of the server's own emoji, drawn at text height.
+ *
+ * Only ever an `<img>` pointing at our own API, with the `:name:` as its alt
+ * text, so a reader with images off or a screen reader still gets what was
+ * written rather than nothing.
+ */
+export function CustomEmoji({ emoji, className }: { emoji: Emoji; className?: string }) {
+  return (
+    <img
+      className={className ?? 'custom-emoji'}
+      src={emoji.url}
+      alt={`:${emoji.name}:`}
+      title={`:${emoji.name}:`}
+      loading="lazy"
+    />
+  );
+}
+
 /** The plain text a name or link would read as, for the blacked-out state of a spoiler. */
 function plainTextOf(parts: ContentPart[], members: Member[]): string {
   return parts
     .map((part) => {
       if (part.kind === 'text') return part.text;
+      if (part.kind === 'emoji') return `:${part.name}:`;
       if (part.kind === 'everyone') return '@everyone';
       if (part.kind === 'link') return part.text;
       if (part.kind === 'spoiler') return plainTextOf(part.parts, members);
@@ -338,19 +360,28 @@ function plainTextOf(parts: ContentPart[], members: Member[]): string {
     .join('');
 }
 
-/** One drawn part of a message body: text, a mention, a link, or a spoiler. */
+/** One drawn part of a message body: text, a mention, an emoji, a link, or a spoiler. */
 function ContentPartView({
   part,
   members,
+  emojis,
   selfId,
   everyone,
 }: {
   part: ContentPart;
   members: Member[];
+  emojis: Emoji[];
   selfId?: string;
   everyone: boolean;
 }) {
   if (part.kind === 'text') return <>{part.text}</>;
+  if (part.kind === 'emoji') {
+    const known = emojis.find((entry) => entry.name === part.name);
+    // A name this server has no emoji for was never an emoji. It goes back
+    // out as the text somebody typed.
+    if (!known) return <>:{part.name}:</>;
+    return <CustomEmoji emoji={known} />;
+  }
   if (part.kind === 'everyone') {
     if (!everyone) return <>@everyone</>;
     return <span className="mention me">@everyone</span>;
@@ -372,7 +403,7 @@ function ContentPartView({
     );
   }
   if (part.kind === 'spoiler') {
-    return <Spoiler parts={part.parts} members={members} selfId={selfId} everyone={everyone} />;
+    return <Spoiler parts={part.parts} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />;
   }
   const member = members.find((entry) => entry.userId === part.userId);
   return (
@@ -391,11 +422,13 @@ function ContentPartView({
 function Spoiler({
   parts,
   members,
+  emojis,
   selfId,
   everyone,
 }: {
   parts: ContentPart[];
   members: Member[];
+  emojis: Emoji[];
   selfId?: string;
   everyone: boolean;
 }) {
@@ -405,7 +438,7 @@ function Spoiler({
     return (
       <span className="spoiler revealed">
         {parts.map((part, index) => (
-          <ContentPartView key={index} part={part} members={members} selfId={selfId} everyone={everyone} />
+          <ContentPartView key={index} part={part} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />
         ))}
       </span>
     );
@@ -435,11 +468,13 @@ function Spoiler({
 function MessageContent({
   content,
   members,
+  emojis,
   selfId,
   everyone,
 }: {
   content: string;
   members: Member[];
+  emojis: Emoji[];
   selfId?: string;
   /** Whether the server accepted this message's @everyone. Typing the word is not enough. */
   everyone: boolean;
@@ -448,7 +483,7 @@ function MessageContent({
     <div className="message-text">
       {splitContent(content).map((part, index) => (
         <span key={index}>
-          <ContentPartView part={part} members={members} selfId={selfId} everyone={everyone} />
+          <ContentPartView part={part} members={members} emojis={emojis} selfId={selfId} everyone={everyone} />
         </span>
       ))}
     </div>
@@ -460,6 +495,7 @@ function MessageRow({
   grouped,
   mask,
   members,
+  emojis,
   openEditor,
   onEditorOpened,
 }: {
@@ -467,6 +503,7 @@ function MessageRow({
   grouped: boolean;
   mask: bigint;
   members: Member[];
+  emojis: Emoji[];
   /** Set when the composer asked for this one, the last thing this person said. */
   openEditor?: boolean;
   onEditorOpened?: () => void;
@@ -586,6 +623,7 @@ function MessageRow({
               <MessageContent
                 content={message.content}
                 members={members}
+                emojis={emojis}
                 selfId={selfId}
                 everyone={message.mentionsEveryone ?? false}
               />
@@ -622,6 +660,10 @@ function MessageRow({
               <div className="reactions">
                 {reactions.map((reaction) => {
                   const included = reaction.userIds.includes(selfId ?? '');
+                  // A reaction outlives the emoji it names. One that has been
+                  // removed since falls back to the `:name:` that was stored.
+                  const name = emojiNameFrom(reaction.emoji);
+                  const custom = name ? emojis.find((entry) => entry.name === name) : undefined;
                   const who = reaction.userIds
                     .map((userId) => {
                       const member = members.find((entry) => entry.userId === userId);
@@ -637,7 +679,11 @@ function MessageRow({
                       disabled={!included && !canReact}
                       onClick={() => toggle(reaction.emoji)}
                     >
-                      <span className="reaction-emoji">{reaction.emoji}</span>
+                      {custom ? (
+                        <CustomEmoji emoji={custom} className="reaction-emoji-image" />
+                      ) : (
+                        <span className="reaction-emoji">{reaction.emoji}</span>
+                      )}
                       <span className="reaction-count">{reaction.userIds.length}</span>
                     </button>
                   );
@@ -667,6 +713,7 @@ function MessageRow({
           ) : null}
           {picking ? (
             <ReactionPicker
+              emojis={emojis}
               onClose={() => setPicking(false)}
               onPick={(emoji) => {
                 setPicking(false);

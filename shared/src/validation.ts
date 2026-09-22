@@ -25,6 +25,10 @@ export const LIMITS = {
    * is held to a size a laptop can do that with.
    */
   dmFileBytes: 50 * 1024 * 1024,
+  emojiName: { min: 2, max: 32 },
+  emojisPerServer: 50,
+  /** An emoji is drawn at text height, so anything larger is wasted bytes. */
+  emojiBytes: 256 * 1024,
 } as const;
 
 /** Lowercase, digits, underscore, dot, hyphen. No leading or trailing marks. */
@@ -50,6 +54,33 @@ export function parseMentions(content: string): { userIds: string[]; everyone: b
     if (match[1]) userIds.add(match[1].toLowerCase());
   }
   return { userIds: [...userIds], everyone: EVERYONE_RE.test(content) };
+}
+
+/* ------------------------------- custom emoji ------------------------------- */
+
+/**
+ * An emoji name, and the `:name:` it is written as.
+ *
+ * Deliberately narrow: lowercase, digits and underscore only. A name is typed
+ * between colons in the middle of a sentence, so anything that could also be
+ * punctuation would make the boundaries ambiguous, and case-insensitive
+ * matching would let `:Cat:` and `:cat:` be two different emoji that look the
+ * same in the list.
+ */
+const EMOJI_NAME_SOURCE = String.raw`[a-z0-9_]{${LIMITS.emojiName.min},${LIMITS.emojiName.max}}`;
+const EMOJI_NAME_RE = new RegExp(`^${EMOJI_NAME_SOURCE}$`);
+const EMOJI_TOKEN_RE = new RegExp(`^:${EMOJI_NAME_SOURCE}:$`);
+
+export const emojiToken = (name: string): string => `:${name}:`;
+
+export const isEmojiName = (value: string): boolean => EMOJI_NAME_RE.test(value);
+
+/** Whether a string is a whole `:name:`, which is how a custom reaction is stored. */
+export const isEmojiToken = (value: string): boolean => EMOJI_TOKEN_RE.test(value);
+
+/** The name inside a `:name:`, or null when it is not one. */
+export function emojiNameFrom(token: string): string | null {
+  return isEmojiToken(token) ? token.slice(1, -1) : null;
 }
 
 /* ---------------------------------- links ---------------------------------- */
@@ -108,11 +139,17 @@ export function hrefFor(text: string): string | null {
   return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
 }
 
-/** Body text split into plain runs, mentions, links and spoilers, for drawing. */
+/** Body text split into plain runs, mentions, emoji, links and spoilers, for drawing. */
 export type ContentPart =
   | { kind: 'text'; text: string }
   | { kind: 'mention'; userId: string }
   | { kind: 'everyone' }
+  /**
+   * A `:name:` that is shaped like a custom emoji. Whether the server actually
+   * has one by that name is not known here, so a renderer that cannot find it
+   * draws `:name:` as plain text.
+   */
+  | { kind: 'emoji'; name: string }
   | { kind: 'link'; href: string; text: string }
   | { kind: 'spoiler'; parts: ContentPart[] };
 
@@ -123,8 +160,10 @@ export type ContentPart =
  */
 const SPOILER_SOURCE = String.raw`\|\|([\s\S]+?)\|\|`;
 
+// Group 1 mention, 2 emoji, 3 spoiler. The spoiler is tried before a link so
+// `||https://…||` hides the link rather than swallowing the second `||`.
 const CONTENT_SOURCE =
-  String.raw`<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
+  String.raw`<@([0-9a-fA-F-]{36})>|:(${EMOJI_NAME_SOURCE}):|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
   SPOILER_SOURCE +
   '|' +
   LINK_SOURCE;
@@ -150,17 +189,23 @@ export function splitContent(content: string): ContentPart[] {
       cursor = at + whole.length;
       continue;
     }
+    if (match[2]) {
+      flushTextUpTo(at);
+      parts.push({ kind: 'emoji', name: match[2] });
+      cursor = at + whole.length;
+      continue;
+    }
     if (whole === '@everyone') {
       flushTextUpTo(at);
       parts.push({ kind: 'everyone' });
       cursor = at + whole.length;
       continue;
     }
-    if (match[2] !== undefined) {
+    if (match[3] !== undefined) {
       flushTextUpTo(at);
       // The same things a top-level body can hold work under a spoiler too,
       // a mention or a link still needs building once it is revealed.
-      parts.push({ kind: 'spoiler', parts: splitContent(match[2]) });
+      parts.push({ kind: 'spoiler', parts: splitContent(match[3]) });
       cursor = at + whole.length;
       continue;
     }
@@ -235,6 +280,13 @@ export function validateRoleName(value: string): Validation {
   const trimmed = value.trim();
   if (trimmed.length < LIMITS.roleName.min) return fail('Role name cannot be empty.');
   if (trimmed.length > LIMITS.roleName.max) return fail(`Role name must be at most ${LIMITS.roleName.max} characters.`);
+  return ok;
+}
+
+export function validateEmojiName(value: string): Validation {
+  if (value.length < LIMITS.emojiName.min) return fail(`An emoji name is at least ${LIMITS.emojiName.min} characters.`);
+  if (value.length > LIMITS.emojiName.max) return fail(`An emoji name is at most ${LIMITS.emojiName.max} characters.`);
+  if (!isEmojiName(value)) return fail('Emoji names use lowercase letters, numbers and underscore.');
   return ok;
 }
 

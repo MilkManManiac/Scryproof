@@ -12,7 +12,7 @@ import { Permission, encodeMask, has } from '@scryproof/shared';
 import type { ServerDetail } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
-import { categories, channels, members, roles, servers } from '../db/schema.js';
+import { categories, channels, emojis, members, roles, servers } from '../db/schema.js';
 import {
   computePermissionsForServerChannels,
   loadMemberContext,
@@ -79,8 +79,11 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     .limit(1);
   if (!serverRow) return null;
 
-  const [serverRoles, serverCategories, serverChannels, channelPermissions, privateIds] = await Promise.all([
+  const [serverRoles, serverEmojis, serverCategories, serverChannels, channelPermissions, privateIds] = await Promise.all([
     db.select().from(roles).where(eq(roles.serverId, ctx.serverId)).orderBy(asc(roles.position)),
+    // Every member can see the whole set: they are drawn in message bodies
+    // anyone in the server may be reading.
+    db.select().from(emojis).where(eq(emojis.serverId, ctx.serverId)).orderBy(asc(emojis.name)),
     db
       .select()
       .from(categories)
@@ -116,6 +119,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     categories: visibleCategories.map(serialize.category),
     channels: visibleChannels.map((channel) => serialize.channel(channel, privateIds.has(channel.id))),
     roles: serverRoles.map(serialize.role),
+    emojis: serverEmojis.map(serialize.emoji),
     memberCount: memberRows.length,
     permissions: encodeMask(ctx.basePermissions),
   };

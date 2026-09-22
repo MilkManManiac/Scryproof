@@ -395,6 +395,32 @@ export const auditLog = pgTable(
   (table) => [index('audit_log_server_idx').on(table.serverId, table.id)],
 );
 
+/**
+ * Emoji a server uploaded for itself.
+ *
+ * The name is unique per server and that is enforced by the index below rather
+ * than by the route, because `:cheer:` resolving to two different images is
+ * not a thing a body can be drawn from at all. The image lives in the object
+ * store under `storage_key`, as avatars and attachments do.
+ */
+export const emojis = pgTable(
+  'emojis',
+  {
+    id: id(),
+    serverId: text('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    uploaderId: text('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    storageKey: text('storage_key').notNull(),
+    contentType: text('content_type').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex('emojis_server_name_key').on(table.serverId, table.name)],
+);
+
 /** One row per person, per emoji, per message. The key is what makes adding twice harmless. */
 export const reactions = pgTable(
   'reactions',
@@ -589,6 +615,7 @@ export type ChannelRow = typeof channels.$inferSelect;
 export type CategoryRow = typeof categories.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type ReactionRow = typeof reactions.$inferSelect;
+export type EmojiRow = typeof emojis.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type OverwriteRow = typeof channelOverwrites.$inferSelect;
