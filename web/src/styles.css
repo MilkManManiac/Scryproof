@@ -969,6 +969,50 @@ select {
   opacity: 0.6;
 }
 
+/* Where it is going, on the line you type into: "# general" or "@ alex" in
+   the mono, dim, with a short hairline between it and the words. It sits on
+   the first line and stays there while the box grows, like a shell prompt. */
+.composer-label {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  max-width: 18ch;
+  padding-right: 12px;
+  margin-right: 4px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.composer-label::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  height: 16px;
+  width: 1px;
+  transform: translateY(-50%);
+  background: var(--line-strong);
+}
+.composer-label-mark {
+  color: var(--text-faint);
+}
+.composer-box:focus-within .composer-label {
+  color: var(--text-muted);
+}
+.composer-box:focus-within .composer-label-mark {
+  color: var(--gold-dim);
+}
+
 .composer-input {
   flex: 1 1 auto;
   background: none;
@@ -3762,6 +3806,12 @@ kbd {
   }
   .composer {
     padding: 0 10px 10px;
+  }
+  /* A phone has no room for a long name beside the words. */
+  .composer-label {
+    max-width: 10ch;
+    padding-right: 8px;
+    margin-right: 2px;
   }
   .main-header {
     padding: 0 12px;
