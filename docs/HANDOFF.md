@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, night. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), and the night push (What's new, the dusk theme, the join fix); see the last three sections.
+**Last updated:** 2026-09-22, late. Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1766,3 +1766,44 @@ on lamp's server or could not find the button). Group DMs and DM calls
 are still briefs.
 
 Tests: server 168, web 161. No migration.
+
+## Loaf and Forg, 2026-09-22 (client 1790113070879)
+
+Wes: "This one is going to be extra wild. A theme called Loaf. Just have
+100 versions of his face plastered everywhere in the background. Like a 5
+year old would do. ... Then make another one called Forg. ... Frog vibe.
+Go nuts with the 'Alive' effects too. And lets push it to a staging site
+/ local host for me to view before pushing it live live."
+
+**Staging first, then live.** The staging site was the Vite dev server on
+this PC at `localhost:5173` against the local seed data (sign in as `wes`,
+the seed passphrase in `shot.mjs`). He looked, said "Ship it", and it was
+released. That is the order of operations for anything he wants to see
+before his friends do: dev server, his look, `release.sh`.
+
+**Loaf.** `scripts/loaf-collage.py` (PIL only) cuts twelve faces from
+`Desktop\loaf` by hand-picked boxes, gives each a wobbly scissors edge
+and a paper border, glues a hundred of them down at random sizes and
+angles over dark paper with crayon scribbles, dims the lot, and writes
+`web/public/backdrops/loaf.jpg` plus `loaf-faces.png`, a sprite sheet of
+the twelve. **His pictures never left this PC**: no face detector, no
+imagegen. The theme (`themes/loaf.css`) has panels at alpha 0.72, a step
+more opaque than the painted themes, and asks for `faces glimmer`. The
+`faces` word (Ambient.tsx) reads `--ambient-sprite`, a new token the hall
+names and every theme sets (`none` elsewhere), and floats nine cutouts
+around the room, spinning, bouncing off the edges. Told Wes the collage
+is a public picture at a guessable path like every backdrop; he shipped.
+
+![Loaf](shots/loaf.png)
+
+**Forg.** One imagegen painting (`assets/gen/forg-a.jpg`, first try) of
+a pond at dusk with a frog on a lily pad. `themes/forg.css`: dark water
+surfaces, frog green accent, lily pink where gold is. Two more words in
+Ambient: `fireflies` (26 wandering lights in the accent, each blinking on
+its own period, kept to the lower three quarters) and `ripples` (a pair
+of flattened rings every one to four seconds, low on the water). Plus
+`haze` over the sunset and `stars` in the top 16%.
+
+![Forg](shots/forg.png)
+
+Eight themes now. The picker scrolls. Tests: web 161, server 168.
