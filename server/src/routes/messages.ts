@@ -10,13 +10,14 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { LIMITS, Permission, has, validateMessageContent } from '@scryproof/shared';
+import { LIMITS, Permission, formatRoll, has, parseRoll, roll as rollDice, validateMessageContent } from '@scryproof/shared';
 import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
 import { attachments, channels, messages, reactions, users } from '../db/schema.js';
 import { badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
+import { rollDie } from '../lib/crypto.js';
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
 import { config } from '../config.js';
@@ -33,6 +34,9 @@ import type { MessageRow, User } from '../db/schema.js';
 
 /** How much of a parent message rides along with a reply. */
 const REPLY_PREVIEW_LENGTH = 140;
+
+/** `/roll 2d6+3` or `/r 2d6+3`. The expression, if any, is the rest of the line. */
+const ROLL_COMMAND_RE = /^\/(?:roll|r)(?:\s+([\s\S]+))?$/i;
 
 /**
  * How many messages sit either side of the one a jump landed on. Both halves
@@ -260,8 +264,20 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       throw badRequest('This channel is not encrypted.', 'encryption_not_enabled');
     }
 
-    const content = body.content?.trim() ?? null;
+    let content = body.content?.trim() ?? null;
+    let kind: 'text' | 'roll' = 'text';
     const attachmentIds = body.attachmentIds ?? [];
+
+    // Rolled on the server, never trusting a die the client claims to have
+    // already thrown. A bad expression is refused with the parse error and
+    // nothing is sent, same as any other rejected message.
+    const rollMatch = content ? ROLL_COMMAND_RE.exec(content) : null;
+    if (rollMatch) {
+      const parsed = parseRoll(rollMatch[1] ?? '');
+      if (!parsed.ok) throw badRequest(parsed.error, 'bad_roll');
+      content = formatRoll(parsed.roll, rollDice(parsed.roll, rollDie));
+      kind = 'roll';
+    }
 
     if (!content && !body.ciphertext && attachmentIds.length === 0) {
       throw badRequest('A message needs text or a file.', 'empty_message');
@@ -334,6 +350,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         channelId,
         authorId: user.id,
         content: channel.encrypted ? null : content,
+        kind,
         ciphertext: body.ciphertext ? Buffer.from(body.ciphertext, 'base64') : null,
         nonce: body.nonce ? Buffer.from(body.nonce, 'base64') : null,
         keyEpoch: channel.encrypted ? (body.keyEpoch ?? channel.keyEpoch) : null,
@@ -404,6 +421,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     const [existing] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
     if (!existing) throw notFound('That message does not exist.', 'unknown_message');
     if (existing.deletedAt) throw badRequest('That message was deleted.', 'message_deleted');
+    if (existing.kind === 'roll') throw badRequest('A roll cannot be edited.', 'roll_not_editable');
 
     // Editing is authorship, not moderation. Nobody edits someone else's words,
     // however senior they are.

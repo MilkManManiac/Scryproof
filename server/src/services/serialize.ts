@@ -164,6 +164,7 @@ export function message(
     channelId: row.channelId,
     authorId: row.authorId,
     author: publicUser(author),
+    kind: row.kind === 'roll' ? 'roll' : 'text',
     // A deleted message keeps its place in the timeline so replies still point
     // at something, but its body never goes back out over the wire.
     content: deleted ? null : row.content,

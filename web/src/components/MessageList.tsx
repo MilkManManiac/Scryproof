@@ -110,7 +110,10 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   // not what anyone means by "the last one".
   const [editRequest, setEditRequest] = useState<string | null>(null);
   const editable = useMemo(
-    () => [...messages].reverse().find((entry) => entry.authorId === selfId && !entry.deleted && entry.content !== null),
+    () =>
+      [...messages]
+        .reverse()
+        .find((entry) => entry.authorId === selfId && !entry.deleted && entry.content !== null && entry.kind !== 'roll'),
     [messages, selfId],
   );
   const editableId = editable?.id;
@@ -508,6 +511,32 @@ function MessageContent({
   );
 }
 
+/**
+ * A `/roll` result, drawn from the plain-text line the server stored:
+ * `2d6+3 = 11  [4, 4]  +3`. If the shape is ever unrecognised the whole line
+ * still prints, just not broken apart.
+ */
+const ROLL_LINE_RE = /^(.+?) = (-?\d+)(?:\s\s\[([^\]]*)\])?(.*)$/;
+
+function RollLine({ content }: { content: string }) {
+  const match = ROLL_LINE_RE.exec(content);
+  if (!match) return <div className="message-text">{content}</div>;
+  const [, expression, total, faces, modifiers] = match;
+
+  return (
+    <div className="roll">
+      <div className="roll-expression">{expression}</div>
+      <div className="roll-total">{total}</div>
+      {faces || modifiers ? (
+        <div className="roll-faces">
+          {faces ? `[${faces}]` : ''}
+          {modifiers}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MessageRow({
   message,
   grouped,
@@ -636,7 +665,9 @@ function MessageRow({
           />
         ) : (
           <>
-            {message.ciphertext && !message.content ? (
+            {message.kind === 'roll' && message.content ? (
+              <RollLine content={message.content} />
+            ) : message.ciphertext && !message.content ? (
               <div className="message-text deleted">
                 Encrypted message. This client cannot open it yet.
               </div>
@@ -742,7 +773,7 @@ function MessageRow({
               }}
             />
           ) : null}
-          {mine && !timedOut && message.content !== null ? (
+          {mine && !timedOut && message.content !== null && message.kind !== 'roll' ? (
             <button
               type="button"
               className="icon-button"

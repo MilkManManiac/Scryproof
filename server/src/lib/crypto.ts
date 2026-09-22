@@ -11,6 +11,7 @@ import {
   createHash,
   hkdfSync,
   randomBytes,
+  randomInt,
   timingSafeEqual,
 } from 'node:crypto';
 
@@ -167,4 +168,13 @@ const ACCENTS = [
 export function accentForId(id: string): string {
   const digest = createHash('sha256').update(id).digest();
   return ACCENTS[digest.readUInt16BE(0) % ACCENTS.length]!;
+}
+
+/**
+ * One die, `sides` faces, 1 through `sides`. `crypto.randomInt` rather than
+ * `Math.random`: a table trusts the roll because nobody, including whoever
+ * runs this box, can nudge it toward a face.
+ */
+export function rollDie(sides: number): number {
+  return randomInt(1, sides + 1);
 }

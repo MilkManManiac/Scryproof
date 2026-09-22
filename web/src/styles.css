@@ -639,6 +639,34 @@ textarea {
   margin-left: 5px;
 }
 
+/* A /roll result. The expression is what was asked for, the total is the one
+   number anyone actually needs, and the faces are how the table checks the
+   server's arithmetic. */
+.roll {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 4px 0;
+}
+.roll-expression {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.roll-total {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 640;
+  color: var(--accent-bright);
+  line-height: 1;
+}
+.roll-faces {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 /* Timestamp on the left of a grouped message, revealed on hover. */
 .message.grouped .message-hover-time {
   position: absolute;

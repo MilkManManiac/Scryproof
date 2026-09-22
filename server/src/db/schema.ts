@@ -290,6 +290,8 @@ export const messages = pgTable(
 
     /** Plaintext body. Null in an encrypted channel. */
     content: text('content'),
+    /** 'text' | 'roll'. A roll is written by the server and cannot be edited. */
+    kind: text('kind').notNull().default('text'),
 
     /**
      * Milestone 7. When a channel is encrypted the server stores only these

@@ -184,6 +184,12 @@ export interface Message {
   channelId: Snowflake;
   authorId: Snowflake;
   author: PublicUser;
+  /**
+   * 'roll' is a `/roll` result: the server rolled it, the body is the
+   * expression written out plainly, and it cannot be edited. Everything else
+   * is 'text'.
+   */
+  kind: 'text' | 'roll';
   /** Plaintext body. Null when the channel is end-to-end encrypted. */
   content: string | null;
   /**

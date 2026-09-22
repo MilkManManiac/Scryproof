@@ -71,6 +71,13 @@
       "when": 1790045644656,
       "tag": "0009_uneven_malcolm_colcord",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790046218706,
+      "tag": "0010_new_chameleon",
+      "breakpoints": true
     }
   ]
 }
