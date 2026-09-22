@@ -9,6 +9,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import { ZodError } from 'zod';
 
 import { LIMITS } from '@scryproof/shared';
 
@@ -156,6 +157,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ZodError) {
+      // A route called .parse() directly and the body didn't match. That's a
+      // shape problem with what was sent, not a server fault, so it is a 400
+      // and it is not worth an error-level log line.
+      const firstPath = error.issues[0]?.path.join('.');
+      const message = firstPath
+        ? `Some of what was sent is not in the right shape: ${firstPath}`
+        : 'Some of what was sent is not in the right shape.';
+      logger.debug({ path: request.url, method: request.method }, 'request body failed validation');
+      void reply.status(400).send({ code: 'invalid_request', message });
+      return;
+    }
+
     if (error instanceof HttpError) {
       if (error.status === 429 && typeof error.details?.retryAfterSeconds === 'number') {
         void reply.header('Retry-After', String(error.details.retryAfterSeconds));
