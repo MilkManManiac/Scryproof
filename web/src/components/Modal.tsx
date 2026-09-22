@@ -10,11 +10,14 @@ export function Modal({
   children,
   footer,
   onClose,
+  className,
 }: {
   title: string;
   children: ReactNode;
   footer: ReactNode;
   onClose: () => void;
+  /** For a dialog that needs a different width than the default. */
+  className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
 
@@ -33,7 +36,7 @@ export function Modal({
   return (
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
       <div
-        className="modal"
+        className={className ? `modal ${className}` : 'modal'}
         ref={box}
         role="dialog"
         aria-modal="true"

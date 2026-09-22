@@ -15,6 +15,7 @@ import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
 import { ProfileSettings } from './ProfileSettings';
+import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
 import { BlockedPeople } from './settings/BlockedPeople';
 
@@ -32,6 +33,7 @@ export function UserPanel() {
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
+  const [themesOpen, setThemesOpen] = useState(false);
 
   const user = state.user;
   if (!user) return null;
@@ -114,6 +116,7 @@ export function UserPanel() {
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
       {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
       {blockedOpen ? <BlockedPeople onClose={() => setBlockedOpen(false)} /> : null}
+      {themesOpen ? <ThemePicker onClose={() => setThemesOpen(false)} /> : null}
 
       {menuOpen ? (
         <div
@@ -163,6 +166,17 @@ export function UserPanel() {
             }}
           >
             <span className="channel-name">Blocked people</span>
+          </button>
+          <button
+            type="button"
+            className="channel"
+            title="Choose a theme"
+            onClick={() => {
+              setThemesOpen(true);
+              setMenuOpen(false);
+            }}
+          >
+            <span className="channel-name">Themes</span>
           </button>
           <button type="button" className="channel" onClick={() => void signOut()}>
             <span className="channel-name">Sign out</span>
