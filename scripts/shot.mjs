@@ -31,12 +31,16 @@ const user = flag('as', 'wes');
 const channel = flag('channel', null);
 const password = process.env.SEED_PASSWORD ?? 'seed-passphrase-for-local-dev';
 const chrome = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// Several worktrees can photograph themselves at once against one API if each
+// runs its own web dev server and its own debugging port.
+const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
+const debugPort = Number(process.env.DEBUG_PORT ?? 9352);
 const profile = mkdtempSync(join(tmpdir(), 'scryproof-shot-'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const browser = spawn(chrome, [
   '--headless=new', '--disable-gpu', '--no-first-run', '--mute-audio',
-  '--remote-debugging-port=9352', `--user-data-dir=${profile}`,
+  `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
   '--window-size=1440,900', 'about:blank',
 ], { stdio: 'ignore' });
 
@@ -44,7 +48,7 @@ try {
   let target = null;
   for (let attempt = 0; attempt < 60 && !target; attempt += 1) {
     try {
-      const list = await (await fetch('http://127.0.0.1:9352/json/list')).json();
+      const list = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
       target = list.find((entry) => entry.type === 'page')?.webSocketDebuggerUrl ?? null;
     } catch {}
     if (!target) await sleep(250);
@@ -72,7 +76,7 @@ try {
     (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result.value;
 
   await send('Page.enable');
-  await send('Page.navigate', { url: 'http://localhost:5173' });
+  await send('Page.navigate', { url: webUrl });
   await sleep(1500);
 
   const status = await run(
@@ -80,7 +84,7 @@ try {
   );
   if (status !== 200) throw new Error(`sign in as ${user} answered ${status}`);
 
-  await send('Page.navigate', { url: 'http://localhost:5173' });
+  await send('Page.navigate', { url: webUrl });
   await sleep(2500);
 
   if (channel) {
