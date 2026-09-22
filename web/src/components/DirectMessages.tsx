@@ -18,6 +18,7 @@ import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { openPicture } from './Lightbox';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
@@ -522,7 +523,13 @@ function DmFile({ dmId, file }: { dmId: string; file: DmFileRef }) {
     }
   }
 
-  if (picture && url) return <img className="attachment-image" src={url} alt={file.name} />;
+  if (picture && url) {
+    return (
+      <button type="button" className="attachment-open" title="Look closer" onClick={() => openPicture({ url, name: file.name })}>
+        <img className="attachment-image" src={url} alt={file.name} />
+      </button>
+    );
+  }
 
   return (
     <button type="button" className="attachment-file dm-file" disabled={state === 'working'} onClick={() => void save()}>

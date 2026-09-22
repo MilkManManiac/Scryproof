@@ -945,6 +945,90 @@ select {
   display: block;
 }
 
+.attachment-open {
+  display: block;
+  padding: 0;
+  border-radius: var(--radius);
+  cursor: zoom-in;
+}
+.attachment-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------- lightbox -------------------------------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--bg-rgb) / 0.9);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--line);
+}
+.lightbox-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text);
+}
+.lightbox-size {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.lightbox-tools {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lightbox-tools .button {
+  text-decoration: none;
+}
+.lightbox-close {
+  font-size: 16px;
+}
+.lightbox-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  user-select: none;
+}
+.lightbox-image {
+  position: absolute;
+  max-width: none;
+  transform-origin: center;
+  will-change: transform;
+  border-radius: 2px;
+}
+.lightbox-image:active {
+  cursor: grabbing;
+}
+@media (max-width: 640px) {
+  .lightbox-size {
+    display: none;
+  }
+}
+
 .attachment-file {
   margin-top: 6px;
   display: inline-flex;

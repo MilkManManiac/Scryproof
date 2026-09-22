@@ -132,6 +132,13 @@ try {
     await sleep(700);
   }
 
+  // e.g. --eval "window.__openPicture({ url: '/backdrops/ridge.jpg', name: 'ridge.jpg' })":
+  // a hand on the page for the screens no click reaches from seed data.
+  for (const code of flags('eval')) {
+    await run(code);
+    await sleep(700);
+  }
+
   // e.g. --hover '.category-row'. A real mouse move, not a class: half the
   // controls in this app only appear under the pointer, and a screenshot that
   // cannot show them cannot be used to check them.

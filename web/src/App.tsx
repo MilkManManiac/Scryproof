@@ -24,6 +24,7 @@ import { DmPane, DmSidebar } from './components/DirectMessages';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { PinnedMessages } from './components/PinnedMessages';
+import { Lightbox } from './components/Lightbox';
 import { ProfileCardProvider } from './components/ProfileCard';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
@@ -67,6 +68,7 @@ export function App() {
       <DmProvider>
         <ProfileCardProvider>
           <Shell />
+          <Lightbox />
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>

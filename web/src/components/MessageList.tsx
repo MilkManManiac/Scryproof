@@ -23,6 +23,7 @@ import { unreadLine } from '../lib/unread-line';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
+import { openPicture } from './Lightbox';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 
@@ -731,13 +732,15 @@ function MessageRow({
 
             {message.attachments.map((attachment) =>
               attachment.contentType.startsWith('image/') ? (
-                <img
+                <button
                   key={attachment.id}
-                  className="attachment-image"
-                  src={attachment.url}
-                  alt={attachment.filename}
-                  loading="lazy"
-                />
+                  type="button"
+                  className="attachment-open"
+                  title="Look closer"
+                  onClick={() => openPicture({ url: attachment.url, name: attachment.filename })}
+                >
+                  <img className="attachment-image" src={attachment.url} alt={attachment.filename} loading="lazy" />
+                </button>
               ) : (
                 <a
                   key={attachment.id}
