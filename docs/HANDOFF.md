@@ -1027,7 +1027,24 @@ Built after the recovery phrase and released together.
   purpose; the full picture arrives when it is focused or full screen. The
   box forwards each stream to every viewer, so a 12 Mbit/s share to five
   people is 60 Mbit/s out of the droplet; fine for a game night, worth
-  watching on the bandwidth graph if it becomes nightly.
+  watching on the bandwidth graph if it becomes nightly. Under your own
+  focused camera there is a grey line from `cameraReport()`: what was asked
+  for, what the camera is giving, the most it says it can do, and a note
+  that slower-than-it-could-be usually means a dark room. Wes's camera gave
+  1080p at 15 with 60 selected; that line is the answer to "is my camera
+  shit or is the app capping it" (the app never caps; the camera does).
+- **Updates never act on their own** (Wes, 2026-09-21: "I don't want to auto
+  open/close anything on anyones setups"). A reload-when-idle was built and
+  reverted the same hour. The rule: the app checks every 10 minutes and shows
+  the bar; a browser tab does the same by fetching `/` every 10 minutes and
+  comparing the `assets/index-*.js` name (`watchSite` in `web/src/lib/desktop.ts`);
+  the reload is always the person's click. Left alone, the new client is
+  simply there next launch or next page load.
+- **Two layers, one rule for installers.** Everything in `web/` reaches every
+  app through the bar with no installer. Everything in `desktop/` (shell,
+  tray, the update checker and its 10-minute constant, any native hook) is
+  baked into the `.exe` and does not update itself, so shell changes ship as
+  one installer that Wes hands out, not several.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.
@@ -1042,8 +1059,12 @@ installed desktop app by itself within ten minutes (accent-coloured banner,
 "Reload now").
 
 Not yet tried by a person: the private switch in a real dialog, the
-right-click mute menus, the build stamp in Wes's app, avatar upload from a
-real file picker, real pop-ups on Windows, 1440p60 share.
+right-click mute menus, avatar upload from a real file picker, real pop-ups
+on Windows, 1440p60 share, the camera report line, the browser update bar
+appearing in a tab left open. The build stamp works (Wes read it).
+
+The stamp shows the commit the client was built from, which is the one
+*before* the "Signed desktop client N" commit release.sh makes.
 
 Do next, in this order:
 
@@ -1051,6 +1072,8 @@ Do next, in this order:
    (uiohook-napi or similar); vet it for phoning home before it ships. Then
    **start with Windows** as an off-by-default toggle Wes flips himself. Both
    change `desktop/src/*`, so they need a new installer, not a client update.
+   Fold in the shorter update check (10 to 5 minutes; suggested, not decided)
+   and ship all of it as **one** installer.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
 3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
