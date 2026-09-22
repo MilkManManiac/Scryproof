@@ -1663,7 +1663,7 @@ every header, `components/DockButton.tsx`, asks the shell through the
 `OPEN_DOCK` signal) and the members a drawer from the right (the member
 count). Picking anything closes them. On a wide screen the `.dock`
 wrappers are `display: contents`, so nothing there moved. Installable:
-`web/public/manifest.webmanifest`, icons made from the desktop icon
+`web/public/manifest.json`, icons made from the desktop icon
 (`web/public/icons`, PIL, one-off), and `web/public/sw.js`, a service
 worker that caches nothing (the page is no-store and the app already
 watches for a new build; a cache would fight both). "Install on this
