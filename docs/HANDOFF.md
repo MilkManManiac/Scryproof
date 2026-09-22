@@ -1807,3 +1807,9 @@ of flattened rings every one to four seconds, low on the water). Plus
 ![Forg](shots/forg.png)
 
 Eight themes now. The picker scrolls. Tests: web 161, server 168.
+
+**To-do for the next round (Wes, 2026-09-22, closing out):** rename the
+dusk theme to **"Ham"**. The display name in `web/src/lib/themes.ts` is
+the change; keep the id `dusk` so nobody's saved choice resets (a stored
+id that no longer exists falls back to the ridge). Mention it in the
+changelog entry so people know it is the same theme.
