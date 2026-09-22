@@ -1904,3 +1904,11 @@ see it on lamp's server, he has no Manage channels there and lamp has
 to give it; that is the other half of the open question above.
 
 Changelog entry `2026-09-22-dm-commands`. Not released: he has not seen it.
+
+Wes: "Hold off on deploy. We can do a big one next. What else can we
+build? Come up with a plan and we can give to sonnet or opus to build."
+The plan is the third batch in `docs/briefs/README.md`: five Sonnet
+briefs (invite link, polls, events, bookmarks, voice messages) and three
+Opus briefs (soundboard, voice changers, initiative tracker), each a
+file beside it. The DM commands and the Delete item ship with that
+batch.

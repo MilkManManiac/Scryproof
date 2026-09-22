@@ -68,3 +68,40 @@ the pitch shifter being most of it.
 Two more main-session jobs, written up 2026-09-22 after lamp asked for
 them: `group-dms.md` and `dm-calls.md`. Both change the E2EE path or how
 voice rooms are granted, which is why they are not agent briefs.
+
+## Third batch, written 2026-09-22 night, not yet launched
+
+Wes: "We can do a big one next. What else can we build? Come up with a
+plan and we can give to sonnet or opus to build." Everything from the
+first two batches is live. Not deployed at the time of writing: commands
+and emoji names in the DM box, and Delete channel on the right-click
+menu (commit 59085e5); they go out with this batch.
+
+Sonnet, in parallel, each in its own worktree:
+
+9. `invite-link.md`: `/invite/CODE` opens a join screen. Smallest, and
+   the first thing a new person hits.
+10. `polls.md`: `/poll Which night? | Friday | Saturday`, voted by click.
+11. `events.md`: "Coming up" in the sidebar with Going / Maybe / Can't
+    and a reminder an hour before.
+12. `bookmarks.md`: save a message for yourself; a Saved tab in the inbox.
+13. `voice-messages.md`: hold to record, a waveform player in place.
+
+Opus, one at a time after the Sonnet batch is merged (they share the
+voice path and the store):
+
+14. `soundboard.md`: real sounds a server uploads, played into the call
+    as a second encrypted track.
+15. `voice-changers.md`: Robot, Chipmunk, Deep, before the track is
+    published.
+16. `initiative.md`: `/init`, a live turn tracker above the composer.
+
+Merge trap, same as the second batch: `polls`, `events`, `bookmarks`,
+`soundboard` and `initiative` each add a migration, so
+`server/drizzle/meta/_journal.json` conflicts. Merge one at a time,
+keep every entry, renumber. `polls` and `bookmarks` both touch
+`MessageList.tsx` and `messages.ts`; `polls` and `initiative` both add to
+`commandOffers` in `web/src/lib/commands.ts`.
+
+Main session only, still: group DMs, DM calls, Electron fuses, M7 (text
+E2EE for private channels), the UI pass (waiting on Wes's screenshots).
