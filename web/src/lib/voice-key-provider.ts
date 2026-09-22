@@ -76,14 +76,16 @@ export class ScryproofKeyProvider extends BaseKeyProvider {
  * with no fix. Non-negotiable 2 says E2EE is never "temporarily" disabled, so
  * the answer is a clear explanation, not a downgrade.
  */
-export function voiceSupport(userAgent = navigator.userAgent): { ok: boolean; reason?: string } {
+export function voiceSupport(userAgent = navigator.userAgent): { ok: boolean; reason?: string; installer?: boolean } {
   if (/firefox/i.test(userAgent)) {
+    // `installer` asks the panel to put the desktop app's download link under
+    // the words: the fix is one click away, so offer it there.
     return {
       ok: false,
+      installer: true,
       reason:
-        'Firefox cannot send encrypted video that other browsers can read — a bug in the ' +
-        'media library, still open. Voice here is encrypted end to end and never turned off ' +
-        'to work around it, so use Chrome, Edge or the desktop app for calls.',
+        'Firefox cannot join encrypted calls yet: a bug in its media library, not fixed. ' +
+        'Encryption is never switched off to get around it. Use Chrome, Edge or the desktop app.',
     };
   }
   if (typeof RTCRtpSender === 'undefined' || !('createEncodedStreams' in RTCRtpSender.prototype)) {

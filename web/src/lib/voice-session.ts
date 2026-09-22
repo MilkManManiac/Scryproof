@@ -95,6 +95,8 @@ export interface VoiceSnapshot {
   phase: VoicePhase;
   channelId: string | null;
   error: string | null;
+  /** True when the error's remedy is the desktop app, so its download link belongs under the words. */
+  installer: boolean;
   /** True only when LiveKit reports E2EE on and our own key is in place. */
   encrypted: boolean;
   epoch: number;
@@ -122,6 +124,7 @@ const IDLE: VoiceSnapshot = {
   phase: 'idle',
   channelId: null,
   error: null,
+  installer: false,
   encrypted: false,
   epoch: 0,
   code: null,
@@ -248,7 +251,11 @@ export class VoiceSession {
 
     const support = voiceSupport();
     if (!support.ok) {
-      this.update({ phase: 'failed', error: support.reason ?? 'This browser cannot join encrypted calls.' });
+      this.update({
+        phase: 'failed',
+        error: support.reason ?? 'This browser cannot join encrypted calls.',
+        installer: support.installer === true,
+      });
       return;
     }
 

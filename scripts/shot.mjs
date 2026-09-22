@@ -80,6 +80,13 @@ try {
     (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result.value;
 
   await send('Page.enable');
+  // e.g. --user-agent 'Mozilla/5.0 ... Firefox/130.0', to photograph what a
+  // browser we cannot drive would be told. Only the string changes.
+  const userAgent = flag('user-agent', null);
+  if (userAgent) {
+    await send('Network.enable');
+    await send('Network.setUserAgentOverride', { userAgent });
+  }
   await send('Page.navigate', { url: webUrl });
   await sleep(1500);
 

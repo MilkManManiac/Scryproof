@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
+import { publicOrigin } from '../lib/desktop';
 import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
 import type { VoicePerson, VoiceSnapshot, VoiceVideo } from '../lib/voice-session';
@@ -294,7 +295,16 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
         </div>
       )}
 
-      {mine && voice.phase === 'failed' ? <p className="voice-stage-error">{voice.error}</p> : null}
+      {mine && voice.phase === 'failed' ? (
+        <p className="voice-stage-error">
+          {voice.error}
+          {voice.installer ? (
+            <a className="voice-stage-error-link" href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
+              Get the desktop app for Windows
+            </a>
+          ) : null}
+        </p>
+      ) : null}
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
 
       <div className="voice-stage-controls">

@@ -1646,6 +1646,15 @@ select {
   max-width: 460px;
   text-align: center;
 }
+/* The remedy under the refusal: the one link on the stage, in the room's
+   accent rather than the error's red, so it reads as a way out. */
+.voice-stage-error-link {
+  display: block;
+  margin-top: 10px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 .voice-tiles {
   display: flex;

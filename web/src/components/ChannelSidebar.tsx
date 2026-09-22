@@ -188,7 +188,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     const { unread, mentions } = unreadFor(state, channel);
                     const muted = notifyState.mutedChannels.includes(channel.id);
 
-                    const classes = ['channel'];
+                    // The type is a class too, so a voice channel can be told from a
+                    // text one by selector (the screenshot script needs that).
+                    const classes = ['channel', channel.type];
                     if (active) classes.push('active');
                     if (unread) classes.push('unread');
                     if (muted) classes.push('muted');
