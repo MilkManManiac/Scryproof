@@ -13,7 +13,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Permission, splitContent } from '@scryproof/shared';
-import type { Channel, Member, Message } from '@scryproof/shared';
+import type { Channel, ContentPart, Member, Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -324,6 +324,113 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   );
 }
 
+/** The plain text a name or link would read as, for the blacked-out state of a spoiler. */
+function plainTextOf(parts: ContentPart[], members: Member[]): string {
+  return parts
+    .map((part) => {
+      if (part.kind === 'text') return part.text;
+      if (part.kind === 'everyone') return '@everyone';
+      if (part.kind === 'link') return part.text;
+      if (part.kind === 'spoiler') return plainTextOf(part.parts, members);
+      const member = members.find((entry) => entry.userId === part.userId);
+      return `@${member ? nameOf(member) : 'someone who left'}`;
+    })
+    .join('');
+}
+
+/** One drawn part of a message body: text, a mention, a link, or a spoiler. */
+function ContentPartView({
+  part,
+  members,
+  selfId,
+  everyone,
+}: {
+  part: ContentPart;
+  members: Member[];
+  selfId?: string;
+  everyone: boolean;
+}) {
+  if (part.kind === 'text') return <>{part.text}</>;
+  if (part.kind === 'everyone') {
+    if (!everyone) return <>@everyone</>;
+    return <span className="mention me">@everyone</span>;
+  }
+  if (part.kind === 'link') {
+    return (
+      // noreferrer is the point: without it the site being opened learns
+      // which page sent the visitor, and the address of a private
+      // instance is not theirs to have.
+      <a
+        className="link"
+        href={part.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        referrerPolicy="no-referrer"
+      >
+        {part.text}
+      </a>
+    );
+  }
+  if (part.kind === 'spoiler') {
+    return <Spoiler parts={part.parts} members={members} selfId={selfId} everyone={everyone} />;
+  }
+  const member = members.find((entry) => entry.userId === part.userId);
+  return (
+    <span className={part.userId === selfId ? 'mention me' : 'mention'}>
+      @{member ? nameOf(member) : 'someone who left'}
+    </span>
+  );
+}
+
+/**
+ * `||hidden||`. Blacked out until clicked, then drawn like the rest of the
+ * message; a mention or link inside is plain text while hidden and does not
+ * become clickable until the spoiler is revealed. State lives here only,
+ * so it resets to hidden on reload.
+ */
+function Spoiler({
+  parts,
+  members,
+  selfId,
+  everyone,
+}: {
+  parts: ContentPart[];
+  members: Member[];
+  selfId?: string;
+  everyone: boolean;
+}) {
+  const [revealed, setRevealed] = useState(false);
+
+  if (revealed) {
+    return (
+      <span className="spoiler revealed">
+        {parts.map((part, index) => (
+          <ContentPartView key={index} part={part} members={members} selfId={selfId} everyone={everyone} />
+        ))}
+      </span>
+    );
+  }
+
+  const reveal = () => setRevealed(true);
+  return (
+    <span
+      className="spoiler"
+      role="button"
+      tabIndex={0}
+      aria-label="Spoiler, click to show"
+      onClick={reveal}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          reveal();
+        }
+      }}
+    >
+      {plainTextOf(parts, members)}
+    </span>
+  );
+}
+
 /** A message body with the people it names drawn as names. Still only ever text. */
 function MessageContent({
   content,
@@ -339,40 +446,11 @@ function MessageContent({
 }) {
   return (
     <div className="message-text">
-      {splitContent(content).map((part, index) => {
-        if (part.kind === 'text') return <span key={index}>{part.text}</span>;
-        if (part.kind === 'everyone') {
-          if (!everyone) return <span key={index}>@everyone</span>;
-          return (
-            <span key={index} className="mention me">
-              @everyone
-            </span>
-          );
-        }
-        if (part.kind === 'link') {
-          return (
-            // noreferrer is the point: without it the site being opened learns
-            // which page sent the visitor, and the address of a private
-            // instance is not theirs to have.
-            <a
-              key={index}
-              className="link"
-              href={part.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerPolicy="no-referrer"
-            >
-              {part.text}
-            </a>
-          );
-        }
-        const member = members.find((entry) => entry.userId === part.userId);
-        return (
-          <span key={index} className={part.userId === selfId ? 'mention me' : 'mention'}>
-            @{member ? nameOf(member) : 'someone who left'}
-          </span>
-        );
-      })}
+      {splitContent(content).map((part, index) => (
+        <span key={index}>
+          <ContentPartView part={part} members={members} selfId={selfId} everyone={everyone} />
+        </span>
+      ))}
     </div>
   );
 }

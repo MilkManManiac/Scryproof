@@ -7,7 +7,7 @@
  */
 
 import { mentionToken, splitContent } from '@scryproof/shared';
-import type { Member } from '@scryproof/shared';
+import type { ContentPart, Member } from '@scryproof/shared';
 
 export const nameOf = (member: Member): string => member.nickname ?? member.user.displayName;
 
@@ -40,23 +40,42 @@ export function fromDraft(text: string, members: Member[]): string {
   return output;
 }
 
+function partToDraft(part: ContentPart, members: Member[]): string {
+  if (part.kind === 'text') return part.text;
+  // A link was never rewritten on the way in, so it goes back as it was.
+  if (part.kind === 'link') return part.text;
+  if (part.kind === 'everyone') return '@everyone';
+  if (part.kind === 'spoiler') {
+    return `||${part.parts.map((inner) => partToDraft(inner, members)).join('')}||`;
+  }
+  const member = members.find((entry) => entry.userId === part.userId);
+  return member ? `@${mentionLabel(member, members)}` : '@someone who left';
+}
+
 /** Stored text back to typed text, for editing a message. */
 export function toDraft(content: string, members: Member[]): string {
   return splitContent(content)
-    .map((part) => {
-      if (part.kind === 'text') return part.text;
-      // A link was never rewritten on the way in, so it goes back as it was.
-      if (part.kind === 'link') return part.text;
-      if (part.kind === 'everyone') return '@everyone';
-      const member = members.find((entry) => entry.userId === part.userId);
-      return member ? `@${mentionLabel(member, members)}` : '@someone who left';
-    })
+    .map((part) => partToDraft(part, members))
     .join('');
+}
+
+/**
+ * A spoiler reads as `[spoiler]` here rather than its contents: this line
+ * shows up above a reply and in notices, and nothing should un-hide a
+ * spoiler just by being near it in the UI.
+ */
+function partToPlainLine(part: ContentPart, members: Member[]): string {
+  if (part.kind === 'spoiler') return '[spoiler]';
+  return partToDraft(part, members);
 }
 
 /** Stored text as one plain line, for the snippet above a reply. */
 export function toPlainLine(content: string, members: Member[]): string {
-  return toDraft(content, members).replace(/\s+/g, ' ').trim();
+  return splitContent(content)
+    .map((part) => partToPlainLine(part, members))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** The @word being typed just before the caret, if there is one. */

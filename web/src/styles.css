@@ -2299,6 +2299,21 @@ video.mirrored {
   color: var(--accent-bright);
 }
 
+/* Hidden: the background colour doubles as the text colour, so there is
+   nothing to read even by selecting or highlighting the run. Revealed: it
+   drops back to ordinary text. */
+.spoiler {
+  border-radius: 3px;
+  background: var(--bg-active);
+}
+.spoiler:not(.revealed) {
+  color: var(--bg-active);
+  cursor: pointer;
+}
+.spoiler.revealed {
+  color: inherit;
+}
+
 /* A message that pings you carries the accent down its left edge, the same
    mark an unread channel has in the sidebar, so the two read as one idea. */
 .message.pings-me {
