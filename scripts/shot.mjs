@@ -35,13 +35,17 @@ const chrome = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application
 // runs its own web dev server and its own debugging port.
 const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
 const debugPort = Number(process.env.DEBUG_PORT ?? 9352);
+// WINDOW=390,844 photographs a phone-sized window. The default is a laptop.
+const windowSize = process.env.WINDOW ?? '1440,900';
+// --signed-out photographs the door: the sign-in screen, nobody logged in.
+const signedOut = args.includes('--signed-out');
 const profile = mkdtempSync(join(tmpdir(), 'scryproof-shot-'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const browser = spawn(chrome, [
   '--headless=new', '--disable-gpu', '--no-first-run', '--mute-audio',
   `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
-  '--window-size=1440,900', 'about:blank',
+  `--window-size=${windowSize}`, 'about:blank',
 ], { stdio: 'ignore' });
 
 try {
@@ -79,13 +83,15 @@ try {
   await send('Page.navigate', { url: webUrl });
   await sleep(1500);
 
-  const status = await run(
-    `fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: ${JSON.stringify(user)}, password: ${JSON.stringify(password)} }) }).then((r) => r.status)`,
-  );
-  if (status !== 200) throw new Error(`sign in as ${user} answered ${status}`);
+  if (!signedOut) {
+    const status = await run(
+      `fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: ${JSON.stringify(user)}, password: ${JSON.stringify(password)} }) }).then((r) => r.status)`,
+    );
+    if (status !== 200) throw new Error(`sign in as ${user} answered ${status}`);
 
-  await send('Page.navigate', { url: webUrl });
-  await sleep(2500);
+    await send('Page.navigate', { url: webUrl });
+    await sleep(2500);
+  }
 
   if (channel) {
     const clicked = await run(
