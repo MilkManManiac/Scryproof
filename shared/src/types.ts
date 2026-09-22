@@ -82,6 +82,12 @@ export interface Channel {
    */
   encrypted: boolean;
   /**
+   * Whether @everyone is denied View channel here, so only the roles and
+   * people singled out can see it. Read from the overwrites, never stored on
+   * its own: the switch and the editor cannot disagree.
+   */
+  private: boolean;
+  /**
    * The newest message in the channel, deleted or not. Ids sort by time, so
    * comparing this with a reader's last-read id is the whole unread check.
    */

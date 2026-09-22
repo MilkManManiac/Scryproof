@@ -28,3 +28,6 @@ __pycache__/
 
 # The desktop app: installers and unpacked builds.
 desktop/release/
+
+# Agent worktrees, never part of the repo.
+.claude/worktrees/

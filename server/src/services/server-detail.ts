@@ -18,6 +18,7 @@ import {
   loadMemberContext,
   type MemberContext,
 } from './permissions.js';
+import { privateChannelIds } from './privacy.js';
 import * as serialize from './serialize.js';
 
 /**
@@ -78,7 +79,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     .limit(1);
   if (!serverRow) return null;
 
-  const [serverRoles, serverCategories, serverChannels, channelPermissions] = await Promise.all([
+  const [serverRoles, serverCategories, serverChannels, channelPermissions, privateIds] = await Promise.all([
     db.select().from(roles).where(eq(roles.serverId, ctx.serverId)).orderBy(asc(roles.position)),
     db
       .select()
@@ -91,6 +92,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
       .where(eq(channels.serverId, ctx.serverId))
       .orderBy(asc(channels.position)),
     computePermissionsForServerChannels(ctx),
+    privateChannelIds(ctx.serverId),
   ]);
 
   // The client is never told a channel exists that it may not view. Hiding it
@@ -112,7 +114,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
   return {
     ...serialize.server(serverRow),
     categories: visibleCategories.map(serialize.category),
-    channels: visibleChannels.map(serialize.channel),
+    channels: visibleChannels.map((channel) => serialize.channel(channel, privateIds.has(channel.id))),
     roles: serverRoles.map(serialize.role),
     memberCount: memberRows.length,
     permissions: encodeMask(ctx.basePermissions),

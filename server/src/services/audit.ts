@@ -25,6 +25,7 @@ export type AuditAction =
   | 'channel.update'
   | 'channel.delete'
   | 'channel.permissions'
+  | 'channel.privacy'
   | 'category.create'
   | 'category.update'
   | 'category.delete'

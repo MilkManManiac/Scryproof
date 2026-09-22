@@ -93,7 +93,7 @@ export function category(row: CategoryRow): Category {
   };
 }
 
-export function channel(row: ChannelRow): Channel {
+export function channel(row: ChannelRow, isPrivate = false): Channel {
   return {
     id: row.id,
     serverId: row.serverId,
@@ -104,6 +104,7 @@ export function channel(row: ChannelRow): Channel {
     position: row.position,
     slowmodeSeconds: row.slowmodeSeconds,
     encrypted: row.encrypted,
+    private: isPrivate,
     lastMessageId: row.lastMessageId,
     createdAt: isoRequired(row.createdAt),
   };

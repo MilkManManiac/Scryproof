@@ -3270,3 +3270,53 @@ kbd {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* The private switch and its two lists. */
+.privacy .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.privacy .check input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+.privacy-lists {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 10px;
+}
+.privacy-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+}
+.privacy-group-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+.privacy-group input[type='search'] {
+  margin-bottom: 6px;
+}
+.privacy-row {
+  padding: 3px 0;
+  font-size: 13.5px;
+}
+.privacy-row .avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+@media (max-width: 640px) {
+  .privacy-lists {
+    grid-template-columns: 1fr;
+  }
+}

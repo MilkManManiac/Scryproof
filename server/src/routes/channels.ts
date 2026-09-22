@@ -8,7 +8,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -27,12 +27,14 @@ import {
   categoryOverwrites,
   channelOverwrites,
   channels,
+  members,
   roles,
 } from '../db/schema.js';
 import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
+import { applyPrivacy, isPrivate, loadPrivacy, privateChannelIds } from '../services/privacy.js';
 import * as serialize from '../services/serialize.js';
 import {
   computePermissionsForServerChannels,
@@ -42,6 +44,14 @@ import {
   requireRoleBelow,
   requireServerPermission,
 } from '../services/permissions.js';
+import type { MemberContext } from '../services/permissions.js';
+
+/** "Private: on, for these roles and people." Ids are checked against the server below. */
+const privacyBody = z.object({
+  private: z.boolean(),
+  roleIds: z.array(z.string()).max(100).default([]),
+  memberIds: z.array(z.string()).max(500).default([]),
+});
 
 const channelBody = z.object({
   name: z.string().min(1).max(64),
@@ -49,6 +59,7 @@ const channelBody = z.object({
   categoryId: z.string().nullable().optional(),
   topic: z.string().max(512).nullable().optional(),
   encrypted: z.boolean().optional(),
+  private: privacyBody.optional(),
 });
 
 export async function registerChannelRoutes(app: FastifyInstance): Promise<void> {
@@ -100,24 +111,30 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 
     if (!created) throw badRequest('Could not create the channel.', 'create_failed');
 
+    const makePrivate = body.private?.private === true;
+    if (body.private) {
+      const ctx = await requireServerPermission(serverId, user.id, Permission.MANAGE_CHANNELS);
+      await setPrivacy(ctx, created.id, body.private);
+    }
+
     await audit.record({
       serverId,
       actorId: user.id,
       action: 'channel.create',
       targetType: 'channel',
       targetId: created.id,
-      changes: { name, type: body.type },
+      changes: { name, type: body.type, private: makePrivate },
     });
 
-    // A brand new channel has no overwrites, so everyone who can see the
-    // server can see it. Still broadcast through the permission-aware path so
-    // the rule holds even when that changes.
+    // A brand new public channel has no overwrites, so everyone who can see
+    // the server can see it; a private one is announced only to those let in.
+    if (makePrivate) hub.invalidateServerPermissions(serverId, false);
     await hub.broadcastToChannel(serverId, created.id, {
       t: 'channel_create',
-      d: serialize.channel(created),
+      d: serialize.channel(created, makePrivate),
     });
 
-    return { channel: serialize.channel(created) };
+    return { channel: serialize.channel(created, makePrivate) };
   });
 
   app.get('/api/channels/:channelId', async (request) => {
@@ -129,9 +146,47 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     if (!channel) throw notFound('That channel does not exist.', 'unknown_channel');
 
     return {
-      channel: serialize.channel(channel),
+      channel: serialize.channel(channel, await isPrivate(channelId, ctx.serverId)),
       permissions: encodeMask(ctx.channelPermissions),
     };
+  });
+
+  app.get('/api/channels/:channelId/privacy', async (request) => {
+    const user = requireUser(request);
+    const { channelId } = z.object({ channelId: z.string() }).parse(request.params);
+    const ctx = await requireChannelPermission(channelId, user.id, Permission.MANAGE_CHANNELS);
+    return { privacy: await loadPrivacy(channelId, ctx.serverId) };
+  });
+
+  app.put('/api/channels/:channelId/privacy', async (request) => {
+    const user = requireUser(request);
+    const { channelId } = z.object({ channelId: z.string() }).parse(request.params);
+    const body = privacyBody.parse(request.body);
+    const ctx = await requireChannelPermission(channelId, user.id, Permission.MANAGE_CHANNELS);
+
+    const plan = await setPrivacy(ctx, channelId, body);
+    await audit.record({
+      serverId: ctx.serverId,
+      actorId: user.id,
+      action: 'channel.privacy',
+      targetType: 'channel',
+      targetId: channelId,
+      changes: { private: body.private, roles: body.roleIds.length, members: body.memberIds.length },
+    });
+
+    // Who can see this channel just changed, in both directions. Every client
+    // refetches the server, and those let in or shut out see it appear or go.
+    hub.invalidateServerPermissions(ctx.serverId);
+    if (plan.upsert.length > 0 || plan.remove.length > 0) {
+      const [channel] = await getDb().select().from(channels).where(eq(channels.id, channelId)).limit(1);
+      if (channel) {
+        await hub.broadcastToChannel(ctx.serverId, channelId, {
+          t: 'channel_update',
+          d: serialize.channel(channel, body.private),
+        });
+      }
+    }
+    return { privacy: await loadPrivacy(channelId, ctx.serverId) };
   });
 
   app.patch('/api/channels/:channelId', async (request) => {
@@ -183,9 +238,10 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       changes: { name, topic: body.topic, categoryId: body.categoryId },
     });
 
+    const wasPrivate = await isPrivate(channelId, ctx.serverId);
     await hub.broadcastToChannel(ctx.serverId, channelId, {
       t: 'channel_update',
-      d: serialize.channel(updated),
+      d: serialize.channel(updated, wasPrivate),
     });
 
     // Moving a channel between categories changes who can see it, because the
@@ -195,7 +251,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       hub.invalidateServerPermissions(ctx.serverId);
     }
 
-    return { channel: serialize.channel(updated) };
+    return { channel: serialize.channel(updated, wasPrivate) };
   });
 
   app.delete('/api/channels/:channelId', async (request) => {
@@ -598,12 +654,13 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     // cache still applying a layer that no longer exists.
     if (orphaned.length > 0) hub.invalidateServerPermissions(existing.serverId);
 
+    const privateIds = await privateChannelIds(existing.serverId);
     for (const channel of orphaned) {
       // Permission-aware, because this event carries the channel's name and
       // some of these channels were only ever visible through the category.
       await hub.broadcastToChannel(existing.serverId, channel.id, {
         t: 'channel_update',
-        d: serialize.channel({ ...channel, categoryId: null }),
+        d: serialize.channel({ ...channel, categoryId: null }, privateIds.has(channel.id)),
       });
     }
 
@@ -747,5 +804,46 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 
     hub.invalidateServerPermissions(category.serverId);
     return { ok: true };
+  });
+}
+
+/**
+ * Turn the switch, with the same checks the overwrite editor makes: the roles
+ * let in must sit below the actor, the people must be members, and the actor
+ * is always let in themselves, because a channel you made private and then
+ * cannot open is a support ticket, not a feature.
+ */
+async function setPrivacy(
+  ctx: MemberContext,
+  channelId: string,
+  wanted: { private: boolean; roleIds: string[]; memberIds: string[] },
+) {
+  const db = getDb();
+  const roleIds = [...new Set(wanted.roleIds)];
+  const memberIds = [...new Set(wanted.memberIds)];
+
+  if (wanted.private) {
+    const rows = roleIds.length > 0
+      ? await db.select().from(roles).where(and(eq(roles.serverId, ctx.serverId), inArray(roles.id, roleIds)))
+      : [];
+    if (rows.length !== roleIds.length) throw badRequest('One of those roles does not exist.', 'unknown_role');
+    for (const role of rows) if (!role.isEveryone) requireRoleBelow(ctx, role.position);
+
+    const present = memberIds.length > 0
+      ? await db
+          .select({ userId: members.userId })
+          .from(members)
+          .where(and(eq(members.serverId, ctx.serverId), inArray(members.userId, memberIds)))
+      : [];
+    if (present.length !== memberIds.length) throw badRequest('One of those people is not in this server.', 'unknown_member');
+    if (!ctx.isOwner && !has(ctx.basePermissions, Permission.ADMINISTRATOR) && !memberIds.includes(ctx.userId)) {
+      memberIds.push(ctx.userId);
+    }
+  }
+
+  return applyPrivacy(channelId, ctx.serverId, {
+    private: wanted.private,
+    roleIds: roleIds.filter((id) => id !== ctx.everyoneRoleId),
+    memberIds,
   });
 }

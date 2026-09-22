@@ -19,6 +19,8 @@ import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { CategorySettings } from './settings/CategorySettings';
+import { PUBLIC, PrivacyPicker } from './settings/PrivacyPicker';
+import type { PrivacyChoice } from './settings/PrivacyPicker';
 import { ServerSettings } from './settings/ServerSettings';
 import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
@@ -210,6 +212,11 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                             {channel.type === 'voice' ? '♫' : '#'}
                           </span>
                           <span className="channel-name">{channel.name}</span>
+                          {channel.private ? (
+                            <span className="channel-lock" title="Private: only some roles and people can see this channel">
+                              &#9679;
+                            </span>
+                          ) : null}
                           {channel.encrypted ? (
                             <span className="channel-lock" title="End-to-end encrypted">
                               &#128274;
@@ -315,8 +322,10 @@ function NewChannelDialog({
   const [name, setName] = useState('');
   const [type, setType] = useState<'text' | 'voice'>('text');
   const [categoryId, setCategoryId] = useState<string | null>(initialCategoryId);
+  const [privacy, setPrivacy] = useState<PrivacyChoice>(PUBLIC);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { state } = useStore();
 
   const slug = slugifyChannelName(name);
   const categories = [...server.categories].sort((a, b) => a.position - b.position);
@@ -328,7 +337,12 @@ function NewChannelDialog({
     setBusy(true);
     setError(null);
     try {
-      await api.channels.create(server.id, { name: slug, type, categoryId });
+      await api.channels.create(server.id, {
+        name: slug,
+        type,
+        categoryId,
+        private: privacy.private ? privacy : undefined,
+      });
       onClose();
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Could not create the channel.');
@@ -412,6 +426,10 @@ function NewChannelDialog({
             created in a private category is private from the moment it exists.
           </p>
         </div>
+      ) : null}
+
+      {state.user ? (
+        <PrivacyPicker serverId={server.id} roles={server.roles} value={privacy} onChange={setPrivacy} selfId={state.user.id} />
       ) : null}
     </Modal>
   );

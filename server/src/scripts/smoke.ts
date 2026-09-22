@@ -760,6 +760,37 @@ async function main(): Promise<void> {
   const pinListAfter = await owner.get(`/api/channels/${textChannel.id}/pins`);
   check('the list is then empty', pinListAfter.json?.messages?.length === 0, pinListAfter.json);
 
+  /* ---------------------------- the private switch --------------------------- */
+  console.log('\nthe private switch');
+  const friendId = friendRegistered.json.user.id;
+  const madePrivate = await owner.post(`/api/servers/${serverId}/channels`, {
+    name: 'owner-diary',
+    private: { private: true, roleIds: [], memberIds: [] },
+  });
+  check('a channel can be born private', madePrivate.status === 200 && madePrivate.json?.channel?.private === true, madePrivate.json);
+  const diaryId = madePrivate.json?.channel?.id;
+  const friendDiary = await friend.get(`/api/channels/${diaryId}`);
+  check('the friend cannot see it', friendDiary.status === 404, friendDiary.json);
+  const friendList = (await friend.get(`/api/servers/${serverId}`)).json?.server?.channels ?? [];
+  check('nor find it in the list', !friendList.some((c: any) => c.id === diaryId), friendList.map((c: any) => c.name));
+  const readBack = await owner.get(`/api/channels/${diaryId}/privacy`);
+  check('the switch reads back as on', readBack.status === 200 && readBack.json?.privacy?.private === true, readBack.json);
+  const letIn = await owner.put(`/api/channels/${diaryId}/privacy`, { private: true, roleIds: [], memberIds: [friendId] });
+  check('the owner can let one person in', letIn.status === 200 && letIn.json?.privacy?.memberIds?.includes(friendId), letIn.json);
+  const friendNow = await friend.get(`/api/channels/${diaryId}`);
+  check('and then the friend sees it, marked private', friendNow.status === 200 && friendNow.json?.channel?.private === true, friendNow.json);
+  const stranger = await owner.put(`/api/channels/${diaryId}/privacy`, { private: true, roleIds: [], memberIds: ['nobody'] });
+  check('a person who is not a member is refused', stranger.status === 400, stranger.json);
+  const madePublic = await owner.put(`/api/channels/${diaryId}/privacy`, { private: false, roleIds: [], memberIds: [] });
+  check('the switch turns off', madePublic.status === 200 && madePublic.json?.privacy?.private === false, madePublic.json);
+  const noRows = await owner.get(`/api/channels/${diaryId}/permissions`);
+  check('and leaves no overwrites behind', noRows.status === 200 && noRows.json?.overwrites?.length === 0, noRows.json);
+  const friendPublic = await friend.get(`/api/channels/${diaryId}`);
+  check('everyone sees a public channel', friendPublic.status === 200 && friendPublic.json?.channel?.private === false, friendPublic.json);
+  const friendFlips = await friend.put(`/api/channels/${diaryId}/privacy`, { private: true, roleIds: [], memberIds: [] });
+  check('the switch needs Manage Channels', friendFlips.status === 403 || friendFlips.status === 404, friendFlips.json);
+
+
   /* -------------------------------- summary ------------------------------ */
   console.log(`\n${passed} passed, ${failed} failed\n`);
   if (failed > 0) process.exit(1);

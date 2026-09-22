@@ -144,8 +144,17 @@ export const api = {
   channels: {
     create: (
       serverId: string,
-      body: { name: string; type: 'text' | 'voice'; categoryId?: string | null },
+      body: {
+        name: string;
+        type: 'text' | 'voice';
+        categoryId?: string | null;
+        private?: { private: boolean; roleIds: string[]; memberIds: string[] };
+      },
     ) => post<{ channel: Channel }>(`/api/servers/${serverId}/channels`, body),
+    privacy: (id: string) =>
+      get<{ privacy: { private: boolean; roleIds: string[]; memberIds: string[] } }>(`/api/channels/${id}/privacy`),
+    setPrivacy: (id: string, body: { private: boolean; roleIds: string[]; memberIds: string[] }) =>
+      put<{ privacy: { private: boolean; roleIds: string[]; memberIds: string[] } }>(`/api/channels/${id}/privacy`, body),
     update: (
       id: string,
       body: { name?: string; topic?: string | null; slowmodeSeconds?: number; categoryId?: string | null },

@@ -22,6 +22,9 @@ import type { Channel, Member, ServerDetail } from '@scryproof/shared';
 import { ApiError, api } from '../../lib/api';
 import { groupsForChannel } from '../../lib/permissionMeta';
 import { OverwritePane } from './OverwritePane';
+import { PUBLIC, PrivacyPicker } from './PrivacyPicker';
+import type { PrivacyChoice } from './PrivacyPicker';
+import { useStore } from '../../state/store';
 import type { Authority } from './authority';
 
 const SLOWMODE_OPTIONS = [0, 5, 10, 30, 60, 300, 900] as const;
@@ -109,6 +112,7 @@ function ChannelOverview({
   onDeleted: () => void;
 }) {
   const editable = authority.can(Permission.MANAGE_CHANNELS);
+  const { state } = useStore();
 
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic ?? '');
@@ -117,14 +121,39 @@ function ChannelOverview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // What the overwrites say now, and what is picked. Null until fetched.
+  const [wasPrivacy, setWasPrivacy] = useState<PrivacyChoice | null>(null);
+  const [privacy, setPrivacy] = useState<PrivacyChoice>(PUBLIC);
+
+  useEffect(() => {
+    if (!editable) return;
+    let cancelled = false;
+    api.channels
+      .privacy(channel.id)
+      .then(({ privacy: current }) => {
+        if (cancelled) return;
+        setWasPrivacy(current);
+        setPrivacy(current);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [channel.id, editable]);
 
   const categories = [...server.categories].sort((a, b) => a.position - b.position);
   const slug = slugifyChannelName(name);
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+  const privacyDirty =
+    wasPrivacy !== null &&
+    (privacy.private !== wasPrivacy.private ||
+      (privacy.private && (!same(privacy.roleIds, wasPrivacy.roleIds) || !same(privacy.memberIds, wasPrivacy.memberIds))));
   const dirty =
     slug !== channel.name ||
     topic !== (channel.topic ?? '') ||
     slowmode !== channel.slowmodeSeconds ||
-    categoryId !== channel.categoryId;
+    categoryId !== channel.categoryId ||
+    privacyDirty;
 
   async function save() {
     const valid = validateChannelName(slug);
@@ -133,12 +162,19 @@ function ChannelOverview({
     setSaving(true);
     setError(null);
     try {
-      await api.channels.update(channel.id, {
-        name: slug,
-        topic: topic.trim() === '' ? null : topic.trim(),
-        slowmodeSeconds: slowmode,
-        categoryId,
-      });
+      if (slug !== channel.name || topic !== (channel.topic ?? '') || slowmode !== channel.slowmodeSeconds || categoryId !== channel.categoryId) {
+        await api.channels.update(channel.id, {
+          name: slug,
+          topic: topic.trim() === '' ? null : topic.trim(),
+          slowmodeSeconds: slowmode,
+          categoryId,
+        });
+      }
+      if (privacyDirty) {
+        const { privacy: saved } = await api.channels.setPrivacy(channel.id, privacy);
+        setWasPrivacy(saved);
+        setPrivacy(saved);
+      }
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Could not save the channel.');
     } finally {
@@ -199,6 +235,10 @@ function ChannelOverview({
             moving it out again puts it back exactly as it was.
           </p>
         </div>
+      ) : null}
+
+      {editable && wasPrivacy && state.user ? (
+        <PrivacyPicker serverId={server.id} roles={server.roles} value={privacy} onChange={setPrivacy} selfId={state.user.id} />
       ) : null}
 
       {channel.type === 'text' ? (
