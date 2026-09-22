@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, morning. Wave two of the visual pass is on `main`: four themes, not yet deployed; see the last section. **M0 is done: https://scryproof.com is live and the reboot-stays-locked test passed, twice.** The project was renamed from GoOffline to Scryproof the same day. The one thing outstanding is Wes creating the owner account; see "M0 so far" below.
+**Last updated:** 2026-09-22, morning. Themes and the no-gap layout are live; see the last section.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1421,15 +1421,20 @@ the card looks like the room before you click it. The screenshot script has
 their worktrees can be deleted; `visual-a` (Paper theme) and `visual-c`
 (no rail, members drawer, call strip) still hold parts worth lifting.
 
-**Next, in order:**
+**Wes chose, 2026-09-22 morning, and it is live on scryproof.com
+(client 1790082465860):** the chamber is the default, and there are no
+gaps between the panels ("I like gaps none more"). He saw a 4px-seam
+version and a flat version side by side and took flat: one surface,
+hairlines where panels meet, no shadow, no rounded corners. `--gutter`
+and `--radius-panel` stay tokens at zero. Of the paintings themselves:
+"I'm not crazy about the actual background images but thats fine for
+now". The generated SVG backdrops are a placeholder in his eyes; a better
+painting is a later job, not a rebuild.
 
-1. Wes opens http://localhost:5190 (vite is up, API on 8787 seeded, sign in
-   as `wes`), switches between the four, and says which is the default.
-   The default is the first entry in `lib/themes.ts` and the bare `:root`
-   copy in `themes/hall.css`; if he picks another, that bare block moves.
-2. Full local loop, then `bash ~/ship.sh` from WSL.
-3. The Firefox voice-refusal text in `voice-key-provider.ts`: shorter, and
-   the installer link under it.
+![The chamber, no gaps, as shipped](shots/app.png)
+
+**Next:** the Firefox voice-refusal text in `voice-key-provider.ts`:
+shorter, and the installer link under it.
 
 The seeded local database still has ~20 "new device" notices for wes from
 headless shots; `shot.mjs` should reuse a device profile.
