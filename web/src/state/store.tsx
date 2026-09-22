@@ -125,7 +125,15 @@ type Action =
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
   | { type: 'blocks'; blocks: string[] }
-  | { type: 'signed-out' };
+  | { type: 'signed-out' }
+  /**
+   * A message this client already holds the truth about, straight from an API
+   * response rather than the gateway. Voting on a poll is the reason this
+   * exists: the broadcast for a vote is `poll_update`, which deliberately
+   * carries no one's `mine` but the voter's own, so the voter's own copy has
+   * to come from the response to their own request instead.
+   */
+  | { type: 'message-applied'; channelId: string; message: Message };
 
 const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
 
@@ -300,6 +308,20 @@ function reducer(state: State, action: Action): State {
       return { ...state, replyingTo: action.message ? { ...rest, [action.channelId]: action.message } : rest };
     }
 
+    case 'message-applied': {
+      const existing = state.messages[action.channelId];
+      if (!existing) return state;
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.channelId]: existing.map((message) =>
+            message.id === action.message.id ? action.message : message,
+          ),
+        },
+      };
+    }
+
     case 'gateway':
       return applyGatewayEvent(state, action.event);
 
@@ -424,6 +446,25 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
           ...state.messages,
           [event.d.channelId]: existing.map((message) =>
             message.id === event.d.messageId ? { ...message, reactions: event.d.reactions } : message,
+          ),
+        },
+      };
+    }
+
+    case 'poll_update': {
+      // Public tally only. `mine` is left exactly as it was: the vote that
+      // caused this event, if it was ours, already came back on the request
+      // that made it, and someone else's pick is never sent to us at all.
+      const existing = state.messages[event.d.channelId];
+      if (!existing) return state;
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [event.d.channelId]: existing.map((message) =>
+            message.id === event.d.messageId && message.poll
+              ? { ...message, poll: { ...message.poll, counts: event.d.counts, closedAt: event.d.closedAt } }
+              : message,
           ),
         },
       };
@@ -701,6 +742,8 @@ interface StoreValue {
   /** Tell the server this channel has been read up to a message. Safe to call often. */
   markRead: (channelId: string, messageId: string) => void;
   replyTo: (channelId: string, message: Message | null) => void;
+  /** Replace one message with a fresher copy that only came back to this client, such as a vote's own response. */
+  applyMessage: (channelId: string, message: Message) => void;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
   /** Block or unblock somebody. The list the server answers with is the one kept. */
@@ -1036,6 +1079,10 @@ export function StoreProvider({
     dispatch({ type: 'reply-to', channelId, message });
   }, []);
 
+  const applyMessage = useCallback((channelId: string, message: Message) => {
+    dispatch({ type: 'message-applied', channelId, message });
+  }, []);
+
   const loadMembers = useCallback(async (serverId: string) => {
     const { members } = await api.servers.members(serverId);
     dispatch({ type: 'members-loaded', serverId, members });
@@ -1089,6 +1136,7 @@ export function StoreProvider({
       jumpToMessage,
       markRead,
       replyTo,
+      applyMessage,
       loadMembers,
       refreshServer,
       block,
@@ -1111,6 +1159,7 @@ export function StoreProvider({
       jumpToMessage,
       markRead,
       replyTo,
+      applyMessage,
       loadMembers,
       refreshServer,
       block,

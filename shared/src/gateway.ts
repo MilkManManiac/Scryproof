@@ -21,6 +21,7 @@ import type {
   Server,
   ServerDetail,
   Snowflake,
+  Timestamp,
   VoiceState,
   PublicUser,
 } from './types.js';
@@ -47,6 +48,13 @@ export type ServerEvent =
   | { t: 'message_delete'; d: { id: Snowflake; channelId: Snowflake } }
   /** The full set for one message after any change. Whole, so a missed event cannot leave a wrong count behind. */
   | { t: 'reaction_update'; d: { messageId: Snowflake; channelId: Snowflake; reactions: Reaction[] } }
+  /**
+   * A poll's public tally after a vote or a close. Never who voted for what,
+   * and never anyone else's picks, which is why this is not `message_update`:
+   * that carries the whole message, and a viewer's own picks are only theirs
+   * to see.
+   */
+  | { t: 'poll_update'; d: { messageId: Snowflake; channelId: Snowflake; counts: number[]; closedAt: Timestamp | null } }
   /** Sent only to the person it belongs to, on all their devices: read here, read everywhere. */
   | { t: 'read_state_update'; d: ReadState }
   | { t: 'typing_start'; d: { channelId: Snowflake; userId: Snowflake; at: number } }

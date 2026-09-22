@@ -120,7 +120,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
     () =>
       [...messages]
         .reverse()
-        .find((entry) => entry.authorId === selfId && !entry.deleted && entry.content !== null && entry.kind !== 'roll'),
+        .find((entry) => entry.authorId === selfId && !entry.deleted && entry.content !== null && entry.kind === 'text'),
     [messages, selfId],
   );
   const editableId = editable?.id;
@@ -581,6 +581,79 @@ function RollLine({ content }: { content: string }) {
 }
 
 /**
+ * A poll: the question already prints as the message's ordinary text above
+ * this, so here is just the choices, a click to vote, and who may close it.
+ * The server holds the truth; this draws whatever it last sent back.
+ */
+function PollView({ message, selfId, canManage }: { message: Message; selfId?: string; canManage: boolean }) {
+  const { applyMessage } = useStore();
+  const poll = message.poll;
+  if (!poll) return null;
+
+  const closed = Boolean(poll.closedAt);
+  const total = poll.counts.reduce((sum, count) => sum + count, 0);
+  const canClose = !closed && (message.authorId === selfId || canManage);
+
+  async function vote(index: number) {
+    if (closed || !poll) return;
+    const picked = poll.mine.includes(index);
+    const next = poll.multiple
+      ? picked
+        ? poll.mine.filter((option) => option !== index)
+        : [...poll.mine, index]
+      : picked
+        ? []
+        : [index];
+    try {
+      const { message: updated } = await api.messages.vote(message.id, next);
+      applyMessage(message.channelId, updated);
+    } catch {
+      // The tally already on screen came from the server too; nothing to undo.
+    }
+  }
+
+  async function close() {
+    try {
+      const { message: updated } = await api.messages.closePoll(message.id);
+      applyMessage(message.channelId, updated);
+    } catch {
+      // As above.
+    }
+  }
+
+  return (
+    <div className="poll">
+      {poll.options.map((option, index) => {
+        const count = poll.counts[index] ?? 0;
+        const share = total > 0 ? Math.round((count / total) * 100) : 0;
+        const mine = poll.mine.includes(index);
+        return (
+          <button
+            key={index}
+            type="button"
+            className={mine ? 'poll-option mine' : 'poll-option'}
+            disabled={closed}
+            onClick={() => void vote(index)}
+          >
+            <span className="poll-option-bar" style={{ width: `${share}%` }} />
+            <span className="poll-option-text">{option}</span>
+            <span className="poll-option-count">{count}</span>
+          </button>
+        );
+      })}
+      <div className="poll-footer">
+        <span>{closed ? 'Closed' : 'Open'}</span>
+        {canClose ? (
+          <button type="button" className="poll-close" onClick={() => void close()}>
+            Close
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
  * What a spawn command leaves behind: the face, the name, and a click to
  * see it again. Everyone who was in the channel when it was sent saw it
  * cross; everyone else gets this.
@@ -780,6 +853,13 @@ function MessageRow({
           <>
             {message.kind === 'roll' && message.content ? (
               <RollLine content={message.content} />
+            ) : message.kind === 'poll' && message.content ? (
+              <>
+                <div className="message-text">
+                  <strong>{message.content}</strong>
+                </div>
+                <PollView message={message} selfId={selfId} canManage={can(mask, Permission.MANAGE_MESSAGES)} />
+              </>
             ) : spawn ? (
               <PlayLine character={spawn} />
             ) : message.ciphertext && !message.content ? (
@@ -908,7 +988,7 @@ function MessageRow({
               }}
             />
           ) : null}
-          {mine && !timedOut && message.content !== null && message.kind !== 'roll' ? (
+          {mine && !timedOut && message.content !== null && message.kind === 'text' ? (
             <button
               type="button"
               className="icon-button"

@@ -37,6 +37,7 @@ import type {
   ServerRow,
   User,
 } from '../db/schema.js';
+import type { PollTally } from './polls.js';
 
 const iso = (value: Date | null | undefined): string | null =>
   value ? new Date(value).toISOString() : null;
@@ -155,21 +156,34 @@ export function message(
   row: MessageRow,
   author: User,
   attachments: Attachment[] = [],
-  extras: { reactions?: Reaction[]; replyTo?: ReplyPreview | null } = {},
+  extras: { reactions?: Reaction[]; replyTo?: ReplyPreview | null; poll?: PollTally } = {},
 ): Message {
   const deleted = row.deletedAt !== null;
+  const kind = row.kind === 'roll' ? 'roll' : row.kind === 'poll' ? 'poll' : 'text';
 
   return {
     id: row.id,
     channelId: row.channelId,
     authorId: row.authorId,
     author: publicUser(author),
-    kind: row.kind === 'roll' ? 'roll' : 'text',
+    kind,
     // A deleted message keeps its place in the timeline so replies still point
     // at something, but its body never goes back out over the wire.
     content: deleted ? null : row.content,
     ciphertext: deleted || !row.ciphertext ? null : row.ciphertext.toString('base64'),
     keyEpoch: row.keyEpoch,
+    // A deleted poll keeps no tally either: nothing left to vote on or read.
+    poll:
+      deleted || kind !== 'poll' || !row.poll
+        ? undefined
+        : {
+            question: row.poll.question,
+            options: row.poll.options,
+            multiple: row.poll.multiple,
+            closedAt: row.poll.closedAt,
+            counts: extras.poll?.counts ?? new Array(row.poll.options.length).fill(0),
+            mine: extras.poll?.mine ?? [],
+          },
     attachments: deleted ? [] : attachments,
     replyToId: row.replyToId,
     replyTo: extras.replyTo ?? null,

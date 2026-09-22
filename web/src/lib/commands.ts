@@ -123,6 +123,12 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
       sheet: sheetUrl(character.id),
     })),
     { key: 'roll', written: '/roll', name: '/roll 2d6+3', note: 'roll dice, everyone sees the result' },
+    {
+      key: 'poll',
+      written: '/poll',
+      name: '/poll',
+      note: 'ask the room: /poll Which night? | Friday | Saturday',
+    },
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,
