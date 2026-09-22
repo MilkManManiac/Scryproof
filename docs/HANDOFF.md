@@ -1572,7 +1572,7 @@ the panel naming the size, Sharp growing it back.
 had a third step: nothing, until he and lamp try a real call with a
 share and one of them on Low.
 
-**Evening: the picker fixed, and a theme that moves (client below).**
+**Evening: the picker fixed, and a theme that moves (client 1790105431614).**
 Wes: every card's preview said "# the-hall" (now the theme's own name),
 and the one-line moods are gone ("they don't need to read anything
 really about the theme"). Then: "try something a little more fancy on a
