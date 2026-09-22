@@ -17,6 +17,7 @@ import { LIMITS, validatePassword, validateUsername } from '@scryproof/shared';
 import type { SelfUser } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { peekPendingInviteCode } from '../lib/invite-link';
 
 type Mode = 'signin' | 'register';
 
@@ -29,6 +30,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [invitedServerName, setInvitedServerName] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +48,20 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
       .catch(() => setContext({ firstRun: false, inviteRequired: true }));
   }, []);
 
-  // An invite link lands on /invite/<code>; carry the code into the form and
-  // put the address bar back so a reload does not resubmit it.
+  // `main.tsx` already read `/invite/<code>` out of the address bar and put
+  // it back to `/`; this just picks the code up. It is left in place (not
+  // consumed) so the join modal after sign-in can still find it.
   useEffect(() => {
-    const match = window.location.pathname.match(/^\/invite\/([a-z0-9]+)$/i);
-    if (!match) return;
-    setInviteCode(match[1]!);
+    const code = peekPendingInviteCode();
+    if (!code) return;
+    setInviteCode(code);
     setMode('register');
-    window.history.replaceState(null, '', '/');
+    api.invites
+      .preview(code)
+      .then((preview) => {
+        if (preview.kind === 'server' && preview.server) setInvitedServerName(preview.server.name);
+      })
+      .catch(() => undefined);
   }, []);
 
   const firstRun = context?.firstRun ?? false;
@@ -138,6 +146,13 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
         {firstRun ? (
           <div className="notice">
             First run. This account becomes the owner and can invite everyone else.
+          </div>
+        ) : null}
+
+        {invitedServerName ? (
+          <div className="notice">
+            You were invited to <strong>{invitedServerName}</strong>. Sign in or make an account
+            to join.
           </div>
         ) : null}
 

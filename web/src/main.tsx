@@ -13,6 +13,7 @@ import { App } from './App';
 // Sets data-theme on <html> as a side effect, before anything is drawn.
 import './lib/theme';
 import { Ambient } from './components/Ambient';
+import { captureInviteFromLocation } from './lib/invite-link';
 import { registerServiceWorker } from './lib/install';
 import { noteFirstVisit } from './lib/whats-new';
 import './styles.css';
@@ -20,6 +21,10 @@ import './styles.css';
 // Makes the site installable on a phone. It caches nothing; see sw.js.
 registerServiceWorker();
 noteFirstVisit();
+
+// An invite link (`/invite/CODE`) lands here before anything else runs. Stash
+// the code and put the address bar back so a reload does not re-run the join.
+captureInviteFromLocation(window.location.pathname, (url) => window.history.replaceState(null, '', url));
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root.');

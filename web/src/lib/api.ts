@@ -302,9 +302,11 @@ export const api = {
     createInstance: (maxUses = 1) =>
       post<{ invite: Invite; url: string }>('/api/instance-invites', { maxUses }),
     preview: (code: string) =>
-      get<{ kind: 'server' | 'instance'; server: { id: string; name: string } | null }>(
-        `/api/invites/${code}`,
-      ),
+      get<{
+        kind: 'server' | 'instance';
+        server: { id: string; name: string; iconUrl: string | null; memberCount: number } | null;
+        alreadyMember: boolean;
+      }>(`/api/invites/${code}`),
     accept: (code: string) => post<{ server: ServerDetail }>(`/api/invites/${code}/accept`),
   },
 
