@@ -1049,6 +1049,97 @@ select {
   border-color: var(--accent-dim);
 }
 
+/* A voice message: play, the waveform filling as it plays, the length. The
+   same frame as a file row, so a clip sits in the column like one. */
+.voice-note {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  padding: 6px 12px 6px 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.voice-note.failed {
+  padding: 8px 12px;
+  color: var(--text-dim);
+}
+.voice-note-play {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent-bright);
+  font-size: 11px;
+}
+.voice-note-play:hover:not(:disabled) {
+  background: var(--accent);
+  color: rgb(var(--bg-rgb));
+}
+.voice-note-wave {
+  flex: 1 1 auto;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.voice-note-bar {
+  flex: 1 1 0;
+  min-width: 1px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+.voice-note-bar.played {
+  background: var(--accent);
+}
+.voice-note-time {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* While held, the microphone button widens to show the clock. */
+.icon-button.voice-record.on {
+  width: auto;
+  padding: 0 8px;
+  color: var(--text);
+}
+.voice-record {
+  touch-action: none;
+  user-select: none;
+}
+.voice-record-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-record-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: voice-record-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes voice-record-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-record-dot {
+    animation: none;
+  }
+}
+
 /* The date, with a gold rule either side. The one place gold touches the
    message column, and it touches nothing anyone reads. */
 .day-divider {

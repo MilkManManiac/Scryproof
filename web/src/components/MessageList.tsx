@@ -31,6 +31,8 @@ import { applyMarkup, markerForKey } from '../lib/markup';
 import { FRAME, sheetUrl, spawnOf } from '../lib/commands';
 import { play } from '../lib/stage';
 import type { Character } from '../lib/commands';
+import { isVoiceFile, isVoiceLabel } from '../lib/voice-note';
+import { VoicePlayer } from './VoiceNote';
 
 /** Consecutive messages from one author within this window share a header. */
 const GROUP_WINDOW_MS = 7 * 60 * 1000;
@@ -786,7 +788,10 @@ function MessageRow({
               <div className="message-text deleted">
                 Encrypted message. This client cannot open it yet.
               </div>
-            ) : message.content ? (
+            ) : message.content &&
+              // A voice message's body only names it for search and previews;
+              // the player below says the same thing.
+              !(isVoiceLabel(message.content) && message.attachments.some((file) => isVoiceFile(file.filename))) ? (
               <MessageContent
                 content={message.content}
                 members={members}
@@ -799,7 +804,18 @@ function MessageRow({
             {message.editedAt ? <span className="message-edited">edited</span> : null}
 
             {message.attachments.map((attachment) =>
-              attachment.contentType.startsWith('image/') ? (
+              isVoiceFile(attachment.filename) ? (
+                <VoicePlayer
+                  key={attachment.id}
+                  id={attachment.id}
+                  name={attachment.filename}
+                  load={async () => {
+                    const response = await fetch(attachment.url, { credentials: 'same-origin' });
+                    if (!response.ok) throw new Error('This file could not be fetched.');
+                    return new Uint8Array(await response.arrayBuffer());
+                  }}
+                />
+              ) : attachment.contentType.startsWith('image/') ? (
                 <button
                   key={attachment.id}
                   type="button"

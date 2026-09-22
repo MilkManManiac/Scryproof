@@ -31,6 +31,8 @@ import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
 import { CreateRecovery, RestoreRecovery } from './RecoveryPhrase';
 import { UserPanel } from './UserPanel';
+import { RecordButton, VoicePlayer } from './VoiceNote';
+import { isVoiceFile, isVoiceLabel, voiceLabel } from '../lib/voice-note';
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -473,6 +475,24 @@ const sizeLabel = (bytes: number): string =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 function DmFile({ dmId, file }: { dmId: string; file: DmFileRef }) {
+  // A voice message is opened the same way as any other file, then played in place.
+  if (isVoiceFile(file.name)) {
+    return (
+      <VoicePlayer
+        id={file.id}
+        name={file.name}
+        load={async () => {
+          const opened = await openFile(dmId, file, await api.dms.downloadFile(dmId, file.id));
+          if (!opened) throw new Error('This file could not be opened.');
+          return opened;
+        }}
+      />
+    );
+  }
+  return <DmFileRow dmId={dmId} file={file} />;
+}
+
+function DmFileRow({ dmId, file }: { dmId: string; file: DmFileRef }) {
   const picture = PICTURE_TYPES.has(file.type);
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle');
@@ -635,7 +655,11 @@ function DmRow({
   } else {
     body = (
       <>
-        {view.text || view.editedAt || view.unverified ? (
+        {/* A voice message's body only names it for search and previews; the
+            player below says the same thing. */}
+        {(view.text && !(isVoiceLabel(view.text) && view.files.some((file) => isVoiceFile(file.name)))) ||
+        view.editedAt ||
+        view.unverified ? (
           <div className="message-text">
             {/* The same parts as a channel message. There is nobody to name here
                 and no server emoji, so those come out as the text typed. */}
@@ -852,6 +876,41 @@ function DmComposer({
     });
   }
 
+  /**
+   * Seal one file here and upload the sealed copy. Every file a DM carries
+   * comes through this, voice messages included: the server only ever holds
+   * bytes it cannot open.
+   */
+  async function lock(file: File): Promise<DmFileRef> {
+    if (file.size > LIMITS.dmFileBytes) {
+      throw new Error(`Files here are limited to ${Math.floor(LIMITS.dmFileBytes / (1024 * 1024))} MB.`);
+    }
+    // Same as in channels: a photo is re-encoded first so where it was
+    // taken never leaves this machine, even locked.
+    const clean = await scrubImage(file);
+    const { sealed, key, iv } = await sealFile(dm.id, new Uint8Array(await clean.arrayBuffer()));
+    const stored = await api.dms.uploadFile(dm.id, sealed);
+    return { id: stored.id, name: clean.name, type: clean.type, size: clean.size, key, iv };
+  }
+
+  /**
+   * A voice message goes on its own: the draft and any files waiting in the
+   * box stay where they are.
+   */
+  async function sendVoice(file: File, seconds: number) {
+    if (!state.ready) throw new Error('Keys for this device are still being set up.');
+    setError(null);
+    const ref = await lock(file);
+    try {
+      await send(dm.id, voiceLabel(seconds), target && !target.deleted ? target.id : null, [ref]);
+    } catch (problem) {
+      // Not sent, so the sealed copy has nothing to belong to.
+      void api.dms.discardFile(dm.id, ref.id).catch(() => undefined);
+      throw problem instanceof Error ? problem : new Error('The voice message did not send.');
+    }
+    onCancelReply();
+  }
+
   async function attach(list: FileList | File[] | null) {
     const chosen = list ? Array.from(list) : [];
     if (chosen.length === 0 || !state.ready) return;
@@ -863,15 +922,7 @@ function DmComposer({
     setError(null);
     try {
       for (const file of chosen) {
-        if (file.size > LIMITS.dmFileBytes) {
-          throw new Error(`Files here are limited to ${Math.floor(LIMITS.dmFileBytes / (1024 * 1024))} MB.`);
-        }
-        // Same as in channels: a photo is re-encoded first so where it was
-        // taken never leaves this machine, even locked.
-        const clean = await scrubImage(file);
-        const { sealed, key, iv } = await sealFile(dm.id, new Uint8Array(await clean.arrayBuffer()));
-        const stored = await api.dms.uploadFile(dm.id, sealed);
-        const ref: DmFileRef = { id: stored.id, name: clean.name, type: clean.type, size: clean.size, key, iv };
+        const ref = await lock(file);
         setPending((current) => ({ ...current, [dm.id]: [...(current[dm.id] ?? []), ref] }));
       }
     } catch (problem) {
@@ -1114,6 +1165,7 @@ function DmComposer({
             />
           ) : null}
         </span>
+        <RecordButton disabled={!state.ready} onClip={sendVoice} onError={setError} />
         <button type="button" className="icon-button" title="Send" disabled={!state.ready || busy} onClick={() => void submit()}>
           &#10148;
         </button>
