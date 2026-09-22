@@ -47,13 +47,16 @@ export function MenuItem({
   children,
   note,
   onClick,
+  danger = false,
 }: {
   children: ReactNode;
   note?: string;
   onClick: () => void;
+  /** Red: something that cannot be undone. */
+  danger?: boolean;
 }) {
   return (
-    <button type="button" className="menu-item" role="menuitem" onClick={onClick}>
+    <button type="button" className={danger ? 'menu-item danger' : 'menu-item'} role="menuitem" onClick={onClick}>
       <span>{children}</span>
       {note ? <span className="menu-item-note">{note}</span> : null}
     </button>

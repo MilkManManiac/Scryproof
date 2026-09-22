@@ -3578,6 +3578,12 @@ kbd {
   font-size: 12px;
   line-height: 1.35;
 }
+.menu-item.danger {
+  color: var(--danger, #e5484d);
+}
+.menu-item.danger:hover {
+  background: rgba(229, 72, 77, 0.14);
+}
 
 .category-row {
   display: flex;

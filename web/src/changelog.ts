@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-22-dm-commands',
+    date: '2026-09-22',
+    title: 'Commands in messages too, and Delete on the right-click',
+    notes: [
+      'Typing `/` or `:` in a direct message now shows the same list as in a channel. `/roll` stays out of messages: dice are rolled by the server, and it cannot read what you send there.',
+      'Right-click a channel for Delete channel, if you may manage channels. It asks once more before it goes. The same thing is still at the bottom of the channel settings.',
+    ],
+  },
+  {
     id: '2026-09-22-commands',
     date: '2026-09-22',
     title: 'Commands, and the characters',

@@ -41,6 +41,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   // Which channel's right-click menu (mute/unmute) is open, if any.
   const [channelMenu, setChannelMenu] = useState<string | null>(null);
+  /** The channel whose right-click menu is asking "really delete?". */
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
 
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
@@ -234,7 +237,13 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                         </button>
 
                         {channelMenu === channel.id ? (
-                          <Menu onClose={() => setChannelMenu(null)}>
+                          <Menu
+                            onClose={() => {
+                              setChannelMenu(null);
+                              setConfirmDelete(null);
+                              setDeleteError(null);
+                            }}
+                          >
                             <MenuItem
                               note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up. Unread still shows.'}
                               onClick={() => {
@@ -244,6 +253,38 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                             >
                               {muted ? 'Unmute channel' : 'Mute channel'}
                             </MenuItem>
+                            {/* Deleting lives in the channel's settings too, at the
+                                bottom. Wes could not find it there, so it is here as
+                                well, with the same two steps. Hidden without Manage
+                                channels; the server refuses either way. */}
+                            {canManage && confirmDelete !== channel.id ? (
+                              <MenuItem
+                                danger
+                                note="Its messages go with it. You will be asked once more."
+                                onClick={() => setConfirmDelete(channel.id)}
+                              >
+                                Delete channel
+                              </MenuItem>
+                            ) : null}
+                            {canManage && confirmDelete === channel.id ? (
+                              <MenuItem
+                                danger
+                                note={deleteError ?? 'There is no undo and no archive.'}
+                                onClick={() => {
+                                  api.channels
+                                    .remove(channel.id)
+                                    .then(() => {
+                                      setChannelMenu(null);
+                                      setConfirmDelete(null);
+                                    })
+                                    .catch((problem) => {
+                                      setDeleteError(problem instanceof ApiError ? problem.message : 'Could not delete it.');
+                                    });
+                                }}
+                              >
+                                Yes, delete #{channel.name}
+                              </MenuItem>
+                            ) : null}
                           </Menu>
                         ) : null}
 

@@ -1887,3 +1887,20 @@ until he says so. Tests: web 169, server 168. No migration.
 
 **Still open from earlier today:** channel deletion (ask whether he
 lacked the permission on lamp's server or could not find the button).
+
+## Commands in DMs, Delete on the right-click, 2026-09-22 (staged)
+
+Wes, after the release: "I don't think it works on dms. I hit / but it
+doesn't even show options. Check on than then see what else you want to
+work on." Right: the DM composer had the two buttons and the expansions
+but no list. Now it has the same `/` and `:` list as a channel, keyboard
+and mouse, minus `/roll` (rolled by the server, which cannot read a DM).
+`docs/shots/command-dm.png`. Tests 169.
+
+Then, the thing I picked: **Delete channel in the channel's right-click
+menu**, two steps, red, only with Manage channels (the server refuses
+either way). `docs/shots/channel-menu-delete.png`. If Wes still cannot
+see it on lamp's server, he has no Manage channels there and lamp has
+to give it; that is the other half of the open question above.
+
+Changelog entry `2026-09-22-dm-commands`. Not released: he has not seen it.

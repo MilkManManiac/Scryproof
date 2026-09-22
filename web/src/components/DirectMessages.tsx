@@ -7,7 +7,7 @@
  * word over plaintext.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DmChannel, PublicUser } from '@scryproof/shared';
 import { LIMITS } from '@scryproof/shared';
 
@@ -23,8 +23,9 @@ import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
 import { PlayLine, Rich } from './MessageList';
-import { expandTextCommand, spawnOf } from '../lib/commands';
-import { expandShortcodes } from '../lib/emoji';
+import { commandOffers, commandQueryAt, expandTextCommand, spawnOf } from '../lib/commands';
+import { emojiOffers, expandShortcodes } from '../lib/emoji';
+import { emojiQueryAt } from '../lib/mentions';
 import { Spawner } from './Spawner';
 import { useProfileCard } from './ProfileCard';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
@@ -807,8 +808,49 @@ function DmComposer({
   const input = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const [board, setBoard] = useState<'emoji' | 'spawn' | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [chosen, setChosen] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const text = drafts[dm.id] ?? '';
   const files = pending[dm.id] ?? [];
+
+  // The list under the box while a `/command` or a `:emoji` is being typed,
+  // the same as in a channel. No @names here: there is one person to talk to.
+  // No /roll either: dice are rolled by the server, which cannot read this.
+  const askingEmoji = dismissed ? null : emojiQueryAt(text, caret);
+  const askingCommand = dismissed || askingEmoji ? null : commandQueryAt(text, caret);
+  const offers = useMemo(() => {
+    if (askingCommand) return commandOffers(askingCommand.query, 8).filter((offer) => offer.key !== 'roll').slice(0, 7);
+    if (askingEmoji) {
+      return emojiOffers(askingEmoji.query).map((offer) => ({
+        key: `emoji:${offer.name}`,
+        written: offer.emoji,
+        name: `:${offer.name}:`,
+        note: '',
+        glyph: offer.emoji,
+      }));
+    }
+    return [];
+  }, [askingCommand?.query, askingEmoji?.query]); // eslint-disable-line react-hooks/exhaustive-deps
+  const picked = Math.min(chosen, Math.max(0, offers.length - 1));
+
+  function setText(value: string) {
+    setDrafts((current) => ({ ...current, [dm.id]: value }));
+  }
+
+  /** Put the chosen completion in place of what was being typed. */
+  function complete(written: string) {
+    const span = askingEmoji ?? askingCommand;
+    if (!span) return;
+    const next = `${text.slice(0, span.start)}${written} ${text.slice(caret)}`;
+    const position = span.start + written.length + 1;
+    setText(next);
+    setCaret(position);
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(position, position);
+    });
+  }
 
   async function attach(list: FileList | File[] | null) {
     const chosen = list ? Array.from(list) : [];
@@ -889,6 +931,35 @@ function DmComposer({
           {error}
         </div>
       ) : null}
+      {offers.length > 0 ? (
+        <div className="mention-offers" role="listbox" aria-label={askingCommand ? 'Commands' : 'Emoji to insert'}>
+          {offers.map((offer, index) => (
+            <button
+              key={offer.key}
+              type="button"
+              role="option"
+              aria-selected={index === picked}
+              className={index === picked ? 'mention-offer active' : 'mention-offer'}
+              // mousedown, not click: a click would take focus from the box first.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                complete(offer.written);
+              }}
+              onMouseEnter={() => setChosen(index)}
+            >
+              {'sheet' in offer && offer.sheet ? (
+                <span className="meepo-face" style={{ backgroundImage: `url(${offer.sheet})`, backgroundSize: 'auto 100%' }} />
+              ) : 'glyph' in offer && offer.glyph ? (
+                <span className="reaction-emoji">{offer.glyph}</span>
+              ) : (
+                <span className="meepo-face" aria-hidden="true" />
+              )}
+              <span className="mention-offer-name">{offer.name}</span>
+              <span className="mention-offer-note">{offer.note}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {target ? (
         <div className="composer-reply">
           <span className="composer-reply-text">
@@ -945,7 +1016,13 @@ function DmComposer({
           disabled={!state.ready}
           maxLength={LIMITS.message.max}
           placeholder={state.ready ? 'Write something' : 'Setting up keys for this device'}
-          onChange={(event) => setDrafts((current) => ({ ...current, [dm.id]: event.target.value }))}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+            setDismissed(false);
+            setChosen(0);
+          }}
           onPaste={(event) => {
             const pasted = Array.from(event.clipboardData.files);
             if (pasted.length === 0) return;
@@ -958,6 +1035,25 @@ function DmComposer({
               event.preventDefault();
               applyMarkup(event.currentTarget, marker, (value) => setDrafts((current) => ({ ...current, [dm.id]: value })));
               return;
+            }
+            if (offers.length > 0) {
+              const offer = offers[picked];
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const step = event.key === 'ArrowDown' ? 1 : -1;
+                setChosen((picked + step + offers.length) % offers.length);
+                return;
+              }
+              if ((event.key === 'Enter' || event.key === 'Tab') && offer) {
+                event.preventDefault();
+                complete(offer.written);
+                return;
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setDismissed(true);
+                return;
+              }
             }
             if (event.key === 'Escape' && target) {
               onCancelReply();
