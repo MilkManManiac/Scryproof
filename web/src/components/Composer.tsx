@@ -18,10 +18,12 @@ import { applyMarkup, markerForKey } from '../lib/markup';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
+import { voiceLabel } from '../lib/voice-note';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
 import { ReactionPicker } from './ReactionPicker';
 import { Spawner } from './Spawner';
+import { RecordButton } from './VoiceNote';
 
 /** One row in the list under the box, for a person or for one of the server's emoji. */
 interface Offer {
@@ -266,6 +268,30 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     }
   }
 
+  /**
+   * A voice message goes on its own, like a command from the board: the draft
+   * and any files waiting in the box stay where they are. It is an ordinary
+   * attachment, so the server checks ATTACH_FILES on the upload as it would
+   * for any other file.
+   */
+  async function sendVoice(file: File, seconds: number) {
+    if (cooldown > 0) throw new Error(`Slowmode. Wait ${cooldown}s.`);
+    const answering = replyingTo;
+    setError(null);
+    try {
+      const attachment = await api.upload(channel.id, file);
+      await api.messages.send(channel.id, {
+        content: voiceLabel(seconds),
+        replyToId: answering?.id,
+        attachmentIds: [attachment.id],
+      });
+      if (answering) replyTo(channel.id, null);
+    } catch (problem) {
+      if (problem instanceof ApiError && problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
+      throw problem instanceof ApiError ? new Error(problem.message) : new Error('The voice message did not send.');
+    }
+  }
+
   const slowmode = channel.slowmodeSeconds ?? 0;
 
   return (
@@ -504,6 +530,11 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
               />
             ) : null}
           </span>
+        ) : null}
+
+        {/* Only where a file could be attached: a clip is one. */}
+        {mayPost && mayAttach ? (
+          <RecordButton disabled={cooldown > 0} onClip={sendVoice} onError={setError} />
         ) : null}
 
         <button
