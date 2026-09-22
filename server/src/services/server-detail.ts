@@ -18,6 +18,7 @@ import {
   loadMemberContext,
   type MemberContext,
 } from './permissions.js';
+import { listUpcoming } from './events.js';
 import { privateChannelIds } from './privacy.js';
 import * as serialize from './serialize.js';
 
@@ -114,12 +115,18 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     .from(members)
     .where(eq(members.serverId, ctx.serverId));
 
+  // Every member sees every event; the channel it is held in only if they can
+  // see that channel too, by the same rule as the list above.
+  const visibleIds = new Set(visibleChannels.map((channel) => channel.id));
+  const upcoming = await listUpcoming(ctx.serverId, ctx.userId, (channelId) => visibleIds.has(channelId));
+
   return {
     ...serialize.server(serverRow),
     categories: visibleCategories.map(serialize.category),
     channels: visibleChannels.map((channel) => serialize.channel(channel, privateIds.has(channel.id))),
     roles: serverRoles.map(serialize.role),
     emojis: serverEmojis.map(serialize.emoji),
+    events: upcoming,
     memberCount: memberRows.length,
     permissions: encodeMask(ctx.basePermissions),
   };

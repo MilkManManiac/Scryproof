@@ -208,6 +208,20 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    name: 'Events',
+    note: 'The "Coming up" list at the top of the channel sidebar. Server-wide; channel overwrites ignore it.',
+    permissions: [
+      {
+        name: 'MANAGE_EVENTS',
+        bit: Permission.MANAGE_EVENTS,
+        label: 'Manage events',
+        description:
+          'Plan, edit and cancel events. Everyone can see them and answer Going, Maybe or Can’t without it.',
+        scope: 'both',
+      },
+    ],
+  },
+  {
     name: 'Administration',
     note: 'Give these out slowly. Every one of them can be used to take the server.',
     permissions: [

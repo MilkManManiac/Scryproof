@@ -16,6 +16,7 @@ import { notifyPrefs } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { ComingUp } from './ComingUp';
 import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { CategorySettings } from './settings/CategorySettings';
@@ -127,6 +128,8 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
       </div>
 
       <div className="sidebar-scroll">
+        <ComingUp server={server} />
+
         {groups.map((entry) => {
           const key = entry.id ?? 'uncategorised';
           const isCollapsed = collapsed[key] ?? false;

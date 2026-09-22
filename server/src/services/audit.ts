@@ -46,7 +46,10 @@ export type AuditAction =
   | 'member.unban'
   | 'message.delete'
   | 'invite.create'
-  | 'invite.revoke';
+  | 'invite.revoke'
+  | 'event.create'
+  | 'event.update'
+  | 'event.delete';
 
 export async function record(entry: {
   serverId: string;

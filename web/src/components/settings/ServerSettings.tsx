@@ -851,6 +851,12 @@ function AuditPane({ server, members }: { server: ServerDetail; members: Member[
         return 'created an invite';
       case 'invite.revoke':
         return 'revoked an invite';
+      case 'event.create':
+        return `planned the event ${String(entry.changes?.title ?? '')}`.trim();
+      case 'event.update':
+        return `edited the event ${String(entry.changes?.title ?? '')}`.trim();
+      case 'event.delete':
+        return `cancelled the event ${String(entry.changes?.title ?? '')}`.trim();
       default:
         return entry.action;
     }

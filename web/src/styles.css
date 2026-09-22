@@ -4580,3 +4580,102 @@ kbd {
 .edit-tools .markup-tools {
   margin-left: 0;
 }
+
+/* "Coming up": planned events above the channel list. Quiet by default, the
+   way a category is; the answer you gave is the one lit in the accent. */
+.coming-up-label {
+  cursor: default;
+}
+.coming-up-label:hover {
+  color: var(--text-dim);
+}
+/* The "+" stays visible here: an empty list has nothing else to hover. */
+.coming-up-actions {
+  opacity: 1;
+}
+.coming-up-event {
+  margin: 4px 4px 8px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.coming-up-title {
+  display: block;
+  width: 100%;
+  padding: 0;
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.coming-up-title:hover {
+  text-decoration: underline;
+}
+.coming-up-when {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.coming-up-answers {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.coming-up-answer {
+  flex: 1 1 0;
+  padding: 3px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.coming-up-answer:hover {
+  color: var(--text);
+}
+.coming-up-answer.chosen {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+.coming-up-count {
+  color: var(--text-faint);
+}
+.coming-up-answer.chosen .coming-up-count {
+  color: inherit;
+}
+.coming-up-more,
+.coming-up-error {
+  margin: 0 8px 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.coming-up-error {
+  color: var(--bad);
+}
+.coming-up-detail-when {
+  margin-top: 0;
+  color: var(--text-muted);
+}
+.coming-up-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.coming-up-note-input {
+  width: 100%;
+  background: rgb(var(--bg-rgb) / 0.7);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+}
+.coming-up-note-input:focus {
+  border-color: var(--accent-dim);
+}
