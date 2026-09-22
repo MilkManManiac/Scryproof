@@ -118,6 +118,16 @@ describe('spoilers in a message body', () => {
     assert.equal(text(splitContent('||nope')), '||nope');
   });
 
+  it('hides an emoji, and a link is hidden rather than eating the closing bars', () => {
+    assert.deepEqual(splitContent('||:cheer:||'), [
+      { kind: 'spoiler', parts: [{ kind: 'emoji', name: 'cheer' }] },
+    ]);
+    assert.deepEqual(
+      splitContent('||https://example.test/a||').map((part) => part.kind),
+      ['spoiler'],
+    );
+  });
+
   it('finds two spoilers on one line', () => {
     const kinds = splitContent('||a|| and ||b||').map((part) => part.kind);
     assert.deepEqual(kinds, ['spoiler', 'text', 'spoiler']);
