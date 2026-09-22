@@ -65,6 +65,8 @@
   --glow-color: rgb(238 138 58 / 0.2);
   --glow-position: 38% 70%;
   --ambient-motion: none;
+  --star-color: 232 236 255;
+  --star-depth: 0.42;
 
   color-scheme: dark;
 }

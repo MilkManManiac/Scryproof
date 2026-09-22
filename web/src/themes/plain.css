@@ -53,6 +53,8 @@
   --glow-color: transparent;
   --glow-position: 50% 52%;
   --ambient-motion: none;
+  --star-color: 232 236 255;
+  --star-depth: 0.42;
 
   color-scheme: dark;
 }

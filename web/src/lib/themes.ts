@@ -16,6 +16,7 @@ export interface Theme {
 export const THEMES: readonly Theme[] = [
   { id: 'ridge', name: 'The ridge' },
   { id: 'ember', name: 'The ridge, alive' },
+  { id: 'dusk', name: 'The dusk' },
   { id: 'scry', name: 'The chamber' },
   { id: 'hall', name: 'The hall' },
   { id: 'plain', name: 'Plain' },

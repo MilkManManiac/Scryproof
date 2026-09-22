@@ -31,6 +31,8 @@
   --glow-color: rgb(150 205 255 / 0.2);
   --glow-position: 50% 44%;
   --ambient-motion: none;
+  --star-color: 232 236 255;
+  --star-depth: 0.42;
 
   --line: #2b3146;
   --line-strong: #404861;

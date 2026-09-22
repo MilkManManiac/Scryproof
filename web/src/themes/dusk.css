@@ -1,0 +1,74 @@
+/*
+ * Dusk: pink clouds under a night sky, with a crescent moon.
+ *
+ * Made for a friend of Wes's from two reference pictures he sent (2026-09-22:
+ * "go nuts with the effects / alive feel on that one"). The surfaces are the
+ * indigo of the sky between the clouds, the accent is the pink the clouds
+ * are lit with, and the metal is moonlight rather than gold. The dim text is
+ * lavender, 7.9:1 on the solid panel. Every token the hall sets is set here.
+ *
+ * This is the theme that moves most: stars over more of the sky than the
+ * ridge's, a shooting star now and then, a slow drift of lit haze through
+ * the clouds, and glitter in them. See Ambient.tsx for what each word does.
+ */
+
+:root[data-theme='dusk'] {
+  /* The sky where no cloud is lit. */
+  --bg: #0b0d1c;
+  --bg-rgb: 11 13 28;
+
+  --panel-rgb: 24 22 48;
+  --panel-alpha: 0.6;
+  --panel-solid: #181630;
+  --panel-2: #221f3f;
+  --panel-3: #2d2950;
+  --panel-4: #3a3560;
+
+  --line: #332f56;
+  --line-strong: #47417a;
+  --edge: inset 0 0 0 1px rgb(255 214 240 / 0.08);
+  --hi: inset 0 1px 0 rgb(255 214 240 / 0.07);
+
+  --text: #f7f1f8;
+  --text-muted: #d9cfe0;
+  --text-dim: #b3a9cf;
+  --text-faint: #8a83a6;
+
+  /* The light in the clouds. */
+  --accent: #f28ab8;
+  --accent-bright: #ffa9cc;
+  --accent-dim: #a34f7a;
+  --accent-wash: rgb(242 138 184 / 0.14);
+  --on-accent: #2a0f1d;
+
+  /* Moonlight, where the other themes have gold. */
+  --gold: #e5cdd8;
+  --gold-dim: #9a8590;
+
+  --good: #5cc48f;
+  --warn: #e3b04d;
+  --bad: #e46a6a;
+  --speaking: #62d39a;
+
+  --shadow-1: 0 1px 1px hsl(236 42% 4% / 0.55), 0 4px 10px -3px hsl(236 42% 4% / 0.55);
+  --shadow-2: 0 1px 2px hsl(236 42% 4% / 0.55), 0 8px 18px -6px hsl(236 42% 4% / 0.65),
+    0 22px 44px -14px hsl(236 42% 4% / 0.6);
+  --shadow-3: 0 2px 4px hsl(236 42% 4% / 0.55), 0 16px 32px -8px hsl(236 42% 4% / 0.7),
+    0 40px 80px -20px hsl(236 42% 4% / 0.75);
+
+  /* The painting. The moon is in the top left; the biggest cloud is on the
+     right, under where the member list sits, and the dark bottom is under
+     the composer. */
+  --backdrop: url('/backdrops/dusk.jpg');
+  --backdrop-position: center 30%;
+  /* The glow layer sits on the moon and breathes pale, not pink. */
+  --glow-color: rgb(214 226 255 / 0.22);
+  --glow-position: 26% 20%;
+  --ambient-motion: stars shooting haze glimmer;
+  /* Stars: warm white, and down to sixty percent of the window, since the
+     sky here reaches the clouds. */
+  --star-color: 255 240 248;
+  --star-depth: 0.6;
+
+  color-scheme: dark;
+}

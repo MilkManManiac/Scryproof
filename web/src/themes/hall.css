@@ -74,6 +74,10 @@
   --glow-color: #f0903a;
   --glow-position: 50% 48%;
   --ambient-motion: none;
+  /* Stars, when --ambient-motion asks for them: their colour as an rgb
+     triplet, and how far down the window they reach, as a fraction. */
+  --star-color: 232 236 255;
+  --star-depth: 0.42;
 
   color-scheme: dark;
 }
