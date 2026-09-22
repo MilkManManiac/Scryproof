@@ -1077,6 +1077,33 @@ Built after the recovery phrase and released together.
   run (electron.exe) has the item greyed out. Same installer carries the
   update check moved from 10 to 5 minutes. Not yet tried by a person: the
   toggle itself, and a sign-in with it on.
+- **Second agent batch: search, custom emoji, spoilers, DM file sweep**
+  (2026-09-22). Briefs in `docs/briefs/`, one agent each in a worktree, the
+  main session reviewed, merged and resolved the conflicts (spoilers and
+  emoji both changed `splitContent` and the message renderer; groups are now
+  mention 1, emoji 2, spoiler 3). What landed:
+  - Search: magnifier in the channel header or Ctrl+F, Enter to search,
+    results replace the member list, click jumps to the message. Server
+    route `GET /api/servers/:id/search` only queries channels the caller
+    has VIEW_CHANNEL and READ_MESSAGE_HISTORY in (`services/search.ts`,
+    test in `search.test.ts`). DMs are not searched: the server cannot read
+    them. Known limit, shared with pins: a hit older than the loaded 50
+    messages scrolls to nothing. Fix is "load messages around an id";
+    do it once for both.
+  - Custom emoji: server settings, Emoji pane (MANAGE_SERVER), PNG/GIF/WebP
+    up to 256 KB, 50 per server, scrubbed in the browser like avatars.
+    `:name:` draws inline, `:` plus two letters autocompletes in the
+    composer, "This server" row in the reaction picker, reactions stored as
+    `:name:`. Image route is member-only. Migration 0008 runs at boot.
+    Quirk: `:30:` in "12:30:45" parses as an emoji part and draws back as
+    text, harmless.
+  - Spoilers: `||text||`, blacked out until clicked, plain inert text while
+    hidden so a link inside cannot be clicked early; `[spoiler]` in reply
+    and notice previews.
+  - DM file sweep: unclaimed `dmFiles` go with the hourly attachment sweep.
+  Not yet tried by a person: any of it in the real UI. Unit, smoke, DM and
+  desktop checks pass; search and emoji routes were exercised by hand
+  against the dev server.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.
@@ -1103,13 +1130,14 @@ Do next, in this order:
 1. ~~Global push-to-talk~~ shipped in shell 0.2.0; ~~start with Windows and
    the 5-minute check~~ shipped in shell 0.3.0 (both above). The link always
    hands out the newest: https://scryproof.com/download/Scryproof-Setup.exe.
+   ~~Search, custom emoji, spoilers, DM sweep~~ merged and deployed
+   2026-09-22 (agent batch, above). Wes has not clicked through them yet.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
 3. **UI pass**, waiting on Wes's screenshots. Read the-wall.md first.
-4. Good for a cheaper agent, each with a brief like the ones above: sweep
-   unclaimed `dmFiles` the same way as attachments; message search (server
-   `ILIKE` over a channel the person can see, client box in the header);
-   custom emoji upload per server. Keep for the main session: group DMs,
+4. Next agent batch (write briefs in `docs/briefs/` first): "load messages
+   around an id" so pins and search hits always land; timeout a member;
+   block a user; `/roll`; bookmarks. Keep for the main session: group DMs,
    safety number, soundboard, phone layout. R2 stays flagged (talk first).
 
 Deploy with `bash scripts/release.sh` (clean tree required). Local loop:
