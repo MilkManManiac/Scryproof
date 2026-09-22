@@ -1685,3 +1685,25 @@ too." They were there and too faint. Brighter, 110 of them, and each one
 flares for under a second every minute or two.
 
 Tests: server 168, web 159. Nothing in this batch needed a migration.
+
+**To-dos from Wes, 2026-09-22 evening (not started):**
+
+- **Channel deletion.** Wes asked to "allow for channel deletion". It exists
+  (channel gear, bottom of the settings, "Delete #name") but is gated on
+  MANAGE_CHANNELS, and he hit this on lamp's server where he is not owner.
+  Either he could not find it or he had no permission; ask which before
+  changing anything. If it is discoverability, a Delete item in the
+  channel's right-click menu next to the gear is the fix.
+- **"Someone" for a member who was there.** Screenshots in
+  `Pictures\Screenshots` at 16:13: Wes had just joined lamp's server
+  ("Superest Secretest Seahorse"). The header said 2 members, the member
+  list showed only milky, the voice row under #important said "Someone" and
+  the typing line said "Someone is typing", while lamp's messages drew with
+  his name and picture (message authors come with the message; the sidebar
+  and typing line look people up in `state.members`). A minute later lamp
+  appeared and the names filled in. So `state.members[serverId]` was
+  missing the other member right after joining, and something later
+  refreshed it. Suspects: `loadMembers` running before the join finished
+  or against a stale list; the `member_join` fan-out not reaching a
+  socket that subscribed to the server mid-session. Reproduce with
+  `test:smoke`-style two-user join before guessing.
