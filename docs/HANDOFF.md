@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, night, staged and not released. Commands and the Meepo characters are on the dev server for Wes to look at (last section). Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-22, night. Commands and the Meepo characters are live (last section); Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1811,7 +1811,7 @@ Eight themes now. The picker scrolls. Tests: web 161, server 168.
 **To-do for the next round (Wes, 2026-09-22, closing out):** rename the
 dusk theme to **"Ham"**. Done in the next section; the id stayed `dusk`.
 
-## Commands and the characters, 2026-09-22 (staged, not yet released)
+## Commands and the characters, 2026-09-22 (live, client 1790117998502)
 
 Wes: "I like the idea of commands. One that i think would be cool is to
 use some of the characters from the meepo game. Maybe you can like do a
@@ -1881,7 +1881,7 @@ adding one is a copy of the channel one). Only the jump sheet is used:
 attack, hurt, death and idle exist for every character and are one more
 sheet each if he wants `/tang-attack`. No sound with a jump.
 
-**To look at:** `localhost:5173`, sign in as `wes` with the seed
+**Looked at and released.** He saw it on `localhost:5173` with the seed
 passphrase in `shot.mjs`. He said staging first, then live; not released
 until he says so. Tests: web 169, server 168. No migration.
 
