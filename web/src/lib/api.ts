@@ -130,6 +130,12 @@ export const api = {
       }>(`/api/servers/${serverId}/bans`),
     unban: (serverId: string, userId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/bans/${userId}`),
+    timeout: (serverId: string, userId: string, until: Date) =>
+      put<{ ok: true }>(`/api/servers/${serverId}/members/${userId}/timeout`, {
+        until: until.toISOString(),
+      }),
+    endTimeout: (serverId: string, userId: string) =>
+      del<{ ok: true }>(`/api/servers/${serverId}/members/${userId}/timeout`),
     setNickname: (serverId: string, userId: string, nickname: string | null) =>
       patch<{ ok: true }>(`/api/servers/${serverId}/members/${userId}`, { nickname }),
     setMemberRoles: (serverId: string, userId: string, roleIds: string[]) =>

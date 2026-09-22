@@ -137,6 +137,13 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     nickname: text('nickname'),
+    /**
+     * While this is in the future the member reads but cannot send, edit,
+     * react or join voice in this server. Nothing sweeps it: a past value is
+     * simply ignored, which keeps the end of a timeout free of a job that has
+     * to be running for the rule to be right.
+     */
+    timeoutUntil: timestamp('timeout_until', { withTimezone: true, mode: 'date' }),
     joinedAt: createdAt(),
   },
   (table) => [

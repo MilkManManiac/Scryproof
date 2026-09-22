@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission, validateServerName } from '@scryproof/shared';
+import { LIMITS, Permission, validateServerName } from '@scryproof/shared';
 import type { Member } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
@@ -221,6 +221,85 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
 
     const updated = (await listMembers(serverId)).find((m) => m.userId === userId);
     if (updated) hub.broadcastToServer(serverId, { t: 'member_update', d: updated });
+
+    return { ok: true };
+  });
+
+  /**
+   * Quiet someone without removing them. The column is the whole mechanism:
+   * every action a timeout takes away checks it, and nothing has to run for the
+   * timeout to end, so the server being down over the weekend cannot extend one.
+   */
+  app.put('/api/servers/:serverId/members/:userId/timeout', async (request) => {
+    const actor = requireUser(request);
+    const { serverId, userId } = z
+      .object({ serverId: z.string(), userId: z.string() })
+      .parse(request.params);
+    const body = z.object({ until: z.string().datetime() }).parse(request.body);
+
+    const ctx = await requireServerPermission(serverId, actor.id, Permission.MODERATE_MEMBERS);
+    await requireHigherThan(ctx, userId);
+
+    const until = new Date(body.until);
+    const days = LIMITS.timeoutDays;
+    if (until.getTime() <= Date.now()) {
+      throw badRequest('A timeout has to end in the future.', 'invalid_timeout');
+    }
+    if (until.getTime() > Date.now() + days * 24 * 60 * 60 * 1000) {
+      throw badRequest(`A timeout can last at most ${days} days.`, 'invalid_timeout');
+    }
+
+    const db = getDb();
+    const [updated] = await db
+      .update(members)
+      .set({ timeoutUntil: until })
+      .where(and(eq(members.serverId, serverId), eq(members.userId, userId)))
+      .returning();
+    if (!updated) throw notFound('That member is not in this server.', 'unknown_member');
+
+    await audit.record({
+      serverId,
+      actorId: actor.id,
+      action: 'member.timeout',
+      targetType: 'member',
+      targetId: userId,
+      changes: { until: until.toISOString() },
+    });
+
+    const member = (await listMembers(serverId)).find((entry) => entry.userId === userId);
+    if (member) hub.broadcastToServer(serverId, { t: 'member_update', d: member });
+
+    return { ok: true };
+  });
+
+  app.delete('/api/servers/:serverId/members/:userId/timeout', async (request) => {
+    const actor = requireUser(request);
+    const { serverId, userId } = z
+      .object({ serverId: z.string(), userId: z.string() })
+      .parse(request.params);
+
+    const ctx = await requireServerPermission(serverId, actor.id, Permission.MODERATE_MEMBERS);
+    await requireHigherThan(ctx, userId);
+
+    const db = getDb();
+    const [updated] = await db
+      .update(members)
+      .set({ timeoutUntil: null })
+      .where(and(eq(members.serverId, serverId), eq(members.userId, userId)))
+      .returning();
+    if (!updated) throw notFound('That member is not in this server.', 'unknown_member');
+
+    await audit.record({
+      serverId,
+      actorId: actor.id,
+      action: 'member.timeout',
+      targetType: 'member',
+      targetId: userId,
+      changes: { until: null },
+    });
+
+    const member = (await listMembers(serverId)).find((entry) => entry.userId === userId);
+    if (member) hub.broadcastToServer(serverId, { t: 'member_update', d: member });
 
     return { ok: true };
   });

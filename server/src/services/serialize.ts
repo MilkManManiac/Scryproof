@@ -134,6 +134,7 @@ export function member(row: MemberRow, user: User, roleIds: string[]): Member {
     nickname: row.nickname,
     roleIds,
     joinedAt: isoRequired(row.joinedAt),
+    timeoutUntil: iso(row.timeoutUntil),
     user: publicUser(user),
   };
 }

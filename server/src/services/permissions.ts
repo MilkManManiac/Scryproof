@@ -42,6 +42,8 @@ export interface MemberContext {
   everyoneRoleId: string;
   /** Server-wide permissions, before channel overwrites. */
   basePermissions: bigint;
+  /** When this member's timeout runs out, or null. Rides on the member row. */
+  timeoutUntil: Date | null;
 }
 
 /**
@@ -101,7 +103,28 @@ export async function loadMemberContext(
     roles: held,
     everyoneRoleId: everyone.id,
     basePermissions: computeBasePermissions({ isOwner, roles: held }),
+    timeoutUntil: membership.timeoutUntil,
   };
+}
+
+/**
+ * Refuse an action that a timeout takes away: sending, editing, reacting and
+ * joining voice. Reading is never one of them.
+ *
+ * Every caller goes through here rather than comparing dates itself, so there
+ * is one answer to "is this person timed out" and one sentence explaining it.
+ * A time in the past is not a timeout: expiry is the absence of a check
+ * passing, not an event anything has to fire.
+ */
+export function assertNotTimedOut(ctx: MemberContext): void {
+  const until = ctx.timeoutUntil;
+  if (!until || until.getTime() <= Date.now()) return;
+
+  throw new HttpError(
+    403,
+    'timed_out',
+    `You are timed out in this server until ${until.toISOString()}.`,
+  );
 }
 
 /** Rows out of either overwrite table, narrowed to the shape the algebra wants. */

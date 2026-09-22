@@ -19,7 +19,7 @@ import { api } from '../lib/api';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { EDIT_LAST, on } from '../lib/signals';
 import { unreadLine } from '../lib/unread-line';
-import { can } from '../lib/usePermissions';
+import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
 import { Avatar } from './Avatar';
 import { ReactionPicker, rememberReaction } from './ReactionPicker';
@@ -522,10 +522,13 @@ function MessageRow({
 
   const selfId = state.user?.id;
   const mine = message.authorId === selfId;
+  // A timeout takes away reacting, replying and editing, but not reading and
+  // not deleting your own. It is not in the mask, so it is checked beside it.
+  const timedOut = Boolean(useTimeoutEnd(members.find((entry) => entry.userId === selfId)));
   const canDelete = mine || can(mask, Permission.MANAGE_MESSAGES);
   const canPin = can(mask, Permission.MANAGE_MESSAGES) && !message.deleted;
-  const canReact = can(mask, Permission.ADD_REACTIONS);
-  const canReply = can(mask, Permission.SEND_MESSAGES);
+  const canReact = can(mask, Permission.ADD_REACTIONS) && !timedOut;
+  const canReply = can(mask, Permission.SEND_MESSAGES) && !timedOut;
   const at = new Date(message.createdAt);
   const reactions = message.reactions ?? [];
   const pingsMe =
@@ -721,7 +724,7 @@ function MessageRow({
               }}
             />
           ) : null}
-          {mine && message.content !== null ? (
+          {mine && !timedOut && message.content !== null ? (
             <button
               type="button"
               className="icon-button"

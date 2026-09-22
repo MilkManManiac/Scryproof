@@ -89,7 +89,7 @@ describe('the permission set itself', () => {
    * because the settings screen only renders defined bits.
    */
   test('bits above the highest defined permission are outside the ceiling', () => {
-    assert.equal(ALL_PERMISSIONS & (1n << 26n), 0n);
+    assert.equal(ALL_PERMISSIONS & (1n << 27n), 0n);
     assert.equal(ALL_PERMISSIONS & (1n << 40n), 0n);
   });
 
@@ -103,6 +103,7 @@ describe('the permission set itself', () => {
       Permission.VIEW_AUDIT_LOG |
       Permission.KICK_MEMBERS |
       Permission.BAN_MEMBERS |
+      Permission.MODERATE_MEMBERS |
       Permission.MENTION_EVERYONE |
       Permission.MANAGE_NICKNAMES;
 

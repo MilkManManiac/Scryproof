@@ -3401,6 +3401,13 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The clock beside a timed-out member. The title carries the actual time. */
+.member-timeout {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+}
 .profile-picture {
   display: flex;
   gap: 14px;

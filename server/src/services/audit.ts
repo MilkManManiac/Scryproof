@@ -40,6 +40,8 @@ export type AuditAction =
   | 'member.roles'
   | 'member.nickname'
   | 'member.kick'
+  /** One action for both ends of a timeout; `changes.until` is null for the end. */
+  | 'member.timeout'
   | 'member.ban'
   | 'member.unban'
   | 'message.delete'

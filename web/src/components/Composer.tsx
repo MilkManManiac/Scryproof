@@ -14,7 +14,7 @@ import { ApiError, api } from '../lib/api';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
-import { can } from '../lib/usePermissions';
+import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore } from '../state/store';
 
 /** One row in the list under the box, for a person or for one of the server's emoji. */
@@ -42,11 +42,16 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const input = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
 
-  const mayPost = can(mask, Permission.SEND_MESSAGES);
-  const mayAttach = can(mask, Permission.ATTACH_FILES);
+  const members = state.members[channel.serverId] ?? [];
+
+  // A timeout is not a permission, so it cannot be read off the mask. The send
+  // endpoint refuses either way; this only keeps the box from pretending.
+  const timedOutUntil = useTimeoutEnd(members.find((member) => member.userId === state.user?.id));
+
+  const mayPost = can(mask, Permission.SEND_MESSAGES) && !timedOutUntil;
+  const mayAttach = can(mask, Permission.ATTACH_FILES) && !timedOutUntil;
   const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
 
-  const members = state.members[channel.serverId] ?? [];
   const emojis = state.servers[channel.serverId]?.emojis ?? [];
   const replyingTo = state.replyingTo[channel.id] ?? null;
 
@@ -319,7 +324,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
               ? cooldown > 0
                 ? `Slowmode. ${cooldown}s`
                 : `Message #${channel.name}`
-              : 'You do not have permission to post here.'
+              : timedOutUntil
+                ? `You are timed out until ${timedOutUntil.toLocaleString()}.`
+                : 'You do not have permission to post here.'
           }
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onChange={(event) => {

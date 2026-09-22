@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useStore } from '../state/store';
+import { useTimeoutEnd } from '../lib/usePermissions';
 import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
 import type { VoicePerson, VoiceSnapshot, VoiceVideo } from '../lib/voice-session';
@@ -121,6 +122,14 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
   const live = here && voice.channelId === channelId;
+
+  // Timed out, the token request is refused, so offering Join would only
+  // produce an error. Leave stays: a timeout should not trap anyone in a room.
+  const timedOutUntil = useTimeoutEnd(
+    (state.selectedServerId ? state.members[state.selectedServerId] : undefined)?.find(
+      (member) => member.userId === state.user?.id,
+    ),
+  );
 
   const securityOf = (userId: string): VoicePerson['state'] | 'self' | 'unknown' => {
     if (userId === state.user?.id) return 'self';
@@ -302,13 +311,19 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
             {voice.sharing ? 'Stop sharing' : 'Share your screen'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={here ? 'button secondary inline' : 'button inline'}
-          onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
-        >
-          {here ? 'Leave' : 'Join'}
-        </button>
+        {here || !timedOutUntil ? (
+          <button
+            type="button"
+            className={here ? 'button secondary inline' : 'button inline'}
+            onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
+          >
+            {here ? 'Leave' : 'Join'}
+          </button>
+        ) : (
+          <p className="voice-stage-error">
+            You are timed out until {timedOutUntil.toLocaleString()}.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,1 @@
+ALTER TABLE "members" ADD COLUMN "timeout_until" timestamp with time zone;
