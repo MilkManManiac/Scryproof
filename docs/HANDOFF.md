@@ -1104,6 +1104,37 @@ Built after the recovery phrase and released together.
   Not yet tried by a person: any of it in the real UI. Unit, smoke, DM and
   desktop checks pass; search and emoji routes were exercised by hand
   against the dev server.
+- **Third agent batch: jump to any message, timeout, block, /roll**
+  (2026-09-22, same evening). Briefs in `docs/briefs/`; merged one at a
+  time. Two of the three migrations collided on number 0009, so the later
+  ones were dropped and regenerated on the merged schema (0009 timeout,
+  0010 roll's `messages.kind`, 0011 blocks); do the same next time rather
+  than hand-editing the journal. What landed:
+  - Jump: `GET .../messages?around=<id>` (25 either side); the store holds
+    a "window" for that channel, pages down as well as up, drops gateway
+    messages while windowed, and forgets the window when you leave the
+    channel. Pins and search hits land however old. DMs still give up on
+    an unloaded message.
+  - Timeout: `MODERATE_MEMBERS` (bit 26), `members.timeoutUntil`,
+    `PUT/DELETE .../members/:id/timeout`, `assertNotTimedOut` on send,
+    edit, react and voice token. The member list row has a menu (the `⋯`
+    on hover, or right-click): Message, Block/Unblock, and for moderators
+    Time out (1 min to 1 week) / End timeout. Typing indicator and voice
+    occupancy are not gated; a file can be uploaded but not posted.
+  - Block: `blocks` table, `GET/PUT/DELETE /api/blocks`, list rides in the
+    `ready` frame. Server drops pings and badges from a blocked author and
+    refuses DM open/send both ways with different wording. Client collapses
+    their messages ("Blocked message. Show."), filters their reactions,
+    silences notices, swaps the DM composer for Unblock, and has a
+    "Blocked people" dialog off the user menu. No gateway event: a second
+    window learns on reconnect.
+  - /roll: `shared/src/dice.ts` (NdS, modifiers, kh/kl, adv/dis, 100 dice,
+    2 to 1000 sides), `crypto.randomInt` on the server, stored as
+    `kind: 'roll'` with plain text `2d6+3 = 11  [4, 4] +3`; rolls cannot
+    be edited. Drawn as expression, big total, small faces.
+  Verified by hand against the dev server (a timed-out member gets the 403,
+  a bad roll the 400, block round-trips). Not yet tried by a person in
+  the UI.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.
@@ -1130,17 +1161,19 @@ Do next, in this order:
 1. ~~Global push-to-talk~~ shipped in shell 0.2.0; ~~start with Windows and
    the 5-minute check~~ shipped in shell 0.3.0 (both above). The link always
    hands out the newest: https://scryproof.com/download/Scryproof-Setup.exe.
-   ~~Search, custom emoji, spoilers, DM sweep~~ merged and deployed
-   2026-09-22 (agent batch, above). Wes has not clicked through them yet.
+   ~~Search, custom emoji, spoilers, DM sweep~~ and ~~jump, timeout,
+   block, /roll~~ merged and deployed 2026-09-22 (two agent batches,
+   above). Wes has not clicked through any of them yet: that is the next
+   thing to do with him, screenshots in hand.
 2. **Electron fuses**, and a plan for updating the shell itself (needs a code
    signing decision, which costs money, so it is Wes's call).
 3. **UI pass.** Wes asked for it 2026-09-22. Read `docs/visual-plan.md`
    (three directions, built and screenshotted, he picks) and the-wall.md
    first. His screenshots, if any, are in `Pictures\Screenshots`.
-4. Next agent batch (write briefs in `docs/briefs/` first): "load messages
-   around an id" so pins and search hits always land; timeout a member;
-   block a user; `/roll`; bookmarks. Keep for the main session: group DMs,
-   safety number, soundboard, phone layout. R2 stays flagged (talk first).
+4. Next agent batch (write briefs in `docs/briefs/` first): bookmarks;
+   polls; voice messages. Main session: voice changers (Wes, nice to
+   have; a node in the `voice-audio.ts` graph before encryption), group
+   DMs, safety number, soundboard, phone layout. R2 stays flagged.
 
 Deploy with `bash scripts/release.sh` (clean tree required). Local loop:
 `bash scripts/dev-restart.sh` then `npm run test:smoke` on the clean
