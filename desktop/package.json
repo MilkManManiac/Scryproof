@@ -23,6 +23,7 @@
     "directories": {
       "output": "release"
     },
+    "npmRebuild": false,
     "files": [
       "src/**",
       "assets/icon.png",
