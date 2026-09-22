@@ -108,15 +108,26 @@ export function hrefFor(text: string): string | null {
   return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
 }
 
-/** Body text split into plain runs, mentions and links, for drawing. */
+/** Body text split into plain runs, mentions, links and spoilers, for drawing. */
 export type ContentPart =
   | { kind: 'text'; text: string }
   | { kind: 'mention'; userId: string }
   | { kind: 'everyone' }
-  | { kind: 'link'; href: string; text: string };
+  | { kind: 'link'; href: string; text: string }
+  | { kind: 'spoiler'; parts: ContentPart[] };
+
+/**
+ * `||hidden||`. Non-greedy and at least one character between the pipes, so
+ * `||||` (nothing to hide) and an unclosed `||` both fall through to plain
+ * text instead of swallowing the rest of the line.
+ */
+const SPOILER_SOURCE = String.raw`\|\|([\s\S]+?)\|\|`;
 
 const CONTENT_SOURCE =
-  String.raw`<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])|` + LINK_SOURCE;
+  String.raw`<@([0-9a-fA-F-]{36})>|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
+  SPOILER_SOURCE +
+  '|' +
+  LINK_SOURCE;
 
 export function splitContent(content: string): ContentPart[] {
   const parts: ContentPart[] = [];
@@ -142,6 +153,14 @@ export function splitContent(content: string): ContentPart[] {
     if (whole === '@everyone') {
       flushTextUpTo(at);
       parts.push({ kind: 'everyone' });
+      cursor = at + whole.length;
+      continue;
+    }
+    if (match[2] !== undefined) {
+      flushTextUpTo(at);
+      // The same things a top-level body can hold work under a spoiler too,
+      // a mention or a link still needs building once it is revealed.
+      parts.push({ kind: 'spoiler', parts: splitContent(match[2]) });
       cursor = at + whole.length;
       continue;
     }

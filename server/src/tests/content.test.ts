@@ -68,6 +68,7 @@ describe('links in a message body', () => {
         if (part.kind === 'text') return part.text;
         if (part.kind === 'link') return part.text;
         if (part.kind === 'everyone') return '@everyone';
+        if (part.kind === 'spoiler') return '';
         return mentionToken(part.userId);
       })
       .join('');
@@ -84,6 +85,41 @@ describe('links in a message body', () => {
       (part) => part.kind,
     );
     assert.deepEqual(kinds, ['mention', 'text', 'link', 'text', 'everyone']);
+  });
+});
+
+describe('spoilers in a message body', () => {
+  it('hides a plain run', () => {
+    assert.deepEqual(splitContent('||secret||'), [
+      { kind: 'spoiler', parts: [{ kind: 'text', text: 'secret' }] },
+    ]);
+  });
+
+  it('keeps a mention working inside a spoiler', () => {
+    assert.deepEqual(splitContent(`||${mentionToken(ALEX)}||`), [
+      { kind: 'spoiler', parts: [{ kind: 'mention', userId: ALEX }] },
+    ]);
+  });
+
+  it('is not fooled by || with nothing between', () => {
+    assert.deepEqual(
+      splitContent('||||').map((part) => part.kind),
+      ['text'],
+    );
+    assert.equal(text(splitContent('||||')), '||||');
+  });
+
+  it('leaves an unclosed || as text', () => {
+    assert.deepEqual(
+      splitContent('||nope').map((part) => part.kind),
+      ['text'],
+    );
+    assert.equal(text(splitContent('||nope')), '||nope');
+  });
+
+  it('finds two spoilers on one line', () => {
+    const kinds = splitContent('||a|| and ||b||').map((part) => part.kind);
+    assert.deepEqual(kinds, ['spoiler', 'text', 'spoiler']);
   });
 });
 
