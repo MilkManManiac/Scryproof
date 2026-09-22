@@ -12,6 +12,7 @@ import type { PresenceStatus } from '@scryproof/shared';
 
 import { buildLabel, isDesktop } from '../lib/desktop';
 import { canInstall, install, subscribeInstall } from '../lib/install';
+import { hasUnread, subscribeUnread } from '../lib/whats-new';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { NotifySettings } from './NotifySettings';
@@ -19,6 +20,7 @@ import { useProfileCard } from './ProfileCard';
 import { ProfileSettings } from './ProfileSettings';
 import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
+import { WhatsNew } from './WhatsNew';
 import { BlockedPeople } from './settings/BlockedPeople';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
@@ -36,8 +38,10 @@ export function UserPanel() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
+  const [newsOpen, setNewsOpen] = useState(false);
   const card = useProfileCard();
   const installable = useSyncExternalStore(subscribeInstall, canInstall) && !isDesktop;
+  const news = useSyncExternalStore(subscribeUnread, hasUnread);
 
   const user = state.user;
   if (!user) return null;
@@ -70,9 +74,12 @@ export function UserPanel() {
         className="user-panel-identity"
         style={{ textAlign: 'left' }}
         onClick={() => setMenuOpen((open) => !open)}
-        title="Status and sign out"
+        title={news ? 'Something new since you were last here. Status, themes and sign out.' : 'Status and sign out'}
       >
-        <div className="user-panel-name">{user.displayName}</div>
+        <div className="user-panel-name">
+          {user.displayName}
+          {news ? <i className="news-dot" aria-label="Something new" /> : null}
+        </div>
         <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
       </button>
 
@@ -130,6 +137,7 @@ export function UserPanel() {
       {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
       {blockedOpen ? <BlockedPeople onClose={() => setBlockedOpen(false)} /> : null}
       {themesOpen ? <ThemePicker onClose={() => setThemesOpen(false)} /> : null}
+      {newsOpen ? <WhatsNew onClose={() => setNewsOpen(false)} /> : null}
 
       {menuOpen ? (
         <div
@@ -190,6 +198,20 @@ export function UserPanel() {
             }}
           >
             <span className="channel-name">Themes</span>
+          </button>
+          <button
+            type="button"
+            className="channel"
+            title="What changed in the last few releases"
+            onClick={() => {
+              setNewsOpen(true);
+              setMenuOpen(false);
+            }}
+          >
+            <span className="channel-name">
+              What&apos;s new
+              {news ? <i className="news-dot" aria-hidden="true" /> : null}
+            </span>
           </button>
           {installable ? (
             <button

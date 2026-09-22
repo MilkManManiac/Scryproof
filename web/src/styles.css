@@ -2185,6 +2185,62 @@ video.mirrored {
   color: #fff;
 }
 
+/* Something new since you were last here. A dot, not a number, not a sound. */
+.news-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 2px;
+  box-shadow: 0 0 0 2px rgb(var(--panel-rgb) / 0.9);
+}
+
+.modal.whats-new {
+  max-width: 560px;
+}
+.release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.release {
+  padding: 8px 0 14px;
+}
+.release + .release {
+  border-top: 1px solid var(--line);
+}
+.release-when {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  min-height: 14px;
+}
+.release-title {
+  margin: 4px 0 8px;
+  font-family: var(--display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--gold);
+}
+.release-notes {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.release-notes li::marker {
+  color: var(--accent);
+}
+
 .build-label {
   padding: 6px 10px 4px;
   font-size: 12px;

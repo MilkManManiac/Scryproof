@@ -15,6 +15,15 @@ if [ -n "$(git status --porcelain | grep -Ev "$signed" || true)" ]; then
   exit 1
 fi
 
+# Every release says what changed, in web/src/changelog.ts, or people cannot
+# see it. SKIP_NOTES=1 for a release that changed nothing anyone would notice.
+today=$(date +%F)
+newest=$(grep -m1 -oE "date: '[0-9-]+'" web/src/changelog.ts | grep -oE '[0-9-]+')
+if [ "${SKIP_NOTES:-}" != "1" ] && [ "$newest" != "$today" ]; then
+  echo "The newest entry in web/src/changelog.ts is from $newest, not today. Add one, or SKIP_NOTES=1 if nothing anyone would notice changed." >&2
+  exit 1
+fi
+
 # Building an installer signs a client too. Straight after one, release that client, so the two match.
 if [ -n "$(git status --porcelain | grep -E "$signed" || true)" ]; then
   echo "Releasing the client that was already signed (by an installer build)."

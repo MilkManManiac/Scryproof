@@ -14,10 +14,12 @@ import { App } from './App';
 import './lib/theme';
 import { Ambient } from './components/Ambient';
 import { registerServiceWorker } from './lib/install';
+import { noteFirstVisit } from './lib/whats-new';
 import './styles.css';
 
 // Makes the site installable on a phone. It caches nothing; see sw.js.
 registerServiceWorker();
+noteFirstVisit();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root.');

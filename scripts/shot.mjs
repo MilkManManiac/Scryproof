@@ -100,6 +100,13 @@ try {
     // Themes dialog stores it, so the next load is already in that theme.
     const themeId = flag('theme', null);
     if (themeId) await run(`localStorage.setItem('scryproof.theme.v1', ${JSON.stringify(themeId)}) || true`);
+    // e.g. --store scryproof.whats-new.v1=old: any other per-device value the
+    // page reads on load, set before the load. Repeatable.
+    for (const pair of flags('store')) {
+      const at = pair.indexOf('=');
+      if (at < 1) throw new Error(`--store wants key=value, got ${pair}`);
+      await run(`localStorage.setItem(${JSON.stringify(pair.slice(0, at))}, ${JSON.stringify(pair.slice(at + 1))}) || true`);
+    }
 
     await send('Page.navigate', { url: webUrl });
     await sleep(2500);
