@@ -388,10 +388,16 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       </div>
 
       <div className="composer-hint">
-        {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
-        {text.length > LIMITS.message.max - 400
-          ? `${LIMITS.message.max - text.length} characters left`
-          : ''}
+        {text.startsWith('/') ? (
+          'Try /roll 2d6+3'
+        ) : (
+          <>
+            {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
+            {text.length > LIMITS.message.max - 400
+              ? `${LIMITS.message.max - text.length} characters left`
+              : ''}
+          </>
+        )}
       </div>
     </div>
   );
