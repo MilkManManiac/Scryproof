@@ -19,13 +19,16 @@
   --bg-rgb: 9 11 19;
 
   --panel-rgb: 19 22 35;
-  --panel-alpha: 0.82;
+  /* More open than the hall: the painting is the point of this theme, and
+     it is dark enough that the words still win at this alpha (Wes picked
+     0.6 over 0.72 by screenshot, 2026-09-22). */
+  --panel-alpha: 0.6;
   --panel-solid: #131623;
   --panel-2: #1b1f30;
   --panel-3: #262b3e;
   --panel-4: #323851;
 
-  --backdrop: url('/backdrops/scry.svg');
+  --backdrop: url('/backdrops/scry.jpg');
   --backdrop-position: center 24%;
   /* The water breathes: the flicker layer is its light, not a fire's. */
   --glow-color: rgb(150 205 255 / 0.2);

@@ -1,8 +1,10 @@
 /**
  * The themes on offer. Each one is a file in `web/src/themes/<id>.css` (see
- * `hall.css` for the tokens a theme must set; `scry.css` is the default and also paints bare `:root`) and, if it has a painting, a
- * generated `web/public/backdrops/<id>.svg`. Adding a theme is one CSS file,
- * one `@import` at the top of `styles.css`, and one entry here.
+ * `hall.css` for the tokens a theme must set; `scry.css` is the default and
+ * also paints bare `:root`) and, if it has a painting, a JPG in
+ * `web/public/backdrops/` (the originals are in `assets/gen/`, made through
+ * the imagegen tool on 2026-09-22). Adding a theme is one CSS file, one
+ * `@import` at the top of `styles.css`, and one entry here.
  */
 
 export interface Theme {

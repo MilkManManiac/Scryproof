@@ -15,7 +15,7 @@
   --bg-rgb: 12 9 8;
 
   --panel-rgb: 27 20 18;
-  --panel-alpha: 0.82;
+  --panel-alpha: 0.6;
   --panel-solid: #1b1412;
   --panel-2: #251c19;
   --panel-3: #322722;
@@ -56,11 +56,11 @@
 
   /* The painting. Positioned a little high so the fire and the near ridge
      land under the panels' middle and the sky is what shows at the top. */
-  --backdrop: url('/backdrops/ridge.svg');
-  --backdrop-position: center 30%;
+  --backdrop: url('/backdrops/ridge.jpg');
+  --backdrop-position: center 40%;
   /* The flicker layer: the fire breathing, left of centre where it burns. */
   --glow-color: rgb(238 138 58 / 0.2);
-  --glow-position: 28% 62%;
+  --glow-position: 38% 70%;
 
   color-scheme: dark;
 }

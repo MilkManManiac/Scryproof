@@ -21,7 +21,7 @@
      not ghost. --panel-alpha is 0.82 for a theme with a painting behind it
      and 1 for a flat one. */
   --panel-rgb: 27 19 15;
-  --panel-alpha: 0.82;
+  --panel-alpha: 0.6;
   --panel-solid: #1b130f;
   --panel-2: #261b15;
   --panel-3: #33261e;
@@ -66,13 +66,13 @@
   /* The painting behind the panels, or `none`. Position is where the
      composition sits in the window; the bottom third of every backdrop is
      dark because the composer and the user panel live there. */
-  --backdrop: url('/backdrops/hall.svg');
-  --backdrop-position: center 22%;
+  --backdrop: url('/backdrops/hall.jpg');
+  --backdrop-position: center 30%;
 
   /* The one moving thing: a slow glow over the fire. `transparent` turns it
      off. Position is where the light source is in the painting. */
   --glow-color: #f0903a;
-  --glow-position: 50% 52%;
+  --glow-position: 50% 48%;
 
   color-scheme: dark;
 }
