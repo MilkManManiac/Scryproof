@@ -610,7 +610,11 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     }
 
     case 'member_join': {
-      const existing = state.members[event.d.serverId] ?? [];
+      // A roster this browser has not loaded stays unloaded: starting it with
+      // just the joiner made the loader think it was complete, and everyone
+      // already there showed as "Someone" until a reload (Wes, 2026-09-22).
+      const existing = state.members[event.d.serverId];
+      if (!existing) return state;
       if (existing.some((member) => member.userId === event.d.userId)) return state;
       return {
         ...state,
