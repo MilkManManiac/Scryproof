@@ -249,6 +249,10 @@ export const api = {
       put<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`, {}),
     unreact: (id: string, emoji: string) =>
       del<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`),
+    /** Replaces the caller's own votes on a poll. An empty array clears them. */
+    vote: (id: string, options: number[]) =>
+      put<{ message: Message }>(`/api/messages/${id}/votes`, { options }),
+    closePoll: (id: string) => post<{ message: Message }>(`/api/messages/${id}/close`, {}),
     markRead: (channelId: string, messageId: string) =>
       put<{ ok: true }>(`/api/channels/${channelId}/read`, { messageId }),
     /** Only the channels the caller can currently view and read history in. DMs are never searched. */

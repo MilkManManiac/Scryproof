@@ -41,6 +41,15 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   },
 });
 
+/** The shape stored in a `/poll` message's `poll` column. */
+export interface PollBody {
+  question: string;
+  options: string[];
+  multiple: boolean;
+  /** ISO timestamp once closed, so a closed poll needs no separate flag to agree with. */
+  closedAt: string | null;
+}
+
 const id = () => text('id').primaryKey();
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
@@ -290,8 +299,14 @@ export const messages = pgTable(
 
     /** Plaintext body. Null in an encrypted channel. */
     content: text('content'),
-    /** 'text' | 'roll'. A roll is written by the server and cannot be edited. */
+    /**
+     * 'text' | 'roll' | 'poll'. A roll is written by the server and cannot be
+     * edited. A poll's question lives here too, so search and notifications
+     * keep working; the rest of it is in `poll`.
+     */
     kind: text('kind').notNull().default('text'),
+    /** Null except on a message of kind 'poll'. Votes live in `poll_votes`, keyed off this row. */
+    poll: jsonb('poll').$type<PollBody>(),
 
     /**
      * Milestone 7. When a channel is encrypted the server stores only these
@@ -321,6 +336,28 @@ export const messages = pgTable(
   (table) => [
     index('messages_channel_id_idx').on(table.channelId, table.id),
     index('messages_author_idx').on(table.authorId),
+  ],
+);
+
+/**
+ * One row per person, per option, per poll. The primary key spans all three,
+ * so voting for the same option twice changes nothing, and a person can hold
+ * several rows here at once when the poll allows multiple picks.
+ */
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    messageId: text('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    option: smallint('option').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId, table.option] }),
+    index('poll_votes_message_idx').on(table.messageId),
   ],
 );
 
@@ -726,6 +763,7 @@ export type MemberRow = typeof members.$inferSelect;
 export type ChannelRow = typeof channels.$inferSelect;
 export type CategoryRow = typeof categories.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
+export type PollVoteRow = typeof pollVotes.$inferSelect;
 export type ReactionRow = typeof reactions.$inferSelect;
 export type EmojiRow = typeof emojis.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;

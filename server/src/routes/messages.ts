@@ -10,12 +10,23 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { LIMITS, Permission, formatRoll, has, parseRoll, roll as rollDice, validateMessageContent } from '@scryproof/shared';
+import {
+  LIMITS,
+  POLL_LIMITS,
+  Permission,
+  formatRoll,
+  has,
+  parsePollCommand,
+  parseRoll,
+  roll as rollDice,
+  validateMessageContent,
+} from '@scryproof/shared';
 import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
 import { attachments, bookmarks, channels, messages, reactions, users } from '../db/schema.js';
+import type { PollBody } from '../db/schema.js';
 import { badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { rollDie } from '../lib/crypto.js';
 import { uuidv7 } from '../lib/ids.js';
@@ -28,6 +39,7 @@ import { publicUrlFor } from '../services/storage.js';
 import { assertNotTimedOut, requireChannelPermission, requireMember } from '../services/permissions.js';
 import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
+import { setVotes, tallyForMessages } from '../services/polls.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
 import { searchMessages } from '../services/search.js';
 import { bookmarksFor, isBookmarked } from '../services/bookmarks.js';
@@ -47,9 +59,13 @@ const ROLL_COMMAND_RE = /^\/(?:roll|r)(?:\s+([\s\S]+))?$/i;
 const AROUND_HALF = 25;
 
 /**
- * Load authors, attachments, reactions and reply parents for a page of
- * messages in a fixed handful of queries, not a handful per message. Exported
- * for other routes that need the same shape, such as search results.
+ * Load authors, attachments, reactions, poll tallies and reply parents for a
+ * page of messages in a fixed handful of queries, not a handful per message.
+ * Exported for other routes that need the same shape, such as search results.
+ *
+ * `viewerId` is whoever is about to receive the result: a poll's `mine` is
+ * that person's own picks and nobody else's, so it cannot be computed once
+ * and reused for a different reader.
  */
 export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Message[]> {
   if (rows.length === 0) return [];
@@ -95,6 +111,10 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
   // view of the page; a hydrate with nobody to ask on behalf of (an internal
   // one-off, or a message being broadcast to everyone) leaves it out.
   const bookmarked = viewerId ? await isBookmarked(viewerId, messageIds) : null;
+  const pollTallies = await tallyForMessages(
+    rows.filter((row) => row.poll).map((row) => ({ messageId: row.id, optionCount: row.poll?.options.length ?? 0 })),
+    viewerId,
+  );
 
   const byMessage = new Map<string, Attachment[]>();
   for (const row of attachmentRows) {
@@ -114,6 +134,7 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
         reactions: reactionsByMessage.get(row.id) ?? [],
         replyTo: previewOf(row.replyToId),
         bookmarked: bookmarked ? bookmarked.has(row.id) : undefined,
+        poll: pollTallies.get(row.id),
       });
     })
     .filter((message): message is Message => message !== null);
@@ -271,7 +292,8 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     }
 
     let content = body.content?.trim() ?? null;
-    let kind: 'text' | 'roll' = 'text';
+    let kind: 'text' | 'roll' | 'poll' = 'text';
+    let poll: PollBody | null = null;
     const attachmentIds = body.attachmentIds ?? [];
 
     // Rolled on the server, never trusting a die the client claims to have
@@ -283,6 +305,17 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       if (!parsed.ok) throw badRequest(parsed.error, 'bad_roll');
       content = formatRoll(parsed.roll, rollDice(parsed.roll, rollDie));
       kind = 'roll';
+    }
+
+    // A poll's question becomes the stored `content`, so search and
+    // notifications keep working; the options and the switch for multiple
+    // picks go in the `poll` column, votes go in their own table.
+    const pollMatch = content ? parsePollCommand(content) : null;
+    if (pollMatch) {
+      if (!pollMatch.ok) throw badRequest(pollMatch.error, 'bad_poll');
+      content = pollMatch.poll.question;
+      kind = 'poll';
+      poll = { question: pollMatch.poll.question, options: pollMatch.poll.options, multiple: pollMatch.poll.multiple, closedAt: null };
     }
 
     if (!content && !body.ciphertext && attachmentIds.length === 0) {
@@ -357,6 +390,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         authorId: user.id,
         content: channel.encrypted ? null : content,
         kind,
+        poll,
         ciphertext: body.ciphertext ? Buffer.from(body.ciphertext, 'base64') : null,
         nonce: body.nonce ? Buffer.from(body.nonce, 'base64') : null,
         keyEpoch: channel.encrypted ? (body.keyEpoch ?? channel.keyEpoch) : null,
@@ -428,6 +462,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     if (!existing) throw notFound('That message does not exist.', 'unknown_message');
     if (existing.deletedAt) throw badRequest('That message was deleted.', 'message_deleted');
     if (existing.kind === 'roll') throw badRequest('A roll cannot be edited.', 'roll_not_editable');
+    if (existing.kind === 'poll') throw badRequest('A poll cannot be edited.', 'poll_not_editable');
 
     // Editing is authorship, not moderation. Nobody edits someone else's words,
     // however senior they are.
@@ -723,6 +758,97 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     const current = await removeReaction(existing.id, user.id, emoji);
     await announceReactions(ctx.serverId, existing, current);
     return { reactions: current };
+  });
+
+  /* ---------------------------------- polls --------------------------------- */
+
+  /**
+   * Voting replaces the caller's own picks. The broadcast carries only the
+   * public tally, never who voted for what and never anyone else's picks, so
+   * it is `poll_update`, not `message_update`: the HTTP response here is the
+   * only place the caller's own `mine` goes out, because it is only ever
+   * true for them.
+   */
+  app.put('/api/messages/:messageId/votes', async (request) => {
+    const user = requireUser(request);
+    const { messageId } = z.object({ messageId: z.string() }).parse(request.params);
+    const body = z.object({ options: z.array(z.number().int().min(0)).max(POLL_LIMITS.maxOptions) }).parse(request.body);
+
+    const db = getDb();
+    const [existing] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!existing || existing.deletedAt) throw notFound('That message does not exist.', 'unknown_message');
+    const poll = existing.poll;
+    if (!poll) throw badRequest('That message is not a poll.', 'not_a_poll');
+
+    const ctx = await requireChannelPermission(
+      existing.channelId,
+      user.id,
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+
+    if (poll.closedAt) throw badRequest('This poll is closed.', 'poll_closed');
+
+    const options = [...new Set(body.options)];
+    if (options.some((option) => option >= poll.options.length)) {
+      throw badRequest('That is not one of the choices.', 'unknown_option');
+    }
+    if (!poll.multiple && options.length > 1) {
+      throw badRequest('This poll takes one pick.', 'single_choice_only');
+    }
+
+    await setVotes(messageId, user.id, options);
+
+    const [hydrated] = await hydrate([existing], user.id);
+    if (!hydrated || !hydrated.poll) throw notFound('That message does not exist.', 'unknown_message');
+
+    await hub.broadcastToChannel(
+      ctx.serverId,
+      existing.channelId,
+      { t: 'poll_update', d: { messageId, channelId: existing.channelId, counts: hydrated.poll.counts, closedAt: hydrated.poll.closedAt } },
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+
+    return { message: hydrated };
+  });
+
+  /** Closing is the author's call, or anyone with Manage messages, same as pinning is a channel-level statement. */
+  app.post('/api/messages/:messageId/close', async (request) => {
+    const user = requireUser(request);
+    const { messageId } = z.object({ messageId: z.string() }).parse(request.params);
+
+    const db = getDb();
+    const [existing] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!existing || existing.deletedAt) throw notFound('That message does not exist.', 'unknown_message');
+    if (!existing.poll) throw badRequest('That message is not a poll.', 'not_a_poll');
+
+    const isAuthor = existing.authorId === user.id;
+    const ctx = await requireChannelPermission(
+      existing.channelId,
+      user.id,
+      isAuthor ? Permission.VIEW_CHANNEL : Permission.MANAGE_MESSAGES,
+    );
+
+    if (existing.poll.closedAt) return { message: (await hydrate([existing], user.id))[0] };
+
+    const closedAt = new Date();
+    const [updated] = await db
+      .update(messages)
+      .set({ poll: { ...existing.poll, closedAt: closedAt.toISOString() } })
+      .where(eq(messages.id, messageId))
+      .returning();
+    if (!updated) throw notFound('That message does not exist.', 'unknown_message');
+
+    const [hydrated] = await hydrate([updated], user.id);
+    if (!hydrated || !hydrated.poll) throw notFound('That message does not exist.', 'unknown_message');
+
+    await hub.broadcastToChannel(
+      ctx.serverId,
+      existing.channelId,
+      { t: 'poll_update', d: { messageId, channelId: existing.channelId, counts: hydrated.poll.counts, closedAt: hydrated.poll.closedAt } },
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+
+    return { message: hydrated };
   });
 
   /* ------------------------------- read state ------------------------------- */

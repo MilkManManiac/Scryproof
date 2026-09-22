@@ -228,12 +228,27 @@ export interface Message {
   author: PublicUser;
   /**
    * 'roll' is a `/roll` result: the server rolled it, the body is the
-   * expression written out plainly, and it cannot be edited. Everything else
+   * expression written out plainly, and it cannot be edited. 'poll' is a
+   * `/poll` message; the question rides in `content` so search and
+   * notifications keep working, and the rest is in `poll`. Everything else
    * is 'text'.
    */
-  kind: 'text' | 'roll';
+  kind: 'text' | 'roll' | 'poll';
   /** Plaintext body. Null when the channel is end-to-end encrypted. */
   content: string | null;
+  /**
+   * Present only when `kind` is 'poll'. `counts` and `mine` are read-path
+   * data, not stored columns: `counts` is everyone's tally, `mine` is which
+   * options the viewer themself picked, so it differs by who is asking.
+   */
+  poll?: {
+    question: string;
+    options: string[];
+    multiple: boolean;
+    closedAt: Timestamp | null;
+    counts: number[];
+    mine: number[];
+  };
   /**
    * Base64 ciphertext, present only for encrypted channels. The server stores
    * and forwards this without ever being able to read it.
