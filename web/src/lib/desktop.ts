@@ -14,6 +14,9 @@ interface DesktopBridge {
   updateState?: () => Promise<number | null>;
   onUpdateReady?: (listener: (version: number) => void) => void;
   applyUpdate?: () => Promise<boolean>;
+  /** Absent in shells built before global push-to-talk. */
+  watchPushKey?: (code: string | null) => Promise<boolean>;
+  onPushHold?: (listener: (held: boolean) => void) => () => void;
 }
 
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
@@ -86,6 +89,26 @@ export function onClientUpdate(listener: () => void): void {
   void bridge.updateState().then((version) => {
     if (version !== null) listener();
   });
+}
+
+/**
+ * Ask the shell to hear one key system-wide, so push-to-talk keeps working
+ * with a game in front. Resolves to a function that stops it, or null when
+ * this is a browser or an older shell, in which case the window's own key
+ * events are all there is.
+ */
+export async function holdPushKey(code: string, onHold: (held: boolean) => void): Promise<(() => void) | null> {
+  if (!bridge?.watchPushKey || !bridge.onPushHold) return null;
+  const unlisten = bridge.onPushHold(onHold);
+  const watched = await bridge.watchPushKey(code).catch(() => false);
+  if (!watched) {
+    unlisten();
+    return null;
+  }
+  return () => {
+    unlisten();
+    void bridge.watchPushKey?.(null);
+  };
 }
 
 export const applyClientUpdate = (): void => {

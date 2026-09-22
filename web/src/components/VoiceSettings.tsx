@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { isDesktop } from '../lib/desktop';
 import { openMeter, sounds } from '../lib/voice-audio';
 import {
   cameraCostLabel,
@@ -37,7 +38,9 @@ const MODES: { id: InputMode; label: string; note: string }[] = [
   {
     id: 'push',
     label: 'Push to talk',
-    note: 'Live only while you hold a key. This works while Scryproof is the window in front. Holding a key from inside a game needs the desktop app, which does not exist yet.',
+    note: isDesktop
+      ? 'Live only while you hold a key, even with a game in front. The app watches for that one key and nothing else.'
+      : 'Live only while you hold a key, while this tab is the window in front. From inside a game, use the desktop app.',
   },
 ];
 

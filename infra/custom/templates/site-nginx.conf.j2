@@ -93,6 +93,18 @@ http {
             proxy_request_buffering off;
         }
 
+        # ---- the desktop installer -------------------------------------------
+        # Served by the app from the data folder on the vault, not from the
+        # release: it is too big for the repository (server/src/routes/downloads.ts).
+        location /download/ {
+            proxy_pass {{ app_proxy_target }};
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_buffering off;
+        }
+
         # ---- the gateway (WebSocket) -----------------------------------------
         location /gateway {
             proxy_pass {{ app_proxy_target }};

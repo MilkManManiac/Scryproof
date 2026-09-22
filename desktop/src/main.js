@@ -18,6 +18,9 @@
  * One thing arrives that is code: a newer client, from /desktop-update/. It is
  * used only if it was signed by the key this build was made with, which is on
  * Wes's PC and not on the server. `update-core.js`.
+ *
+ * One thing this process does that a browser cannot: hear the push-to-talk
+ * key while a game has the keyboard. `push-to-talk.js`, and its rules.
  */
 
 import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
@@ -26,6 +29,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -216,9 +220,11 @@ async function checkForUpdate() {
   } catch { /* offline, or the server is down. Ask again later. */ }
 }
 
+/** Whether a request over the bridge came from our own page. */
+const ours = (event) => event.senderFrame?.url.startsWith(`${APP_ORIGIN}/`) ?? false;
+
 /** The page asks whether anything is waiting, and says when to switch. Only our own page is listened to. */
 function armUpdates() {
-  const ours = (event) => event.senderFrame?.url.startsWith(`${APP_ORIGIN}/`) ?? false;
   ipcMain.handle('scryproof:update-state', (event) => (ours(event) ? (pending?.version ?? null) : null));
   ipcMain.handle('scryproof:update-apply', (event) => {
     if (!ours(event) || !pending) return false;
@@ -366,8 +372,12 @@ function createWindow() {
     event.preventDefault();
     win.hide();
   });
+  // A page that goes away (reload onto a newer client) takes its request for
+  // the key with it. The next page asks again if it wants it.
+  win.webContents.on('did-navigate', stopPushToTalk);
   win.on('closed', () => {
     win = null;
+    stopPushToTalk();
   });
 
   void win.loadURL(`${APP_ORIGIN}/`);
@@ -376,6 +386,7 @@ function createWindow() {
 app.on('second-instance', show);
 app.on('before-quit', () => {
   quitting = true;
+  stopPushToTalk();
 });
 app.on('window-all-closed', () => app.quit());
 
@@ -390,4 +401,5 @@ void app.whenReady().then(async () => {
   armPermissions(session.defaultSession);
   createWindow();
   armUpdates();
+  armPushToTalk(ipcMain, ours, () => win);
 });

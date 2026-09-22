@@ -1,7 +1,7 @@
 {
   "name": "scryproof-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
   "author": "Scryproof",
   "type": "module",
@@ -10,7 +10,7 @@
     "client": "cd .. && npm run build --workspace web",
     "start": "electron .",
     "release": "node scripts/make-update.mjs",
-    "test": "node --test test/update.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "dist": "npm run release && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
@@ -20,10 +20,35 @@
   "build": {
     "appId": "com.scryproof.desktop",
     "productName": "Scryproof",
-    "directories": { "output": "release" },
-    "files": ["src/**", "assets/icon.png", "package.json"],
-    "extraResources": [{ "from": "../web/dist", "to": "client", "filter": ["**/*", "!desktop-update/**"] }],
-    "win": { "icon": "assets/icon.png", "target": "nsis" },
-    "nsis": { "oneClick": true, "perMachine": false, "artifactName": "Scryproof-Setup-${version}.exe" }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**",
+      "assets/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "client",
+        "filter": [
+          "**/*",
+          "!desktop-update/**"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Scryproof-Setup-${version}.exe"
+    }
+  },
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
   }
 }

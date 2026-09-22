@@ -38,6 +38,7 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
+import { holdPushKey } from './desktop';
 import { MicGate, OutputMix, sounds } from './voice-audio';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
@@ -182,6 +183,8 @@ export class VoiceSession {
   private gate: MicGate | null = null;
   private prefs: VoicePrefs = voicePrefs.get();
   private stopWatching: (() => void) | null = null;
+  /** Stops the shell's system-wide key watch, when one is running. */
+  private globalHold: (() => void) | null = null;
 
   private members: string[] = [];
   /** Seats we have sent this epoch's key to, so an announcement does not trigger a second copy. */
@@ -497,15 +500,23 @@ export class VoiceSession {
     this.stopWatching?.();
     this.prefs = voicePrefs.get();
 
+    // In the desktop app the shell hears the key even with a game in front;
+    // then the window's own events are not needed and would only disagree
+    // (a blur while the key is held is not a release). Anywhere else, the
+    // window is all there is, and losing focus is treated as letting go.
     const onKey = (event: KeyboardEvent) => {
+      if (this.globalHold) return;
       if (voicePrefs.get().inputMode !== 'push' || event.code !== voicePrefs.get().pushKey) return;
       if (event.repeat) return;
       this.gate?.hold(event.type === 'keydown');
     };
-    const onBlur = () => this.gate?.hold(false);
+    const onBlur = () => {
+      if (!this.globalHold) this.gate?.hold(false);
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
     window.addEventListener('blur', onBlur);
+    void this.armGlobalHold();
 
     const unsubscribe = voicePrefs.subscribe(() => void this.applyPrefs());
     this.stopWatching = () => {
@@ -513,6 +524,7 @@ export class VoiceSession {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
       window.removeEventListener('blur', onBlur);
+      this.dropGlobalHold();
     };
 
     const { outputDeviceId, outputVolume } = this.prefs;
@@ -520,9 +532,28 @@ export class VoiceSession {
     if (outputDeviceId) void this.mix?.setOutputDevice(outputDeviceId);
   }
 
+  /** Ask the shell for the key, when there is a shell and push-to-talk is on. */
+  private async armGlobalHold(): Promise<void> {
+    this.dropGlobalHold();
+    const { inputMode, pushKey } = voicePrefs.get();
+    if (inputMode !== 'push') return;
+    const stop = await holdPushKey(pushKey, (held) => this.gate?.hold(held));
+    // The prefs may have moved on while the shell was answering.
+    if (!stop) return;
+    if (voicePrefs.get().inputMode !== 'push' || voicePrefs.get().pushKey !== pushKey) return stop();
+    this.globalHold = stop;
+  }
+
+  private dropGlobalHold(): void {
+    this.globalHold?.();
+    this.globalHold = null;
+    this.gate?.hold(false);
+  }
+
   private async applyPrefs(): Promise<void> {
     const before = this.prefs;
     const now = (this.prefs = voicePrefs.get());
+    if (before.inputMode !== now.inputMode || before.pushKey !== now.pushKey) void this.armGlobalHold();
 
     this.mix?.setVolume(now.outputVolume);
     for (const person of this.room?.remoteParticipants.values() ?? []) {

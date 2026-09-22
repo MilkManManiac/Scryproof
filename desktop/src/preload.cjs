@@ -4,9 +4,10 @@
  * socket, and the invite links it writes for people to paste into a browser.
  *
  *
- * And the one thing it can ask for: to be reloaded onto a newer client that the
- * main process has already fetched and checked. The page never sees the update
- * and has no say in whether it is genuine.
+ * And two things it can ask for: to be reloaded onto a newer client that the
+ * main process has already fetched and checked (the page never sees the update
+ * and has no say in whether it is genuine), and to be told when its
+ * push-to-talk key goes down and up while another program has the keyboard.
  *
  * CommonJS because a sandboxed preload cannot be a module.
  */
@@ -31,5 +32,17 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('scryproof:update-ready', (_event, version) => listener(version));
     },
     applyUpdate: () => ipcRenderer.invoke('scryproof:update-apply'),
+    /**
+     * Watch one key (a `KeyboardEvent.code`) system-wide, or null to stop.
+     * Resolves to whether it is being watched; false means fall back to the
+     * window's own key events.
+     */
+    watchPushKey: (code) => ipcRenderer.invoke('scryproof:ptt-watch', code),
+    /** Held or released, for the watched key only. Returns the way to stop listening. */
+    onPushHold: (listener) => {
+      const relay = (_event, held) => listener(held === true);
+      ipcRenderer.on('scryproof:ptt', relay);
+      return () => ipcRenderer.removeListener('scryproof:ptt', relay);
+    },
   }),
 );

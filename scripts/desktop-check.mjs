@@ -187,6 +187,13 @@ try {
   await sleep(800);
   check('it refuses to navigate to the server, or anywhere', (await evaluate('location.origin').catch(() => 'gone')) === 'app://scryproof');
 
+  // The system-wide key hook is a native module; loading in plain Node proves
+  // nothing about loading inside Electron. Asking the shell to watch a key
+  // starts it for real, and its answer is whether that worked.
+  check('the shell can watch the push-to-talk key system-wide', (await evaluate(`window.scryproofDesktop.watchPushKey('Backquote')`)) === true);
+  check('and a nonsense key is refused, not watched', (await evaluate(`window.scryproofDesktop.watchPushKey('NoSuchKey')`)) === false);
+  await evaluate(`window.scryproofDesktop.watchPushKey(null)`);
+
   /* Updates: only what Wes's key signed, only forwards. */
   {
     const waiting = () => evaluate('window.scryproofDesktop.updateState()');
