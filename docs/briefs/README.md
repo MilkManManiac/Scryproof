@@ -38,6 +38,18 @@ Main session, in order, after this batch is merged and Wes has clicked
 through it: Electron fuses; group DMs; soundboard; phone layout and push;
 safety number. R2 stays flagged.
 
-Later list (Wes: wanted, not now), good for a second batch of briefs once
-the first has landed cleanly: timeout a member; block a user; `/roll`;
-bookmarks; polls; voice messages.
+Second batch, written 2026-09-22 after the first merged and deployed, not
+yet launched (the PC was low on memory at the time):
+
+5. `jump-to-message.md`: pins and search hits land however old.
+6. `timeout.md`: quiet a member for a while.
+7. `block.md`: block a person.
+8. `roll.md`: `/roll 2d6+3`, rolled on the server.
+
+`jump-to-message` and `roll` both change `MessageList.tsx` and
+`messages.ts`; `timeout`, `block` and `roll` each add a migration, so
+`server/drizzle/meta/_journal.json` will conflict: merge one at a time and
+keep every entry, renumbering the later migrations if two took the same
+number.
+
+Still later: bookmarks; polls; voice messages.

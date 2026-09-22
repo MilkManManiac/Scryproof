@@ -23,11 +23,10 @@ same way, in the roller's name, with the dice shown.
 - In `POST /api/channels/:channelId/messages`
   (`server/src/routes/messages.ts`): a body starting with `/roll ` or
   `/r ` is rolled on the server and stored as a message whose `content` is
-  the roll written out, e.g. `🎲 2d6+3 = **11** (4, 4) + 3`, but see
-  below about markup: the client has no bold, so store
-  `2d6+3 → 11  [4, 4] +3` and add a `kind: 'roll'` field on the message
-  (schema column `kind text`, default `'text'`, migration) so the client
-  can draw it with a dice mark of its own instead of an emoji in the text.
+  the roll written out plainly, `2d6+3 = 11  [4, 4] +3`, with a new `kind`
+  field on the message (schema column `kind text`, default `'text'`,
+  migration) set to `'roll'` so the client can draw it as a roll rather
+  than a sentence. No emoji in the stored text.
   A bad roll is refused with the parse error (400) and nothing is sent.
   Same permissions as any message.
 - Tests: `server/src/tests/dice.test.ts` for the parser and roller with a
