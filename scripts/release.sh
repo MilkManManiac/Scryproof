@@ -27,6 +27,10 @@ git commit -q -m "Signed desktop client $version"
 git push -q
 
 MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu -- bash -lc 'bash ~/ship.sh 6'
-curl -fsS https://scryproof.com/api/health; echo
+# The service is restarting when the deploy returns; health is a 502 for a few seconds.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS https://scryproof.com/api/health 2>/dev/null; then echo; break; fi
+  sleep 3
+done
 served=$(curl -fsS https://scryproof.com/desktop-update/client.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
 if [ "$served" = "$version" ]; then echo "The box is serving client $version."; else echo "The box is serving $served, not $version." >&2; exit 1; fi
