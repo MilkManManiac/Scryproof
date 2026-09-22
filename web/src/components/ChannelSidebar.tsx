@@ -6,12 +6,13 @@
  * nothing here to hide and nothing to leak by mistake.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { LIMITS, Permission, slugifyChannelName, validateChannelName } from '@scryproof/shared';
 import type { ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';
+import { notifyPrefs } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -31,6 +32,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   // from a heading rather than from the top of the sidebar.
   const [newChannelIn, setNewChannelIn] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  // Which channel's right-click menu (mute/unmute) is open, if any.
+  const [channelMenu, setChannelMenu] = useState<string | null>(null);
+  const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
 
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
   const canInvite = canOnServer(server, Permission.CREATE_INVITE);
@@ -180,19 +184,26 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     // the only thing that keeps this count and the rail's from
                     // disagreeing.
                     const { unread, mentions } = unreadFor(state, channel);
+                    const muted = notifyState.mutedChannels.includes(channel.id);
 
                     const classes = ['channel'];
                     if (active) classes.push('active');
                     if (unread) classes.push('unread');
+                    if (muted) classes.push('muted');
 
                     return (
-                      <div key={channel.id}>
+                      <div key={channel.id} style={{ position: 'relative' }}>
                         <button
                           type="button"
                           className={classes.join(' ')}
+                          title={muted ? `${channel.name} — muted` : undefined}
                           onClick={() => {
                             selectChannel(channel.id);
                             if (channel.type === 'voice') joinVoice(channel.id);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setChannelMenu(channel.id);
                           }}
                         >
                           <span className="channel-sigil">
@@ -210,6 +221,20 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                             </span>
                           ) : null}
                         </button>
+
+                        {channelMenu === channel.id ? (
+                          <Menu onClose={() => setChannelMenu(null)}>
+                            <MenuItem
+                              note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up. Unread still shows.'}
+                              onClick={() => {
+                                notifyPrefs.toggleChannel(channel.id);
+                                setChannelMenu(null);
+                              }}
+                            >
+                              {muted ? 'Unmute channel' : 'Mute channel'}
+                            </MenuItem>
+                          </Menu>
+                        ) : null}
 
                         {inVoice.length > 0 ? (
                           <div className="voice-members">

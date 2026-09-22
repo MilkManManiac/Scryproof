@@ -10,13 +10,13 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { soundFor } from '../lib/notify';
+import { load, soundFor } from '../lib/notify';
 import type { NotifyPrefs, SoundContext } from '../lib/notify';
 
 const ME = 'me';
 const THEM = 'them';
 
-const prefs: NotifyPrefs = { mention: true, message: 'unfocused' };
+const prefs: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] };
 
 const base: SoundContext = {
   authorId: THEM,
@@ -24,6 +24,7 @@ const base: SoundContext = {
   mentionsEveryone: false,
   selfId: ME,
   channelId: 'c1',
+  serverId: 's1',
   openChannelId: 'c1',
   windowFocused: true,
   prefs,
@@ -70,12 +71,69 @@ describe('soundFor', () => {
 
   it('can be told to stop pinging on mentions too', () => {
     assert.equal(
-      sound({ mentions: [ME], windowFocused: false, prefs: { mention: false, message: 'off' } }),
+      sound({ mentions: [ME], windowFocused: false, prefs: { ...prefs, mention: false, message: 'off' } }),
       null,
     );
   });
 
   it('says nothing at all before anyone is signed in', () => {
     assert.equal(sound({ selfId: null, mentions: [ME] }), null);
+  });
+
+  it('stays silent for a muted server, even a mention', () => {
+    assert.equal(
+      sound({ mentions: [ME], windowFocused: false, prefs: { ...prefs, mutedServers: ['s1'] } }),
+      null,
+    );
+    // A different server is not touched by that mute.
+    assert.equal(
+      sound({ mentions: [ME], serverId: 's2', windowFocused: false, prefs: { ...prefs, mutedServers: ['s1'] } }),
+      'mention',
+    );
+  });
+
+  it('stays silent for a muted channel, even a mention', () => {
+    assert.equal(
+      sound({ mentions: [ME], windowFocused: false, prefs: { ...prefs, mutedChannels: ['c1'] } }),
+      null,
+    );
+    // Muting one channel does not mute the rest of its server.
+    assert.equal(
+      sound({ mentions: [ME], channelId: 'c2', windowFocused: false, prefs: { ...prefs, mutedChannels: ['c1'] } }),
+      'mention',
+    );
+  });
+});
+
+describe('loading saved prefs', () => {
+  const fakeStorage = (value: string | null) => ({
+    getItem: () => value,
+    setItem: () => {},
+    removeItem: () => {},
+    clear: () => {},
+    key: () => null,
+    length: 0,
+  });
+
+  it('fills in the mute lists for prefs saved before muting existed', () => {
+    const globalWithStorage = globalThis as { localStorage?: unknown };
+    const previous = globalWithStorage.localStorage;
+    globalWithStorage.localStorage = fakeStorage(JSON.stringify({ mention: false, message: 'off' }));
+    try {
+      assert.deepEqual(load(), { mention: false, message: 'off', mutedServers: [], mutedChannels: [] });
+    } finally {
+      globalWithStorage.localStorage = previous;
+    }
+  });
+
+  it('falls back to defaults when there is nothing saved', () => {
+    const globalWithStorage = globalThis as { localStorage?: unknown };
+    const previous = globalWithStorage.localStorage;
+    globalWithStorage.localStorage = fakeStorage(null);
+    try {
+      assert.deepEqual(load(), { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [] });
+    } finally {
+      globalWithStorage.localStorage = previous;
+    }
   });
 });
