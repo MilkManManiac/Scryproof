@@ -1016,6 +1016,18 @@ Built after the recovery phrase and released together.
   Wes asked for it so what he sees can be compared with what shipped. The
   update banner is the accent colour now: the first one was a thin grey strip
   and he did not spot it.
+- **Video quality** (Wes, 2026-09-21: "let people stream their vids/cams at
+  high quality"). Screen share already went to native size at 60 fps. Added:
+  a camera quality choice in voice settings (720p or 1080p, 30 or 60; default
+  720p30; up to 5.3 Mbit/s), VP9 for all video with VP8 as the fallback
+  (voice-check proves VP9 is on the wire through the encryption), and a
+  readout on the focused video ("1920x1080, 60 fps, VP9") measured off the
+  <video> element itself so what a viewer actually gets can be read, not
+  guessed. Remember adaptiveStream: a small tile gets a small layer on
+  purpose; the full picture arrives when it is focused or full screen. The
+  box forwards each stream to every viewer, so a 12 Mbit/s share to five
+  people is 60 Mbit/s out of the droplet; fine for a game night, worth
+  watching on the bandwidth graph if it becomes nightly.
 - **How the work was split.** Three of these (Zod, sweep, mute) were built by
   cheaper agents in git worktrees from a written brief, each ran the unit
   tests and committed on its own branch; the main session reviewed and merged.

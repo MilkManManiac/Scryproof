@@ -45,11 +45,29 @@ function useAccents(): (userId: string) => string | undefined {
 
 /* --------------------------------- pictures --------------------------------- */
 
+interface Picture {
+  width: number;
+  height: number;
+  fps: number | null;
+}
+
+const pictureLabel = (picture: Picture, codec: string | null): string =>
+  `${picture.width}×${picture.height}${picture.fps === null ? '' : `, ${picture.fps} fps`}${codec ? `, ${codec}` : ''}`;
+
 /**
  * One camera or one screen. The element is handed to the call session, which
  * points the decrypted track at it; nothing in this file touches media.
  */
-function VideoView({ video, className }: { video: VoiceVideo; className: string }) {
+function VideoView({
+  video,
+  className,
+  onPicture,
+}: {
+  video: VoiceVideo;
+  className: string;
+  /** Once a second: what is actually being drawn, in pixels and frames. */
+  onPicture?: (picture: Picture | null) => void;
+}) {
   const { state, voice } = useStore();
   const element = useRef<HTMLVideoElement>(null);
 
@@ -57,6 +75,27 @@ function VideoView({ video, className }: { video: VoiceVideo; className: string 
     if (!element.current) return undefined;
     return voice.attachVideo(video.userId, video.source, element.current);
   }, [voice, video.userId, video.source, video.sid]);
+
+  // Measured off the <video> itself, not asked of anyone: the number of
+  // frames it painted in the last second, and the size of the picture it has.
+  useEffect(() => {
+    if (!onPicture) return undefined;
+    let last = { frames: 0, at: performance.now() };
+    const tick = setInterval(() => {
+      const el = element.current;
+      if (!el || el.videoWidth === 0) return onPicture(null);
+      const quality = el.getVideoPlaybackQuality?.();
+      const now = performance.now();
+      const frames = quality ? quality.totalVideoFrames : 0;
+      const fps = quality ? Math.round(((frames - last.frames) * 1000) / Math.max(1, now - last.at)) : null;
+      last = { frames, at: now };
+      onPicture({ width: el.videoWidth, height: el.videoHeight, fps });
+    }, 1000);
+    return () => {
+      clearInterval(tick);
+      onPicture(null);
+    };
+  }, [onPicture, video.sid]);
 
   // Your own camera is shown mirrored, because that is what a mirror has
   // taught everyone to expect. Everyone else sees it the right way round.
@@ -76,6 +115,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
+  const [picture, setPicture] = useState<Picture | null>(null);
   const focusFrame = useRef<HTMLDivElement>(null);
 
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
@@ -119,10 +159,15 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
       {big ? (
         <div className="voice-focus" ref={focusFrame}>
           <div className="voice-focus-frame">
-            <VideoView key={big.sid} video={big} className="voice-focus-video" />
+            <VideoView key={big.sid} video={big} className="voice-focus-video" onPicture={setPicture} />
           </div>
           <div className="voice-focus-bar">
             <span className="voice-focus-label">{labelOf(big)}</span>
+            {picture ? (
+              <span className="voice-focus-picture" title="What is being drawn on your screen right now">
+                {pictureLabel(picture, voice.stats.videoCodec)}
+              </span>
+            ) : null}
             <button
               type="button"
               className="link-button"

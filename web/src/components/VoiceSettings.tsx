@@ -10,7 +10,18 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { openMeter, sounds } from '../lib/voice-audio';
-import { captureOptions, keyLabel, shareCostLabel, voicePrefs, type InputMode, type ShareFps, type ShareHeight } from '../lib/voice-prefs';
+import {
+  cameraCostLabel,
+  captureOptions,
+  keyLabel,
+  shareCostLabel,
+  voicePrefs,
+  type CameraFps,
+  type CameraHeight,
+  type InputMode,
+  type ShareFps,
+  type ShareHeight,
+} from '../lib/voice-prefs';
 import { Modal } from './Modal';
 
 const FLOOR_DB = -80;
@@ -268,6 +279,31 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
             </option>
           ))}
         </select>
+
+        <div className="settings-subhead">Camera quality</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            className="voice-select"
+            aria-label="Camera resolution"
+            value={prefs.cameraHeight}
+            onChange={(event) => voicePrefs.set({ cameraHeight: Number(event.target.value) as CameraHeight })}
+          >
+            <option value={720}>720p</option>
+            <option value={1080}>1080p</option>
+          </select>
+          <select
+            className="voice-select"
+            aria-label="Camera frames a second"
+            value={prefs.cameraFps}
+            onChange={(event) => voicePrefs.set({ cameraFps: Number(event.target.value) as CameraFps })}
+          >
+            <option value={30}>30 frames a second</option>
+            <option value={60}>60 frames a second</option>
+          </select>
+        </div>
+        <p className="field-note">
+          {cameraCostLabel(prefs)} A camera that cannot do what is asked gives its best instead. Applies the next time you turn it on.
+        </p>
 
         <div className="settings-subhead">Screen share quality</div>
         <div style={{ display: 'flex', gap: 8 }}>

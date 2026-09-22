@@ -39,7 +39,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { MicGate, OutputMix, sounds } from './voice-audio';
-import { cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
+import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -84,6 +84,8 @@ export interface VoiceStats {
   jitterMs: number | null;
   lossPercent: number | null;
   codec: string | null;
+  /** The codec of the pictures coming in, if any are. */
+  videoCodec: string | null;
   /** True when media is going through the TURN relay rather than direct. */
   relayed: boolean | null;
 }
@@ -113,7 +115,7 @@ export interface VoiceSnapshot {
   can: { speak: boolean; video: boolean; screenShare: boolean };
 }
 
-const EMPTY_STATS: VoiceStats = { rttMs: null, jitterMs: null, lossPercent: null, codec: null, relayed: null };
+const EMPTY_STATS: VoiceStats = { rttMs: null, jitterMs: null, lossPercent: null, codec: null, videoCodec: null, relayed: null };
 
 const IDLE: VoiceSnapshot = {
   phase: 'idle',
@@ -261,8 +263,16 @@ export class VoiceSession {
         dynacast: true,
         audioCaptureDefaults: captureOptions(voicePrefs.get()),
         videoCaptureDefaults: cameraOptions(voicePrefs.get()),
-        // A shared game at 15 frames a second is a slideshow.
-        publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding },
+        // A shared game at 15 frames a second is a slideshow. VP9 over VP8:
+        // the same upload buys a noticeably sharper picture, and every browser
+        // this app runs in decodes it. VP8 stays as the fallback for one that
+        // cannot.
+        publishDefaults: {
+          videoCodec: 'vp9',
+          backupCodec: { codec: 'vp8' },
+          screenShareEncoding: ScreenSharePresets.h1080fps30.encoding,
+          videoEncoding: cameraEncoding(voicePrefs.get()),
+        },
       });
       this.room = room;
       this.listenTo(room);
@@ -356,7 +366,9 @@ export class VoiceSession {
     if (!room || !this.snapshot.can.video) return;
     this.update({ mediaError: null });
     try {
-      await room.localParticipant.setCameraEnabled(on, cameraOptions(voicePrefs.get()));
+      await room.localParticipant.setCameraEnabled(on, cameraOptions(voicePrefs.get()), {
+        videoEncoding: cameraEncoding(voicePrefs.get()),
+      });
     } catch (problem) {
       this.update({ mediaError: describeCaptureProblem(problem, 'camera') });
     }
@@ -727,6 +739,7 @@ export class VoiceSession {
     let rttMs: number | null = null;
     let jitterMs: number | null = null;
     let codec: string | null = null;
+    let videoCodec: string | null = null;
     let relayed: boolean | null = null;
     let lost = 0;
     let received = 0;
@@ -752,6 +765,12 @@ export class VoiceSession {
           const described = byId.get(entry.codecId as string);
           if (described && typeof described.mimeType === 'string') codec = described.mimeType.replace(/^audio\//, '');
         }
+        if ((entry.type === 'inbound-rtp' || entry.type === 'outbound-rtp') && entry.kind === 'video') {
+          const described = byId.get(entry.codecId as string);
+          if (described && typeof described.mimeType === 'string' && (videoCodec === null || entry.type === 'inbound-rtp')) {
+            videoCodec = described.mimeType.replace(/^video\//, '');
+          }
+        }
       }
     }
 
@@ -765,7 +784,7 @@ export class VoiceSession {
     }
     this.previousLoss = { lost, received };
 
-    this.update({ stats: { rttMs, jitterMs, lossPercent, codec, relayed }, encrypted: room.isE2EEEnabled });
+    this.update({ stats: { rttMs, jitterMs, lossPercent, codec, videoCodec, relayed }, encrypted: room.isE2EEEnabled });
   }
 
   /* ------------------------ for the browser test only ---------------------- */

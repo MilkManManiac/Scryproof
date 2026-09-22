@@ -336,6 +336,9 @@ async function main() {
     `+${seen.frames} frames at ${seen.width}px wide, +${seen.packets} packets`);
   check('the picture is on screen for wes, in a tile',
     await wes.evaluate(`(() => { const v = document.querySelector('video.voice-tile-video, video.voice-focus-video'); return Boolean(v && v.videoWidth > 0); })()`));
+  await sleep(2500);
+  const videoCodec = (await wes.snapshot()).stats.videoCodec;
+  check('the pictures come as VP9, not the VP8 fallback', videoCodec === 'VP9', String(videoCodec));
 
   check('alex has a share button and presses it', await alex.clickButton('Share your screen'));
   const screenKey = `${alex.userId}:screen`;

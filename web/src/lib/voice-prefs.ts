@@ -8,6 +8,8 @@ export type InputMode = 'open' | 'threshold' | 'push';
 
 export type ShareHeight = 720 | 1080 | 1440 | 0;
 export type ShareFps = 15 | 30 | 60;
+export type CameraHeight = 720 | 1080;
+export type CameraFps = 30 | 60;
 
 export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
@@ -17,6 +19,8 @@ export interface VoicePrefs {
   /** How tall a shared screen is sent, in lines. 0 means as big as the screen is. */
   shareHeight: ShareHeight;
   shareFps: ShareFps;
+  cameraHeight: CameraHeight;
+  cameraFps: CameraFps;
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGain: boolean;
@@ -43,6 +47,8 @@ const DEFAULTS: VoicePrefs = {
   cameraDeviceId: '',
   shareHeight: 1080,
   shareFps: 30,
+  cameraHeight: 720,
+  cameraFps: 30,
   noiseSuppression: true,
   echoCancellation: true,
   autoGain: true,
@@ -106,12 +112,37 @@ export function captureOptions(prefs: VoicePrefs): MediaTrackConstraints {
   };
 }
 
-/** What to ask the browser for when opening the camera. 720p is plenty for a face. */
-export function cameraOptions(prefs: VoicePrefs): { deviceId?: ConstrainDOMString; resolution: { width: number; height: number; frameRate: number } } {
+/** Megabits a second for a camera of this height at 30 frames. Faces move less than games. */
+const CAMERA_MBPS: Record<CameraHeight, number> = { 720: 1.7, 1080: 3.5 };
+const CAMERA_FPS_FACTOR: Record<CameraFps, number> = { 30: 1, 60: 1.5 };
+
+/**
+ * What to ask the browser for when opening the camera. 720p at 30 is the
+ * default and plenty for a face; the choice is there for the person whose
+ * camera is the show (Wes, 2026-09-21: let people stream at high quality).
+ */
+export function cameraOptions(prefs: Pick<VoicePrefs, 'cameraDeviceId' | 'cameraHeight' | 'cameraFps'>): {
+  deviceId?: ConstrainDOMString;
+  resolution: { width: number; height: number; frameRate: number };
+} {
+  const height = prefs.cameraHeight in CAMERA_MBPS ? prefs.cameraHeight : 720;
+  const fps = prefs.cameraFps in CAMERA_FPS_FACTOR ? prefs.cameraFps : 30;
   return {
     deviceId: prefs.cameraDeviceId ? { exact: prefs.cameraDeviceId } : undefined,
-    resolution: { width: 1280, height: 720, frameRate: 30 },
+    resolution: { width: Math.round((height * 16) / 9), height, frameRate: fps },
   };
+}
+
+/** How much to spend sending the camera, to match what was asked for. */
+export function cameraEncoding(prefs: Pick<VoicePrefs, 'cameraHeight' | 'cameraFps'>): { maxBitrate: number; maxFramerate: number } {
+  const height = prefs.cameraHeight in CAMERA_MBPS ? prefs.cameraHeight : 720;
+  const fps = prefs.cameraFps in CAMERA_FPS_FACTOR ? prefs.cameraFps : 30;
+  return { maxBitrate: Math.round(CAMERA_MBPS[height] * CAMERA_FPS_FACTOR[fps] * 1_000_000), maxFramerate: fps };
+}
+
+export function cameraCostLabel(prefs: Pick<VoicePrefs, 'cameraHeight' | 'cameraFps'>): string {
+  const mbps = cameraEncoding(prefs).maxBitrate / 1_000_000;
+  return `Up to about ${mbps % 1 === 0 ? mbps : mbps.toFixed(1)} megabits a second of your upload.`;
 }
 
 /** Megabits a second for a moving picture of this height at 30 frames. Games, not slides. */

@@ -3320,3 +3320,11 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* The measured picture on the focused video: size, frames, codec. */
+.voice-focus-picture {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  margin-left: 10px;
+}
