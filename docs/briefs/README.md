@@ -52,4 +52,10 @@ yet launched (the PC was low on memory at the time):
 keep every entry, renumbering the later migrations if two took the same
 number.
 
-Still later: bookmarks; polls; voice messages.
+Still later: bookmarks; polls; voice messages; **voice changers** (Wes,
+2026-09-22: "nice to have"). Voice changers are a main-session job, not a
+brief: the microphone already goes through a Web Audio graph in
+`web/src/lib/voice-audio.ts` before LiveKit, so a pitch shift or a robot
+voice is a node in that graph, chosen in Voice settings, and the E2EE path
+is untouched because the effect is applied before encryption. Preview in
+the settings meter so the person hears themselves first.
