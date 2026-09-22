@@ -1378,3 +1378,49 @@ Wes before building anything.
   upgrades, in either nginx layer. `docs/for-alex.md` is the note to send him;
   sending it is Wes's call.
 - The droplet. Local work that does not need a box is close to used up.
+
+## Visual pass, 2026-09-22 (written at the session limit; picks up at 4:10am ET or later)
+
+Live on scryproof.com: the voice-join fix (client 1790047346369). A join
+that fails before the server lists you now shows its reason and the
+button reads "Joining…". Wes's test user on Firefox saw the E2EE refusal
+text as a result (Downloads/image.png); shorten that text and put the
+installer link under it (`web/src/lib/voice-key-provider.ts`), once the
+stylesheet is quiet.
+
+**Not deployed, on `main` locally (pushed):** direction B, the candle-lit
+hall, is the visual base (Wes: "I like B the most right now. Not crazy
+about that specific background image but it could always be saved as a
+'theme' someone could choose."), plus C's composer label ("I do like the
+function at the bottom of C where it kinda reminds you what channel you
+are chatting in"). Three directions were built blind of each other by
+agents from `docs/briefs/visual.md`; branches `visual-a` (finished room +
+four themes, Paper is the good one), `visual-c` (no rail, members drawer,
+call strip) still exist for parts. Side-by-side: `docs/shots/visual-directions.png`.
+
+**Wave two (`docs/briefs/visual-2.md`) was cut off by the session limit
+mid-work.** Each agent's partial work is a WIP commit on its branch, in
+its worktree under `.claude/worktrees/`:
+
+- `visual-themes` (agent-ad718343b347edd29): `lib/theme.ts`, `lib/themes.ts`,
+  `ThemePicker.tsx`, a test, hooks in `styles.css`/`UserPanel`/`main.tsx`.
+  Unknown whether it typechecks. This one defines the contract; finish it
+  first.
+- `visual-scry` (agent-ac7fadd24e5c8fcc8): `gen-scry-backdrop.mjs`,
+  `backdrops/scry.svg`, `themes/scry.css`; first shot `docs/shots/scry-1.png`
+  looks right (cool blue chamber, candles). `web/index.html` still has the
+  forced `data-theme`; revert before merging.
+- `visual-ridge` (agent-a03562f5b57b5c0fd): same shape, `ridge-2.png` is a
+  campfire under stars with tree silhouettes. Same index.html caveat.
+
+To finish: resume each agent (or do it by hand): finish themes, then merge
+scry and ridge onto it (each is one css file + svg + generator + a
+`themes.ts` entry), run one vite for Wes to switch between hall / scry /
+ridge / plain, he picks the default, then the full local loop and
+`release.sh`. Then the Firefox text. The three demo vites are stopped;
+the local API on 8787 is still up with a seeded DB that now has ~20
+"new device" notices for wes from headless shots (shot.mjs should reuse a
+device; noted by the composer agent).
+
+Memory on this PC was critically low during the wave (Claude Code killed a
+background shell for it); run two agents, not four, next time.
