@@ -121,7 +121,12 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
 
   const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
-  const live = here && voice.channelId === channelId;
+  // `mine` from the moment Join is pressed; `live` only once the server lists
+  // us. A join that dies before that point (a browser that cannot encrypt,
+  // a refusal from the gateway) is still ours to explain.
+  const mine = voice.channelId === channelId;
+  const live = here && mine;
+  const joining = mine && !here && voice.phase === 'connecting';
 
   // Timed out, the token request is refused, so offering Join would only
   // produce an error. Leave stays: a timeout should not trap anyone in a room.
@@ -289,7 +294,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
         </div>
       )}
 
-      {live && voice.phase === 'failed' ? <p className="voice-stage-error">{voice.error}</p> : null}
+      {mine && voice.phase === 'failed' ? <p className="voice-stage-error">{voice.error}</p> : null}
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
 
       <div className="voice-stage-controls">
@@ -315,9 +320,10 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
           <button
             type="button"
             className={here ? 'button secondary inline' : 'button inline'}
+            disabled={joining}
             onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
           >
-            {here ? 'Leave' : 'Join'}
+            {here ? 'Leave' : joining ? 'Joining…' : 'Join'}
           </button>
         ) : (
           <p className="voice-stage-error">

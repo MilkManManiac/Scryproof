@@ -221,6 +221,16 @@ export class VoiceSession {
     for (const listener of this.listeners) listener();
   }
 
+  /**
+   * The gateway refused the join (no CONNECT, or timed out). Nothing media-side
+   * has started yet, so there is nothing to tear down: just say why.
+   */
+  fail(message: string): void {
+    if (this.snapshot.phase !== 'connecting') return;
+    this.generation += 1;
+    this.update({ phase: 'failed', error: message });
+  }
+
   /* -------------------------------- joining ------------------------------- */
 
   /**

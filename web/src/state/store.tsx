@@ -829,6 +829,13 @@ export function StoreProvider({
             );
           }
         }
+        // The only errors the gateway sends are refusals of something we just
+        // asked for. Mid-join, that is the join: show it rather than sit on
+        // "connecting" forever.
+        if (event.t === 'error' && currentVoiceChannel.current) {
+          currentVoiceChannel.current = null;
+          voice.fail(event.d.message);
+        }
         if (event.t === 'voice_membership') void voice.onMembership(event.d);
         if (event.t === 'voice_signal') void voice.onSignal(event.d);
         if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {
