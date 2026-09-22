@@ -199,9 +199,19 @@ export const api = {
   },
 
   messages: {
-    list: (channelId: string, options: { before?: string; limit?: number } = {}) => {
+    /**
+     * A page of a channel's history. `before` reads backward, `after` reads
+     * forward, and `around` is the window a jump to an old message needs: the
+     * server sizes that one itself, so `limit` does not apply to it.
+     */
+    list: (
+      channelId: string,
+      options: { before?: string; after?: string; around?: string; limit?: number } = {},
+    ) => {
       const query = new URLSearchParams();
       if (options.before) query.set('before', options.before);
+      if (options.after) query.set('after', options.after);
+      if (options.around) query.set('around', options.around);
       if (options.limit) query.set('limit', String(options.limit));
       const suffix = query.toString() ? `?${query.toString()}` : '';
       return get<{ messages: Message[] }>(`/api/channels/${channelId}/messages${suffix}`);

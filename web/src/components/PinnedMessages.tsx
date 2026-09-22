@@ -1,7 +1,8 @@
 /**
  * The pinned messages of a channel, from a pin button in the header. Fetched
  * fresh each time it opens: pins are rare and a stale list is worse than a
- * short wait. Clicking one jumps to it if it is loaded, and says so if not.
+ * short wait. Clicking one lands on it however old it is; the store fetches
+ * the history around it when it is not already loaded.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,7 +16,7 @@ import { Avatar } from './Avatar';
 const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export function PinnedMessages({ channelId, onClose }: { channelId: string; onClose: () => void }) {
-  const { state } = useStore();
+  const { state, jumpToMessage } = useStore();
   const [pins, setPins] = useState<Message[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -42,11 +43,7 @@ export function PinnedMessages({ channelId, onClose }: { channelId: string; onCl
   const members = state.members[state.selectedServerId ?? ''] ?? [];
 
   function jump(id: string) {
-    const row = document.getElementById(`message-${id}`);
-    if (!row) return;
-    row.scrollIntoView({ block: 'center' });
-    row.classList.add('flash');
-    setTimeout(() => row.classList.remove('flash'), 1600);
+    void jumpToMessage(channelId, id).catch(() => undefined);
     onClose();
   }
 
@@ -62,28 +59,25 @@ export function PinnedMessages({ channelId, onClose }: { channelId: string; onCl
           {pins && shown.length === 0 && !error ? (
             <p className="notices-empty">Nothing is pinned here. Anyone who can manage messages can pin one from its hover bar.</p>
           ) : null}
-          {shown.map((pin) => {
-            const loaded = state.messages[channelId]?.some((message) => message.id === pin.id);
-            return (
-              <button
-                type="button"
-                className="notice pin"
-                key={pin.id}
-                title={loaded ? 'Go to this message' : 'Older than what is loaded. Scroll up to reach it.'}
-                onClick={() => jump(pin.id)}
-              >
-                <Avatar user={pin.author} small />
-                <span className="notice-body">
-                  <span className="notice-where">
-                    <strong style={{ color: pin.author.accent }}>{pin.author.displayName}</strong> {when.format(new Date(pin.createdAt))}
-                  </span>
-                  <span className="pin-text">
-                    {pin.content ? toPlainLine(pin.content, members) : pin.attachments.length > 0 ? `${pin.attachments.length} file(s)` : 'A locked message'}
-                  </span>
+          {shown.map((pin) => (
+            <button
+              type="button"
+              className="notice pin"
+              key={pin.id}
+              title="Go to this message"
+              onClick={() => jump(pin.id)}
+            >
+              <Avatar user={pin.author} small />
+              <span className="notice-body">
+                <span className="notice-where">
+                  <strong style={{ color: pin.author.accent }}>{pin.author.displayName}</strong> {when.format(new Date(pin.createdAt))}
                 </span>
-              </button>
-            );
-          })}
+                <span className="pin-text">
+                  {pin.content ? toPlainLine(pin.content, members) : pin.attachments.length > 0 ? `${pin.attachments.length} file(s)` : 'A locked message'}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
       </div>
     </div>
