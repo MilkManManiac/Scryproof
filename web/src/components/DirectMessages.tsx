@@ -14,6 +14,7 @@ import { LIMITS } from '@scryproof/shared';
 import { api, ApiError } from '../lib/api';
 import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
 import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
+import { dmDrafts } from '../lib/drafts';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { useStore } from '../state/store';
@@ -824,7 +825,10 @@ function DmComposer({
     target?.authorId === app.user?.id
       ? 'yourself'
       : (dm.members.find((member) => member.id === target?.authorId)?.displayName ?? 'them');
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // The unsent text lives in the shared draft store, keyed by conversation, so
+  // switching to another DM and back puts it right back in the box; `text`
+  // here just mirrors that store for this render.
+  const [text, setLocalText] = useState(() => dmDrafts.get(dm.id));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Record<string, DmFileRef[]>>({});
@@ -835,7 +839,6 @@ function DmComposer({
   const [caret, setCaret] = useState(0);
   const [chosen, setChosen] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const text = drafts[dm.id] ?? '';
   const files = pending[dm.id] ?? [];
 
   // The list under the box while a `/command` or a `:emoji` is being typed,
@@ -859,7 +862,8 @@ function DmComposer({
   const picked = Math.min(chosen, Math.max(0, offers.length - 1));
 
   function setText(value: string) {
-    setDrafts((current) => ({ ...current, [dm.id]: value }));
+    setLocalText(value);
+    dmDrafts.set(dm.id, value);
   }
 
   /** Put the chosen completion in place of what was being typed. */
@@ -939,9 +943,17 @@ function DmComposer({
     void api.dms.discardFile(dm.id, file.id).catch(() => undefined);
   }
 
+  // Whatever was left unsent in this conversation comes back, cursor at the
+  // end. Pending attachments are uploads in flight, not draft text, and are
+  // left out of the store, so they are not restored here.
   useEffect(() => {
+    const draft = dmDrafts.get(dm.id);
+    setLocalText(draft);
     setError(null);
-    input.current?.focus();
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(draft.length, draft.length);
+    });
   }, [dm.id]);
 
   useEffect(() => {
@@ -966,7 +978,7 @@ function DmComposer({
       await send(dm.id, body, target && !target.deleted ? target.id : null, files);
       setPending((current) => ({ ...current, [dm.id]: [] }));
       onCancelReply();
-      setDrafts((current) => ({ ...current, [dm.id]: '' }));
+      setText('');
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not send that.');
     } finally {
@@ -1084,7 +1096,7 @@ function DmComposer({
             const marker = markerForKey(event);
             if (marker) {
               event.preventDefault();
-              applyMarkup(event.currentTarget, marker, (value) => setDrafts((current) => ({ ...current, [dm.id]: value })));
+              applyMarkup(event.currentTarget, marker, (value) => setText(value));
               return;
             }
             if (offers.length > 0) {
@@ -1136,7 +1148,7 @@ function DmComposer({
                 const element = input.current;
                 const at = element?.selectionStart ?? text.length;
                 const next = `${text.slice(0, at)}${emoji}${text.slice(at)}`;
-                setDrafts((current) => ({ ...current, [dm.id]: next }));
+                setText(next);
                 requestAnimationFrame(() => {
                   element?.focus();
                   element?.setSelectionRange(at + emoji.length, at + emoji.length);
@@ -1172,7 +1184,7 @@ function DmComposer({
       </div>
       <div className="composer-hint">
         <span>{text.length > LIMITS.message.max - 400 ? `${LIMITS.message.max - text.length} characters left` : ''}</span>
-        <MarkupTools input={input} setValue={(value) => setDrafts((current) => ({ ...current, [dm.id]: value }))} disabled={!state.ready} />
+        <MarkupTools input={input} setValue={(value) => setText(value)} disabled={!state.ready} />
       </div>
     </div>
   );

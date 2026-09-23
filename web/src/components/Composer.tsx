@@ -12,6 +12,7 @@ import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand } from '../lib/commands';
+import { channelDrafts } from '../lib/drafts';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { applyMarkup, markerForKey } from '../lib/markup';
@@ -55,6 +56,14 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const filePicker = useRef<HTMLInputElement>(null);
   /** Which of the two boards beside Send is open. */
   const [board, setBoard] = useState<'emoji' | 'spawn' | null>(null);
+
+  // Keeps the in-progress draft alongside the box's own state, so switching to
+  // another channel and back puts the same text where it was left. Only the
+  // text: pending attachments are uploads in flight and are not kept.
+  function updateText(value: string) {
+    setText(value);
+    channelDrafts.set(channel.id, value);
+  }
 
   const members = state.members[channel.serverId] ?? [];
 
@@ -151,7 +160,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     if (!span) return;
     const next = `${text.slice(0, span.start)}${written} ${text.slice(caret)}`;
     const position = span.start + written.length + 1;
-    setText(next);
+    updateText(next);
     setCaret(position);
     requestAnimationFrame(() => {
       input.current?.focus();
@@ -164,7 +173,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     const at = Math.min(caret, text.length);
     const next = `${text.slice(0, at)}${piece}${text.slice(at)}`;
     const position = at + piece.length;
-    setText(next);
+    updateText(next);
     setCaret(position);
     requestAnimationFrame(() => {
       input.current?.focus();
@@ -178,13 +187,21 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     if (replyingTo) input.current?.focus();
   }, [replyingTo]);
 
-  // A fresh draft per channel, and focus lands where the typing goes.
+  // Whatever was left unsent in this channel comes back, cursor at the end.
+  // Pending attachments are uploads in flight, not draft text, so they are
+  // not kept: switching channels mid-upload abandons them, same as before.
   useEffect(() => {
-    setText('');
+    const draft = channelDrafts.get(channel.id);
+    setText(draft);
+    setCaret(draft.length);
     setPending([]);
     setError(null);
     setCooldown(0);
-    input.current?.focus();
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(draft.length, draft.length);
+      grow();
+    });
   }, [channel.id]);
 
   useEffect(() => {
@@ -216,7 +233,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     const files = override ? [] : pending;
 
     if (!override) {
-      setText('');
+      updateText('');
       setPending([]);
       replyTo(channel.id, null);
       requestAnimationFrame(grow);
@@ -232,7 +249,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     } catch (problem) {
       // Put the draft back rather than losing what someone typed.
       if (!override) {
-        setText(typed);
+        updateText(typed);
         setPending(pending);
         replyTo(channel.id, answering);
       }
@@ -252,13 +269,13 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
    */
   async function startInitiative() {
     setError(null);
-    setText('');
+    updateText('');
     requestAnimationFrame(grow);
     try {
       const { tracker } = await api.trackers.start(channel.id);
       applyTracker(channel.id, tracker);
     } catch (problem) {
-      setText('/init');
+      updateText('/init');
       setError(problem instanceof ApiError ? problem.message : 'Initiative did not start.');
     }
   }
@@ -449,7 +466,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           }
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onChange={(event) => {
-            setText(event.target.value);
+            updateText(event.target.value);
             setCaret(event.target.selectionStart ?? event.target.value.length);
             setDismissed(false);
             setChosen(0);
