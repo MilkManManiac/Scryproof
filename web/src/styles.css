@@ -3622,6 +3622,34 @@ video.mirrored {
   flex-wrap: wrap;
   max-width: 256px;
 }
+.reaction-picker-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgb(var(--bg-rgb) / 0.6);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.reaction-picker-search:focus {
+  border-color: var(--accent);
+}
+.reaction-picker-search::placeholder {
+  color: var(--text-faint);
+}
+.reaction-picker-search-results {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 256px;
+}
+.reaction-picker-no-results {
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
 
 .new-divider {
   display: flex;

@@ -98,3 +98,36 @@ export function emojiOffers(query: string, limit = 7): EmojiOffer[] {
     .slice(0, limit)
     .map(([name, emoji]) => ({ name, emoji }));
 }
+
+function normalizeEmojiName(name: string): string {
+  return name.toLowerCase().replace(/[_\s]+/g, ' ').trim();
+}
+
+/**
+ * How well `name` matches the picker's search box: `0` when the name starts
+ * with what was typed, `1` when it merely contains it somewhere, `null` when
+ * it does not match at all. Underscores and spaces are treated alike, so
+ * "pregnant man" matches `pregnant_man`. Used for both `SHORTCODES` and a
+ * server's own emoji, so the two are ranked the same way.
+ */
+export function emojiSearchScore(name: string, query: string): 0 | 1 | null {
+  const q = normalizeEmojiName(query);
+  if (!q) return null;
+  const n = normalizeEmojiName(name);
+  if (!n.includes(q)) return null;
+  return n.startsWith(q) ? 0 : 1;
+}
+
+/**
+ * Every `SHORTCODES` entry whose name contains `query`, best matches first
+ * (starts with the text, then merely contains it), capped at `limit`. Empty
+ * query gives nothing back, same as `emojiOffers`.
+ */
+export function searchShortcodes(query: string, limit = 48): EmojiOffer[] {
+  return Object.entries(SHORTCODES)
+    .map(([name, emoji]) => ({ name, emoji, score: emojiSearchScore(name, query) }))
+    .filter((entry): entry is { name: string; emoji: string; score: 0 | 1 } => entry.score !== null)
+    .sort((a, b) => a.score - b.score || a.name.length - b.name.length || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map(({ name, emoji }) => ({ name, emoji }));
+}
