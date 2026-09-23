@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, 00:50 ET. **Batch five is built, merged and NOT shipped** (last section): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. Waiting on Wes's OK. Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, 00:50 ET. **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -2069,7 +2069,7 @@ one-off, not kept). DM path is typechecked, not browser-checked.
 Then tell the group to download and run the installer once. Password
 reset is live from then: `bash scripts/box.sh reset-password <username>`.
 
-## Batch five, 2026-09-23 (built, not shipped)
+## Batch five, 2026-09-23 (live 00:55 ET)
 
 Wes: "come up with the build plan... then ill have you fan out subagents".
 Four agents in worktrees from new briefs (`shell-update.md`,
@@ -2130,3 +2130,17 @@ Then install 0.5.0 on Wes's PC (`/S`), check signed in and the fuses, and
 prove the cycle: bump to 0.5.1, dist, publish, restart his app, watch the
 banner and the silent upgrade. Then the group runs 0.5.0 once, for the
 last time.
+
+**Shipped 2026-09-23 00:50-00:58 ET** with Wes's go. 0.5.0 built, released
+(client 1790138882935), published, installed on Wes's PC with `/S`; fuses
+read back from the installed exe as listed. Then 0.5.1 (version bump
+only, client 1790139149928) published; Wes's app, restarted, downloaded
+and verified it by itself, showed the banner, and on his click upgraded
+silently to 0.5.1. Migration 0018 ran on the box (`dm_channels.kind`,
+`title` present). The group installs 0.5.1 from /download once; after
+that, shell updates arrive by themselves.
+
+**Small fix for the next shell release:** the installer that did the
+upgrade stays in `userData/shell-update/` until the next launch, because
+the tidy at start runs while the installer process still holds the file.
+Run `tidyShellDir()` again a minute after start.
