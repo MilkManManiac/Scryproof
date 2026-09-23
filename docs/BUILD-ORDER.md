@@ -138,12 +138,13 @@ Wes to try screen share with his brother, then ship.
     (`ReactionPicker.tsx`) is 32 chosen emoji plus recents, and the long
     list in `lib/emoji.ts` has no screen. Add a search box to the picker
     that searches `SHORTCODES` by name. Small; low priority per Wes.
+    DONE 2026-09-23: search shipped in batch five; the full scrolling
+    picker (1,898 emoji, categories, skin tones) built, not deployed.
 
 ## Session D: its own long session
 
-16. **End-to-end encrypted channels (M7).** STAGE 1 BUILT 2026-09-23, not
-    deployed (HANDOFF, last section; `docs/channel-e2ee.md`). Stages 2
-    (files) and 3 (existing channels) open. Was: Schema and wire format exist
+16. **End-to-end encrypted channels (M7).** ALL THREE STAGES BUILT
+    2026-09-23, not deployed (HANDOFF, last section; `docs/channel-e2ee.md`). Was: Schema and wire format exist
     (`messages.ciphertext`, `channels.encrypted`, key epochs); the
     identity keys from voice and the pairwise wrapping from
     `dm-crypto.ts` are the building blocks. Search, pins and the

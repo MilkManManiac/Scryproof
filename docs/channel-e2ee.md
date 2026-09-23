@@ -70,8 +70,11 @@ Said in the channel itself, not only here:
   emoji people reacted with, who was mentioned, and the channel's name and topic.
   Mentions are named by the sender's device so the server can ping the right
   people without reading the message.
-- **Files:** stage 2. Until files are locked the same way, an encrypted channel
-  refuses them rather than store a readable file.
+- **Files** are locked like DM files (stage 2): each file has its own key,
+  locked in the browser with the channel id bound in; the server stores
+  `sealed.bin`, octet-stream, and the size. The name, type and key travel
+  inside the signed message. The server refuses a readable file in an
+  encrypted channel and a locked one in a plain channel.
 
 ## The honest limits
 
@@ -97,5 +100,10 @@ Said in the channel itself, not only here:
    pin, mentions, jumps; keys rotate on loss of access and are handed to
    newcomers with history; a test plays the hostile server.
 2. **Files and voice messages**, locked in the browser before upload.
+   BUILT 2026-09-23 (`sealChannelFile` / `openChannelFile` in
+   `channel-crypto.ts`, `SealedFile.tsx`, `POST /attachments?sealed=1`).
 3. **Turn it on for an existing channel** (new messages only, with a line in
-   the timeline where it starts).
+   the timeline where it starts). BUILT 2026-09-23: Channel settings, "Turn on
+   encryption", confirmed twice, one way, needs Manage channels. Sets
+   `channels.encryptedAt`; the timeline draws the line there. Old plain
+   messages stay readable; an edit to one seals it and clears the readable copy.

@@ -20,6 +20,23 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-23-notes',
+    date: '2026-09-23',
+    title: 'Screen share picker, every emoji, and your notes',
+    notes: [
+      'Sharing your screen in the desktop app shows live pictures of each screen and window to pick from, with a sound switch, like Discord. (The app updates itself to get this.)',
+      'The emoji picker has every emoji now, in categories you can scroll through, with skin tones. Search still works.',
+      'A channel or DM always opens at the newest message. Before, pictures loading late could push you back up.',
+      'Right-click someone in a voice channel for their volume and "Mute for me". Only you hear the difference.',
+      'The picture viewer: clicking the picture no longer zooms it. Scroll to zoom, double-click to fit it back, click outside to close.',
+      'The emoji and Tang buttons in the message box line up with the rest.',
+      'Hitting the limit on jumping characters now says so, and how long to wait, instead of doing nothing.',
+      "In a group DM, one member can no longer post a message that shows up under another member's name. Older group messages, from before this, are marked \"sender not proven\".",
+      'Leaving a group DM takes you out of its call.',
+      'The house rule got a lot harder to dodge. Spaces, dots, numbers for letters, accents and look-alike letters are all caught, in names too.',
+    ],
+  },
+  {
     id: '2026-09-23-sealed',
     date: '2026-09-23',
     title: 'Encrypted channels',
@@ -27,7 +44,9 @@ export const CHANGELOG: readonly Release[] = [
       "A text channel can now be end-to-end encrypted, like DMs. Tick \"End-to-end encrypted\" when you make one. Messages are locked on your device, and the server keeps only scrambled bytes it has no key for. Anyone looking at the server's database, Wes included, sees gibberish.",
       'Everyone in the channel reads everything, history included. Someone new is handed the key by whoever is online. Someone who leaves or is removed gets nothing written after they go.',
       'The Encrypted button at the top of the channel shows who holds the key. If a friend signs in on a new phone or computer, it says so there, and they get the key once you (or anyone else in the channel) press Accept.',
-      'What an encrypted channel cannot do yet: search, files, voice messages, polls, /roll and initiative. The server would have to read them. Who posted, when, reactions and who was mentioned are not hidden.',
+      'Pictures, files and voice messages work in an encrypted channel too, locked on your device before they are sent. The server holds only scrambled bytes; even the file name is inside the lock.',
+      'A channel that already exists can be switched on: Channel settings, "Turn on encryption". It cannot be switched off again. Messages from before stay as they were, and a line in the channel marks where encryption started. Editing an old message locks it.',
+      'What an encrypted channel cannot do: search, polls, /roll and initiative. The server would have to read them. Who posted, when, reactions and who was mentioned are not hidden.',
       'Every message is signed by the device that sent it, so nobody, in the channel or on the server, can post in your name.',
       'Editing a message now updates the quote above every reply to it.',
     ],

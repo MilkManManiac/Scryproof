@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, day. **Encrypted channels, stage 1: built, all checks pass, NOT deployed** (last section; `docs/channel-e2ee.md`). Waiting on Wes's go. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, day. **The push: encrypted channels stages 1 to 3, the group DM sender fix, the share picker (shell 0.5.2), the full emoji browser and Wes's notes: built, all checks pass, NOT deployed** (last two sections; `docs/channel-e2ee.md`). Waiting on Wes's go. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -24,7 +24,7 @@ Living state. Update this at the end of every working session.
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **First real use, 2026-09-21:** camera and screen share both worked for Wes and a friend on the box. **Not done:** the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
 | M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. **Judged on 2026-09-21: not done.** Wes used it for real and said "some of the UI is kind of funky" and "we'll definitely need a good UI pass". No specifics yet; he offered screenshots. Read `references/the-wall.md` in the milk-project skill before starting that pass. |
 | M6 desktop | **A working shell with an installer, 2026-09-21.** Electron. Signs in, connects, uploads; `npm run test:desktop`. Not yet: tray, push-to-talk, notifications, signed updates. See "The desktop app, moved up". |
-| M7 text end-to-end encryption | **Stage 1 built 2026-09-23, not deployed.** DMs were already encrypted. Text channels can now be made end-to-end encrypted: epoch keys made on members' devices, handed device to device, retired when someone loses access, every message signed. Proven in real browsers (`npm run test:channels`). Not yet: files and voice messages (stage 2), switching on an existing channel (stage 3). |
+| M7 text end-to-end encryption | **Stage 1 built 2026-09-23, not deployed.** DMs were already encrypted. Text channels can now be made end-to-end encrypted: epoch keys made on members' devices, handed device to device, retired when someone loses access, every message signed. Proven in real browsers (`npm run test:channels`). Stages 2 (files, voice messages) and 3 (switch on an existing channel) built the same day, not deployed. |
 
 **Repo:** https://github.com/MilkManManiac/Scryproof (private)
 
@@ -2225,3 +2225,94 @@ gibberish. Screenshot it into this file.
 **Next:** stage 2, files and voice messages locked in the browser
 (`sealFile` in `dm-crypto.ts` is the pattern; the file key rides inside the
 sealed body). Stage 3, turn encryption on for an existing channel.
+
+## The push: encryption stages 2 and 3, and Wes's notes, 2026-09-23 (built, not deployed)
+
+One batch on top of stage 1 (still not deployed either). Everything below is
+on `main` and pushed. **Not deployed; waiting on Wes's go.**
+
+**Encrypted channels, stage 2: files and voice messages.** Locked in the
+browser with a per-file key, the channel id bound into the lock
+(`sealChannelFile` / `openChannelFile` in `channel-crypto.ts`). Uploaded as
+`POST /attachments?sealed=1`: the server stores `sealed.bin`,
+octet-stream, `attachments.sealed = true`. The real name, type, size and key
+ride inside the signed, sealed message body (`files`); the client shows a
+file only if its id is also among the message's sealed attachments.
+`SealedFile.tsx` draws pictures, voice messages and download rows. The server
+refuses a readable file in an encrypted channel and a locked one in a plain
+channel. Migration 0020.
+
+**Stage 3: switch on an existing channel.** Channel settings, "Turn on
+encryption" then "Turn it on for good". One way, Manage channels, audited.
+`channels.encryptedAt` (migration 0021); the timeline draws a line there.
+Old messages stay readable; editing one seals it and the server clears the
+readable copy.
+
+**Group DMs: a member could post in another member's name.** Found while
+listing what was left: in a group, every member holds the message key, so
+one could re-lock someone else's key with new text. Each person's copy of
+the key is now wrapped with the SHA-256 of the ciphertext in its label
+(`scryproof/dm/wrap/v2`), so a copy only opens the message it was made for.
+Old messages still open (v1); in a group they are tagged "sender not
+proven". The attack test fails without the fix (checked by removing it).
+**Leaving a group takes you out of its call**, so the key rotates away from
+you; the test fails without that fix too.
+
+**The house rule (bigballer), rewritten** (`shared/src/house-rules.ts`):
+text is read the way a person reads it (NFKC, accents off, a look-alike
+table for Cyrillic/Greek/leet, i and l merged, everything else dropped,
+held keys collapsed), then matched. "a big ball of fire" is left alone;
+links and mention tokens are skipped. Applied on the client before send and
+on the server to channel text, display names, statuses, nicknames and voice
+names, so an old client cannot slip past. Encrypted text is only caught on
+the sender's device (the server cannot read it).
+
+**Jump limit** says "That is a lot of jumping. Try again in Ns." on the
+button, "again", and DM sends, instead of silence.
+
+**From the agents (briefs in `docs/briefs/`), merged:**
+- **Share picker** (`share-picker.md`), desktop 0.5.2: the shell sends
+  screens and windows with thumbnails; `SharePicker.tsx` draws tabs, live
+  previews every 2s, a sound switch. The shell only accepts an id it
+  offered. Browser keeps Chrome's picker. Also: `tidyShellDir` runs again a
+  minute after start.
+- **Emoji browser** (`emoji-browser.md`): every emoji, Unicode data capped
+  at Emoji 15.1 (1,898), categories, skin tones, search, recents.
+  `scripts/emoji-data.mjs` regenerates `emoji-data.ts`.
+- **Wes's notes** (`wes-notes.md`): opens at the bottom (`BottomPin`:
+  late-loading pictures were pushing the view up), composer buttons
+  centered, Lightbox (click does nothing, wheel zooms, double-click fits,
+  backdrop closes), right-click volume menu in a voice channel
+  (`VolumeMenu.tsx`).
+
+**Choices the agents made that Wes may want to overrule:**
+- Flags show as two letters on Windows (its emoji font has no flags).
+  Fixing that means bundling a flag font.
+- The right-click volume menu also appears outside a call (it sets the
+  saved volume for next time).
+- "Mute for me" is volume 0, not a separate switch.
+- The share picker preselects the first screen.
+
+![The emoji browser](shots/emoji-browser.png)
+
+**Tests, 2026-09-23 afternoon:** `npm test` server 239, web 291. On a fresh
+database: `test:smoke` 104 (it wants an *unseeded* database; seeded, it
+fails at "owner can register"), `test:channels` all (new steps: a picture
+and a file through a sealed channel, and switching a channel on),
+`test:dm` all, `test:voice` 53 (needs `npm run dev:livekit`), `test:desktop`
+38 + all. Typecheck and build clean. First runs of the browser checks after
+a server restart can time out on a cold Vite compile; the rerun passes.
+**Not tried by a person yet:** the share picker in the real app, the emoji
+browser, the volume menu, the lightbox.
+
+**To ship, when Wes says so:**
+
+    cd desktop && npm run dist && cd ..       (shell 0.5.2 + installer.json + a signed client)
+    bash scripts/release.sh                    (migrations 0019, 0020, 0021 run on the box)
+    bash scripts/publish-installer.sh
+
+Nobody runs an installer: 0.5.1 updates itself to 0.5.2. Then the M7
+done-when: Wes makes an encrypted channel, sends a line and a picture, and
+the main session runs `select content, ciphertext from messages` and a look
+at the attachment on the box, so he sees nothing readable. Screenshot it
+here.
