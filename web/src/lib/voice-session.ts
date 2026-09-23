@@ -44,7 +44,7 @@ import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { loadSound } from './sounds';
-import { MicGate, OutputMix, audioContext, sounds } from './voice-audio';
+import { HOLD_MS, MicGate, OutputMix, audioContext, sounds, withHold } from './voice-audio';
 import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
@@ -274,6 +274,8 @@ export class VoiceSession {
   private ears: ReturnType<typeof setInterval> | null = null;
   private serverSpeakers: string[] = [];
   private gate: MicGate | null = null;
+  /** The hold-until clock for our own ring, kept apart from the mix's per-person ones. */
+  private selfLoudUntil = 0;
   private board: Soundboard | null = null;
   /**
    * A moderator's mute, which silences the soundboard as well as the
@@ -426,6 +428,9 @@ export class VoiceSession {
       if (stale()) return;
       this.rebuildGate();
       this.watchPrefs();
+      // Our own ring needs no one else's track to start: it is driven by the
+      // local microphone meter from the moment the call is up.
+      this.ears = setInterval(() => this.refreshSpeaking(), 100);
 
       this.update({ phase: 'connected', encrypted: room.isE2EEEnabled });
       if (voicePrefs.get().sounds) sounds.joined();
@@ -471,6 +476,7 @@ export class VoiceSession {
     if (this.ears) clearInterval(this.ears);
     this.ears = null;
     this.serverSpeakers = [];
+    this.selfLoudUntil = 0;
 
     if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) sounds.left();
     if (room) await room.disconnect().catch(() => undefined);
@@ -1140,10 +1146,6 @@ export class VoiceSession {
         this.mix.setDeafened(this.deafened);
         const speaker = voicePrefs.get().outputDeviceId;
         if (speaker) void this.mix.setOutputDevice(speaker);
-        // The ring: what we hear, plus whoever the server says. Screen-share
-        // sound is a game, not a voice, and a soundboard clip is not the
-        // person talking, so neither rings anyone.
-        this.ears = setInterval(() => this.refreshSpeaking(), 100);
       }
       const volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
       this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume);
@@ -1315,15 +1317,51 @@ export class VoiceSession {
    * the mix, after the person's volume, because that is what would be heard.
    * Used by `npm run test:voice`.
    */
-  /** Merge the server's speaker list with our own ears, and publish only on change. */
+  /**
+   * Our own ring, for the local microphone: the same meter behind the
+   * settings bar and the gate, not the server's guess. That is what makes
+   * mute and push-to-talk exact (a muted or PTT-silent person never rings)
+   * and removes the round trip through `ActiveSpeakersChanged` for the one
+   * voice we do not need LiveKit's help to hear.
+   *
+   * `gate.open` already carries push-to-talk (in that mode it is exactly
+   * whether the key is held) and mute has no other effect on it, so it is
+   * checked again here through LiveKit's own publication state, which mute
+   * always updates. Before the gate exists (no microphone yet) the server's
+   * list is the only thing that knows.
+   */
+  private selfSpeaking(): boolean {
+    if (!this.gate || !this.room) return this.serverSpeakers.includes(this.userId);
+    const now = Date.now();
+    const loud = this.gate.level >= voicePrefs.get().thresholdDb;
+    const { speaking, until } = withHold(now, loud, this.selfLoudUntil, HOLD_MS);
+    this.selfLoudUntil = until;
+    return speaking && this.gate.open && this.room.localParticipant.isMicrophoneEnabled;
+  }
+
+  /**
+   * Merge our own ears with the server's guess, and publish only on change.
+   * For anyone we already have decoded audio from, our own ears alone decide:
+   * a union with the server's list is only ever as quick to let go as the
+   * slower of the two, and the server's list both arrives late and updates
+   * only a few times a second. The server's list is used only as a fallback,
+   * for someone whose track has not subscribed yet (or, for ourselves,
+   * before the microphone is open).
+   */
   private refreshSpeaking(): void {
     const heard = (this.mix?.talking() ?? []).filter(
       (key) => !key.endsWith(':screen') && !key.endsWith(':soundboard'),
     );
-    const speaking = [...new Set([...this.serverSpeakers, ...heard])].sort();
+    const fallback = this.serverSpeakers.filter(
+      (id) => id !== this.userId && !(this.mix?.has(id) ?? false),
+    );
+    const speaking = new Set([...heard, ...fallback]);
+    if (this.selfSpeaking()) speaking.add(this.userId);
+
+    const sorted = [...speaking].sort();
     const before = this.snapshot.speaking;
-    if (before.length === speaking.length && before.every((id, i) => id === speaking[i])) return;
-    this.update({ speaking });
+    if (before.length === sorted.length && before.every((id, i) => id === sorted[i])) return;
+    this.update({ speaking: sorted });
   }
 
   async debugInbound(): Promise<Record<string, { energy: number; packets: number }>> {
