@@ -1547,13 +1547,15 @@ select {
   gap: 1px;
 }
 .markup-tool {
-  min-width: 22px;
-  height: 18px;
-  padding: 0 5px;
+  /* Wes did not notice these at their old size and colour (2026-09-22):
+     readable at rest, not only on hover, and big enough to land a click. */
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
   border-radius: 4px;
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 13px;
+  color: var(--text-muted);
 }
 .markup-tool:hover:not(:disabled) {
   background: var(--panel-3);
