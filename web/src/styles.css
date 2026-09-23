@@ -4240,6 +4240,8 @@ kbd {
 }
 .dm-call-mark + .dm-dot {
   margin-left: 6px;
+}
+
 /* A group has no one face, so its row shows how many are in it. */
 .dm-group-mark {
   width: 24px;

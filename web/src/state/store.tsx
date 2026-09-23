@@ -783,7 +783,8 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
 
     case 'voice_state_update': {
       const key = voiceKey(event.d.serverId, event.d.userId);
-      if (event.d.channelId === null) {
+      // A DM call has no channel, so "no channel" alone is not leaving.
+      if (voiceRoomOf(event.d) === null) {
         const { [key]: removed, ...rest } = state.voiceStates;
         void removed;
         return { ...state, voiceStates: rest };
