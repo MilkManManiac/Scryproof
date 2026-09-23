@@ -183,7 +183,9 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
                       <span className="notice-body">
                         <span className="notice-where">
                           {entry.kind === 'dm'
-                            ? 'Direct message'
+                            ? entry.channelName
+                              ? `Group › ${entry.channelName}`
+                              : 'Direct message'
                             : entry.kind === 'event'
                               ? `${entry.serverName ?? 'A server'} › Coming up`
                               : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
@@ -191,7 +193,9 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
                         <span className="notice-what">
                           <strong>{entry.authorName}</strong>{' '}
                           {entry.kind === 'dm'
-                            ? 'sent you a message'
+                            ? entry.channelName
+                              ? 'wrote in the group'
+                              : 'sent you a message'
                             : entry.kind === 'event'
                               ? `${(entry.preview ?? 'starts within the hour').replace(/^Starts/, 'starts')}${entry.channelName ? ` in #${entry.channelName}` : ''}`
                               : (entry.preview ?? 'mentioned you')}

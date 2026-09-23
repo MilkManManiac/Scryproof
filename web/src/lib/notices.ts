@@ -27,7 +27,10 @@ export interface Notice {
   authorId: string;
   /** For an event, its title. */
   authorName: string;
-  /** Where it came from. A DM has neither. */
+  /**
+   * Where it came from. A DM has no server; a group DM carries its name as
+   * `channelName`, and a two-person one has neither.
+   */
   serverId: string | null;
   serverName: string | null;
   channelId: string | null;
@@ -162,10 +165,16 @@ const changed = (): void => {
 function popup(notice: Notice): void {
   if (!prefs.popups || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   const where =
-    notice.kind === 'mention' ? `${notice.authorName} in #${notice.channelName}` : notice.authorName;
+    notice.kind === 'mention'
+      ? `${notice.authorName} in #${notice.channelName}`
+      : notice.kind === 'dm' && notice.channelName
+        ? `${notice.authorName} in ${notice.channelName}`
+        : notice.authorName;
   const body =
     notice.kind === 'dm'
-      ? 'Sent you a message.'
+      ? notice.channelName
+        ? 'Wrote in the group.'
+        : 'Sent you a message.'
       : [notice.preview, notice.serverName].filter(Boolean).join('\n') ||
         (notice.kind === 'event' ? 'Starts within the hour.' : 'Mentioned you.');
   try {

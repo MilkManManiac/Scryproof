@@ -25,6 +25,10 @@
  *  11. Wes makes a recovery phrase. On a new laptop everything is locked until
  *      he types the twelve words; then the old messages open, Alex is not asked
  *      to accept the laptop, and the words were never sent to the server
+ *  12. a group of three: Wes starts one with Alex and Mara, all three read it
+ *      and the server does not. Mara blocks Alex: what Alex sends after that
+ *      reaches Wes and not her, and Mara and Wes, and Mara and Alex, still
+ *      talk. Mara leaves, and what is sent after is not hers
  *
  * Needs `npm run dev` and a seeded database (`npm run seed --workspace server`).
  *
@@ -296,7 +300,8 @@ const wes = new Device('wes', 'wes', 9341);
 const alex = new Device('alex', 'alex', 9342);
 const alexPhone = new Device('alex-phone', 'alex', 9343);
 const wesLaptop = new Device('wes-laptop', 'wes', 9344);
-const everyone = [wes, alex, alexPhone, wesLaptop];
+const mara = new Device('mara', 'mara', 9345);
+const everyone = [wes, alex, alexPhone, wesLaptop, mara];
 
 try {
   await Promise.all([wes.open(), alex.open()]);
@@ -325,7 +330,7 @@ try {
   /* 3 */
   const raw = await alex.evaluate(`
     fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
-      .then((body) => fetch('/api/dms/' + body.dms[0].id + '/messages', { credentials: 'include' }))
+      .then((body) => fetch('/api/dms/' + body.dms.find((dm) => dm.kind === 'pair').id + '/messages', { credentials: 'include' }))
       .then((r) => r.text())
   `);
   check('the server returned sealed bytes for it', raw.includes('"ciphertext":"'));
@@ -384,11 +389,11 @@ try {
   await wes.until(`document.querySelector('.reaction-picker-emoji') !== null`);
   const emoji = await wes.evaluate(`(() => { const el = document.querySelector('.reaction-picker-emoji'); el.click(); return el.textContent; })()`);
   check('Alex sees the reaction', Boolean(await alex.until(`Array.from(document.querySelectorAll('.reaction')).some((el) => el.textContent.includes(${JSON.stringify(emoji)}))`)));
-  check('a reaction does not mark the conversation unread', await alex.evaluate(`fetch('/api/dms', { credentials: 'include' }).then((r) => r.json()).then((body) => body.dms[0].lastMessageId === body.dms[0].lastReadMessageId)`));
+  check('a reaction does not mark the conversation unread', await alex.evaluate(`fetch('/api/dms', { credentials: 'include' }).then((r) => r.json()).then((body) => body.dms.find((dm) => dm.kind === 'pair').lastMessageId === body.dms.find((dm) => dm.kind === 'pair').lastReadMessageId)`));
   {
     const held = await alex.evaluate(`
       fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
-        .then((body) => fetch('/api/dms/' + body.dms[0].id + '/messages', { credentials: 'include' }))
+        .then((body) => fetch('/api/dms/' + body.dms.find((dm) => dm.kind === 'pair').id + '/messages', { credentials: 'include' }))
         .then((r) => r.text())
     `);
     check('the server holds the reaction', JSON.parse(held).reactions.length === 1);
@@ -432,7 +437,7 @@ try {
       const { dms } = await fetch('/api/dms', { credentials: 'include' }).then((r) => r.json());
       const out = [];
       for (const id of window.__fileIds) {
-        const bytes = new Uint8Array(await fetch('/api/dms/' + dms[0].id + '/files/' + id, { credentials: 'include' }).then((r) => r.arrayBuffer()));
+        const bytes = new Uint8Array(await fetch('/api/dms/' + dms.find((dm) => dm.kind === 'pair').id + '/files/' + id, { credentials: 'include' }).then((r) => r.arrayBuffer()));
         out.push(Array.from(bytes).map((b) => String.fromCharCode(b)).join(''));
       }
       return out;
@@ -441,7 +446,7 @@ try {
     check('neither is a picture or readable text', held.every((bytes) => !bytes.includes('PNG') && !bytes.includes('juniper')));
     const listing = await alex.evaluate(`
       fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
-        .then((body) => fetch('/api/dms/' + body.dms[0].id + '/messages', { credentials: 'include' }))
+        .then((body) => fetch('/api/dms/' + body.dms.find((dm) => dm.kind === 'pair').id + '/messages', { credentials: 'include' }))
         .then((r) => r.text())
     `);
     check('and it was never told their names', !listing.includes('notes.txt') && !listing.includes('map.png'));
@@ -452,7 +457,7 @@ try {
     await wes.until(`document.querySelector('img.attachment-image') === null`);
     const after = await alex.evaluate(`(async () => {
       const { dms } = await fetch('/api/dms', { credentials: 'include' }).then((r) => r.json());
-      return (await fetch('/api/dms/' + dms[0].id + '/files/' + window.__fileIds[0], { credentials: 'include', cache: 'no-store' })).status;
+      return (await fetch('/api/dms/' + dms.find((dm) => dm.kind === 'pair').id + '/files/' + window.__fileIds[0], { credentials: 'include', cache: 'no-store' })).status;
     })()`);
     check('deleting the message removes its files from the server', after === 404, String(after));
     rmSync(folder, { recursive: true, force: true });
@@ -573,6 +578,102 @@ try {
     await wesLaptop.until(`document.querySelector('.dm-row') !== null`);
     await wesLaptop.click('.dm-row', 'Alex');
     check('after a reload the laptop still opens them, without the words', Boolean(await wesLaptop.sees(BELL)));
+  }
+
+  /* 12: three people. */
+  {
+    const GROUP = `group-${stamp} three of us now`;
+    const BEFORE_BLOCK = `alex-${stamp} before the block`;
+    const AFTER_BLOCK = `unheard-${stamp} after the block`;
+    const FROM_MARA = `mara-${stamp} still here`;
+    const AFTER_LEAVING = `gone-${stamp} after she left`;
+
+    await mara.open();
+    await mara.signIn();
+
+    const toDms = async (device) => {
+      await device.click('.rail-dms');
+      await device.until(`document.querySelector('.rail-dms.active') !== null`);
+    };
+    await toDms(wes);
+    check('Wes can start a conversation from the list', await wes.click('.sidebar-header-tools .icon-button'));
+    await wes.until(`document.querySelector('.dm-picker-row') !== null`);
+    await wes.click('.dm-picker-row', 'Alex');
+    await wes.click('.dm-picker-row', 'Mara');
+    check('two people make it a group', await wes.click('.modal .button', 'Start the group'));
+    check(
+      'the group opens, says it is encrypted, and says three people',
+      Boolean(await wes.until(`document.querySelector('.dm-lock') !== null && document.querySelector('.dm-people-anchor')?.textContent.includes('3 people')`)),
+    );
+    await wes.say(GROUP);
+    check('Wes sees his own message in the group', Boolean(await wes.sees(GROUP)));
+
+    for (const device of [alex, mara]) {
+      await toDms(device);
+      const row = await device.until(`Array.from(document.querySelectorAll('.dm-row')).some((el) => el.querySelector('.dm-group-mark'))`);
+      check(`${device.label} has the group in the list`, Boolean(row));
+      await device.evaluate(`Array.from(document.querySelectorAll('.dm-row')).find((el) => el.querySelector('.dm-group-mark')).click()`);
+      check(`${device.label} reads exactly what Wes wrote`, Boolean(await device.sees(GROUP)));
+    }
+
+    // The newest group Mara is in. An earlier run that failed half way may have left others.
+    const groupId = await mara.evaluate(`
+      fetch('/api/dms', { credentials: 'include' }).then((r) => r.json())
+        .then((body) => body.dms.filter((dm) => dm.kind === 'group').sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? null)
+    `);
+    const groupHeld = await mara.evaluate(`fetch('/api/dms/${groupId}/messages', { credentials: 'include' }).then((r) => r.text())`);
+    check('what the server holds for the group does not contain the text', groupHeld.includes('"ciphertext":"') && !groupHeld.includes(stamp));
+
+    await alex.say(BEFORE_BLOCK);
+    check('Mara reads Alex in the group', Boolean(await mara.sees(BEFORE_BLOCK)));
+
+    // Mara blocks Alex from the group's people list, not from a header button.
+    await mara.click('.dm-people-anchor > .link-button', 'people');
+    await mara.until(`document.querySelector('.dm-people') !== null`);
+    check(
+      'Mara blocks Alex from his row in the group',
+      await mara.evaluate(`(() => {
+        const row = Array.from(document.querySelectorAll('.dm-people-row')).find((el) => el.textContent.includes('Alex'));
+        const button = Array.from(row?.querySelectorAll('button') ?? []).find((el) => el.textContent === 'Block');
+        if (!button) return false;
+        button.click();
+        return true;
+      })()`),
+    );
+    await mara.until(`Array.from(document.querySelectorAll('.dm-people-row')).some((el) => el.textContent.includes('Unblock'))`);
+    check('and can still write in the group', Boolean(await mara.until(`document.querySelector('.composer-input') !== null && !document.querySelector('.dm-blocked')`)));
+
+    await alex.say(AFTER_BLOCK);
+    check('what Alex sends after the block reaches Wes', Boolean(await wes.sees(AFTER_BLOCK)));
+    await sleep(1500);
+    check('and not Mara', !(await mara.screenText()).includes(AFTER_BLOCK));
+    check(
+      "what he said before collapses on Mara's screen",
+      Boolean(await mara.until(`Array.from(document.querySelectorAll('.blocked-message')).length > 0`)),
+    );
+
+    await mara.say(FROM_MARA);
+    check('Mara still reaches Wes', Boolean(await wes.sees(FROM_MARA)));
+    check('and Alex: the block is hers, not a wall around her', Boolean(await alex.sees(FROM_MARA)));
+
+    // Undo the block so the next run starts where this one did.
+    await mara.evaluate(`(() => {
+      const row = Array.from(document.querySelectorAll('.dm-people-row')).find((el) => el.textContent.includes('Alex'));
+      Array.from(row?.querySelectorAll('button') ?? []).find((el) => el.textContent === 'Unblock')?.click();
+    })()`);
+    await mara.until(`!Array.from(document.querySelectorAll('.dm-people-row')).some((el) => el.textContent.includes('Unblock'))`);
+
+    await mara.evaluate(`Array.from(document.querySelectorAll('.dm-people .button')).find((el) => el.textContent === 'Leave group').click()`);
+    check('Mara can leave', await mara.click('.dm-people .button', 'Leave'));
+    check(
+      'the group goes from her list',
+      Boolean(await mara.until(`!Array.from(document.querySelectorAll('.dm-row')).some((el) => el.querySelector('.dm-group-mark'))`)),
+    );
+    check('and Wes sees two people', Boolean(await wes.until(`document.querySelector('.dm-people-anchor')?.textContent.includes('2 people')`)));
+    await wes.say(AFTER_LEAVING);
+    check('the two left carry on', Boolean(await alex.sees(AFTER_LEAVING)));
+    const afterLeaving = await mara.evaluate(`fetch('/api/dms/${groupId}/messages', { credentials: 'include' }).then((r) => r.status)`);
+    check('and the server no longer counts her in', afterLeaving === 404, String(afterLeaving));
   }
 
   for (const device of everyone) {

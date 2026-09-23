@@ -16,13 +16,13 @@ import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
 import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
 import { dmDrafts } from '../lib/drafts';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
-import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
+import { dmUnread, othersIn, sortedDms, titleOf, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { DockButton } from './DockButton';
+import { DmPeoplePicker } from './DmPeoplePicker';
 import { openPicture } from './Lightbox';
-import { Modal } from './Modal';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
 import { PlayLine, Rich } from './MessageList';
@@ -61,7 +61,7 @@ export function DmSidebar() {
           </button>
         </span>
       </div>
-      {picking ? <DmStartPicker onClose={() => setPicking(false)} /> : null}
+      {picking ? <DmPeoplePicker onClose={() => setPicking(false)} /> : null}
       <div className="sidebar-scroll">
         {state.setupError ? <p className="dm-note">{state.setupError}</p> : null}
         {list.length === 0 && !state.setupError ? (
@@ -70,15 +70,22 @@ export function DmSidebar() {
           </p>
         ) : null}
         {list.map((dm) => {
-          const other = otherMember(dm, selfId);
-          if (!other) return null;
+          const others = othersIn(dm, selfId);
+          const other = others[0];
+          if (dm.kind === 'pair' && !other) return null;
           const classes = ['channel', 'dm-row'];
           if (state.openId === dm.id) classes.push('active');
           if (dmUnread(dm)) classes.push('unread');
           return (
             <button key={dm.id} type="button" className={classes.join(' ')} onClick={() => openDm(dm.id)}>
-              <Avatar user={other} small presence={app.presences[other.id] ?? 'offline'} />
-              <span className="channel-name">{nameFor(other.id, other.displayName)}</span>
+              {dm.kind === 'group' ? (
+                <span className="dm-group-mark" title={`${dm.members.length} people`}>
+                  {dm.members.length}
+                </span>
+              ) : other ? (
+                <Avatar user={other} small presence={app.presences[other.id] ?? 'offline'} />
+              ) : null}
+              <span className="channel-name">{titleOf(dm, selfId)}</span>
               {dmUnread(dm) ? <span className="dm-dot" aria-label="Unread" /> : null}
             </button>
           );
@@ -87,93 +94,6 @@ export function DmSidebar() {
       <RecoveryStatus />
       <UserPanel />
     </aside>
-  );
-}
-
-/**
- * Everyone who shares a server with you, from what the store already has
- * loaded (a server's roster arrives when you first visit it, not before).
- * Not yourself, not anyone you have blocked, one row per person even if a
- * server is shared with several.
- */
-function DmStartPicker({ onClose }: { onClose: () => void }) {
-  const { state: app } = useStore();
-  const { openWith } = useDms();
-  const selfId = app.user?.id ?? null;
-  const [query, setQuery] = useState('');
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const people = useMemo(() => {
-    const byId = new Map<string, PublicUser>();
-    for (const roster of Object.values(app.members)) {
-      for (const member of roster) {
-        if (member.userId === selfId || app.blocks.has(member.userId)) continue;
-        byId.set(member.userId, member.user);
-      }
-    }
-    return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [app.members, app.blocks, selfId]);
-
-  const needle = query.trim().toLowerCase();
-  const filtered = needle
-    ? people.filter(
-        (person) => person.displayName.toLowerCase().includes(needle) || person.username.toLowerCase().includes(needle),
-      )
-    : people;
-
-  async function pick(userId: string) {
-    setBusyId(userId);
-    setError(null);
-    try {
-      await openWith(userId);
-      onClose();
-    } catch (problem) {
-      setError(problem instanceof Error ? problem.message : 'Could not start that conversation.');
-      setBusyId(null);
-    }
-  }
-
-  return (
-    <Modal
-      title="Start a conversation"
-      onClose={onClose}
-      footer={
-        <button type="button" className="button secondary inline" onClick={onClose}>
-          Cancel
-        </button>
-      }
-    >
-      <div className="field">
-        <input
-          type="text"
-          placeholder="Find someone"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </div>
-      {error ? <div className="error">{error}</div> : null}
-      {filtered.length === 0 ? (
-        <p className="dm-note">
-          {people.length === 0 ? "Nobody shares a server with you yet." : 'Nobody matches that.'}
-        </p>
-      ) : (
-        <div className="dm-picker-list">
-          {filtered.map((person) => (
-            <button
-              key={person.id}
-              type="button"
-              className="dm-picker-row"
-              disabled={busyId !== null}
-              onClick={() => void pick(person.id)}
-            >
-              <Avatar user={person} small presence={app.presences[person.id] ?? 'offline'} />
-              <span className="dm-picker-name">{person.displayName}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </Modal>
   );
 }
 
@@ -215,8 +135,14 @@ function RecoveryStatus() {
 /** Above a conversation with messages this device cannot open: what would open them. */
 function LockedNotice({ dmId }: { dmId: string }) {
   const { state } = useDms();
+  const { state: app } = useStore();
   const [open, setOpen] = useState(false);
-  const locked = (state.messages[dmId] ?? []).some((view) => view.problem === 'no-key');
+  // In a group, what somebody you blocked sent after the block was never
+  // locked for you. No phrase would open it, so it is not offered as a reason.
+  const group = state.dms[dmId]?.kind === 'group';
+  const locked = (state.messages[dmId] ?? []).some(
+    (view) => view.problem === 'no-key' && !(group && app.blocks.has(view.authorId)),
+  );
   const needed = locked && Boolean(state.recovery?.exists) && !state.recovery?.held;
 
   // The dialog outlives the warning, in the same place in the tree, or React
@@ -244,7 +170,7 @@ function LockedNotice({ dmId }: { dmId: string }) {
 export function DmPane() {
   const card = useProfileCard();
   useLocalNames();
-  const { state: app, block, unblock } = useStore();
+  const { state: app, unblock } = useStore();
   const { state } = useDms();
   const dm = state.openId ? state.dms[state.openId] : undefined;
   const selfId = app.user?.id ?? null;
@@ -266,7 +192,8 @@ export function DmPane() {
     );
   }
 
-  const other = otherMember(dm, selfId);
+  // A pair is closed by a block from either end. A group is not: see DmPeople.
+  const other = dm.kind === 'pair' ? (othersIn(dm, selfId)[0] ?? null) : null;
   const blocked = Boolean(other && app.blocks.has(other.id));
   return (
     <>
@@ -279,22 +206,13 @@ export function DmPane() {
               {nameFor(other.id, other.displayName)}
             </button>
           ) : (
-            'Conversation'
+            titleOf(dm, selfId)
           )}
         </div>
         <div className="main-topic dm-lock" title="Locked on your device, opened on theirs. The server stores it and cannot read it.">
           End-to-end encrypted
         </div>
-        {other ? (
-          <button
-            type="button"
-            className="link-button dm-block-toggle"
-            title={blocked ? 'Let them write to you again' : 'They are not told. Their messages collapse and they cannot write here.'}
-            onClick={() => void (blocked ? unblock(other.id) : block(other.id)).catch(() => undefined)}
-          >
-            {blocked ? 'Unblock' : 'Block'}
-          </button>
-        ) : null}
+        <DmPeople dm={dm} selfId={selfId} />
       </header>
       <DeviceWarnings dm={dm} selfId={selfId} />
       <LockedNotice dmId={dm.id} />
@@ -317,12 +235,158 @@ export function DmPane() {
       ) : (
         <DmComposer
           dm={dm}
-          name={other ? nameFor(other.id, other.displayName) : 'them'}
+          name={other ? nameFor(other.id, other.displayName) : titleOf(dm, selfId)}
           replyingTo={replying[dm.id] ?? null}
           onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
         />
       )}
     </>
+  );
+}
+
+/* ---------------------------------- people --------------------------------- */
+
+/**
+ * The right-hand end of the header, for the people in the conversation.
+ *
+ * In a pair that is one Block button, because blocking the one other person
+ * closes the conversation. In a group a block is between you and one person
+ * and the conversation carries on, so it lives on that person's row in a
+ * short list, beside the ways to add someone and to leave.
+ */
+function DmPeople({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
+  const { state: app, block, unblock } = useStore();
+  const { state, leave } = useDms();
+  const card = useProfileCard();
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+
+  // Closes on a click anywhere else, or Escape, like the profile card. Not
+  // while the add dialog is up: that is a click elsewhere on purpose.
+  useEffect(() => {
+    if (!open || adding) return;
+    const onDown = (event: MouseEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, adding]);
+
+  // Switching conversation closes it.
+  useEffect(() => {
+    setOpen(false);
+    setLeaving(false);
+    setError(null);
+  }, [dm.id]);
+
+  if (dm.kind === 'pair') {
+    const other = othersIn(dm, selfId)[0];
+    if (!other) return null;
+    const blocked = app.blocks.has(other.id);
+    return (
+      <button
+        type="button"
+        className="link-button dm-block-toggle"
+        title={blocked ? 'Let them write to you again' : 'They are not told. Their messages collapse and they cannot write here.'}
+        onClick={() => void (blocked ? unblock(other.id) : block(other.id)).catch(() => undefined)}
+      >
+        {blocked ? 'Unblock' : 'Block'}
+      </button>
+    );
+  }
+
+  const known = state.devices[dm.id];
+  const people = [...dm.members].sort((a, b) => (a.id === selfId ? -1 : b.id === selfId ? 1 : a.displayName.localeCompare(b.displayName)));
+
+  async function goodbye() {
+    setError(null);
+    try {
+      await leave(dm.id);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not leave.');
+    }
+  }
+
+  return (
+    <span className="dm-people-anchor" ref={box}>
+      <button
+        type="button"
+        className="link-button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {dm.members.length} people
+      </button>
+      {open ? (
+        <div className="dm-people" role="dialog" aria-label="People in this conversation">
+          {people.map((member) => {
+            const mine = member.id === selfId;
+            const blocked = app.blocks.has(member.id);
+            // Somebody whose browser has not made a key yet gets nothing sent here.
+            const keyless = known !== undefined && !known.some((entry) => entry.device.userId === member.id);
+            return (
+              <div className="dm-people-row" key={member.id}>
+                <Avatar user={member} small presence={app.presences[member.id] ?? 'offline'} />
+                <button type="button" className="who dm-people-name" onClick={(event) => card.show(member, event.currentTarget)}>
+                  {mine ? 'You' : nameFor(member.id, member.displayName)}
+                </button>
+                {keyless && !mine ? (
+                  <span className="dm-people-note" title="They have not opened Scryproof since DMs were added. Nothing sent here reaches them until they do.">
+                    no key yet
+                  </span>
+                ) : null}
+                {mine ? null : (
+                  <button
+                    type="button"
+                    className="link-button"
+                    title={
+                      blocked
+                        ? 'Let them write to you again'
+                        : 'They are not told. What they send here after this is not delivered to you, and what they sent before collapses. Everyone else still talks to them.'
+                    }
+                    onClick={() => void (blocked ? unblock(member.id) : block(member.id)).catch(() => undefined)}
+                  >
+                    {blocked ? 'Unblock' : 'Block'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {error ? <div className="error">{error}</div> : null}
+          <div className="dm-people-actions">
+            <button type="button" className="button secondary inline" onClick={() => setAdding(true)}>
+              Add someone
+            </button>
+            {leaving ? (
+              <>
+                <span className="dm-people-note">Leave for good? Someone would have to add you back.</span>
+                <button type="button" className="button inline danger" onClick={() => void goodbye()}>
+                  Leave
+                </button>
+                <button type="button" className="button secondary inline" onClick={() => setLeaving(false)}>
+                  Stay
+                </button>
+              </>
+            ) : (
+              <button type="button" className="button secondary inline" onClick={() => setLeaving(true)}>
+                Leave group
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+      {adding ? <DmPeoplePicker addTo={dm.id} onClose={() => setAdding(false)} /> : null}
+    </span>
   );
 }
 
@@ -431,8 +495,13 @@ function DmMessages({
   onReply: (messageId: string) => void;
 }) {
   const { state, loadOlder, markRead, remove, edit, react } = useDms();
+  const { state: app } = useStore();
   const views = state.messages[dm.id] ?? [];
-  const reactions = state.reactions[dm.id] ?? [];
+  // In a group, somebody you blocked collapses as they would in a channel, and
+  // their reactions do not count. In a pair the block has already closed the
+  // conversation, and what was said before it stays as it was.
+  const silenced = (userId: string): boolean => dm.kind === 'group' && userId !== selfId && app.blocks.has(userId);
+  const reactions = (state.reactions[dm.id] ?? []).filter((reaction) => !silenced(reaction.authorId));
   const loaded = state.loaded[dm.id] ?? false;
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -504,7 +573,12 @@ function DmMessages({
       {views.length === 0 ? (
         <div className="channel-intro">
           <h2>Nothing here yet</h2>
-          <p>Whatever you write is locked before it leaves this device.</p>
+          <p>
+            Whatever you write is locked before it leaves this device.
+            {dm.kind === 'group'
+              ? ' Anyone added later reads from when they joined: what came before was not locked for them.'
+              : ''}
+          </p>
         </div>
       ) : null}
 
@@ -527,6 +601,7 @@ function DmMessages({
               view={view}
               author={author ?? null}
               grouped={grouped && !view.replyTo}
+              collapsed={silenced(view.authorId)}
               mine={view.authorId === selfId}
               selfId={selfId}
               members={dm.members}
@@ -669,6 +744,7 @@ function DmRow({
   view,
   author,
   grouped: isGrouped,
+  collapsed,
   mine,
   selfId,
   members,
@@ -682,6 +758,8 @@ function DmRow({
   view: DmView;
   author: PublicUser | null;
   grouped: boolean;
+  /** From somebody this person blocked, in a group. */
+  collapsed: boolean;
   mine: boolean;
   selfId: string | null;
   members: PublicUser[];
@@ -699,6 +777,8 @@ function DmRow({
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** One blocked message shown on purpose. It hides again on reload. */
+  const [shown, setShown] = useState(false);
   const readable = !view.deleted && view.problem === null && view.text !== null;
   const nameOf = (userId: string): string =>
     userId === selfId ? 'You' : nameFor(userId, members.find((member) => member.id === userId)?.displayName ?? 'Someone');
@@ -716,6 +796,24 @@ function DmRow({
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not save that.');
     }
+  }
+
+  if (collapsed && !(shown && view.problem !== 'no-key')) {
+    return (
+      <div id={`dm-message-${view.id}`} className="message blocked">
+        {view.problem === 'no-key' ? (
+          // Sent after the block. The server kept no copy of the key for this
+          // person, so there is nothing to show even on request.
+          <span className="blocked-message" title="Sent after you blocked them. It was not delivered to you.">
+            Blocked message.
+          </span>
+        ) : (
+          <button type="button" className="blocked-message" onClick={() => setShown(true)}>
+            Blocked message. Show.
+          </button>
+        )}
+      </div>
+    );
   }
 
   let body: ReactNode;

@@ -45,6 +45,7 @@ import {
   sealMessage,
 } from '../lib/dm-crypto';
 import { isRecoveryDevice, recoveryDevice } from '../lib/dm-recovery';
+import { nameFor } from '../lib/local-names';
 import { noticeFor, notices } from '../lib/notices';
 import { notifyPrefs, play, soundFor } from '../lib/notify';
 import { spawnOf } from '../lib/commands';
@@ -129,6 +130,7 @@ type Action =
   | { type: 'setup-failed'; message: string }
   | { type: 'dms'; dms: DmChannel[] }
   | { type: 'dm'; dm: DmChannel }
+  | { type: 'left'; dmId: string }
   | { type: 'show'; dmId: string | null }
   | { type: 'hide' }
   | { type: 'devices'; dmId: string; devices: AssessedDevice[] }
@@ -138,6 +140,12 @@ type Action =
   | { type: 'deleted'; dmId: string; id: string }
   | { type: 'touched'; dmId: string; messageId: string }
   | { type: 'read'; dmId: string; messageId: string };
+
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const out = { ...record };
+  delete out[key];
+  return out;
+}
 
 function reducer(state: DmState, action: Action): DmState {
   switch (action.type) {
@@ -151,6 +159,18 @@ function reducer(state: DmState, action: Action): DmState {
       return { ...state, dms: Object.fromEntries(action.dms.map((dm) => [dm.id, dm])) };
     case 'dm':
       return { ...state, dms: { ...state.dms, [action.dm.id]: { ...state.dms[action.dm.id], ...action.dm } } };
+    case 'left': {
+      // What was opened stays nowhere: the conversation is not this person's any more.
+      return {
+        ...state,
+        dms: without(state.dms, action.dmId),
+        messages: without(state.messages, action.dmId),
+        reactions: without(state.reactions, action.dmId),
+        loaded: without(state.loaded, action.dmId),
+        devices: without(state.devices, action.dmId),
+        openId: state.openId === action.dmId ? null : state.openId,
+      };
+    }
     case 'show':
       return { ...state, active: true, openId: action.dmId ?? state.openId };
     case 'hide':
@@ -225,6 +245,12 @@ interface DmValue {
   openDm: (dmId: string) => void;
   /** Open the conversation with a person, making it if need be. Answers its id. */
   openWith: (userId: string) => Promise<string>;
+  /** Make a group of these people and yourself, and open it. Answers its id. */
+  createGroup: (userIds: string[], title?: string | null) => Promise<string>;
+  /** Bring someone into a group. They read from now on. */
+  addMember: (dmId: string, userId: string) => Promise<void>;
+  /** Leave a group. It goes from the list on every device. */
+  leave: (dmId: string) => Promise<void>;
   send: (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => Promise<void>;
   /** Seal the message again with new text. What it replied to stays. */
   edit: (dmId: string, messageId: string, text: string) => Promise<void>;
@@ -510,6 +536,20 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
       if (event.t === 'dm_create') dispatch({ type: 'dm', dm: event.d });
 
+      // Somebody joined or left. Whoever joined has devices this one has not
+      // assessed yet; fetching them now puts any warning on screen before
+      // anything is typed, and the next message is locked for them either way.
+      if (event.t === 'dm_update') {
+        dispatch({ type: 'dm', dm: event.d });
+        if (stateRef.current.loaded[event.d.id]) await refreshDevices(event.d.id);
+      }
+
+      if (event.t === 'dm_left') {
+        delete sealed.current[event.d.dmId];
+        delete assessed.current[event.d.dmId];
+        dispatch({ type: 'left', dmId: event.d.dmId });
+      }
+
       if (event.t === 'dm_read') dispatch({ type: 'read', dmId: event.d.dmId, messageId: event.d.lastReadMessageId });
 
       // "Again" on a jump: the server says which message, this side knows what it says.
@@ -596,8 +636,10 @@ export function DmProvider({ children }: { children: ReactNode }) {
           blocked,
         });
         if (verdict.list) {
-          const author = stateRef.current.dms[message.dmId]?.members.find((member) => member.id === message.authorId);
+          const dm = stateRef.current.dms[message.dmId];
+          const author = dm?.members.find((member) => member.id === message.authorId);
           // Who and when. Never what: see the note at the top of notices.ts.
+          // A group is named where a channel would be.
           notices.arrived(
             {
               id: message.id,
@@ -608,7 +650,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
               serverId: null,
               serverName: null,
               channelId: null,
-              channelName: null,
+              channelName: dm?.kind === 'group' ? titleOf(dm, selfId) : null,
               dmId: message.dmId,
               preview: null,
               read: false,
@@ -657,6 +699,32 @@ export function DmProvider({ children }: { children: ReactNode }) {
     [openDm],
   );
 
+  const createGroup = useCallback(
+    async (userIds: string[], title?: string | null) => {
+      const { dm } = await api.dms.createGroup({ userIds, title: title ?? null });
+      dispatch({ type: 'dm', dm });
+      openDm(dm.id);
+      return dm.id;
+    },
+    [openDm],
+  );
+
+  const addMember = useCallback(
+    async (dmId: string, userId: string) => {
+      const { dm } = await api.dms.addMember(dmId, userId);
+      dispatch({ type: 'dm', dm });
+      if (stateRef.current.loaded[dmId]) await refreshDevices(dmId);
+    },
+    [refreshDevices],
+  );
+
+  const leave = useCallback(async (dmId: string) => {
+    await api.dms.leave(dmId);
+    delete sealed.current[dmId];
+    delete assessed.current[dmId];
+    dispatch({ type: 'left', dmId });
+  }, []);
+
   /** Lock a body for every accepted device in the conversation. */
   const seal = useCallback(
     async (dmId: string, body: DmBody) => {
@@ -664,11 +732,24 @@ export function DmProvider({ children }: { children: ReactNode }) {
       if (!self) throw new Error('This device has no keys yet.');
 
       // Ask again every time. A phone somebody signed in on a minute ago
-      // should be noticed now, not after a reload.
+      // should be noticed now, not after a reload. In a group that includes
+      // whoever was added a moment ago.
       const known = await refreshDevices(dmId);
       const recipients = known.filter((entry) => isTrusted(entry.verdict)).map((entry) => entry.device);
       const dm = stateRef.current.dms[dmId];
       const others = dm?.members.filter((member) => member.id !== self.userId) ?? [];
+      if (dm?.kind === 'group') {
+        // One person without a key, or with only devices waiting to be
+        // accepted, must not silence everyone else. They are named in the
+        // warnings above the conversation, and get no copy until that is
+        // settled. With nobody at all to lock it to, there is nothing to send.
+        if (!others.some((other) => recipients.some((entry) => entry.userId === other.id))) {
+          throw new Error(
+            'Nobody else here has a device you have accepted, so there is nothing to lock this message to. The warnings above say why.',
+          );
+        }
+        return { known, message: await sealMessage({ dmId, sender: self, body, recipients }) };
+      }
       for (const other of others) {
         if (!known.some((entry) => entry.device.userId === other.id)) {
           // Their browser makes its key the first time it loads a build that has DMs.
@@ -854,12 +935,12 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<DmValue>(
     () => ({
-      state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice,
-      createRecovery, restoreRecovery,
+      state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
+      markRead, acceptDevice, createRecovery, restoreRecovery,
     }),
     [
-      state, showDms, hideDms, openDm, openWith, send, edit, react, remove, loadOlder, markRead, acceptDevice,
-      createRecovery, restoreRecovery,
+      state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
+      markRead, acceptDevice, createRecovery, restoreRecovery,
     ],
   );
 
@@ -881,9 +962,24 @@ export function unreadDmCount(state: DmState): number {
   return Object.values(state.dms).filter(dmUnread).length;
 }
 
-/** The person on the other end. In a one-to-one that is whoever is not you. */
-export function otherMember(dm: DmChannel, selfId: string | null): PublicUser | null {
-  return dm.members.find((member) => member.id !== selfId) ?? dm.members[0] ?? null;
+/**
+ * Everyone in a conversation but you. In a pair that is one person. A pair
+ * whose other person has gone (their account deleted) answers an empty list.
+ */
+export function othersIn(dm: DmChannel, selfId: string | null): PublicUser[] {
+  return dm.members.filter((member) => member.id !== selfId);
+}
+
+/**
+ * What to call a conversation: a group's name if it was given one, otherwise
+ * the people in it, as this device names them. A group everyone else has left
+ * is just you.
+ */
+export function titleOf(dm: DmChannel, selfId: string | null): string {
+  if (dm.title) return dm.title;
+  const others = othersIn(dm, selfId);
+  if (others.length === 0) return dm.kind === 'group' ? 'Only you' : 'Conversation';
+  return others.map((member) => nameFor(member.id, member.displayName)).join(', ');
 }
 
 /** Newest conversation first; one nobody has written in yet sorts by when it was made. */

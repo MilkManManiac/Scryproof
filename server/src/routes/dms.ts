@@ -17,7 +17,7 @@
 import { webcrypto } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { DeviceKey, DmChannel, DmMessage, DmWrappedKey } from '@scryproof/shared';
@@ -35,12 +35,12 @@ import {
   dmMessages,
   users,
 } from '../db/schema.js';
-import type { DeviceKeyRow, DmChannelRow, DmMessageKeyRow, DmMessageRow } from '../db/schema.js';
+import type { DeviceKeyRow, DmChannelRow, DmMemberRow, DmMessageKeyRow, DmMessageRow } from '../db/schema.js';
 import * as hub from '../gateway/hub.js';
 import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
-import { blockBetween } from '../services/blocks.js';
+import { blockBetween, blockedBy, blockersOf } from '../services/blocks.js';
 import * as serialize from '../services/serialize.js';
 import { sharesAServer } from '../services/servers.js';
 import { buildStorageKey, deleteObject, readFromS3, readStream, saveStream } from '../services/storage.js';
@@ -158,15 +158,24 @@ const pairKeyFor = (a: string, b: string): string => [a, b].sort().join(':');
  * stranger asking about a real conversation and about a made-up one get the
  * same answer.
  */
-async function requireDmMember(dmId: string, userId: string): Promise<{ dm: DmChannelRow; memberIds: string[] }> {
+async function requireDmMember(
+  dmId: string,
+  userId: string,
+): Promise<{ dm: DmChannelRow; memberIds: string[]; me: DmMemberRow }> {
   const db = getDb();
   const rows = await db.select().from(dmMembers).where(eq(dmMembers.dmId, dmId));
-  if (!rows.some((row) => row.userId === userId)) {
-    throw notFound('That conversation does not exist.', 'unknown_dm');
-  }
+  const me = rows.find((row) => row.userId === userId);
+  if (!me) throw notFound('That conversation does not exist.', 'unknown_dm');
   const [dm] = await db.select().from(dmChannels).where(eq(dmChannels.id, dmId)).limit(1);
   if (!dm) throw notFound('That conversation does not exist.', 'unknown_dm');
-  return { dm, memberIds: rows.map((row) => row.userId) };
+  return { dm, memberIds: rows.map((row) => row.userId), me };
+}
+
+/** A group, or a 400 that says why the thing asked for only makes sense in one. */
+function requireGroup(dm: DmChannelRow): void {
+  if (dm.kind !== 'group') {
+    throw badRequest('A conversation between two people stays between two. Start a group instead.', 'not_a_group');
+  }
 }
 
 async function describeDms(rows: DmChannelRow[], forUserId: string): Promise<DmChannel[]> {
@@ -181,20 +190,49 @@ async function describeDms(rows: DmChannelRow[], forUserId: string): Promise<DmC
     .from(users)
     .where(inArray(users.id, [...new Set(memberRows.map((row) => row.userId))]));
   const byId = new Map(userRows.map((row) => [row.id, row]));
+  const blocked = new Set(await blockedBy(forUserId));
 
-  return rows.map((row) => {
+  const out: DmChannel[] = [];
+  for (const row of rows) {
     const mine = memberRows.filter((member) => member.dmId === row.id);
-    return {
+    // In a group, somebody this person blocked can still write to everyone
+    // else, and the conversation's newest message may be theirs. It was never
+    // sent here, so it must not light the conversation up as unread either.
+    let lastMessageId = row.lastMessageId;
+    const silenced = mine.map((member) => member.userId).filter((userId) => blocked.has(userId));
+    if (row.kind === 'group' && silenced.length > 0 && lastMessageId) {
+      const [newest] = await db
+        .select({ id: dmMessages.id })
+        .from(dmMessages)
+        .where(
+          and(eq(dmMessages.dmId, row.id), isNull(dmMessages.reactionTo), notInArray(dmMessages.authorId, silenced)),
+        )
+        .orderBy(desc(dmMessages.id))
+        .limit(1);
+      lastMessageId = newest?.id ?? null;
+    }
+    out.push({
       id: row.id,
+      kind: row.kind,
+      title: row.title,
       members: mine
         .map((member) => byId.get(member.userId))
         .filter((user): user is NonNullable<typeof user> => user !== undefined)
         .map((user) => serialize.publicUser(user)),
-      lastMessageId: row.lastMessageId,
+      lastMessageId,
       lastReadMessageId: mine.find((member) => member.userId === forUserId)?.lastReadMessageId ?? null,
       createdAt: row.createdAt.toISOString(),
-    };
-  });
+    });
+  }
+  return out;
+}
+
+/** Tell everyone in a conversation what it looks like now, each from where they sit. */
+async function announceMembers(dm: DmChannelRow, memberIds: string[], type: 'dm_create' | 'dm_update'): Promise<void> {
+  for (const memberId of memberIds) {
+    const [described] = await describeDms([dm], memberId);
+    if (described) hub.sendToUser(memberId, { t: type, d: described });
+  }
 }
 
 function toDmMessage(row: DmMessageRow, keys: DmMessageKeyRow[], forUserId: string): DmMessage {
@@ -325,6 +363,38 @@ async function requireNotBlocked(userId: string, memberIds: string[]): Promise<v
   }
 }
 
+/**
+ * Who, besides the sender, a new message in this conversation reaches.
+ *
+ * Between two people a block, or no longer sharing a server, closes the
+ * conversation outright, and the refusals above say so. A group cannot be
+ * closed on everyone's behalf by one person's block: the rest of them are
+ * still talking. So in a group the same two facts are applied per reader,
+ * quietly. Somebody who has blocked the sender is simply not a recipient: the
+ * copy of the key locked for them is thrown away, and they are not told the
+ * message exists. The sender is not told either, as with any block.
+ * Somebody the sender has blocked still gets the message; not hearing from
+ * someone is the blocker's choice, not a way to hide from them.
+ */
+async function readersOf(dm: DmChannelRow, userId: string, memberIds: string[]): Promise<string[]> {
+  if (dm.kind !== 'group') {
+    await requireStillConnected(userId, memberIds);
+    await requireNotBlocked(userId, memberIds);
+    return memberIds;
+  }
+  const blockers = await blockersOf(userId);
+  const readers = [userId];
+  for (const memberId of memberIds) {
+    if (memberId === userId || blockers.has(memberId)) continue;
+    if (await sharesAServer(userId, memberId)) readers.push(memberId);
+  }
+  return readers;
+}
+
+/** The copies of the key addressed to somebody this message is going to reach. */
+const keysFor = <K extends { userId: string }>(keys: K[], readers: string[]): K[] =>
+  keys.filter((key) => readers.includes(key.userId));
+
 const keyValues = (messageId: string, keys: SealedKeys) =>
   keys.map((key) => ({
     messageId,
@@ -333,6 +403,12 @@ const keyValues = (messageId: string, keys: SealedKeys) =>
     iv: Buffer.from(key.iv, 'base64'),
     wrapped: Buffer.from(key.key, 'base64'),
   }));
+
+/** Store the copies of a message's key. After a block's filtering there may be none to store. */
+async function saveKeys(messageId: string, keys: SealedKeys): Promise<DmMessageKeyRow[]> {
+  if (keys.length === 0) return [];
+  return getDb().insert(dmMessageKeys).values(keyValues(messageId, keys)).returning();
+}
 
 export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   /* --------------------------------- devices -------------------------------- */
@@ -537,6 +613,110 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     return { dm };
   });
 
+  /**
+   * Make a group. Unlike a pair it is never found again by who is in it: two
+   * groups of the same people are two conversations, as they would be anywhere
+   * else. Everyone in it must share a server with whoever makes it, the same
+   * rule as writing to one person, and nobody is put in a room with someone
+   * who blocked them, or whom they blocked, by that person.
+   */
+  app.post('/api/dms/groups', async (request) => {
+    const user = requireUser(request);
+    const body = z
+      .object({
+        userIds: z.array(z.string().min(1).max(64)).min(1).max(LIMITS.groupDmMembers),
+        title: z.string().trim().max(LIMITS.groupDmTitle.max).nullish(),
+      })
+      .parse(request.body);
+    const others = [...new Set(body.userIds)].filter((id) => id !== user.id);
+    if (others.length < 2) {
+      throw badRequest('A group is three people or more. For one, open a conversation with them.', 'group_too_small');
+    }
+    if (others.length + 1 > LIMITS.groupDmMembers) {
+      throw badRequest(`A group holds at most ${LIMITS.groupDmMembers} people.`, 'group_too_large');
+    }
+
+    const limit = consume(`dm-groups:${user.id}`, 20, 60_000);
+    if (!limit.allowed) throw tooManyRequests('You are making groups too quickly.', limit.retryAfterSeconds);
+
+    for (const otherId of others) {
+      if (!(await sharesAServer(user.id, otherId))) throw notFound('That person does not exist.', 'unknown_user');
+      await requireNotBlocked(user.id, [otherId]);
+    }
+
+    const db = getDb();
+    const dmId = uuidv7();
+    const [created] = await db
+      .insert(dmChannels)
+      .values({ id: dmId, kind: 'group', title: body.title || null })
+      .returning();
+    if (!created) throw badRequest('Could not make that group.', 'dm_failed');
+    await db.insert(dmMembers).values([user.id, ...others].map((userId) => ({ dmId, userId })));
+
+    await announceMembers(created, others, 'dm_create');
+    const [dm] = await describeDms([created], user.id);
+    return { dm };
+  });
+
+  /**
+   * Anyone in a group can bring someone in. They read from here on: nothing
+   * sent before was locked for their devices, and nothing can be, because the
+   * key that would do it is not the server's to have.
+   */
+  app.post('/api/dms/:dmId/members', async (request) => {
+    const user = requireUser(request);
+    const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
+    const { userId } = z.object({ userId: z.string().min(1).max(64) }).parse(request.body);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
+    requireGroup(dm);
+    if (memberIds.includes(userId)) throw conflict('They are already here.', 'already_member');
+    if (memberIds.length + 1 > LIMITS.groupDmMembers) {
+      throw badRequest(`A group holds at most ${LIMITS.groupDmMembers} people.`, 'group_too_large');
+    }
+
+    const limit = consume(`dm-groups:${user.id}`, 20, 60_000);
+    if (!limit.allowed) throw tooManyRequests('You are adding people too quickly.', limit.retryAfterSeconds);
+
+    if (!(await sharesAServer(user.id, userId))) throw notFound('That person does not exist.', 'unknown_user');
+    await requireNotBlocked(user.id, [userId]);
+
+    // Nothing before this moment is theirs to read, so nothing before it is unread.
+    await getDb()
+      .insert(dmMembers)
+      .values({ dmId, userId, lastReadMessageId: dm.lastMessageId })
+      .onConflictDoNothing();
+
+    await announceMembers(dm, memberIds, 'dm_update');
+    await announceMembers(dm, [userId], 'dm_create');
+    const [described] = await describeDms([dm], user.id);
+    return { dm: described };
+  });
+
+  /**
+   * Leave a group. What was sent while you were in it stays with the others;
+   * nothing sent after is locked for you. When the last person leaves, the
+   * conversation and everything in it goes.
+   */
+  app.post('/api/dms/:dmId/leave', async (request) => {
+    const user = requireUser(request);
+    const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
+    requireGroup(dm);
+
+    const db = getDb();
+    await db.delete(dmMembers).where(and(eq(dmMembers.dmId, dmId), eq(dmMembers.userId, user.id)));
+    const remaining = memberIds.filter((id) => id !== user.id);
+    if (remaining.length === 0) {
+      const files = await db.delete(dmFiles).where(eq(dmFiles.dmId, dmId)).returning();
+      for (const file of files) await deleteObject(file.storageKey).catch(() => undefined);
+      await db.delete(dmChannels).where(eq(dmChannels.id, dmId));
+    } else {
+      await announceMembers(dm, remaining, 'dm_update');
+    }
+    hub.sendToUser(user.id, { t: 'dm_left', d: { dmId } });
+    return { ok: true };
+  });
+
   /* --------------------------------- messages ------------------------------- */
 
   app.get('/api/dms/:dmId/messages', async (request) => {
@@ -545,12 +725,16 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     const query = z
       .object({ before: z.string().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) })
       .parse(request.query);
-    await requireDmMember(dmId, user.id);
+    const { dm, me } = await requireDmMember(dmId, user.id);
 
     const db = getDb();
     // Reactions ride along with the messages they belong to, never as rows of their own.
     const conditions = [eq(dmMessages.dmId, dmId), isNull(dmMessages.reactionTo)];
     if (query.before) conditions.push(lt(dmMessages.id, query.before));
+    // Somebody added to a group reads from their joining on. What came before
+    // was never locked for them, and a page of "Locked." would only suggest
+    // that something (a recovery phrase, say) could open it.
+    if (dm.kind === 'group') conditions.push(gte(dmMessages.createdAt, me.joinedAt));
     const rows = (
       await db.select().from(dmMessages).where(and(...conditions)).orderBy(desc(dmMessages.id)).limit(query.limit)
     ).reverse();
@@ -586,13 +770,12 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
       .parse(request.body);
     if (body.reactionTo && body.fileIds?.length) throw badRequest('A reaction carries no files.', 'invalid_file');
 
-    const { memberIds } = await requireDmMember(dmId, user.id);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
 
     const limit = consume(`messages:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
     if (!limit.allowed) throw tooManyRequests('You are sending messages too quickly.', limit.retryAfterSeconds);
 
-    await requireStillConnected(user.id, memberIds);
-    await requireNotBlocked(user.id, memberIds);
+    const readers = await readersOf(dm, user.id, memberIds);
     checkRecipients(body.keys, memberIds);
     await requirePublishedDevice(user.id, body.senderDeviceId);
 
@@ -624,7 +807,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
       .returning();
     if (!created) throw badRequest('Could not send the message.', 'send_failed');
 
-    const keyRows = await db.insert(dmMessageKeys).values(keyValues(messageId, body.keys)).returning();
+    const keyRows = await saveKeys(messageId, keysFor(body.keys, readers));
     try {
       await claimFiles(body.fileIds, dmId, user.id, messageId);
     } catch (problem) {
@@ -643,7 +826,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
         .where(and(eq(dmMembers.dmId, dmId), eq(dmMembers.userId, user.id)));
     }
 
-    for (const memberId of memberIds) {
+    for (const memberId of readers) {
       hub.sendToUser(memberId, { t: 'dm_message_create', d: toDmMessage(created, keyRows, memberId) });
     }
 
@@ -658,7 +841,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(request);
     const { dmId, messageId } = z.object({ dmId: z.string(), messageId: z.string() }).parse(request.params);
     const body = z.object(sealedShape).parse(request.body);
-    const { memberIds } = await requireDmMember(dmId, user.id);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
 
     const limit = consume(`messages:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
     if (!limit.allowed) throw tooManyRequests('You are editing too quickly.', limit.retryAfterSeconds);
@@ -674,8 +857,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     }
     if (existing.authorId !== user.id) throw forbidden('You can only edit your own messages.');
 
-    await requireStillConnected(user.id, memberIds);
-    await requireNotBlocked(user.id, memberIds);
+    const readers = await readersOf(dm, user.id, memberIds);
     checkRecipients(body.keys, memberIds);
     await requirePublishedDevice(user.id, body.senderDeviceId);
 
@@ -692,7 +874,9 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     if (!updated) throw badRequest('Could not save that edit.', 'edit_failed');
 
     await db.delete(dmMessageKeys).where(eq(dmMessageKeys.messageId, messageId));
-    const keyRows = await db.insert(dmMessageKeys).values(keyValues(messageId, body.keys)).returning();
+    // An edit is new words. Whoever has blocked the author since is sent none
+    // of them, and the copy they had of the old words is gone with the rest.
+    const keyRows = await saveKeys(messageId, keysFor(body.keys, readers));
 
     for (const memberId of memberIds) {
       hub.sendToUser(memberId, { t: 'dm_message_update', d: toDmMessage(updated, keyRows, memberId) });
@@ -748,8 +932,10 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/dms/:dmId/messages/:messageId/replay', async (request) => {
     const user = requireUser(request);
     const { dmId, messageId } = z.object({ dmId: z.string(), messageId: z.string() }).parse(request.params);
-    const { memberIds } = await requireDmMember(dmId, user.id);
-    await requireNotBlocked(user.id, memberIds);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
+    let readers = memberIds;
+    if (dm.kind === 'group') readers = await readersOf(dm, user.id, memberIds);
+    else await requireNotBlocked(user.id, memberIds);
 
     const [existing] = await getDb()
       .select({ id: dmMessages.id, deletedAt: dmMessages.deletedAt, reactionTo: dmMessages.reactionTo })
@@ -761,7 +947,7 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     const limit = consume(`replays:${user.id}`, 10, 30_000);
     if (!limit.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', limit.retryAfterSeconds);
 
-    for (const memberId of memberIds) hub.sendToUser(memberId, { t: 'dm_spawn_replay', d: { dmId, messageId } });
+    for (const memberId of readers) hub.sendToUser(memberId, { t: 'dm_spawn_replay', d: { dmId, messageId } });
     return { ok: true };
   });
 
@@ -775,9 +961,9 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/dms/:dmId/files', async (request) => {
     const user = requireUser(request);
     const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
-    const { memberIds } = await requireDmMember(dmId, user.id);
-    await requireStillConnected(user.id, memberIds);
-    await requireNotBlocked(user.id, memberIds);
+    const { dm, memberIds } = await requireDmMember(dmId, user.id);
+    // In a group a block decides who can open the message, not who may upload.
+    await readersOf(dm, user.id, memberIds);
 
     const limit = consume(`dm-files:${user.id}`, config.rateLimits.messagesPerMinute, 60_000);
     if (!limit.allowed) throw tooManyRequests('You are uploading too quickly.', limit.retryAfterSeconds);

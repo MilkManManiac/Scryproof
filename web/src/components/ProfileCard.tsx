@@ -32,6 +32,7 @@ import { voicePrefs } from '../lib/voice-prefs';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { DmPeoplePicker } from './DmPeoplePicker';
 import { ProfileSettings } from './ProfileSettings';
 import { CameraGlyph, ScreenGlyph, VoiceGlyph } from './glyphs';
 
@@ -59,6 +60,8 @@ export function useProfileCard(): ProfileCardValue {
 export function ProfileCardProvider({ children }: { children: ReactNode }) {
   const [opened, setOpened] = useState<Opened | null>(null);
   const [editing, setEditing] = useState(false);
+  /** Somebody to start a group with, from their card. */
+  const [grouping, setGrouping] = useState<string | null>(null);
 
   const show = useCallback((user: PublicUser, anchor: Element, serverId: string | null = null) => {
     setOpened({ user, serverId, anchor: anchor.getBoundingClientRect() });
@@ -77,16 +80,31 @@ export function ProfileCardProvider({ children }: { children: ReactNode }) {
             close();
             setEditing(true);
           }}
+          onStartGroup={(userId) => {
+            close();
+            setGrouping(userId);
+          }}
         />
       ) : null}
       {editing ? <ProfileSettings onClose={() => setEditing(false)} /> : null}
+      {grouping ? <DmPeoplePicker initial={[grouping]} onClose={() => setGrouping(null)} /> : null}
     </Context.Provider>
   );
 }
 
 const SINCE = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' });
 
-function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () => void; onEdit: () => void }) {
+function ProfileCard({
+  opened,
+  onClose,
+  onEdit,
+  onStartGroup,
+}: {
+  opened: Opened;
+  onClose: () => void;
+  onEdit: () => void;
+  onStartGroup: (userId: string) => void;
+}) {
   const { state, block, unblock } = useStore();
   const { openWith, send } = useDms();
   const box = useRef<HTMLDivElement>(null);
@@ -326,6 +344,16 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
               >
                 Message
               </button>
+              {blocked ? null : (
+                <button
+                  type="button"
+                  className="button secondary inline"
+                  title="Pick others to write to together with them"
+                  onClick={() => onStartGroup(user.id)}
+                >
+                  Start a group
+                </button>
+              )}
               <button
                 type="button"
                 className="button secondary inline"
