@@ -16,6 +16,7 @@ import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
 import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
 import { dmDrafts } from '../lib/drafts';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
+import { BottomPin } from '../lib/stick-to-bottom';
 import { dmUnread, othersIn, sortedDms, titleOf, useDms, type DmReactionView, type DmView } from '../state/dms';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { useStore } from '../state/store';
@@ -509,28 +510,50 @@ function DmMessages({
   const reactions = (state.reactions[dm.id] ?? []).filter((reaction) => !silenced(reaction.authorId));
   const loaded = state.loaded[dm.id] ?? false;
   const scroller = useRef<HTMLDivElement>(null);
-  const pinnedToBottom = useRef(true);
+  const content = useRef<HTMLDivElement>(null);
+  const pin = useRef(new BottomPin(40));
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [exhausted, setExhausted] = useState(false);
 
+  // Before paint, and before the effect below: re-pinning in a plain effect
+  // ran after the scroll, so leaving one conversation scrolled up opened the
+  // next one where the last had been.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (element) pin.current.open(element);
+    else pin.current.pinned = true;
+  }, [dm.id]);
+
   useEffect(() => {
-    pinnedToBottom.current = true;
     setExhausted(false);
   }, [dm.id]);
 
   const newestId = views.at(-1)?.id;
   useLayoutEffect(() => {
     const element = scroller.current;
-    if (element && pinnedToBottom.current) element.scrollTop = element.scrollHeight;
+    if (element) pin.current.settle(element);
   }, [newestId, loaded, dm.id]);
+
+  // Pictures here are unlocked after the list is drawn and have no height
+  // until then, so the bottom moves with no new message. Follow every change
+  // in size while pinned; see lib/stick-to-bottom.ts.
+  useEffect(() => {
+    const element = scroller.current;
+    const inner = content.current;
+    if (!element || !inner) return;
+    const observer = new ResizeObserver(() => pin.current.settle(element));
+    observer.observe(element);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, [loaded]);
 
   // Reading is looking at the bottom of an open conversation in a focused window.
   useEffect(() => {
-    if (loaded && pinnedToBottom.current && document.hasFocus()) markRead(dm.id);
+    if (loaded && pin.current.pinned && document.hasFocus()) markRead(dm.id);
   }, [loaded, newestId, dm.id, dm.lastMessageId, markRead]);
   useEffect(() => {
     const onFocus = () => {
-      if (pinnedToBottom.current) markRead(dm.id);
+      if (pin.current.pinned) markRead(dm.id);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
@@ -539,8 +562,7 @@ function DmMessages({
   async function onScroll() {
     const element = scroller.current;
     if (!element) return;
-    pinnedToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
-    if (pinnedToBottom.current) markRead(dm.id);
+    if (pin.current.scrolled(element)) markRead(dm.id);
 
     if (element.scrollTop > 80 || loadingOlder || exhausted || views.length === 0) return;
     setLoadingOlder(true);
@@ -570,56 +592,58 @@ function DmMessages({
 
   return (
     <div className="messages" ref={scroller} onScroll={() => void onScroll()}>
-      {loadingOlder ? (
-        <div style={{ display: 'grid', placeItems: 'center', padding: 12 }}>
-          <div className="spinner" />
-        </div>
-      ) : null}
-      {views.length === 0 ? (
-        <div className="channel-intro">
-          <h2>Nothing here yet</h2>
-          <p>
-            Whatever you write is locked before it leaves this device.
-            {dm.kind === 'group'
-              ? ' Anyone added later reads from when they joined: what came before was not locked for them.'
-              : ''}
-          </p>
-        </div>
-      ) : null}
-
-      {views.map((view, index) => {
-        const previous = views[index - 1];
-        const at = new Date(view.createdAt);
-        const before = previous ? new Date(previous.createdAt) : null;
-        const newDay = !before || !sameDay(at, before);
-        const grouped =
-          !newDay &&
-          previous?.authorId === view.authorId &&
-          before !== null &&
-          at.getTime() - before.getTime() < GROUP_WINDOW_MS;
-        const author = dm.members.find((member) => member.id === view.authorId);
-
-        return (
-          <div key={view.id}>
-            {newDay ? <div className="day-divider">{dayFormat.format(at)}</div> : null}
-            <DmRow
-              view={view}
-              author={author ?? null}
-              grouped={grouped && !view.replyTo}
-              collapsed={silenced(view.authorId)}
-              mine={view.authorId === selfId}
-              selfId={selfId}
-              members={dm.members}
-              parent={view.replyTo ? (views.find((entry) => entry.id === view.replyTo) ?? null) : null}
-              reactions={reactions.filter((reaction) => reaction.targetId === view.id)}
-              onDelete={() => void remove(dm.id, view.id)}
-              onEdit={(text) => edit(dm.id, view.id, text)}
-              onReact={(emoji) => void react(dm.id, view.id, emoji).catch(() => undefined)}
-              onReply={() => onReply(view.id)}
-            />
+      <div ref={content}>
+        {loadingOlder ? (
+          <div style={{ display: 'grid', placeItems: 'center', padding: 12 }}>
+            <div className="spinner" />
           </div>
-        );
-      })}
+        ) : null}
+        {views.length === 0 ? (
+          <div className="channel-intro">
+            <h2>Nothing here yet</h2>
+            <p>
+              Whatever you write is locked before it leaves this device.
+              {dm.kind === 'group'
+                ? ' Anyone added later reads from when they joined: what came before was not locked for them.'
+                : ''}
+            </p>
+          </div>
+        ) : null}
+
+        {views.map((view, index) => {
+          const previous = views[index - 1];
+          const at = new Date(view.createdAt);
+          const before = previous ? new Date(previous.createdAt) : null;
+          const newDay = !before || !sameDay(at, before);
+          const grouped =
+            !newDay &&
+            previous?.authorId === view.authorId &&
+            before !== null &&
+            at.getTime() - before.getTime() < GROUP_WINDOW_MS;
+          const author = dm.members.find((member) => member.id === view.authorId);
+
+          return (
+            <div key={view.id}>
+              {newDay ? <div className="day-divider">{dayFormat.format(at)}</div> : null}
+              <DmRow
+                view={view}
+                author={author ?? null}
+                grouped={grouped && !view.replyTo}
+                collapsed={silenced(view.authorId)}
+                mine={view.authorId === selfId}
+                selfId={selfId}
+                members={dm.members}
+                parent={view.replyTo ? (views.find((entry) => entry.id === view.replyTo) ?? null) : null}
+                reactions={reactions.filter((reaction) => reaction.targetId === view.id)}
+                onDelete={() => void remove(dm.id, view.id)}
+                onEdit={(text) => edit(dm.id, view.id, text)}
+                onReact={(emoji) => void react(dm.id, view.id, emoji).catch(() => undefined)}
+                onReply={() => onReply(view.id)}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
