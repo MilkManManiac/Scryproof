@@ -36,6 +36,7 @@ export const SHORTCODES: Readonly<Record<string, string>> = {
   point_left: '👈', point_right: '👉', point_up: '☝️', point_up_2: '👆', point_down: '👇', middle_finger: '🖕',
   fist: '✊', punch: '👊', facepunch: '👊', clap: '👏', raised_hands: '🙌', open_hands: '👐', handshake: '🤝', pray: '🙏',
   muscle: '💪', eyes: '👀', eye: '👁️', brain: '🧠', tongue: '👅', lips: '👄', shrug: '🤷', facepalm: '🤦', person_shrugging: '🤷',
+  pregnant_man: '🫃', pregnant_person: '🫄',
   fire: '🔥', '100': '💯', sparkles: '✨', star: '⭐', star2: '🌟', dizzy: '💫', boom: '💥', collision: '💥', zap: '⚡',
   tada: '🎉', confetti_ball: '🎊', balloon: '🎈', gift: '🎁', birthday: '🎂', cake: '🍰', trophy: '🏆', medal: '🏅',
   crown: '👑', gem: '💎', moneybag: '💰', money_with_wings: '💸', dollar: '💵', bell: '🔔', no_bell: '🔕', bulb: '💡',
