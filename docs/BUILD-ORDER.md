@@ -161,5 +161,5 @@ channel (exists; if Loaf still sees otherwise it is a bug, get a repro).
 ## Open for Wes
 
 - Should @everyone get Manage events, so the whole group can plan?
-- Backups: decided, to the PC (free). Wes still needs to put the private
-  key file in the password manager.
+- Backups: decided, to the PC (free). Private key in Wes's password
+  manager, done 2026-09-23.

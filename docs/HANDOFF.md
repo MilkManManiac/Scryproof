@@ -1987,9 +1987,9 @@ only. First backup, 34.8 MB, pulled with `scripts/backup-pull.sh` and
 checked with `node scripts/backup-check.mjs`: 32 tables, 17 migrations, 254
 messages, 238 DMs, 23 stored files, none missing, `RESTORE OK`.
 
-Still open: Wes puts `~/.scryproof-backup/backup-private-key.asc` in the
-password manager (without it, the box's copies are unreadable if the PC
-dies). Pulling is by hand for now; a Windows scheduled task for
+Done 2026-09-23: Wes put `~/.scryproof-backup/backup-private-key.asc` in
+his password manager (without it, the box's copies are unreadable if the
+PC dies). Keep the file on the PC too; restores use it. Pulling is by hand for now; a Windows scheduled task for
 `backup-pull.sh` is a change to his PC, so ask first. Destination decided
 as the PC (free, his); object storage stays possible later with the same
 encrypted files.
