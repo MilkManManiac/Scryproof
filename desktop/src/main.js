@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 import { armContextMenu } from './context-menu.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
+import { shareMenuTemplate, shareStreams } from './share-menu.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -269,33 +270,69 @@ function armPermissions(ses) {
   ses.setPermissionCheckHandler((_contents, permission, origin) => ours(origin) && GRANTED.has(permission));
 
   // Windows has no picker of its own to hand over to, so this is ours: a plain
-  // list for now. "With sound" is the whole machine's audio; Windows offers
-  // nothing finer to an app like this one.
+  // list, and a sound checkbox that is off until ticked. "With sound" is the
+  // whole machine's audio, the call included; `share-menu.js` says why.
   ses.setDisplayMediaRequestHandler((request, done) => {
     void (async () => {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      let chosen = false;
-      const pick = (source) => () => {
-        chosen = true;
-        done(request.audioRequested && process.platform === 'win32' ? { video: source, audio: 'loopback' } : { video: source });
+      let answered = false;
+      let reopening = false;
+      const answer = (streams) => {
+        if (answered) return;
+        answered = true;
+        try { done(streams); } catch { /* an empty answer throws to cancel; that is the cancel */ }
       };
-      const entry = (source) => ({ label: source.name.slice(0, 80) || 'Untitled', click: pick(source) });
-      const screens = sources.filter((source) => source.id.startsWith('screen:'));
-      const windows = sources.filter((source) => source.id.startsWith('window:'));
-      Menu.buildFromTemplate([
-        { label: 'Share a screen', enabled: false },
-        ...screens.map(entry),
-        { type: 'separator' },
-        { label: 'Share a window', enabled: false },
-        ...windows.map(entry),
-      ]).popup({
-        callback: () => {
-          // Closed without choosing. Electron wants an answer either way.
-          if (!chosen) try { done({}); } catch { /* it throws to cancel; that is the cancel */ }
-        },
-      });
+      const open = () => {
+        const withSound = shareWithSound();
+        Menu.buildFromTemplate(
+          shareMenuTemplate(sources, {
+            audioRequested: request.audioRequested,
+            platform: process.platform,
+            withSound,
+            onPick: (source) => answer(shareStreams(source, { audioRequested: request.audioRequested, platform: process.platform, withSound })),
+            onToggleSound: (on) => {
+              // Any click closes the menu, the checkbox too. Save the choice and put the menu back.
+              reopening = true;
+              void setShareWithSound(on);
+              setTimeout(() => {
+                reopening = false;
+                open();
+              }, 0);
+            },
+          }),
+        ).popup({
+          callback: () => {
+            // Closed without choosing. Electron wants an answer either way. A
+            // tick later, because the item's click can arrive after the close.
+            setTimeout(() => {
+              if (!reopening) answer({});
+            }, 0);
+          },
+        });
+      };
+      open();
     })();
   });
+}
+
+/** Whether the last share was sent with sound. Remembered on this machine; off until ticked once. */
+const shareFile = () => join(app.getPath('userData'), 'share.json');
+let withSoundCache = null;
+function shareWithSound() {
+  if (withSoundCache === null) {
+    try {
+      withSoundCache = JSON.parse(readFileSync(shareFile(), 'utf8')).withSound === true;
+    } catch {
+      withSoundCache = false;
+    }
+  }
+  return withSoundCache;
+}
+async function setShareWithSound(on) {
+  withSoundCache = on;
+  try {
+    await writeFile(shareFile(), JSON.stringify({ withSound: on }));
+  } catch { /* not remembered next time; this time still holds */ }
 }
 
 /* ---------------------------------- window --------------------------------- */

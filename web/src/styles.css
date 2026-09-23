@@ -2388,6 +2388,21 @@ video.mirrored {
   font-variant-numeric: tabular-nums;
   margin-left: 10px;
 }
+/* A screen that has stopped moving. Warning, not error: it may come back. */
+.voice-stalled {
+  color: var(--warn);
+}
+.voice-focus-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.voice-focus-volume .voice-range {
+  width: 110px;
+}
 .voice-focus-report {
   font-size: 12px;
   color: var(--text-dim);
