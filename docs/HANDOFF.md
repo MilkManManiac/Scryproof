@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, day. **The push: encrypted channels stages 1 to 3, the group DM sender fix, the share picker (shell 0.5.2), the full emoji browser and Wes's notes: built, all checks pass, NOT deployed** (last two sections; `docs/channel-e2ee.md`). Waiting on Wes's go. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, day. **The push: encrypted channels stages 1 to 3, the group DM sender fix, the share picker (shell 0.5.2), the full emoji browser and Wes's notes: LIVE 2026-09-23 12:58 ET** (client 1790180431870, shell 0.5.2 published; last two sections). The box now has swap on the vault (see the last section): two build attempts froze the live site for a few minutes before it did. Next: the M7 proof with Wes. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -2226,10 +2226,11 @@ gibberish. Screenshot it into this file.
 (`sealFile` in `dm-crypto.ts` is the pattern; the file key rides inside the
 sealed body). Stage 3, turn encryption on for an existing channel.
 
-## The push: encryption stages 2 and 3, and Wes's notes, 2026-09-23 (built, not deployed)
+## The push: encryption stages 2 and 3, and Wes's notes, 2026-09-23 (live 12:58 ET)
 
-One batch on top of stage 1 (still not deployed either). Everything below is
-on `main` and pushed. **Not deployed; waiting on Wes's go.**
+One batch on top of stage 1, shipped together. **Live 2026-09-23 12:58 ET**, client
+1790180431870, all 22 migrations applied, shell 0.5.2 published
+(installed apps offer it within the hour).
 
 **Encrypted channels, stage 2: files and voice messages.** Locked in the
 browser with a per-file key, the channel id bound into the lock
@@ -2316,3 +2317,26 @@ done-when: Wes makes an encrypted channel, sends a line and a picture, and
 the main session runs `select content, ciphertext from messages` and a look
 at the attachment on the box, so he sees nothing readable. Screenshot it
 here.
+
+**How the release went: the box ran out of memory.** The first
+`release.sh` failed in the web build with "Failed to query unit state:
+Connection timed out": the box has 1 GB and no swap, the app, Postgres and
+LiveKit use about half, and the build peaks around 650-730 MB (measured on
+the PC, including the minifier). The kernel killed nothing; it thrashed, and
+the live site did not answer for a few minutes until the build gave up.
+The build of the version that was live needs the same (660-680 MB): we were
+already at the edge, not pushed over by this batch. A heap cap
+(`NODE_OPTIONS=--max-old-space-size=320` in `02_build.sh`, kept) was not
+enough; the second try froze the site again for about 4 minutes. **Fix: a
+1 GB swap file on the vault** (`infra/box/remote/80-swap.sh`,
+`vm.swappiness=10`). On the vault so paged-out memory is encrypted at rest
+(finding 3); `scryproof-unlock` turns it on after mounting, `scryproof-lock`
+turns it off before unmounting. The third deploy used 137 MB of it and the
+site answered throughout except the usual restart blip. If a build ever
+fails this way again, check `swapon --show` first: after a reboot the swap
+comes back only with the unlock.
+
+**Next:** the M7 proof. Wes makes an encrypted channel (or switches one on),
+sends a line and a picture, then over ssh: `select content, ciphertext from
+messages order by created_at desc limit 3` and the attachment row, shown to
+him. Screenshot into this section.
