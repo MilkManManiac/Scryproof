@@ -77,6 +77,12 @@ export const users = pgTable(
     createdAt: createdAt(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }),
     disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    /**
+     * Set when an admin resets the password from the box
+     * (`scripts/reset-password.ts`). Until a new one is chosen the account can
+     * change its password and sign out, nothing else; `app.ts` enforces that.
+     */
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
   },
   (table) => [uniqueIndex('users_username_key').on(table.username)],
 );

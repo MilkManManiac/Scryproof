@@ -25,9 +25,11 @@ const bundleOurOwn = {
   },
 };
 
+// The box's reset-password command (scripts/reset-password.ts) ships beside
+// the server as its own file, built the same way.
 await build({
-  entryPoints: ['src/index.ts'],
-  outfile: 'dist/index.js',
+  entryPoints: { index: 'src/index.ts', 'reset-password': 'src/scripts/reset-password.ts' },
+  outdir: 'dist',
   bundle: true,
   platform: 'node',
   target: 'node22',

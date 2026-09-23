@@ -7,6 +7,8 @@
  * rather than scattered through route handlers.
  */
 
+import { randomBytes } from 'node:crypto';
+
 import { and, eq, gt, isNull } from 'drizzle-orm';
 
 import { validatePassword, validateUsername, validateDisplayName } from '@scryproof/shared';
@@ -267,12 +269,58 @@ export async function changePassword(
 
   await getDb()
     .update(users)
-    .set({ passwordHash: await hashPassword(newPassword) })
+    .set({ passwordHash: await hashPassword(newPassword), mustChangePassword: false })
     .where(eq(users.id, user.id));
 
   // Changing a password is the thing you do when you think someone else has
   // it, so every other session dies with it.
   await revokeAllSessions(user.id);
+}
+
+/**
+ * An admin reset, for someone who forgot their password. There is no email
+ * and never will be, so this is run by hand on the box
+ * (`scripts/reset-password.ts`) after the person has asked, in person or on a
+ * call, and the temporary password goes back to them the same way.
+ *
+ * Sets a random temporary password, signs them out everywhere, and makes the
+ * next sign-in ask for a new one before anything else. `clearTotp` also turns
+ * two-factor off, for when the phone went with the password.
+ *
+ * Direct messages are untouched: their keys live on the person's devices,
+ * not behind the password, so a device that could read them still can.
+ */
+export async function resetPassword(
+  username: string,
+  options: { clearTotp?: boolean } = {},
+): Promise<{ user: User; temporaryPassword: string }> {
+  const user = await findUserByUsername(username.trim().toLowerCase());
+  if (!user) throw badRequest(`No account called ${username}.`, 'no_such_user');
+
+  const temporaryPassword = makeTemporaryPassword();
+  await getDb()
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(temporaryPassword),
+      mustChangePassword: true,
+      ...(options.clearTotp ? { totpSecret: null, totpEnabled: false, recoveryCodes: null } : {}),
+    })
+    .where(eq(users.id, user.id));
+  await revokeAllSessions(user.id);
+
+  return { user, temporaryPassword };
+}
+
+/**
+ * Three groups of four, from letters and digits nobody misreads over a call
+ * (no 0/o, 1/l/i). About 59 bits: plenty for something that is used once,
+ * behind the login rate limit, and replaced at once.
+ */
+function makeTemporaryPassword(): string {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(12);
+  const chars = [...bytes].map((byte) => alphabet[byte % alphabet.length]);
+  return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)].map((group) => group.join('')).join('-');
 }
 
 /** True when nobody has registered yet, which unlocks first-run setup. */

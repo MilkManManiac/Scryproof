@@ -20,6 +20,7 @@ import { usePhone } from './lib/usePhone';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
+import { NewPasswordScreen } from './screens/NewPasswordScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
 import { Initiative } from './components/Initiative';
@@ -67,6 +68,16 @@ export function App() {
 
   if (gate.status === 'out') {
     return <AuthScreen onAuthenticated={(user) => setGate({ status: 'in', user })} />;
+  }
+
+  if (gate.user.mustChangePassword) {
+    return (
+      <NewPasswordScreen
+        user={gate.user}
+        onDone={(user) => setGate({ status: 'in', user })}
+        onSignedOut={onSignedOut}
+      />
+    );
   }
 
   return (

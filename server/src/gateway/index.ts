@@ -89,6 +89,13 @@ export function attachGateway(httpServer: HttpServer): () => void {
         socket.destroy();
         return;
       }
+      // A temporary password from a reset opens nothing but the new-password
+      // screen; the REST side says the same in app.ts.
+      if (session.user.mustChangePassword) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
 
       wss.handleUpgrade(request, socket, head, (ws) => {
         void onConnection(ws, session.user.id, session.sessionId, request);

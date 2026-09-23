@@ -26,6 +26,8 @@ export interface PublicUser {
 
 export interface SelfUser extends PublicUser {
   totpEnabled: boolean;
+  /** A temporary password from a reset is in use; the app asks for a new one first. */
+  mustChangePassword: boolean;
   createdAt: Timestamp;
 }
 

@@ -61,6 +61,7 @@ export function selfUser(row: User): SelfUser {
   return {
     ...publicUser(row),
     totpEnabled: row.totpEnabled,
+    mustChangePassword: row.mustChangePassword,
     createdAt: isoRequired(row.createdAt),
   };
 }

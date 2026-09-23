@@ -162,6 +162,23 @@ export async function buildApp(): Promise<FastifyInstance> {
     request.sessionId = session?.sessionId ?? null;
   });
 
+  /**
+   * After an admin reset (`resetPassword` in services/auth.ts) the account is
+   * signed in with a temporary password that someone else has seen. Until it
+   * is replaced, it may only look at itself, change the password, or leave.
+   * The client shows the new-password screen; this is what makes that screen
+   * more than a suggestion.
+   */
+  const allowedBeforeNewPassword = new Set(['/api/auth/me', '/api/auth/password', '/api/auth/logout', '/api/auth/context']);
+  app.addHook('onRequest', async (request, reply) => {
+    if (!request.user?.mustChangePassword) return;
+    const path = request.url.split('?')[0] ?? '';
+    if (!path.startsWith('/api') || allowedBeforeNewPassword.has(path)) return;
+    await reply
+      .status(403)
+      .send({ code: 'password_change_required', message: 'Choose a new password first.' });
+  });
+
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
       // A route called .parse() directly and the body didn't match. That's a
