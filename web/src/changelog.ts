@@ -32,6 +32,7 @@ export const CHANGELOG: readonly Release[] = [
       'Soundboard. A server uploads short sounds under Settings, Sounds. In a call, the speaker button beside mute plays one for everyone, encrypted like your voice.',
       'Voice changer. Robot, Chipmunk and Deep, in the voice settings. It changes your voice on your own device before anything is sent.',
       "Invite links open a join screen now, with the server's name and a Join button, instead of dropping you on the normal screen to type the code again.",
+      'A character jumping across now shows for everyone in the server, whichever channel or voice room they are on. Before, anyone who had joined voice only saw the first one, because joining put the voice channel in front of them and the rest went quietly into the history of the text channel.',
       'Typing `/` or `:` in a direct message shows the same list as in a channel. Right-click a channel for Delete channel, if you may manage channels; it asks once more before it goes.',
     ],
   },

@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 
 import { defineConfig } from 'vite';
+import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
@@ -24,35 +25,45 @@ function buildStamp(): string {
  * cookies are SameSite and httpOnly, and a split origin in development would
  * mean testing a different security posture than the one we ship.
  */
+/** The API and the gateway, reached through whichever Vite server is up. */
+const proxy: Record<string, ProxyOptions> = {
+  '/api': {
+    target: 'http://127.0.0.1:8787',
+    changeOrigin: false,
+    // The API's CSRF check admits localhost:5173 in development. A
+    // worktree photographing itself runs this server on another port,
+    // so a localhost origin on any port is presented as the usual one.
+    // Only localhost origins: a request from any other site still fails.
+    configure: (server) => {
+      server.on('proxyReq', (proxyReq, req) => {
+        const origin = req.headers.origin;
+        if (origin && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+          proxyReq.setHeader('origin', 'http://localhost:5173');
+        }
+      });
+    },
+  },
+  '/gateway': {
+    target: 'ws://127.0.0.1:8787',
+    ws: true,
+    changeOrigin: false,
+  },
+};
+
 export default defineConfig({
   plugins: [react()],
   define: { __BUILD__: buildStamp() },
   server: {
     port: 5173,
     strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8787',
-        changeOrigin: false,
-        // The API's CSRF check admits localhost:5173 in development. A
-        // worktree photographing itself runs this server on another port,
-        // so a localhost origin on any port is presented as the usual one.
-        // Only localhost origins: a request from any other site still fails.
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq, req) => {
-            const origin = req.headers.origin;
-            if (origin && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
-              proxyReq.setHeader('origin', 'http://localhost:5173');
-            }
-          });
-        },
-      },
-      '/gateway': {
-        target: 'ws://127.0.0.1:8787',
-        ws: true,
-        changeOrigin: false,
-      },
-    },
+    proxy,
+  },
+  // `vite preview` serves the production bundle the way the box does, so a
+  // bug that only the built app has can be caught here.
+  preview: {
+    port: 4173,
+    strictPort: true,
+    proxy,
   },
   optimizeDeps: {
     // The shared workspace is raw TypeScript compiled by Vite itself, not a

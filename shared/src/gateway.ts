@@ -36,8 +36,14 @@ export const GATEWAY_PATH = '/gateway';
 export const GATEWAY_VERSION = 1;
 
 export const HEARTBEAT_INTERVAL_MS = 25_000;
-/** Server drops a socket that has not been heard from in this long. */
-export const HEARTBEAT_TIMEOUT_MS = 60_000;
+/**
+ * Server drops a socket that has not been heard from in this long. Generous
+ * on purpose: a tab hidden for more than five minutes has its timers slowed
+ * by the browser to once a minute, so a 25 s heartbeat arrives every 60 s.
+ * Anything under that and the sweep cuts off every idle tab, which then
+ * reconnects and misses whatever was said in between.
+ */
+export const HEARTBEAT_TIMEOUT_MS = 100_000;
 
 export type ServerEvent =
   /** First frame after a successful connection. Everything to paint the app. */

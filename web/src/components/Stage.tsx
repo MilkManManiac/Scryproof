@@ -54,21 +54,44 @@ export function Stage() {
   const { state, onGatewayEvent } = useStore();
   const { state: dms } = useDms();
 
-  // A spawn message arriving in the channel being looked at crosses the
-  // room, for the sender and everyone else there alike. Other channels get
-  // the line in their history and nothing more. (DMs do the same from
-  // their own store, after decrypting.)
+  // A spawn message arriving anywhere in the server being looked at crosses
+  // the room, for the sender and everyone else there alike. The server, not
+  // the channel: the first night, Wes's friends joined voice, which put the
+  // voice channel in front of them, and his jumps in the text channel went
+  // to their history and nowhere else. Someone in the DM view, or in another
+  // server, gets the line in the history and nothing more. (DMs do the same
+  // from their own store, after decrypting.)
   const looking = useRef<string | null>(null);
-  looking.current = dms.active ? null : state.selectedChannelId;
+  looking.current = dms.active ? null : state.selectedServerId;
+  const servers = useRef(state.servers);
+  servers.current = state.servers;
+  // A jump that lands while the window is hidden would run its whole crossing
+  // with no frames drawn. It waits for the window instead, a few at most, and
+  // only for a short while: a jump from an hour ago is not news.
+  const waiting = useRef<{ id: string; at: number }[]>([]);
   useEffect(
     () =>
       onGatewayEvent((event) => {
-        if (event.t !== 'message_create' || event.d.channelId !== looking.current) return;
+        if (event.t !== 'message_create' || !looking.current) return;
+        const server = servers.current[looking.current];
+        if (!server?.channels.some((channel) => channel.id === event.d.channelId)) return;
         const character = spawnOf(event.d.content);
-        if (character) play(character.id);
+        if (!character) return;
+        if (document.hidden) waiting.current = [...waiting.current, { id: character.id, at: Date.now() }].slice(-3);
+        else play(character.id);
       }),
     [onGatewayEvent],
   );
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.hidden) return;
+      const fresh = waiting.current.filter((entry) => Date.now() - entry.at < 30_000);
+      waiting.current = [];
+      for (const entry of fresh) play(entry.id);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   useEffect(
     () =>
