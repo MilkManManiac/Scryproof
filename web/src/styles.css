@@ -1507,9 +1507,17 @@ select {
 
 /* The attach and send buttons stand as tall as the label, so their glyphs
    share the first line's centre instead of sinking to the box's floor. */
-.composer-box > .icon-button {
+.composer-box > .icon-button,
+.composer-box > .composer-pop > .icon-button {
   height: 46px;
   width: 32px;
+  align-self: flex-end;
+}
+/* The emoji and character buttons sit in a wrapper that anchors their
+   pickers, so the rule above missed them: they stayed 30px tall on the box's
+   floor, 8px below everything else's centre. The wrapper stands on the same
+   floor and its button takes the same height. */
+.composer-box > .composer-pop {
   align-self: flex-end;
 }
 
