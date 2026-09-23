@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { crc32, deflateSync } from 'node:zlib';
 
 import { WebSocket } from 'ws';
 
@@ -28,6 +29,32 @@ if (!browserPath) {
 }
 
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** A real PNG, `size` pixels square, made here so a check never depends on a file on disk. */
+export function makePng(size) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body) >>> 0, body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const rows = Buffer.alloc(size * (size * 3 + 1));
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) rows.set([x * 2, 120, y * 2], y * (size * 3 + 1) + 1 + x * 3);
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 /** One device: its own browser process and profile, so its own keys. */
 export class Device {

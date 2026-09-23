@@ -8,6 +8,8 @@
  *   2. Wes writes. All three read exactly that; the server holds no text
  *   3. Alex replies to it, mentioning Wes. Wes sees the reply, its quote, and a ping
  *   4. Wes edits his message. The others see the edit, the server still no text
+ *  4b. Wes sends a picture and a text file. Alex sees the picture and the file's
+ *      name; the server holds sealed.bin twice and never saw either name
  *   5. Wes removes Mara from the server. The next message moves the channel to
  *      a new key, locked for Wes and Alex only
  *   6. Alex signs in on a second device. It shows the history as locked, and
@@ -16,13 +18,19 @@
  *      including what came before the new key
  *   8. the new device can send once it believes the device that made the key
  *   9. /roll is refused here with a reason, and nothing is sent
+ *  10. Wes switches a plain channel with a message in it to encrypted. The old
+ *      message stays, a line marks the switch, and what follows is sealed
  *
  * Needs `npm run dev` and a freshly seeded database.
  *
  *   npm run test:channels
  */
 
-import { Device, sleep } from './lib/check-device.mjs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { Device, makePng, sleep } from './lib/check-device.mjs';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -109,6 +117,39 @@ try {
   check('and the old wording is gone', !(await alex.screenText()).includes(SECRET));
   check('the server still holds no text', !(await rawMessages(alex, channelId)).includes('oak'));
 
+  /* 4b */
+  {
+    const folder = mkdtempSync(join(tmpdir(), 'scryproof-channel-files-'));
+    const picture = join(folder, 'vault-map.png');
+    const notes = join(folder, 'vault-notes.txt');
+    writeFileSync(picture, makePng(96));
+    writeFileSync(notes, `the vault is under the ${stamp} juniper`);
+    await wes.attach([picture, notes]);
+    check('both files are locked and waiting, by their real names', Boolean(await wes.until(
+      `(() => { const t = Array.from(document.querySelectorAll('.pending-file')).map((el) => el.textContent).join(' '); return t.includes('vault-map.png') && t.includes('vault-notes.txt'); })()`,
+    )));
+    await wes.say(`files-${stamp}`);
+    check('Alex sees the picture, opened in his browser', Boolean(await alex.until(`(() => {
+      const img = document.querySelector('img.attachment-image');
+      return img && img.src.startsWith('blob:') && img.naturalWidth === 96;
+    })()`)));
+    check('and the text file, by its name', Boolean(await alex.until(`Array.from(document.querySelectorAll('.dm-file')).some((el) => el.textContent.includes('vault-notes.txt'))`)));
+    const raw = await rawMessages(alex, channelId);
+    check('the server was never told their names', !raw.includes('vault-map') && !raw.includes('vault-notes'));
+    const held = await alex.evaluate(`(async () => {
+      const { messages } = await fetch('/api/channels/${channelId}/messages', { credentials: 'include' }).then((r) => r.json());
+      const files = messages.flatMap((m) => m.attachments);
+      const out = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await fetch(file.url, { credentials: 'include' }).then((r) => r.arrayBuffer()));
+        out.push({ name: file.filename, type: file.contentType, text: Array.from(bytes).map((b) => String.fromCharCode(b)).join('') });
+      }
+      return out;
+    })()`);
+    check('it holds two files called sealed.bin', held.length === 2 && held.every((file) => file.name === 'sealed.bin' && file.type === 'application/octet-stream'), JSON.stringify(held.map((f) => f.name)));
+    check('neither is a picture or readable text', held.every((file) => !file.text.includes('PNG') && !file.text.includes('juniper')));
+  }
+
   /* 5 */
   const maraId = await mara.evaluate(`fetch('/api/auth/me', { credentials: 'include' }).then((r) => r.json()).then((b) => b.user.id)`);
   const kicked = await wes.evaluate(`fetch('/api/servers/${serverId}/members/${maraId}', { method: 'DELETE', credentials: 'include' }).then((r) => r.status)`);
@@ -176,6 +217,38 @@ try {
     Boolean(await wes.until(`document.querySelector('.composer .error')?.textContent.includes('cannot read this channel')`)),
   );
   await wes.shot('docs/shots/channel-encrypted.png');
+
+  /* 10 */
+  {
+    const LORE = `lore-${stamp}`;
+    const OLD = `old-${stamp} said in the open`;
+    const NEW = `new-${stamp} said under lock`;
+    const loreId = await wes.evaluate(`
+      fetch('/api/servers/${serverId}/channels', {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: ${JSON.stringify(LORE)}, type: 'text' }),
+      }).then((r) => r.json()).then((b) => b.channel.id)
+    `);
+    await wes.until(`Array.from(document.querySelectorAll('.channel')).some((el) => el.textContent.includes(${JSON.stringify(LORE)}))`);
+    await wes.click('.channel', LORE);
+    await wes.say(OLD);
+    check('a plain channel, with a message in it', Boolean(await wes.sees(OLD)));
+    const switched = await wes.evaluate(`
+      fetch('/api/channels/${loreId}', {
+        method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ encrypted: true }),
+      }).then((r) => r.json()).then((b) => b.channel.encrypted)
+    `);
+    check('Wes switches it to encrypted', switched === true);
+    check('a line marks where it started', Boolean(await wes.until(`document.querySelector('.sealed-line')?.textContent.includes('turned on')`)));
+    await wes.say(NEW);
+    check('what follows is sent sealed and reads fine', Boolean(await wes.sees(NEW)));
+    await alex.click('.channel', LORE);
+    check('Alex reads both', Boolean(await alex.sees(NEW)) && Boolean(await alex.sees(OLD)));
+    const raw = await rawMessages(alex, loreId);
+    check('the server holds the old one as text and the new one not at all', raw.includes('said in the open') && !raw.includes('under lock'));
+    await wes.shot('docs/shots/channel-switched-on.png');
+  }
 
   for (const device of everyone) {
     check(`${device.label}: no uncaught errors`, device.complaints.length === 0, device.complaints.join('\n      '));
