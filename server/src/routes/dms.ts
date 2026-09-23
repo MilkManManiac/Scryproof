@@ -703,6 +703,11 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     const { dm, memberIds } = await requireDmMember(dmId, user.id);
     requireGroup(dm);
 
+    // Out of the group's call too, if they are in it. Clearing the state moves
+    // the call to a new key the others do not hand them, and it goes first so
+    // the leaver's own app still hears it and hangs up.
+    await hub.announceCleared(hub.clearVoiceStatesForUser(user.id, (state) => state.dmId !== dmId));
+
     const db = getDb();
     await db.delete(dmMembers).where(and(eq(dmMembers.dmId, dmId), eq(dmMembers.userId, user.id)));
     const remaining = memberIds.filter((id) => id !== user.id);

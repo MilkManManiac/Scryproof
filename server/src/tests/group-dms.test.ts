@@ -282,8 +282,18 @@ describe('group conversations', () => {
   it('leaving takes someone out of everything sent after', async () => {
     const { wes, alex, mara, dev } = people;
     for (const person of Object.values(people)) person.inbox.length = 0;
+    // She is in the group's call when she goes.
+    hub.setVoiceState({
+      userId: mara.id, serverId: null, channelId: null, dmId: groupId,
+      selfMute: false, selfDeaf: false, serverMute: false, serverDeaf: false, sharingScreen: false, cameraOn: false,
+    });
     const left = await call(mara, 'POST', `/api/dms/${groupId}/leave`);
     assert.equal(left.statusCode, 200, left.body);
+    assert.equal(hub.getDmVoiceState(mara.id) ?? null, null, 'and is out of the call');
+    assert.ok(
+      wes.inbox.some((event) => event.t === 'voice_state_update' && event.d.userId === mara.id && event.d.dmId === null),
+      'the others see her go',
+    );
     assert.ok(mara.inbox.some((event) => event.t === 'dm_left' && event.d.dmId === groupId));
     assert.ok(wes.inbox.some((event) => event.t === 'dm_update' && !event.d.members.some((member) => member.id === mara.id)));
 
