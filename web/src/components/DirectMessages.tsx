@@ -16,6 +16,7 @@ import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
 import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmView } from '../state/dms';
+import { nameFor, useLocalNames } from '../lib/local-names';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { DockButton } from './DockButton';
@@ -42,6 +43,7 @@ const GROUP_WINDOW_MS = 7 * 60_000;
 
 export function DmSidebar() {
   const { state: app } = useStore();
+  useLocalNames();
   const { state, openDm } = useDms();
   const selfId = app.user?.id ?? null;
   const list = sortedDms(state);
@@ -65,7 +67,7 @@ export function DmSidebar() {
           return (
             <button key={dm.id} type="button" className={classes.join(' ')} onClick={() => openDm(dm.id)}>
               <Avatar user={other} small presence={app.presences[other.id] ?? 'offline'} />
-              <span className="channel-name">{other.displayName}</span>
+              <span className="channel-name">{nameFor(other.id, other.displayName)}</span>
               {dmUnread(dm) ? <span className="dm-dot" aria-label="Unread" /> : null}
             </button>
           );
@@ -143,6 +145,7 @@ function LockedNotice({ dmId }: { dmId: string }) {
 
 export function DmPane() {
   const card = useProfileCard();
+  useLocalNames();
   const { state: app, block, unblock } = useStore();
   const { state } = useDms();
   const dm = state.openId ? state.dms[state.openId] : undefined;
@@ -175,7 +178,7 @@ export function DmPane() {
           <span className="channel-sigil">@</span>
           {other ? (
             <button type="button" className="who" title={`@${other.username}`} onClick={(event) => card.show(other, event.currentTarget)}>
-              {other.displayName}
+              {nameFor(other.id, other.displayName)}
             </button>
           ) : (
             'Conversation'
@@ -216,7 +219,7 @@ export function DmPane() {
       ) : (
         <DmComposer
           dm={dm}
-          name={other?.displayName ?? 'them'}
+          name={other ? nameFor(other.id, other.displayName) : 'them'}
           replyingTo={replying[dm.id] ?? null}
           onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
         />
@@ -600,7 +603,7 @@ function DmRow({
   const [error, setError] = useState<string | null>(null);
   const readable = !view.deleted && view.problem === null && view.text !== null;
   const nameOf = (userId: string): string =>
-    userId === selfId ? 'You' : (members.find((member) => member.id === userId)?.displayName ?? 'Someone');
+    userId === selfId ? 'You' : nameFor(userId, members.find((member) => member.id === userId)?.displayName ?? 'Someone');
 
   async function saveEdit() {
     const next = draft.trim();
@@ -730,7 +733,7 @@ function DmRow({
                 title={`@${author.username}`}
                 onClick={(event) => card.show(author, event.currentTarget)}
               >
-                {author.displayName}
+                {nameFor(author.id, author.displayName)}
               </button>
             ) : (
               <span className="message-author">Someone</span>
@@ -820,10 +823,11 @@ function DmComposer({
   const { state, send } = useDms();
   const { state: app } = useStore();
   const target = replyingTo ? ((state.messages[dm.id] ?? []).find((view) => view.id === replyingTo) ?? null) : null;
+  const targetMember = dm.members.find((member) => member.id === target?.authorId);
   const targetName =
     target?.authorId === app.user?.id
       ? 'yourself'
-      : (dm.members.find((member) => member.id === target?.authorId)?.displayName ?? 'them');
+      : nameFor(target?.authorId ?? '', targetMember?.displayName ?? 'them');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

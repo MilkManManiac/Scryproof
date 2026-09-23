@@ -4444,6 +4444,22 @@ kbd {
   font-size: 13px;
   color: var(--text-dim);
 }
+.profile-card-rename-open {
+  margin-top: 2px;
+  font-size: 12px;
+}
+.profile-card-rename {
+  margin-top: 2px;
+}
+.profile-card-rename-input {
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+}
 .profile-card-status {
   font-size: 14px;
   color: var(--text-muted);

@@ -14,6 +14,7 @@ import { INITIATIVE_LIMITS, Permission, currentEntry } from '@scryproof/shared';
 import type { Channel, Member, Tracker, TrackerEntry } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { useLocalNames } from '../lib/local-names';
 import { nameOf } from '../lib/mentions';
 import { can } from '../lib/usePermissions';
 import { useStore } from '../state/store';
@@ -32,6 +33,7 @@ function readValue(value: string): { initiative: number } | { roll: string } | n
 
 export function Initiative({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, applyTracker } = useStore();
+  useLocalNames();
   const tracker = state.trackers[channel.id];
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import type { Member, Role } from '@scryproof/shared';
 
+import { useLocalNames } from '../../lib/local-names';
+import { nameOf } from '../../lib/mentions';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
 
@@ -40,6 +42,7 @@ export function PrivacyPicker({
   selfId: string;
 }) {
   const { state, loadMembers } = useStore();
+  useLocalNames();
   const members: Member[] = state.members[serverId] ?? [];
   const [filter, setFilter] = useState('');
 
@@ -51,8 +54,8 @@ export function PrivacyPicker({
   const needle = filter.trim().toLowerCase();
   const people = members
     .filter((member) => member.userId !== selfId)
-    .filter((member) => !needle || (member.nickname ?? member.user.displayName).toLowerCase().includes(needle))
-    .sort((a, b) => (a.nickname ?? a.user.displayName).localeCompare(b.nickname ?? b.user.displayName));
+    .filter((member) => !needle || nameOf(member).toLowerCase().includes(needle))
+    .sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
 
   return (
     <div className="field privacy">
@@ -111,7 +114,7 @@ export function PrivacyPicker({
                   onChange={() => onChange({ ...value, memberIds: toggle(value.memberIds, member.userId) })}
                 />
                 <Avatar user={member.user} small />
-                <span>{member.nickname ?? member.user.displayName}</span>
+                <span>{nameOf(member)}</span>
               </label>
             ))}
             {members.length > 0 && people.length === 0 && needle ? <p className="field-note">Nobody by that name.</p> : null}

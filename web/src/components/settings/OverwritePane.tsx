@@ -23,6 +23,8 @@ import { Permission, computeBasePermissions, decodeMask, encodeMask } from '@scr
 import type { MaskString, Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
+import { useLocalNames } from '../../lib/local-names';
+import { nameOf } from '../../lib/mentions';
 import type { PermissionGroup } from '../../lib/permissionMeta';
 import { Avatar } from '../Avatar';
 import { OverwriteList } from './OverwriteList';
@@ -81,6 +83,7 @@ export function OverwritePane({
   clear: (targetId: string) => Promise<unknown>;
   loadFailed: string;
 }) {
+  useLocalNames();
   const [overwrites, setOverwrites] = useState<Overwrite[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -311,7 +314,7 @@ export function OverwritePane({
                 >
                   <Avatar user={member.user} small />
                   <span className="role-entry-name">
-                    {member.nickname ?? member.user.displayName}
+                    {nameOf(member)}
                   </span>
                 </button>
               ))}

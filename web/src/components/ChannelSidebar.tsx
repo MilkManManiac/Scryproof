@@ -12,6 +12,7 @@ import type { ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';
+import { nameFor, useLocalNames } from '../lib/local-names';
 import { notifyPrefs } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
@@ -31,6 +32,7 @@ import { useProfileCard } from './ProfileCard';
 
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const { state, selectChannel, joinVoice } = useStore();
+  useLocalNames();
   const live = useVoice();
   const card = useProfileCard();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -58,9 +60,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
 
   const members = state.members[server.id] ?? [];
   const category = server.categories.find((entry) => entry.id === editingCategory) ?? null;
-  const nameFor = (userId: string) => {
+  const voiceOccupantName = (userId: string) => {
     const member = members.find((entry) => entry.userId === userId);
-    return member?.nickname ?? member?.user.displayName ?? 'Someone';
+    return nameFor(userId, member?.nickname ?? member?.user.displayName ?? 'Someone');
   };
 
   return (
@@ -323,7 +325,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                   ) : (
                                     <span className="avatar small" style={{ background: '#3a4150' }} />
                                   )}
-                                  <span className="channel-name">{nameFor(voice.userId)}</span>
+                                  <span className="channel-name">{voiceOccupantName(voice.userId)}</span>
                                   <span className="voice-flags">
                                     {voice.sharingScreen ? (
                                       <span className="voice-flag sharing" title="Sharing their screen">

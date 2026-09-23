@@ -11,6 +11,8 @@ import { Permission } from '@scryproof/shared';
 import type { Member, Role, ServerDetail, VoiceState } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { useLocalNames } from '../lib/local-names';
+import { nameOf } from '../lib/mentions';
 import { timeoutEndsAt } from '../lib/usePermissions';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
@@ -45,6 +47,7 @@ interface OpenMenu {
 
 export function MemberList({ server }: { server: ServerDetail }) {
   const { state, block, unblock } = useStore();
+  useLocalNames();
   const live = useVoice();
   // Who is in a voice channel on this server, by user. The server keeps
   // this; it is true whether or not we are in the call ourselves.
@@ -85,7 +88,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
       .sort((a, b) => b.position - a.position);
 
     const online = (member: Member) => (state.presences[member.userId] ?? 'offline') !== 'offline';
-    const label = (member: Member) => member.nickname ?? member.user.displayName;
+    const label = (member: Member) => nameOf(member);
     const byName = (a: Member, b: Member) =>
       label(a).localeCompare(label(b), undefined, { sensitivity: 'base' });
 
@@ -182,7 +185,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
                   <Avatar user={member.user} small presence={presence} />
                   <span className="member-text">
                     <span className="member-name" style={entry.color ? { color: entry.color } : undefined}>
-                      {member.nickname ?? member.user.displayName}
+                      {nameOf(member)}
                     </span>
                     {member.user.statusText ? <span className="member-status">{member.user.statusText}</span> : null}
                   </span>
