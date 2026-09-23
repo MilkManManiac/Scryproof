@@ -190,3 +190,53 @@ unlocked flag and starts the units in order. Open the site in a browser.
     bash scripts/unlock.sh
 
 That is the whole procedure. The box cannot come back by itself, by design.
+
+## Backups
+
+Set up 2026-09-23. Every night at 08:00 UTC (4 AM Eastern) the box writes
+`/mnt/vault/backups/scryproof-<time>.tar.gpg`: the whole database as SQL plus
+every uploaded file, encrypted to a key whose private half is only on Wes's PC
+(`~/.scryproof-backup/`, with a copy in the password manager). The box keeps
+seven. Nothing on the box can open them. The installer file under
+`data/downloads` is left out; `scripts/publish-installer.sh` makes it again.
+
+Once, ever (already done):
+
+    bash scripts/backup-key.sh            makes the key on the PC
+    bash scripts/box.sh 70-backups.sh     installs the timer, takes one backup
+
+Regularly, from this PC:
+
+    bash scripts/backup-pull.sh           copies new ones to ~/Scryproof-backups
+    node scripts/backup-check.mjs         opens the newest, loads it into a
+                                          scratch Postgres, ends RESTORE OK
+
+A backup by hand, before anything risky on the box:
+
+    ssh into the box, then: systemctl start scryproof-backup.service
+
+### Restoring onto a fresh box
+
+1. Build the box through step 10 above (vault, bonesdeploy, firewall, `.env`,
+   LiveKit, first deploy), then stop the app: `systemctl stop scryproof-scryproof`.
+2. On the PC, open the backup into a folder:
+
+       mkdir restore && cd restore
+       gpg --homedir ~/.scryproof-backup/gnupg --decrypt <backup>.tar.gpg | tar -x
+
+3. Copy it up: `scp -r db.sql uploads root@<box>:/mnt/vault/restore/`
+4. On the box, into the empty database, as the app's own database user so the
+   tables belong to it (the address is `DATABASE_URL` in the app's `.env`):
+
+       psql "<DATABASE_URL>" -v ON_ERROR_STOP=1 -f /mnt/vault/restore/db.sql
+
+   If the first deploy already ran migrations, drop and recreate the
+   database first; the dump makes every table itself.
+5. `cp -a /mnt/vault/restore/uploads /srv/sites/scryproof/shared/data/` and
+   `chown -R scryproof:scryproof /srv/sites/scryproof/shared/data/uploads`.
+6. `systemctl start scryproof-scryproof`, then `bash scripts/box.sh 70-backups.sh`
+   so the new box backs up too. Delete `/mnt/vault/restore`.
+
+Everyone's sessions come back with the database, so nobody has to log in
+again. DMs come back as the same ciphertext; they open on the devices that
+could open them before, and nowhere else.

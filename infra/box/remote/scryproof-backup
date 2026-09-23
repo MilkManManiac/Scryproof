@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# One backup, now. Run by scryproof-backup.timer every night; safe to run by
+# hand (as root) any time.
+#
+# Makes /mnt/vault/backups/scryproof-<UTC time>.tar.gpg holding:
+#   db.sql      the whole database as plain SQL, INSERTs rather than COPY, no
+#               owners or grants, so it loads into any Postgres (or PGlite,
+#               which is how the PC checks it)
+#   uploads/    every attachment, avatar, emoji and sound
+#
+# Encrypted to the public key in /etc/scryproof/backup-key.asc. The private
+# half is only on Wes's PC, so nothing on this box can open a backup
+# (non-negotiable 8). What it holds: channel text, which the server can read
+# anyway, and DM ciphertext and wrapped keys, which stay exactly as locked as
+# they are in the live database.
+#
+# Keeps the newest seven. The PC pulls them off with scripts/backup-pull.sh.
+
+set -Eeuo pipefail
+trap 'echo "FAILED: line $LINENO: $BASH_COMMAND" >&2' ERR
+
+[ "$(id -u)" -eq 0 ] || { echo "Run as root." >&2; exit 1; }
+[ -e /run/scryproof/unlocked ] || { echo "Vault is locked; nothing to back up." >&2; exit 1; }
+
+key=/etc/scryproof/backup-key.asc
+data=/srv/sites/scryproof/shared/data
+out=/mnt/vault/backups
+keep=7
+
+[ -s "$key" ] || { echo "No public key at $key. Run 70-backups.sh." >&2; exit 1; }
+
+install -d -m 0700 "$out"
+stamp="$(date -u +%Y%m%d-%H%M%S)"
+work="$(mktemp -d "$out/.work-XXXXXX")"
+gpghome="$(mktemp -d)"
+cleanup() { rm -rf "$work" "$gpghome"; }
+trap cleanup EXIT
+
+runuser -u postgres -- pg_dump --no-owner --no-acl --rows-per-insert=200 scryproof > "$work/db.sql"
+[ -s "$work/db.sql" ] || { echo "pg_dump wrote nothing." >&2; exit 1; }
+
+target="$out/scryproof-$stamp.tar.gpg"
+tar -C "$work" -cf - db.sql -C "$data" uploads \
+  | gpg --homedir "$gpghome" --batch --quiet --trust-model always \
+        --recipient-file "$key" --encrypt --output "$target.part"
+mv "$target.part" "$target"
+chmod 600 "$target"
+
+# Newest first; drop everything past $keep.
+ls -1t "$out"/scryproof-*.tar.gpg | tail -n +$((keep + 1)) | xargs -r rm -f
+
+echo "$(basename "$target") $(du -h "$target" | cut -f1)"
