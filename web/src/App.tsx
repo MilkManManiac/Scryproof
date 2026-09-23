@@ -43,6 +43,7 @@ import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
+import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
 import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
@@ -89,6 +90,7 @@ export function App() {
           <Shell />
           <Lightbox />
           <Stage />
+          <IncomingCall />
           <InviteJoinModal />
           <SharePicker />
         </ProfileCardProvider>
@@ -373,7 +375,9 @@ function Shell() {
                 <p>
                   {server
                     ? 'Pick a channel on the left.'
-                    : 'Create a server with the + on the far left, or join one with an invite code.'}
+                    : state.canCreateServers
+                      ? 'Create a server with the + on the far left, or join one with an invite code.'
+                      : 'Join a server with an invite code: the arrow on the far left.'}
                 </p>
               </div>
             </div>

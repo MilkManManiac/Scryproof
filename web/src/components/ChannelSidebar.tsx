@@ -549,7 +549,7 @@ function NewChannelDialog({
           </label>
           <p className="field-note">
             {encrypted
-              ? 'Messages are locked on your devices, and the server stores only scrambled bytes. No search, files, polls, rolls or initiative here yet. Cannot be turned off later.'
+              ? 'Messages are locked on your devices, and the server stores only scrambled bytes. Files and voice messages are locked too. No search, polls, rolls or initiative here yet. Cannot be turned off later.'
               : 'Messages are stored on our server where it could read them, like a normal channel. Voice is always encrypted either way.'}
           </p>
         </div>

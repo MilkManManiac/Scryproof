@@ -2390,3 +2390,67 @@ Not fixed, for Wes to decide or for later:
 Checks after the fixes: `npm test` 239 + 292; `test:channels` 53 pass;
 `test:dm` all pass; typecheck and build clean. `test:smoke`, `test:voice`
 not rerun (nothing they cover changed).
+
+## Calls like Discord, 2026-09-23 evening (built, NOT deployed)
+
+Wes's screenshots and notes after the push went live: "call in dm ui is
+kinda bad. Make it look like discord", no new servers for anyone else,
+guest access on the nice-to-have list, no profile pictures in calls,
+messages stopping halfway across, several streams at once, stream quality
+from inside the call, and "a flash or something if someone is calling you,
+a small popup... a soft call sound".
+
+- **The call** (`VoicePanel.tsx`, `VoiceStage`): one grid of 16:9 tiles
+  for screens and people, sized from the room with a ResizeObserver
+  (`tileWidth`, side by side preferred when it costs under a fifth).
+  Screens first with a LIVE badge; people show their profile picture
+  (`usePeople`) or initials on their accent; name pill with a mute or
+  deafen mark; green ring when speaking. Click a picture to make it big,
+  others go to a strip; the grid button puts everyone back. A second
+  screen appearing while one is big goes back to the grid so both play.
+  Round buttons along the bottom: mute, deafen, camera, screen, quality,
+  hang up (aria-labels keep the old button names, and `clickButton` in
+  voice-check reads aria-labels). Right-click or click a person without
+  a camera for the volume menu. The inline slider on tiles is gone.
+- **Quality in the call** (`CallQuality.tsx`): share resolution and fps,
+  and what you watch (Sharp/Medium/Low), with a link to the full
+  settings. A change while sharing is applied live (`retuneShare` in
+  `voice-session.ts`: applyConstraints on the capture, encodings scaled
+  on the sender). Best effort; the next share uses the choice regardless.
+- **Ringing** (`IncomingCall.tsx`): a DM call going from nobody to
+  somebody while you are connected and not in it rings: a card bottom
+  right with Answer and Ignore, a soft three-note ring every 2.6 s
+  (`notify.ts` `ring`, scaled by the notification volume), the window
+  title blinking, and a system notification if the window is not in front
+  and permission was given. Stops on answer, ignore, the call ending, or
+  after 45 s. Silent on Do not disturb. Nothing new goes to the server:
+  it reads the voice states it already gets. No taskbar flash: the
+  desktop shell has no hook for it and adding one is a new installer.
+- **Servers**: only the owner of the first server on the box may make one
+  (`canCreateServers` in `services/servers.ts`, enforced in the route,
+  sent in `ready` so the + is hidden). On the box that is milky; Lamp's
+  server from 2026-09-22 stays theirs. Test: `server-create.test.ts`.
+- **Messages** use the full width (the 84ch cap is gone).
+- **New channel dialog**: the encrypted tick box sat centred above its
+  label (`.field input { width: 100% }`); fixed for both tick boxes, and
+  labels in sentence case. The note no longer says files are off in
+  encrypted channels.
+- **Guest access** written up under "Nice to have" in `BUILD-ORDER.md`.
+
+Found on the way, NOT fixed: when you open a new conversation, your own
+other devices are not told until they reconnect (the server sends
+`dm_create` to the other person only). Sending it to the opener too broke
+`test:dm` (the conversation never opened; a race with `openWith`, not
+chased). `voice-check` used to lean on this via a leftover conversation;
+it now opens the DM from the profile card.
+
+Checks: `npm test` 240 + 292; `test:voice` 56 pass (new: it rings for
+alex, the ring stops once he joins, the quality menu opens);
+`test:smoke` 104 pass; `test:channels` all pass; `test:dm` all pass;
+typecheck and build clean.
+
+![grid](shots/call-grid.png)
+![two screens](shots/call-two-screens.png)
+![quality](shots/call-quality.png)
+![ringing](shots/call-ringing.png)
+![dm call](shots/call-dm.png)

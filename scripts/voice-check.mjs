@@ -65,6 +65,16 @@ const check = (name, ok, detail = '') => {
 };
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** A picture of one person's window, into VOICE_CHECK_SHOTS if it is set. */
+async function shoot(person, name) {
+  if (!process.env.VOICE_CHECK_SHOTS) return;
+  await sleep(600);
+  const shot = await person.send('Page.captureScreenshot', { format: 'png' });
+  const path = join(process.env.VOICE_CHECK_SHOTS, `${name}.png`);
+  writeFileSync(path, Buffer.from(shot.data, 'base64'));
+  console.log(`screenshot: ${path}`);
+}
+
 /** One person: their own browser process, profile and DevTools connection. */
 class Person {
   constructor(username, debugPort) {
@@ -195,7 +205,7 @@ class Person {
 
   async clickButton(label) {
     return this.evaluate(`(() => {
-      const button = Array.from(document.querySelectorAll('button')).find((el) => el.textContent.trim() === '${label}');
+      const button = Array.from(document.querySelectorAll('button')).find((el) => el.textContent.trim() === '${label}' || el.getAttribute('aria-label') === '${label}');
       if (!button) return false;
       button.click();
       return true;
@@ -291,7 +301,7 @@ async function main() {
   })()`, 15_000);
   const ringReport = await wes.evaluate(`JSON.stringify({
     speaking: window.__voice.getSnapshot().speaking,
-    tile: document.querySelectorAll('.voice-tile.speaking').length,
+    tile: document.querySelectorAll('.call-tile.speaking').length,
     list: document.querySelectorAll('.voice-member.speaking').length,
     members: document.querySelectorAll('.member.speaking').length,
     channel: window.__voice.getSnapshot().channelId,
@@ -304,6 +314,7 @@ async function main() {
   check('the connection panel has measured numbers, not dashes', w.stats.rttMs !== null && w.stats.codec !== null && w.stats.relayed !== null,
     JSON.stringify(w.stats));
 
+  await shoot(wes, 'channel-call');
   if (process.env.VOICE_CHECK_SHOT) {
     await wes.clickButton('Verify');
     await sleep(400);
@@ -372,6 +383,11 @@ async function main() {
   check('wes is decoding the screen alex shared, and it took over the stage',
     shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
     `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);
+  await shoot(wes, 'focus');
+  check('the stream quality menu opens from inside the call', await wes.clickButton('Stream quality') &&
+    Boolean(await wes.until(`Boolean(document.querySelector('.call-quality'))`, 3000)));
+  await shoot(wes, 'quality');
+  await wes.clickButton('Stream quality');
 
   // The watcher's choice, not the sharer's: wes asks for less and gets less,
   // while alex changes nothing. The check reads the decoded frame width.
@@ -458,10 +474,7 @@ async function main() {
     `wes sees alex +${wesSeesAlex.frames}, alex sees wes +${alexSeesWes.frames}`);
   const onStage = await mara.evaluate(`document.querySelectorAll('video.voice-focus-video, video.voice-tile-video').length`);
   check('mara has both screens on her screen, one big and one tile', onStage >= 2, `${onStage} video elements`);
-  if (process.env.VOICE_CHECK_TWO_SHOT) {
-    const shot = await mara.send('Page.captureScreenshot', { format: 'png' });
-    writeFileSync(process.env.VOICE_CHECK_TWO_SHOT, Buffer.from(shot.data, 'base64'));
-  }
+  await shoot(mara, 'two-screens');
 
   await mara.clickButton('Leave');
   const pair =await Promise.all([wes.until(connected, 30_000), alex.until(connected, 30_000)]);
@@ -480,9 +493,11 @@ async function main() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ userId: '${alex.userId}' }),
   }).then((r) => r.json()).then((b) => b.dm.id)`);
-  await wes.evaluate(`document.querySelector('.rail-dms').click()`);
-  await wes.until(`Array.from(document.querySelectorAll('.dm-row')).some((el) => el.textContent.includes('Alex'))`);
-  await wes.evaluate(`Array.from(document.querySelectorAll('.dm-row')).find((el) => el.textContent.includes('Alex')).click()`);
+  // Opened the way a person opens it, from Alex's card: on a fresh database
+  // the conversation is new, and only the device that opened it knows so far.
+  await wes.evaluate(`Array.from(document.querySelectorAll('.member')).find((el) => el.textContent.includes('Alex')).click()`);
+  await wes.until(`document.querySelector('.profile-card') !== null`);
+  await wes.evaluate(`Array.from(document.querySelectorAll('.profile-card-actions button')).find((el) => el.textContent.trim() === 'Message').click()`);
   check('the conversation has a Call button, and wes presses it', Boolean(await wes.until(`Boolean(document.querySelector('.dm-call-toggle'))`, 10_000)) && (await wes.clickButton('Call')));
 
   const wesInDm = await wes.until(`(() => { const s = window.__voice.getSnapshot(); return s.dmId === '${dmId}' && s.channelId === null && s.phase === 'connected'; })()`, 45_000);
@@ -491,7 +506,10 @@ async function main() {
 
   await alex.evaluate(`document.querySelector('.rail-dms').click()`);
   const marked = await alex.until(`Array.from(document.querySelectorAll('.dm-row')).some((el) => el.textContent.includes('Wes') && el.querySelector('.dm-call-mark'))`, 15_000);
-  check('alex sees the call marked in his list, without it ringing', Boolean(marked));
+  check('alex sees the call marked in his list', Boolean(marked));
+  check('and it rings for alex: the incoming call card names wes',
+    Boolean(await alex.until(`document.querySelector('.incoming-call')?.textContent.includes('Wes')`, 10_000)));
+  await shoot(alex, 'ringing');
   // Mara shares the server with both of them but is not in the conversation.
   const maraToken = await mara.evaluate(`fetch('/api/dms/${dmId}/voice/token', { method: 'POST', credentials: 'include' }).then((r) => r.status)`);
   check('mara, who is not in the conversation, sees no mark and is refused a token as if it did not exist',
@@ -512,6 +530,8 @@ async function main() {
   check('wes decodes alex in the DM call', dmHeard.energy > 0.001, `+${dmHeard.packets} packets, +${dmHeard.energy.toFixed(4)} energy`);
   check('the DM call has its stage above the messages and the connection panel below',
     await wes.evaluate(`Boolean(document.querySelector('.dm-call .voice-stage')) && Boolean(document.querySelector('.connection-panel'))`));
+  check('the ringing stopped for alex once he joined', await alex.evaluate(`document.querySelector('.incoming-call') === null`));
+  await shoot(wes, 'dm-call');
   await sleep(2500);
   const dmStats = (await wes.snapshot()).stats;
   check('the connection panel measures the DM call too', dmStats.rttMs !== null && dmStats.relayed !== null, JSON.stringify(dmStats));

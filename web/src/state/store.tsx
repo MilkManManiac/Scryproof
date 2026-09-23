@@ -79,6 +79,8 @@ export interface State {
    * (no ping, no direct message) and this only hides.
    */
   blocks: Set<string>;
+  /** Whether the + for a new server is offered. The server refuses anyone else either way. */
+  canCreateServers: boolean;
   /**
    * The initiative tracker per channel, null when none is running. Absent
    * means not asked yet. Fetched when a channel is opened, then kept by
@@ -108,6 +110,7 @@ const initialState: State = {
   readStates: {},
   replyingTo: {},
   blocks: new Set<string>(),
+  canCreateServers: false,
   trackers: {},
   selectedServerId: null,
   selectedChannelId: null,
@@ -426,6 +429,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         voiceStates,
         readStates,
         blocks: new Set(event.d.blocks ?? []),
+        canCreateServers: event.d.canCreateServers ?? false,
         selectedServerId,
         selectedChannelId,
       };

@@ -143,15 +143,18 @@ Wes to try screen share with his brother, then ship.
 
 ## Session D: its own long session
 
-16. **End-to-end encrypted channels (M7).** ALL THREE STAGES BUILT
-    2026-09-23, not deployed (HANDOFF, last section; `docs/channel-e2ee.md`). Was: Schema and wire format exist
+16. **End-to-end encrypted channels (M7).** ALL THREE STAGES LIVE
+    2026-09-23 (the ciphertext proof on the box is still owed) (HANDOFF, last section; `docs/channel-e2ee.md`). Was: Schema and wire format exist
     (`messages.ciphertext`, `channels.encrypted`, key epochs); the
     identity keys from voice and the pairwise wrapping from
     `dm-crypto.ts` are the building blocks. Search, pins and the
     initiative tracker will not work in an encrypted channel and the UI
     has to say so. Last item on the security page. Read GAMEPLAN section
     1b first.
-17. **The UI pass.** Waiting on Wes's screenshots. Read
+17. **The UI pass.** First round from Wes's screenshots done
+    2026-09-23: the call made to look and act like Discord, full-width
+    messages, pictures in call tiles, several streams at once, ringing
+    (HANDOFF, "Calls like Discord"). Read
     `references/the-wall.md` in the milk-project skill before starting.
 
 ## Already done, so off the list
@@ -160,6 +163,19 @@ Private channel switch on create (exists). Tray icon and start with
 Windows (exist). Style buttons and keys in the composer (exist, see 12).
 Server-side nicknames (exist, see 9). Scroll to newest on opening a
 channel (exists; if Loaf still sees otherwise it is a bug, get a repro).
+
+## Nice to have (Wes's list, not scheduled)
+
+- **Guest access** (Wes, 2026-09-23: "put in the nice to have something
+  like guest access"). Someone without an account joins one call or one
+  channel for a while, from a link Wes makes, and is gone after. Hard
+  parts, to settle before building: a guest has no device identity, so
+  the voice key exchange has to hold them at "needs your OK" like any
+  unknown device, and the UI must name them as a guest everywhere; the
+  link expires and can be revoked; a guest never sees history, members
+  or other channels. Wes also closed server creation to everyone but him
+  the same day ("keep it kinda secure"), so guests must not be a way
+  round that.
 
 ## Open for Wes
 

@@ -12,7 +12,7 @@ import type { Member } from '@scryproof/shared';
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
 import { bans, memberRoles, members, servers, users } from '../db/schema.js';
-import { badRequest, notFound } from '../lib/http-error.js';
+import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
@@ -24,6 +24,7 @@ import {
 import { buildServerDetail, loadAllServerDetails, loadServerDetail } from '../services/server-detail.js';
 import {
   addMember,
+  canCreateServers,
   createServer,
   deleteServer,
   leaveServer,
@@ -69,6 +70,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
   app.post('/api/servers', async (request) => {
     const user = requireUser(request);
     const body = z.object({ name: z.string().min(1).max(100) }).parse(request.body);
+    if (!(await canCreateServers(user.id))) {
+      throw forbidden('Only the host can make new servers for now. Ask for an invite instead.');
+    }
 
     const created = await createServer({ name: body.name, ownerId: user.id });
     const detail = await loadServerDetail(created.id, user.id);

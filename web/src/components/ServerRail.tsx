@@ -159,14 +159,16 @@ export function ServerRail() {
 
       {state.serverOrder.length > 0 ? <div className="rail-divider" /> : null}
 
-      <button
-        type="button"
-        className="rail-item rail-add"
-        title="Create a server"
-        onClick={() => setCreating(true)}
-      >
-        +
-      </button>
+      {state.canCreateServers ? (
+        <button
+          type="button"
+          className="rail-item rail-add"
+          title="Create a server"
+          onClick={() => setCreating(true)}
+        >
+          +
+        </button>
+      ) : null}
 
       <button
         type="button"

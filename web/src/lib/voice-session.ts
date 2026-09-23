@@ -991,10 +991,51 @@ export class VoiceSession {
     }
     if (now.voiceEffect !== before.voiceEffect) await this.applyVoiceEffect();
 
+    if ((now.shareHeight !== before.shareHeight || now.shareFps !== before.shareFps) && this.snapshot.sharing) {
+      await this.retuneShare(now);
+    }
+
     if (now.cameraDeviceId !== before.cameraDeviceId && this.snapshot.camera) {
       const camera = this.room?.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
       await camera?.restartTrack(cameraOptions(now)).catch(() => undefined);
       this.refreshVideos();
+    }
+  }
+
+  /**
+   * A share already running, made to match a new choice of size and frames
+   * without asking for the screen again: the capture is told its new ceiling,
+   * and every layer the encoder sends is scaled to the new spend. Best effort:
+   * a browser that refuses either keeps what it had, and the next share
+   * starts with the new choice anyway.
+   */
+  private async retuneShare(prefs: VoicePrefs): Promise<void> {
+    const track = this.room?.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
+    if (!track) return;
+    const quality = screenShareOptions(prefs);
+    const fps = quality.encoding.maxFramerate;
+    await track.mediaStreamTrack
+      .applyConstraints(
+        quality.resolution
+          ? { width: { max: quality.resolution.width }, height: { max: quality.resolution.height }, frameRate: { max: fps } }
+          : { frameRate: { max: fps } },
+      )
+      .catch(() => undefined);
+    const sender = track.sender;
+    if (!sender) return;
+    try {
+      const parameters = sender.getParameters();
+      const top = Math.max(0, ...parameters.encodings.map((encoding) => encoding.maxBitrate ?? 0));
+      if (top > 0) {
+        const scale = quality.encoding.maxBitrate / top;
+        for (const encoding of parameters.encodings) {
+          if (encoding.maxBitrate) encoding.maxBitrate = Math.round(encoding.maxBitrate * scale);
+          encoding.maxFramerate = fps;
+        }
+        await sender.setParameters(parameters);
+      }
+    } catch {
+      // Kept what it had; see above.
     }
   }
 

@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-23-calls',
+    date: '2026-09-23',
+    title: 'Calls like Discord, and it rings',
+    notes: [
+      'Calls look like Discord now: everyone is a big tile with their profile picture, and the buttons along the bottom are mute, deafen, camera, screen, quality and hang up.',
+      'When two people share their screens, both play side by side. Click one to watch it big; the grid button puts everyone back.',
+      'The sliders button in a call sets your screen share quality and how sharp the streams you watch are, without leaving the call. It changes a share that is already running.',
+      'Calling someone in a DM rings them: a card pops up in the corner with a soft ring, and they can answer or ignore it. On Do not disturb it shows but stays quiet.',
+      'Messages use the whole width of the window instead of stopping halfway.',
+      'Only the host can make new servers for now. Use an invite to join one.',
+    ],
+  },
+  {
     id: '2026-09-23-notes',
     date: '2026-09-23',
     title: 'Screen share picker, every emoji, and your notes',

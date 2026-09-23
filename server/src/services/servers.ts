@@ -2,7 +2,7 @@
  * Creating and tearing down servers, and moving members in and out.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { DEFAULT_EVERYONE_PERMISSIONS, validateServerName } from '@scryproof/shared';
 
@@ -19,6 +19,22 @@ import {
 import { uuidv7 } from '../lib/ids.js';
 import { badRequest, forbidden } from '../lib/http-error.js';
 import type { ServerRow } from '../db/schema.js';
+
+/**
+ * Who may make a new server: the owner of the first server this box ever had,
+ * which is the person who set the box up. Anyone, when there are no servers
+ * yet, or nobody could ever start. Wes, 2026-09-23: "Don't let other people
+ * make new servers right now. Want to keep it kinda secure." Servers others
+ * made before this rule are theirs and stay.
+ */
+export async function canCreateServers(userId: string): Promise<boolean> {
+  const [first] = await getDb()
+    .select({ ownerId: servers.ownerId })
+    .from(servers)
+    .orderBy(asc(servers.createdAt))
+    .limit(1);
+  return !first || first.ownerId === userId;
+}
 
 export interface CreateServerInput {
   name: string;

@@ -51,7 +51,7 @@ export type ServerEvent =
    * `blocks` is the ids this person has blocked, so the first paint already
    * collapses their messages rather than showing them and taking them back.
    */
-  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string } }
+  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string; canCreateServers?: boolean } }
   | { t: 'heartbeat_ack'; d: { at: number } }
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }

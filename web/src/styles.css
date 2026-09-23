@@ -850,8 +850,9 @@ select {
   color: var(--text-dim);
 }
 
-/* 16 over 1.45: a line of talk, not a paragraph of print. Measure capped
-   so a wide window does not turn a sentence into a ruler. */
+/* 16 over 1.45: a line of talk, not a paragraph of print. No cap on the
+   measure: it was 84ch, and on a wide window half the room sat empty (Wes,
+   2026-09-23: "the text only goes like halfway"). Discord runs it edge to edge. */
 .message-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -862,7 +863,6 @@ select {
      should move first. */
   font-size: 1rem;
   line-height: 1.45;
-  max-width: 84ch;
   text-wrap: pretty;
 }
 
@@ -2380,88 +2380,6 @@ select {
   text-underline-offset: 3px;
 }
 
-.voice-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  max-width: 760px;
-}
-
-.voice-tile {
-  width: 148px;
-  padding: 18px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--panel-2);
-  border: 2px solid transparent;
-  border-radius: 10px;
-  box-shadow: var(--hi), var(--shadow-1);
-  transition: border-color 90ms linear;
-}
-
-.voice-tile.speaking {
-  border-color: var(--good);
-}
-
-.voice-tile.held {
-  border-color: var(--warn);
-  border-style: dashed;
-}
-
-.voice-tile-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--panel-solid);
-  color: var(--on-accent);
-  font-weight: 600;
-  font-size: 18px;
-}
-
-.voice-tile-name {
-  font-size: 13px;
-  font-weight: 600;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.voice-tile-note {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.voice-tile.held .voice-tile-note {
-  color: var(--warn);
-}
-
-.voice-tile.adjustable {
-  cursor: pointer;
-}
-.voice-tile-volume {
-  margin-top: 8px;
-  cursor: default;
-}
-.voice-tile-volume .voice-range {
-  width: 100%;
-}
-.voice-tile-volume-note {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-top: 2px;
-}
-
-.voice-tile.wide {
-  width: 240px;
-  padding: 6px 6px 10px;
-}
 .voice-tile-video {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -2471,12 +2389,6 @@ select {
 }
 video.mirrored {
   transform: scaleX(-1);
-}
-
-.voice-stage-controls {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
 }
 
 .voice-stage.has-focus {
@@ -2550,25 +2462,333 @@ video.mirrored {
   padding: 2px 12px 6px;
 }
 
-.voice-stage.has-focus .voice-tiles {
-  flex-wrap: nowrap;
-  max-width: 100%;
+/* ------------------------------------------------------------------ call */
+
+/* The call, laid out the way Discord lays it out (Wes, 2026-09-23): a dark
+   room, everyone and every screen a 16:9 tile in one grid that fills it, and
+   round buttons along the bottom. The tile width is worked out in
+   VoicePanel from the room's size and the number of tiles. */
+.voice-stage.call {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  background: color-mix(in srgb, #000 58%, var(--panel-solid));
+}
+.voice-stage.call .voice-stage-title {
+  align-self: flex-start;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.call-grid {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.call-tile {
+  position: relative;
+  width: var(--tile-width, 240px);
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tile-accent) 32%, #121110);
+  cursor: pointer;
+}
+.call-tile.screen {
+  background: #000;
+}
+/* The ring sits over the picture, not under it, so a camera does not hide it. */
+.call-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 3px solid transparent;
+  pointer-events: none;
+  transition: border-color 90ms linear;
+}
+.call-tile.speaking::after {
+  border-color: var(--good);
+}
+.call-tile.held::after {
+  border: 2px dashed var(--warn);
+}
+
+.call-tile-avatar {
+  width: clamp(44px, 26%, 128px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--tile-accent);
+  color: var(--on-accent);
+  font-weight: 650;
+  font-size: clamp(15px, 2vw, 34px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+.call-tile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.call-tile .voice-tile-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+.voice-tile-video.contain {
+  object-fit: contain;
+}
+
+.call-tile-name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.call-tile-mark {
+  display: inline-flex;
+  color: #f0716f;
+}
+.call-tile-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #d83c3e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.call-tile-note {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 12px;
+}
+.call-tile.held .call-tile-note {
+  color: var(--warn);
+}
+.call-tile-note.lower {
+  top: auto;
+  bottom: 8px;
+  right: 8px;
+}
+
+/* Under the big picture: everyone else, small, in a row. */
+.call-strip {
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
   overflow-x: auto;
+}
+.call-strip .call-tile {
+  width: 176px;
+}
+.call-strip .call-tile-avatar {
+  font-size: 15px;
+}
+.call-strip .call-tile-name {
+  font-size: 12px;
+}
+
+.call-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   flex-shrink: 0;
 }
-.voice-stage.has-focus .voice-tile {
+.call-button {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: #2b2a29;
+  color: #eeeae6;
+  cursor: pointer;
+  transition: background 90ms linear, color 90ms linear;
+}
+.call-button:hover {
+  background: #3a3937;
+}
+.call-button.on {
+  background: #eeeae6;
+  color: #151413;
+}
+.call-button.off {
+  background: #3a2222;
+  color: #f0716f;
+}
+.call-button.hang-up {
+  width: 64px;
+  border-radius: 24px;
+  background: #d83c3e;
+  color: #fff;
+}
+.call-button.hang-up:hover {
+  background: #b73234;
+}
+.call-join {
+  min-width: 120px;
+}
+
+.call-quality-anchor {
+  position: relative;
+  display: inline-flex;
+}
+.call-quality .menu {
+  top: auto;
+  bottom: calc(100% + 10px);
+  left: -118px;
+  width: 284px;
+  max-width: none;
+  padding: 12px;
+}
+.call-quality-head {
+  margin: 2px 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.call-quality-row {
+  display: flex;
+  gap: 6px;
+}
+.call-quality-row .voice-select {
+  flex: 1;
+  min-width: 0;
+}
+.call-quality-note {
+  margin: 6px 0 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.call-quality-more {
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .call-button {
+    width: 44px;
+    height: 44px;
+  }
+  .call-strip .call-tile {
+    width: 140px;
+  }
+}
+
+/* ---------------------------------------------------------- incoming call */
+
+/* A small card in the corner that breathes while it rings (Wes, 2026-09-23:
+   "a flash or something... a small popup"). */
+.incoming-call {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 90;
+  width: 300px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-radius: 14px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease), ringing 1.3s ease-in-out infinite;
+}
+@keyframes ringing {
+  0%, 100% { box-shadow: var(--hi), var(--shadow-2), 0 0 0 0 color-mix(in srgb, var(--good) 0%, transparent); }
+  50% { box-shadow: var(--hi), var(--shadow-2), 0 0 0 6px color-mix(in srgb, var(--good) 35%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .incoming-call { animation: none; border-color: var(--good); }
+}
+.incoming-call-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.incoming-call-who .avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 17px;
   flex-shrink: 0;
-  width: 116px;
-  padding: 10px 8px 8px;
-  gap: 5px;
 }
-.voice-stage.has-focus .voice-tile.wide {
-  width: 168px;
+.incoming-call-name {
+  font-weight: 650;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.voice-stage.has-focus .voice-tile-avatar {
-  width: 38px;
-  height: 38px;
-  font-size: 14px;
+.incoming-call-what {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.incoming-call-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.call-button.answer {
+  width: 64px;
+  border-radius: 24px;
+  background: #23a55a;
+  color: #fff;
+}
+.call-button.answer:hover {
+  background: #1c8a4b;
+}
+@media (max-width: 640px) {
+  .incoming-call {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: 12px;
+  }
 }
 
 .voice-consent {
@@ -4487,20 +4707,18 @@ kbd {
 /* A conversation's call sits above its messages rather than replacing them,
    so it is given a share of the height, not all of it. */
 .dm-call {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 60%;
+  flex: 0 0 auto;
+  height: clamp(280px, 48vh, 620px);
   display: flex;
   border-bottom: 1px solid var(--line);
 }
 .dm-call .voice-stage {
-  height: auto;
+  height: 100%;
   flex: 1;
-  padding: 16px;
-  gap: 12px;
 }
-.dm-call .voice-stage-title {
-  font-size: 16px;
+/* A conversation that goes on while someone shares: the picture gets more. */
+.dm-call:has(.has-focus) {
+  height: clamp(320px, 62vh, 820px);
 }
 
 /* In the list: the call mark sits before the unread dot, and takes the push
@@ -4825,14 +5043,20 @@ kbd {
 
 /* ---------------------------------- privacy --------------------------------- */
 
-.privacy .check {
+.privacy .check,
+.field > .check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
   cursor: pointer;
+  /* Not a heading like the other field labels: a sentence you tick. */
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
 }
-.privacy .check input[type='checkbox'] {
+.privacy .check input[type='checkbox'],
+.field > .check input[type='checkbox'] {
   width: auto;
   margin: 0;
 }

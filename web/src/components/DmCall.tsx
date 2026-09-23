@@ -8,9 +8,9 @@
  * (non-negotiables 2 and 7). Only the grant differs, and that is decided on
  * the server: being in the conversation is the permission.
  *
- * Nothing rings. There is no push yet, and a ring with no way to decline is
- * worse than none, so the others see the mark in their list and join by
- * clicking.
+ * Starting a call rings the others while their app is open
+ * (IncomingCall.tsx): a card with Answer and Ignore, and a soft ring. With the
+ * app closed there is no push yet, so they find the mark in their list.
  */
 
 import type { DmChannel, VoiceState } from '@scryproof/shared';
@@ -64,7 +64,7 @@ export function DmCallButton({ dm }: { dm: DmChannel }) {
       title={
         here
           ? 'Hang up. The others stay in the call.'
-          : 'Voice, camera and screen, encrypted end to end. Nothing rings: they see the call in their list and join by clicking.'
+          : 'Voice, camera and screen, encrypted end to end. It rings for anyone with the app open.'
       }
       onClick={() => (here ? leaveVoice() : joinDmCall(dm.id))}
     >

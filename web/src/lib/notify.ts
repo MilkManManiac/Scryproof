@@ -157,7 +157,20 @@ export const notifySounds = {
   /** One short note, quiet enough to hear thirty of without minding. Both
       levels went up by half on 2026-09-22 (Wes: "a little quiet"). */
   message: () => tones([880], 0.07),
+  /** A call coming in: three soft notes rising, played again every couple of
+      seconds while it waits. Soft on purpose (Wes, 2026-09-23: "a soft call
+      sound"), under the level of a mention. */
+  ring: () => tones([523.25, 659.25, 783.99], 0.09),
 };
+
+/** One ring of an incoming call. Not held back by the gap: it has its own rhythm. */
+export function ring(): void {
+  try {
+    notifySounds.ring();
+  } catch {
+    // No audio device, or not clicked in yet; the pop-up still shows.
+  }
+}
 
 /**
  * Two of these inside a few hundred milliseconds is one noise, not two. A room

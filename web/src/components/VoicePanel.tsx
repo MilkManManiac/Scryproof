@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { PublicUser } from '@scryproof/shared';
+import type { PublicUser, VoiceState } from '@scryproof/shared';
 
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
@@ -28,6 +28,18 @@ import { noPictureLabel } from '../lib/frame-watch';
 import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
+import { CallQuality } from './CallQuality';
+import { VoiceSettings } from './VoiceSettings';
+import {
+  CameraGlyph,
+  ExpandGlyph,
+  GridGlyph,
+  HangUpGlyph,
+  HeadphonesGlyph,
+  MicGlyph,
+  ScreenGlyph,
+  SlidersGlyph,
+} from './glyphs';
 
 /**
  * Someone from one of this person's conversations. A call in a conversation
@@ -54,6 +66,17 @@ function useNames(): (userId: string) => string {
     const member = members.find((entry) => entry.userId === userId);
     return nameFor(userId, member?.nickname ?? member?.user.displayName ?? dmPerson(userId)?.displayName ?? 'Someone');
   };
+}
+
+/** The person themselves, for their picture: you, someone in this server, or someone from a conversation. */
+function usePeople(): (userId: string) => PublicUser | undefined {
+  const { state } = useStore();
+  const dmPerson = useDmPeople();
+  const members = state.members[state.selectedServerId ?? ''] ?? [];
+  return (userId) =>
+    (userId === state.user?.id ? state.user : undefined) ??
+    members.find((entry) => entry.userId === userId)?.user ??
+    dmPerson(userId);
 }
 
 /** The same colour a person has everywhere else, so a tile is recognisably them. */
@@ -130,49 +153,100 @@ const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}
 /* --------------------------------- the stage -------------------------------- */
 
 /**
+ * The tile width for this many 16:9 tiles in a box this size. The biggest
+ * that fits, except that side by side wins over stacked when it costs less
+ * than a fifth of the size: two people read as a conversation in a row, and
+ * as a list in a column.
+ */
+function tileWidth(count: number, width: number, height: number, gap = 8): number {
+  const fits: number[] = [];
+  for (let cols = 1; cols <= Math.max(1, count); cols += 1) {
+    const rows = Math.ceil(count / cols);
+    fits.push(Math.min((width - (cols - 1) * gap) / cols, (((height - (rows - 1) * gap) / rows) * 16) / 9));
+  }
+  const best = Math.max(...fits);
+  const wide = [...fits].reverse().find((fit) => fit >= best * 0.8) ?? best;
+  return Math.max(120, Math.floor(wide));
+}
+
+/** The size of an element, kept current as the window or the panel changes. */
+function useBoxSize(): [(node: HTMLElement | null) => void, { width: number; height: number }] {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [node, setNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!node) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setSize((was) => (was.width === width && was.height === height ? was : { width, height }));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+  return [setNode, size];
+}
+
+type Tile =
+  | { key: string; kind: 'screen'; video: VoiceVideo }
+  | { key: string; kind: 'person'; occupant: VoiceState; camera: VoiceVideo | undefined };
+
+/**
  * The call's stage, for a voice channel or for the call inside a
  * conversation. Everything below the first lines is the same for both: the
  * same tiles, the same encryption labels, the same controls.
+ *
+ * Laid out the way Discord lays it out (Wes, 2026-09-23: "make it act like
+ * discord"): every screen and every person is a tile in one grid that fills
+ * the room, so two people sharing are two streams playing side by side.
+ * Clicking a picture makes it the big one with the rest in a strip under it;
+ * the grid button puts everyone back. Along the bottom, round buttons for
+ * microphone, sound, camera, screen, quality and hanging up.
  */
 export function VoiceStage(
   props: { channelId: string; channelName: string } | { dmId: string; channelName: string },
 ) {
   const { channelName } = props;
   const place: CallPlace = 'dmId' in props ? { kind: 'dm', id: props.dmId } : { kind: 'channel', id: props.channelId };
-  const { state, voice: session, joinVoice, joinDmCall, leaveVoice } = useStore();
+  const { state, voice: session, joinVoice, joinDmCall, leaveVoice, updateVoice } = useStore();
   const voice = useVoice();
   const nameOf = useNames();
   const accentOf = useAccents();
+  const personOf = usePeople();
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
-  const [adjusting, setAdjusting] = useState<string | null>(null);
-  /** Whose right-click volume menu is open: the same setting as the slider, where Discord keeps it. */
+  /** Whose right-click volume menu is open: the same setting as the profile card, where Discord keeps it. */
   const [volumeMenu, setVolumeMenu] = useState<{ userId: string; spot: MenuSpot } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [picture, setPicture] = useState<Picture | null>(null);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const focusFrame = useRef<HTMLDivElement>(null);
+  const [gridBox, grid] = useBoxSize();
 
   const inPlace = (entry: { channelId: string | null; dmId: string | null }): boolean =>
     place.kind === 'dm' ? entry.dmId === place.id : entry.channelId === place.id;
   const occupants = Object.values(state.voiceStates).filter(inPlace);
-  const here = occupants.some((entry) => entry.userId === state.user?.id);
+  const selfId = state.user?.id;
+  const myState = occupants.find((entry) => entry.userId === selfId);
+  const here = Boolean(myState);
   // `mine` from the moment Join is pressed; `live` only once the server lists
   // us. A join that dies before that point (a browser that cannot encrypt,
   // a refusal from the gateway) is still ours to explain.
   const mine = inPlace(voice);
   const live = here && mine;
   const joining = mine && !here && voice.phase === 'connecting';
+  const connected = live && voice.phase === 'connected';
 
   // Timed out, the token request is refused, so offering Join would only
   // produce an error. Leave stays: a timeout should not trap anyone in a room.
   // A timeout is a server's, and says nothing about a call in a conversation.
   const timedOutUntil = useTimeoutEnd(
     place.kind === 'channel' && state.selectedServerId
-      ? state.members[state.selectedServerId]?.find((member) => member.userId === state.user?.id)
+      ? state.members[state.selectedServerId]?.find((member) => member.userId === selfId)
       : undefined,
   );
 
   const securityOf = (userId: string): VoicePerson['state'] | 'self' | 'unknown' => {
-    if (userId === state.user?.id) return 'self';
+    if (userId === selfId) return 'self';
     if (!live) return 'unknown';
     return voice.people.find((person) => person.userId === userId)?.state ?? 'waiting';
   };
@@ -183,22 +257,43 @@ export function VoiceStage(
     ? voice.videos.filter((video) => ['self', 'secured'].includes(securityOf(video.userId)))
     : [];
   const screens = videos.filter((video) => video.source === 'screen');
-  const cameraOf = (userId: string) => videos.find((video) => video.userId === userId && video.source === 'camera');
+  const cameraOf = (userId: string) =>
+    voice.hiddenCameras.includes(userId)
+      ? undefined
+      : videos.find((video) => video.userId === userId && video.source === 'camera');
 
   // Someone else starting to share is the one moment the stage rearranges
-  // itself without being asked: it is almost always what you want to look at.
-  const newestScreen = screens.filter((video) => video.userId !== state.user?.id).at(-1);
+  // itself without being asked. The first screen becomes the big picture;
+  // a second one going up while a screen is big puts everything back in the
+  // grid, so both play at once and you pick.
+  const otherScreens = screens.filter((video) => video.userId !== selfId);
+  const newestScreen = otherScreens.at(-1);
   const newestScreenSid = newestScreen?.sid;
   useEffect(() => {
-    if (newestScreen) setFocused(videoKey(newestScreen));
+    if (!newestScreen) return;
+    setFocused((current) =>
+      current?.endsWith(':screen') && otherScreens.length > 1 ? null : videoKey(newestScreen),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newestScreenSid]);
 
-  const big = videos.find((video) => videoKey(video) === focused) ?? null;
+  const tiles: Tile[] = [
+    ...screens.map((video): Tile => ({ key: videoKey(video), kind: 'screen', video })),
+    ...occupants.map(
+      (occupant): Tile => ({ key: `${occupant.userId}:person`, kind: 'person', occupant, camera: cameraOf(occupant.userId) }),
+    ),
+  ];
+  // A person with their camera on is focused by their camera's key, so a
+  // camera turning off takes the focus with it.
+  const focusKeyOf = (tile: Tile): string | null =>
+    tile.kind === 'screen' ? tile.key : tile.camera ? videoKey(tile.camera) : null;
+  const big = focused === null ? null : (tiles.find((tile) => focusKeyOf(tile) === focused) ?? null);
+  const bigVideo = big ? (big.kind === 'screen' ? big.video : (big.camera ?? null)) : null;
+
   const labelOf = (video: VoiceVideo): string => {
-    const mine = video.userId === state.user?.id;
-    if (video.source === 'camera') return mine ? 'You' : nameOf(video.userId);
-    return mine ? 'Your screen' : `${nameOf(video.userId)}'s screen`;
+    const own = video.userId === selfId;
+    if (video.source === 'camera') return own ? 'You' : nameOf(video.userId);
+    return own ? 'Your screen' : `${nameOf(video.userId)}'s screen`;
   };
   // Only other people's screens are watched for stalls: our own is not decoded here.
   const stalledNote = (video: VoiceVideo): string | null => {
@@ -207,25 +302,134 @@ export function VoiceStage(
   };
   const screenVolume = (userId: string): number => prefs.volumes[screenSound(userId)] ?? 1;
 
-  return (
-    <div className={`voice-stage${big ? ' has-focus' : ''}`}>
-      <h2 className="voice-stage-title">{channelName}</h2>
+  const openVolume = (userId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    if (userId === selfId) return;
+    setVolumeMenu({ userId, spot: spotOf(event) });
+  };
 
-      {big ? (
+  /** One tile, in the grid or in the strip under the big picture. */
+  const renderTile = (tile: Tile) => {
+    if (tile.kind === 'screen') {
+      const { video } = tile;
+      const note = stalledNote(video);
+      return (
+        <div
+          key={tile.key}
+          className="call-tile screen"
+          onClick={() => setFocused(tile.key)}
+          onContextMenu={(event) => openVolume(video.userId, event)}
+          title="Watch this one big"
+        >
+          <VideoView key={video.sid} video={video} className="voice-tile-video contain" />
+          <span className="call-tile-live">Live</span>
+          <span className="call-tile-name">{labelOf(video)}</span>
+          {note ? <span className="call-tile-note voice-stalled">{note}</span> : null}
+        </div>
+      );
+    }
+
+    const { occupant, camera } = tile;
+    const userId = occupant.userId;
+    const own = userId === selfId;
+    const name = nameOf(userId);
+    const person = personOf(userId);
+    const security = securityOf(userId);
+    const speaking = live && voice.speaking.includes(userId);
+    const deaf = occupant.serverDeaf || occupant.selfDeaf;
+    const muted = occupant.selfMute || occupant.serverMute;
+    const volume = prefs.volumes[userId] ?? 1;
+    const accent = person?.accent ?? accentOf(userId);
+    const note =
+      security === 'held'
+        ? 'Needs your OK'
+        : security === 'waiting'
+          ? 'Securing…'
+          : !own && volume !== 1
+            ? `${Math.round(volume * 100)}%`
+            : !live && occupant.sharingScreen
+              ? 'Sharing their screen'
+              : null;
+    return (
+      <div
+        key={tile.key}
+        className={`call-tile${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}`}
+        style={{ '--tile-accent': accent ?? 'var(--panel-2)' } as React.CSSProperties}
+        onClick={(event) => {
+          if (camera) setFocused(videoKey(camera));
+          else openVolume(userId, event);
+        }}
+        onContextMenu={(event) => openVolume(userId, event)}
+        title={camera ? 'Make this bigger' : own ? undefined : `Change how loud ${name} is for you`}
+      >
+        {camera ? (
+          <VideoView key={camera.sid} video={camera} className="voice-tile-video" />
+        ) : (
+          <span className="call-tile-avatar">
+            {person?.avatarUrl ? <img src={person.avatarUrl} alt="" /> : initials(name)}
+          </span>
+        )}
+        <span className="call-tile-name">
+          {name}
+          {deaf ? (
+            <span className="call-tile-mark" title="Deafened">
+              <HeadphonesGlyph off />
+            </span>
+          ) : muted ? (
+            <span className="call-tile-mark" title="Muted">
+              <MicGlyph off />
+            </span>
+          ) : null}
+        </span>
+        {note ? <span className="call-tile-note">{note}</span> : null}
+        {voice.hiddenCameras.includes(userId) ? (
+          <span className="call-tile-note lower">
+            Camera hidden{' '}
+            <button
+              type="button"
+              className="link-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                session.setCameraHidden(userId, false);
+              }}
+            >
+              Show
+            </button>
+          </span>
+        ) : null}
+        {volumeMenu?.userId === userId ? (
+          <VolumeMenu userId={userId} name={name} spot={volumeMenu.spot} onClose={() => setVolumeMenu(null)} />
+        ) : null}
+      </div>
+    );
+  };
+
+  const rest = big ? tiles.filter((tile) => tile !== big) : tiles;
+  const width = tileWidth(tiles.length, grid.width, grid.height);
+
+  return (
+    <div className={`voice-stage call${big ? ' has-focus' : ''}`}>
+      {/* The header already names the room; the title is for the lobby, before you are in. */}
+      {!here ? <h2 className="voice-stage-title">{channelName}</h2> : null}
+
+      {big && bigVideo ? (
         <div className="voice-focus" ref={focusFrame}>
           <div className="voice-focus-frame">
-            <VideoView key={big.sid} video={big} className="voice-focus-video" onPicture={setPicture} />
+            <VideoView key={bigVideo.sid} video={bigVideo} className="voice-focus-video" onPicture={setPicture} />
           </div>
           <div className="voice-focus-bar">
-            <span className="voice-focus-label">{labelOf(big)}</span>
+            <span className="voice-focus-label">{labelOf(bigVideo)}</span>
             {picture ? (
               <span className="voice-focus-picture" title="What is being drawn on your screen right now">
                 {pictureLabel(picture, voice.stats.videoCodec)}
               </span>
             ) : null}
-            {stalledNote(big) ? <span className="voice-stalled">{stalledNote(big)}</span> : null}
-            {big.source === 'screen' && big.sound && big.userId !== state.user?.id ? (
-              <label className="voice-focus-volume" title="The sound of this screen, apart from their voice. Only you hear the change.">
+            {stalledNote(bigVideo) ? <span className="voice-stalled">{stalledNote(bigVideo)}</span> : null}
+            {bigVideo.source === 'screen' && bigVideo.sound && bigVideo.userId !== selfId ? (
+              <label
+                className="voice-focus-volume"
+                title="The sound of this screen, apart from their voice. Only you hear the change."
+              >
                 Screen sound
                 <input
                   type="range"
@@ -233,34 +437,44 @@ export function VoiceStage(
                   min={0}
                   max={200}
                   step={5}
-                  value={Math.round(screenVolume(big.userId) * 100)}
-                  onChange={(event) => voicePrefs.setVolumeFor(screenSound(big.userId), Number(event.target.value) / 100)}
-                  aria-label={`Volume of ${nameOf(big.userId)}'s screen, for you only`}
+                  value={Math.round(screenVolume(bigVideo.userId) * 100)}
+                  onChange={(event) =>
+                    voicePrefs.setVolumeFor(screenSound(bigVideo.userId), Number(event.target.value) / 100)
+                  }
+                  aria-label={`Volume of ${nameOf(bigVideo.userId)}'s screen, for you only`}
                 />
-                {Math.round(screenVolume(big.userId) * 100)}%
+                {Math.round(screenVolume(bigVideo.userId) * 100)}%
               </label>
             ) : null}
-            {big.source === 'camera' && big.userId !== state.user?.id ? (
-              <button type="button" className="link-button" onClick={() => session.setCameraHidden(big.userId, true)}>
+            {bigVideo.source === 'camera' && bigVideo.userId !== selfId ? (
+              <button type="button" className="link-button" onClick={() => session.setCameraHidden(bigVideo.userId, true)}>
                 Hide for me
               </button>
             ) : null}
             <button
               type="button"
-              className="link-button"
+              className="icon-button"
+              title="Full screen"
+              aria-label="Full screen"
               onClick={() =>
                 document.fullscreenElement
                   ? void document.exitFullscreen()
                   : void focusFrame.current?.requestFullscreen().catch(() => undefined)
               }
             >
-              Full screen
+              <ExpandGlyph />
             </button>
-            <button type="button" className="link-button" onClick={() => setFocused(null)}>
-              Make small
+            <button
+              type="button"
+              className="icon-button"
+              title="Everyone at once"
+              aria-label="Make small"
+              onClick={() => setFocused(null)}
+            >
+              <GridGlyph />
             </button>
           </div>
-          {big.source === 'camera' && big.userId === state.user?.id && picture ? (
+          {bigVideo.source === 'camera' && bigVideo.userId === selfId && picture ? (
             <div className="voice-focus-report">{session.cameraReport()}</div>
           ) : null}
         </div>
@@ -268,134 +482,11 @@ export function VoiceStage(
 
       {occupants.length === 0 ? (
         <p className="voice-stage-empty">Nobody is in here.</p>
+      ) : big ? (
+        <div className="call-strip">{rest.map(renderTile)}</div>
       ) : (
-        <div className="voice-tiles">
-          {screens
-            .filter((video) => video !== big)
-            .map((video) => (
-              <div
-                key={videoKey(video)}
-                className="voice-tile wide adjustable"
-                onClick={() => setFocused(videoKey(video))}
-                title="Make this bigger"
-              >
-                <VideoView key={video.sid} video={video} className="voice-tile-video" />
-                <div className="voice-tile-name">{labelOf(video)}</div>
-                {stalledNote(video) ? <div className="voice-tile-note voice-stalled">{stalledNote(video)}</div> : null}
-              </div>
-            ))}
-
-          {occupants.map((occupant) => {
-            const name = nameOf(occupant.userId);
-            const security = securityOf(occupant.userId);
-            const speaking = live && voice.speaking.includes(occupant.userId);
-            const muted = occupant.selfMute || occupant.serverMute;
-            const mine = occupant.userId === state.user?.id;
-            const volume = prefs.volumes[occupant.userId] ?? 1;
-            const camera = cameraOf(occupant.userId);
-            const showCamera = camera && camera !== big;
-            const open = adjusting === occupant.userId;
-            return (
-              <div
-                key={occupant.userId}
-                className={`voice-tile${showCamera ? ' wide' : ''}${speaking ? ' speaking' : ''}${security === 'held' ? ' held' : ''}${mine && !camera ? '' : ' adjustable'}`}
-                onClick={() => {
-                  if (mine) return camera ? setFocused(videoKey(camera)) : undefined;
-                  setAdjusting(open ? null : occupant.userId);
-                }}
-                onContextMenu={
-                  mine
-                    ? undefined
-                    : (event) => {
-                        event.preventDefault();
-                        setVolumeMenu({ userId: occupant.userId, spot: spotOf(event) });
-                      }
-                }
-                title={mine ? undefined : `Change how loud ${name} is for you`}
-              >
-                {showCamera ? (
-                  <VideoView key={camera.sid} video={camera} className="voice-tile-video" />
-                ) : (
-                  <div className="voice-tile-avatar" style={{ background: accentOf(occupant.userId) }}>
-                    {initials(name)}
-                  </div>
-                )}
-                <div className="voice-tile-name">{name}</div>
-                {voice.hiddenCameras.includes(occupant.userId) ? (
-                  <div className="voice-tile-note">
-                    Camera hidden{' '}
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        session.setCameraHidden(occupant.userId, false);
-                      }}
-                    >
-                      Show
-                    </button>
-                  </div>
-                ) : null}
-                <div className="voice-tile-note">
-                  {security === 'held'
-                    ? 'Needs your OK'
-                    : security === 'waiting'
-                      ? 'Securing…'
-                      : occupant.serverDeaf || occupant.selfDeaf
-                        ? 'Deafened'
-                        : muted
-                          ? 'Muted'
-                          : volume !== 1
-                            ? `${Math.round(volume * 100)}%`
-                            : !live && occupant.sharingScreen
-                              ? 'Sharing their screen'
-                              : !live && occupant.cameraOn
-                                ? 'Camera on'
-                                : ' '}
-                </div>
-                {open ? (
-                  <div className="voice-tile-volume" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      type="range"
-                      className="voice-range"
-                      min={0}
-                      max={200}
-                      step={5}
-                      value={Math.round(volume * 100)}
-                      onChange={(event) => voicePrefs.setVolumeFor(occupant.userId, Number(event.target.value) / 100)}
-                      aria-label={`Volume of ${name}, for you only`}
-                    />
-                    <div className="voice-tile-volume-note">
-                      {Math.round(volume * 100)}% · only you hear the change
-                    </div>
-                    {camera ? (
-                      <button type="button" className="link-button" onClick={() => setFocused(videoKey(camera))}>
-                        Make their camera bigger
-                      </button>
-                    ) : null}
-                    {camera ? (
-                      <button
-                        type="button"
-                        className="link-button"
-                        title="Stop fetching their camera on this device. They keep sending it to everyone else."
-                        onClick={() => session.setCameraHidden(occupant.userId, true)}
-                      >
-                        Hide for me
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {volumeMenu?.userId === occupant.userId ? (
-                  <VolumeMenu
-                    userId={occupant.userId}
-                    name={name}
-                    spot={volumeMenu.spot}
-                    onClose={() => setVolumeMenu(null)}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
+        <div className="call-grid" ref={gridBox} style={{ '--tile-width': `${width}px` } as React.CSSProperties}>
+          {tiles.map(renderTile)}
         </div>
       )}
 
@@ -412,40 +503,90 @@ export function VoiceStage(
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
       {live && voice.shareNotice && !voice.sharing ? <p className="voice-stage-error">{voice.shareNotice}</p> : null}
 
-      <div className="voice-stage-controls">
-        {live && voice.phase === 'connected' && voice.can.video ? (
+      <div className="call-controls">
+        {myState ? (
+          <>
+            <button
+              type="button"
+              className={`call-button${myState.selfMute ? ' off' : ''}`}
+              title={myState.selfMute ? 'Unmute' : 'Mute'}
+              aria-label={myState.selfMute ? 'Unmute' : 'Mute'}
+              onClick={() => updateVoice({ selfMute: !myState.selfMute })}
+            >
+              <MicGlyph size={20} off={myState.selfMute} />
+            </button>
+            <button
+              type="button"
+              className={`call-button${myState.selfDeaf ? ' off' : ''}`}
+              title={myState.selfDeaf ? 'Undeafen' : 'Deafen'}
+              aria-label={myState.selfDeaf ? 'Undeafen' : 'Deafen'}
+              onClick={() => updateVoice({ selfDeaf: !myState.selfDeaf })}
+            >
+              <HeadphonesGlyph size={20} off={myState.selfDeaf} />
+            </button>
+          </>
+        ) : null}
+        {connected && voice.can.video ? (
           <button
             type="button"
-            className={voice.camera ? 'button inline' : 'button secondary inline'}
+            className={`call-button${voice.camera ? ' on' : ''}`}
+            title={voice.camera ? 'Turn camera off' : 'Turn camera on'}
+            aria-label={voice.camera ? 'Turn camera off' : 'Turn camera on'}
             onClick={() => void session.setCamera(!voice.camera)}
           >
-            {voice.camera ? 'Turn camera off' : 'Turn camera on'}
+            <CameraGlyph size={20} />
           </button>
         ) : null}
-        {live && voice.phase === 'connected' && voice.can.screenShare ? (
+        {connected && voice.can.screenShare ? (
           <button
             type="button"
-            className={voice.sharing ? 'button inline' : 'button secondary inline'}
+            className={`call-button${voice.sharing ? ' on' : ''}`}
+            title={voice.sharing ? 'Stop sharing' : 'Share your screen'}
+            aria-label={voice.sharing ? 'Stop sharing' : 'Share your screen'}
             onClick={() => void session.setScreenShare(!voice.sharing)}
           >
-            {voice.sharing ? 'Stop sharing' : 'Share your screen'}
+            <ScreenGlyph size={20} />
           </button>
         ) : null}
-        {here || !timedOutUntil ? (
+        {live ? (
+          <span className="call-quality-anchor">
+            <button
+              type="button"
+              className={`call-button${qualityOpen ? ' on' : ''}`}
+              title="Stream quality"
+              aria-label="Stream quality"
+              onClick={() => setQualityOpen((open) => !open)}
+            >
+              <SlidersGlyph size={20} />
+            </button>
+            {qualityOpen ? (
+              <CallQuality
+                sharing={voice.sharing}
+                canShare={voice.can.screenShare}
+                onClose={() => setQualityOpen(false)}
+                onAllSettings={() => setSettingsOpen(true)}
+              />
+            ) : null}
+          </span>
+        ) : null}
+        {here ? (
+          <button type="button" className="call-button hang-up" title="Leave" aria-label="Leave" onClick={() => leaveVoice()}>
+            <HangUpGlyph size={22} />
+          </button>
+        ) : !timedOutUntil ? (
           <button
             type="button"
-            className={here ? 'button secondary inline' : 'button inline'}
+            className="button inline call-join"
             disabled={joining}
-            onClick={() => (here ? leaveVoice() : place.kind === 'dm' ? joinDmCall(place.id) : joinVoice(place.id))}
+            onClick={() => (place.kind === 'dm' ? joinDmCall(place.id) : joinVoice(place.id))}
           >
-            {here ? 'Leave' : joining ? 'Joining…' : 'Join'}
+            {joining ? 'Joining…' : 'Join'}
           </button>
         ) : (
-          <p className="voice-stage-error">
-            You are timed out until {timedOutUntil.toLocaleString()}.
-          </p>
+          <p className="voice-stage-error">You are timed out until {timedOutUntil.toLocaleString()}.</p>
         )}
       </div>
+      {settingsOpen ? <VoiceSettings onClose={() => setSettingsOpen(false)} /> : null}
     </div>
   );
 }
