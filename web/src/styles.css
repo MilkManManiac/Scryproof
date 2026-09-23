@@ -3705,61 +3705,34 @@ video.mirrored {
   font-weight: 600;
 }
 
+/* The emoji picker: search and skin tone on top, category tabs, one
+   scrolling grid with a sticky heading per category, and a footer naming
+   whatever the pointer is on. Nine columns of 36px on a computer. */
 .reaction-picker {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   z-index: 40;
-  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  width: 352px;
+  padding: 6px 6px 0;
   background: var(--panel-solid);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--hi), var(--shadow-2);
   animation: arrive var(--t-arrive) var(--ease);
 }
-.reaction-picker-row {
-  display: grid;
-  grid-template-columns: repeat(8, 32px);
-}
-.reaction-picker-row + .reaction-picker-row {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-}
-.reaction-picker-emoji {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  font-size: 18px;
-  cursor: pointer;
-}
-.reaction-picker-emoji:hover {
-  background: var(--panel-4);
-}
-.reaction-picker-group {
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--line);
-}
-.reaction-picker-label {
-  padding: 2px 4px 4px;
-  font-size: 12px;
-  font-weight: 680;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.reaction-picker-group .reaction-picker-row {
+.emoji-picker-top {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  max-width: 256px;
+  gap: 4px;
+  align-items: center;
 }
 .reaction-picker-search {
   box-sizing: border-box;
-  width: 100%;
-  margin-bottom: 6px;
+  flex: 1;
+  min-width: 0;
   padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3774,17 +3747,153 @@ video.mirrored {
 .reaction-picker-search::placeholder {
   color: var(--text-faint);
 }
-/* Always the full eight columns, so two results do not shrink the picker
-   (and its search box) to the width of two emoji. */
-.reaction-picker-search-results {
+.emoji-tone-button {
+  flex: none;
+  width: 32px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  font-size: 17px;
+  cursor: pointer;
+}
+.emoji-tone-button:hover,
+.emoji-tone-button[aria-expanded='true'] {
+  background: var(--panel-4);
+}
+.emoji-tone-choices {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 2;
+  display: flex;
+  padding: 4px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.emoji-tab {
+  flex: none;
+  width: 32px;
+  height: 30px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  font-size: 17px;
+  cursor: pointer;
+  opacity: 0.6;
+  filter: grayscale(0.6);
+}
+.emoji-tab:hover {
+  opacity: 1;
+  background: var(--panel-4);
+}
+.emoji-tab.on {
+  opacity: 1;
+  filter: none;
+  border-bottom-color: var(--accent);
+}
+.emoji-tab .custom-emoji {
+  height: 20px;
+  vertical-align: middle;
+}
+.emoji-scroll {
+  position: relative;
+  height: 300px;
+  margin-top: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.emoji-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 4px 4px;
+  background: var(--panel-solid);
+}
+/* A block of up to ten rows. Off screen, the browser keeps its reserved
+   height (set inline from its count) and skips laying out its emoji. */
+.emoji-grid {
   display: grid;
-  grid-template-columns: repeat(8, 32px);
+  grid-template-columns: repeat(auto-fill, 36px);
+  content-visibility: auto;
+}
+.reaction-picker-emoji {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.reaction-picker-emoji:hover,
+.reaction-picker-emoji:focus-visible,
+.reaction-picker-emoji.on {
+  background: var(--panel-4);
+}
+.reaction-picker-emoji .custom-emoji {
+  height: 24px;
+  max-width: 30px;
+  vertical-align: middle;
+}
+.reaction-picker-label {
+  padding: 2px 4px 4px;
+  font-size: 12px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 .reaction-picker-no-results {
-  grid-column: 1 / -1;
-  padding: 6px 4px;
+  padding: 12px 4px;
   font-size: 13px;
   color: var(--text-dim);
+}
+.emoji-footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 44px;
+  padding: 0 4px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.emoji-footer-big {
+  flex: none;
+  font-size: 28px;
+  line-height: 1;
+}
+.emoji-footer-big .custom-emoji {
+  height: 28px;
+  max-width: 40px;
+  vertical-align: middle;
+}
+.emoji-footer-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.emoji-footer-hint {
+  font-size: 13px;
+  color: var(--text-faint);
 }
 
 .new-divider {
@@ -5341,6 +5450,42 @@ kbd {
 .reaction-picker.above-right {
   top: auto;
   bottom: calc(100% + 6px);
+}
+/* Turned to fit, when the side it hangs from has no room (measured in
+   ReactionPicker when it opens). */
+.reaction-picker.flip-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.reaction-picker.flip-down {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.reaction-picker.flip-left {
+  left: 0;
+  right: auto;
+}
+.reaction-picker.flip-right {
+  left: auto;
+  right: 0;
+}
+/* On a phone the picker is a sheet along the bottom of the screen,
+   whichever button opened it, so it can never hang off an edge. */
+@media (max-width: 640px) {
+  .reaction-picker,
+  .reaction-picker.below-left,
+  .reaction-picker.above-right {
+    position: fixed;
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 60;
+    width: auto;
+  }
+  .emoji-scroll {
+    height: min(46vh, 360px);
+  }
 }
 .composer-pop {
   position: relative;
