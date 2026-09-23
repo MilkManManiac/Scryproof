@@ -157,6 +157,39 @@ Wes to try screen share with his brother, then ship.
     (HANDOFF, "Calls like Discord"). Read
     `references/the-wall.md` in the milk-project skill before starting.
 
+## Session E: what GAMEPLAN promised and nobody built (found 2026-09-23)
+
+18. **Read the outbound firewall log.** Outbound is default deny
+    (`infra/box/remote/40-firewall.sh`), but nobody has read a day of the
+    blocked log. That log is the proof nothing on the box phones home
+    (GAMEPLAN section 4). Read only; do it first.
+19. **Data export.** Any member downloads everything they posted as JSON;
+    the owner exports the whole server (GAMEPLAN section 4, M8). Encrypted
+    channels and DMs export as the member's device can read them, never
+    through the server.
+20. **Per-channel message expiry.** "Messages here last 30 days"
+    (GAMEPLAN 1b finding 4, M8). Deleting deletes the row and the file.
+21. **Monthly restore test, automated.** The restore was proven once by
+    hand. Make it run monthly and show pass/fail in the admin panel.
+22. **LiveKit key rotation** (quarterly) and **the monthly kernel reboot**
+    (unlock after). A command for the first, a reminder for both.
+23. **Wes and the group only:** a full D&D night on voice with nobody
+    asking for Discord (M3 done-when), and Wes saying it doesn't feel like
+    a clone (M5 done-when).
+
+## Session F: the last one, when everything else is wrapped up
+
+24. **The full review.** Wes, 2026-09-23: "an extremely thorough review of
+    the project and everything involved. Make sure all is secure, clean,
+    optimized, etc. Then I'll let some other devs review." Everything:
+    server, web, desktop shell, box scripts, nginx, firewall, backups,
+    dependencies, the crypto. Security first (GAMEPLAN 1b is the checklist
+    to audit against), then dead code and cleanliness, then speed (the web
+    bundle is 1.4 MB in one chunk). Then write a short guide for outside
+    developers: what the project is, how to run it locally, the threat
+    model, where the crypto lives, and what is known and accepted. Their
+    findings come back as a list and get fixed like any batch.
+
 ## Already done, so off the list
 
 Private channel switch on create (exists). Tray icon and start with
