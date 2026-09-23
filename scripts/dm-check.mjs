@@ -303,7 +303,10 @@ try {
   await Promise.all([wes.signIn(), alex.signIn()]);
 
   /* 1 */
+  // A name opens the profile card (2026-09-22); Message on it opens the DM.
   check('Wes finds Alex in the member list', await wes.click('.member', 'Alex'));
+  await wes.until(`document.querySelector('.profile-card') !== null`);
+  check('his card offers Message, and Wes takes it', await wes.click('.profile-card-actions button', 'Message'));
   check('the conversation opens and says it is encrypted', Boolean(await wes.until(`document.querySelector('.dm-lock') !== null`)));
   await wes.say(FIRST);
   {
