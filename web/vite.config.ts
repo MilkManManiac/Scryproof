@@ -74,5 +74,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     target: 'es2022',
+    // Gzipping every chunk only to print its size costs memory the box has little of.
+    reportCompressedSize: false,
   },
 });

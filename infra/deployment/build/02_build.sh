@@ -16,7 +16,11 @@ node_enable_toolchain
 rm -rf node_modules
 
 npm ci --include=optional
-npm run build
+# The box has 1 GB and no swap, with the app, Postgres and LiveKit already
+# running. Left alone, Node grows its heap far past what the web build needs
+# (under 256 MB, measured 2026-09-23) and the box thrashes until systemd
+# gives up on the build. A cap makes it collect early instead.
+NODE_OPTIONS=--max-old-space-size=320 npm run build
 
 # Fail the build here, not at 9pm on a D&D night.
 test -f server/dist/index.js || die "server bundle missing"
