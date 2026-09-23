@@ -17,6 +17,7 @@ import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@sc
 
 import { api } from '../lib/api';
 import { jumpTo } from '../lib/jump';
+import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { EDIT_LAST, on } from '../lib/signals';
 import { unreadLine } from '../lib/unread-line';
@@ -62,6 +63,7 @@ function dayLabel(date: Date): string {
 
 export function MessageList({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, loadMessages, loadNewerMessages, markRead } = useStore();
+  useLocalNames();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [loadingOlder, setLoadingOlder] = useState(false);

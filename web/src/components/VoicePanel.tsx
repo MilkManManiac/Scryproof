@@ -20,6 +20,7 @@ import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
 import { publicOrigin } from '../lib/desktop';
 import { voicePrefs } from '../lib/voice-prefs';
+import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
 import { screenSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
@@ -27,10 +28,11 @@ import { useVoice } from '../state/useVoice';
 
 function useNames(): (userId: string) => string {
   const { state } = useStore();
+  useLocalNames();
   const members = state.members[state.selectedServerId ?? ''] ?? [];
   return (userId) => {
     const member = members.find((entry) => entry.userId === userId);
-    return member?.nickname ?? member?.user.displayName ?? 'Someone';
+    return nameFor(userId, member?.nickname ?? member?.user.displayName ?? 'Someone');
   };
 }
 

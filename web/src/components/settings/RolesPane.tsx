@@ -13,6 +13,8 @@ import { LIMITS, Permission, decodeMask, encodeMask, validateRoleName } from '@s
 import type { Member, Role, ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../../lib/api';
+import { useLocalNames } from '../../lib/local-names';
+import { nameOf } from '../../lib/mentions';
 import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { Avatar } from '../Avatar';
 import { PermissionList } from './PermissionList';
@@ -56,6 +58,7 @@ export function RolesPane({
   members: Member[];
   authority: Authority;
 }) {
+  useLocalNames();
   const ordered = useMemo(
     () => [...server.roles].sort((a, b) => b.position - a.position),
     [server.roles],
@@ -681,7 +684,7 @@ function MemberRow({
     <div className="member-row">
       <Avatar user={member.user} small />
       <span className="member-row-name">
-        {member.nickname ?? member.user.displayName}
+        {nameOf(member)}
         <span className="member-row-handle">@{member.user.username}</span>
       </span>
       <button

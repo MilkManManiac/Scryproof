@@ -17,6 +17,8 @@ import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@s
 
 import { ApiError, api } from '../../lib/api';
 import { publicOrigin } from '../../lib/desktop';
+import { useLocalNames } from '../../lib/local-names';
+import { nameOf } from '../../lib/mentions';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
@@ -48,6 +50,7 @@ export function ServerSettings({
   onClose: () => void;
 }) {
   const { state } = useStore();
+  useLocalNames();
   const members = state.members[server.id] ?? [];
   const authority = useMemo(
     () => authorityFor(server, members, state.user?.id ?? null),
@@ -440,7 +443,7 @@ function MembersPane({
             <div className="member-row" key={entry.userId}>
               <Avatar user={entry.user} small />
               <span className="member-row-name">
-                {entry.nickname ?? entry.user.displayName}
+                {nameOf(entry)}
                 <span className="member-row-handle">@{entry.user.username}</span>
               </span>
 
@@ -477,7 +480,7 @@ function MembersPane({
 
       {member ? (
         <div className="member-detail">
-          <h3>{member.nickname ?? member.user.displayName}</h3>
+          <h3>{nameOf(member)}</h3>
 
           {authority.canActOnMember(member) ? null : (
             <p className="settings-warn">

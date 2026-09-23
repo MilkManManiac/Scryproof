@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { Message, ServerDetail } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { useLocalNames } from '../lib/local-names';
 import { nameOf, toPlainLine } from '../lib/mentions';
 import { useStore } from '../state/store';
 
@@ -42,6 +43,7 @@ export function SearchResults({
   onClose: () => void;
 }) {
   const { state, jumpToMessage } = useStore();
+  useLocalNames();
   const members = state.members[server.id] ?? [];
   const words = query.trim().split(/\s+/).filter(Boolean);
 

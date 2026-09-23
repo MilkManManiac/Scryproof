@@ -9,7 +9,16 @@
 import { emojiToken, mentionToken, splitContent } from '@scryproof/shared';
 import type { ContentPart, Member } from '@scryproof/shared';
 
-export const nameOf = (member: Member): string => member.nickname ?? member.user.displayName;
+import { nameFor } from './local-names';
+
+/**
+ * What to show for this member: a local name, if this device set one,
+ * otherwise their server nickname, otherwise their display name. This is
+ * the one place that order is decided; everything that shows a name should
+ * go through this (or `useNames` in `VoicePanel.tsx`, which does the same
+ * for a bare user id).
+ */
+export const nameOf = (member: Member): string => nameFor(member.userId, member.nickname ?? member.user.displayName);
 
 /**
  * What to type after the @ for this member: their name, unless somebody else

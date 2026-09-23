@@ -21,11 +21,14 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import type { PublicUser } from '@scryproof/shared';
 
+import { localNames, nameFor } from '../lib/local-names';
 import { placeBeside } from '../lib/place';
+import { voicePrefs } from '../lib/voice-prefs';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -91,6 +94,10 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const localNamesNow = useSyncExternalStore(localNames.subscribe, localNames.snapshot);
+  const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
 
   const { user, serverId } = opened;
   const self = state.user?.id === user.id;
@@ -107,7 +114,19 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
   const callServer = call ? state.servers[call.serverId] : null;
   const callChannel = callServer?.channels.find((channel) => channel.id === call?.channelId);
   const blocked = state.blocks.has(user.id);
-  const name = member?.nickname ?? user.displayName;
+  // What this device would show without a local name: the server nickname,
+  // then the display name. The local name, when there is one, wins over that.
+  const otherwiseName = member?.nickname ?? user.displayName;
+  const localName = localNamesNow[user.id];
+  const name = nameFor(user.id, otherwiseName);
+
+  // Are we in the same call as them, right now? The volume slider only makes
+  // sense there: it changes how loud they are for you, in that call.
+  const myCall = Object.values(state.voiceStates).find(
+    (voice) => voice.userId === state.user?.id && voice.channelId,
+  );
+  const sameCall = !self && Boolean(call) && Boolean(myCall) && call?.channelId === myCall?.channelId;
+  const volume = prefs.volumes[user.id] ?? 1;
 
   // Measured once drawn, then placed. Until then it sits off screen.
   useLayoutEffect(() => {
@@ -129,13 +148,20 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
-    // Next tick, or the click that opened the card closes it.
-    const timer = setTimeout(() => window.addEventListener('mousedown', onDown), 0);
+    // Capture phase, not bubble: several overlays in this app (Modal,
+    // QuickSwitcher, NoticeTimeline, PinnedMessages) call stopPropagation on
+    // mousedown inside their own box, so that clicking them does not also
+    // trigger their own backdrop's onClick-to-close. That stops the event
+    // before it bubbles up to a plain `window.addEventListener('mousedown',
+    // ...)`, so a card left open behind one of those never saw the click
+    // that should have closed it. Listening on the way down instead runs
+    // before any of that, and nothing below this can stop it.
+    const timer = setTimeout(() => window.addEventListener('mousedown', onDown, true), 0);
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onClose);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onClose);
     };
@@ -178,8 +204,51 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
           <div className="profile-card-name">{name}</div>
           <div className="profile-card-handle">
             @{user.username}
-            {member?.nickname ? <span title="Their name outside this server"> &middot; {user.displayName}</span> : null}
+            {localName ? (
+              <span title="Their name everywhere else"> &middot; {otherwiseName}</span>
+            ) : member?.nickname ? (
+              <span title="Their name outside this server"> &middot; {user.displayName}</span>
+            ) : null}
           </div>
+          {self ? null : renaming ? (
+            <form
+              className="profile-card-rename"
+              onSubmit={(event) => {
+                event.preventDefault();
+                localNames.set(user.id, renameDraft);
+                setRenaming(false);
+              }}
+            >
+              <input
+                type="text"
+                className="profile-card-rename-input"
+                placeholder={otherwiseName}
+                value={renameDraft}
+                maxLength={64}
+                autoFocus
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onBlur={() => {
+                  localNames.set(user.id, renameDraft);
+                  setRenaming(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setRenaming(false);
+                }}
+              />
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="link-button profile-card-rename-open"
+              title="A name only you see, on this device"
+              onClick={() => {
+                setRenameDraft(localName ?? '');
+                setRenaming(true);
+              }}
+            >
+              {localName ? 'Change what you call them' : 'Call them…'}
+            </button>
+          )}
         </div>
 
         {user.statusText ? <div className="profile-card-status">{user.statusText}</div> : null}
@@ -215,6 +284,22 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
                 <CameraGlyph />
               </span>
             ) : null}
+          </div>
+        ) : null}
+
+        {sameCall ? (
+          <div className="profile-card-volume">
+            <input
+              type="range"
+              className="voice-range"
+              min={0}
+              max={200}
+              step={5}
+              value={Math.round(volume * 100)}
+              onChange={(event) => voicePrefs.setVolumeFor(user.id, Number(event.target.value) / 100)}
+              aria-label={`Volume of ${name}, for you only`}
+            />
+            <div className="profile-card-volume-note">{Math.round(volume * 100)}% &middot; only you hear the change</div>
           </div>
         ) : null}
 

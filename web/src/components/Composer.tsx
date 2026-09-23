@@ -14,6 +14,7 @@ import { ApiError, api } from '../lib/api';
 import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand } from '../lib/commands';
 import { channelDrafts } from '../lib/drafts';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
+import { useLocalNames } from '../lib/local-names';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
@@ -44,6 +45,7 @@ interface Offer {
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, sendTyping, replyTo, applyTracker } = useStore();
+  useLocalNames();
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [chosen, setChosen] = useState(0);
