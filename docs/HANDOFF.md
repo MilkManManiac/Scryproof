@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, late night. The big one is merged on main and not deployed (last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, 00:45 ET. The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1888,7 +1888,7 @@ until he says so. Tests: web 169, server 168. No migration.
 **Still open from earlier today:** channel deletion (ask whether he
 lacked the permission on lamp's server or could not find the button).
 
-## Commands in DMs, Delete on the right-click, 2026-09-22 (staged)
+## Commands in DMs, Delete on the right-click, 2026-09-22 (live with the big one)
 
 Wes, after the release: "I don't think it works on dms. I hit / but it
 doesn't even show options. Check on than then see what else you want to
@@ -1913,7 +1913,7 @@ Opus briefs (soundboard, voice changers, initiative tracker), each a
 file beside it. The DM commands and the Delete item ship with that
 batch.
 
-## The big one, 2026-09-22 night (merged on main, not deployed)
+## The big one, 2026-09-22 night (live 2026-09-23 00:44 ET, client 1790124190233)
 
 Wes: "Wanna fan out and tackle those?" Eight agents, eight worktrees,
 all eight merged the same night. Sonnet built the invite link, polls
@@ -1952,3 +1952,27 @@ main, which is the clean way to do it. Tests: server 206, web 207;
 
 **Not tried by a person:** any of it. Voice messages, the soundboard in
 a real call, and what the voice changers sound like most of all.
+
+**Deployed** with `bash scripts/release.sh` after Wes: "Yea ship it".
+The box applied migrations 0012 to 0016 on restart (17 rows in
+`drizzle.__drizzle_migrations`; `poll_votes`, `events`, `event_rsvps`,
+`bookmarks`, `sounds`, `trackers` all present), health came back, the
+worklet is served at `/worklets/pitch-shift.js`.
+
+**The jump fix, shipped in the same release (`1c1dfb0`).** Wes: "only
+like the first time someone does one of the jump animations shows to
+other people." Not the spam. `Stage.tsx` only played a spawn message
+that landed in `selectedChannelId`, and joining voice selects the voice
+channel, so after his friends joined the call every jump in #general
+went to their history with no animation. The box journal showed both
+users taking voice tokens right at the time of the test. Now a spawn
+plays for everyone looking at the same server, whatever channel or
+voice room is in front; a jump that lands while the window is hidden
+waits (three at most, thirty seconds at most) and plays on return; and
+`HEARTBEAT_TIMEOUT_MS` went 60s to 100s, because a hidden tab's timers
+are throttled to once a minute and the sweep was cutting those sockets.
+Could not reproduce headless any other way (dev and production bundle,
+two users, spaced and overlapping). `vite preview` on 4173 now proxies
+`/api` and `/gateway` so the production bundle can be tested locally;
+`shot.mjs` takes `WEB_URL=http://localhost:4173`.
+
