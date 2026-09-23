@@ -706,6 +706,18 @@ export const dmChannels = pgTable(
     id: id(),
     /** "userA:userB", ids sorted, for a one-to-one. Null for a group. */
     pairKey: text('pair_key'),
+    /**
+     * A pair is found again by its two people and never changes who is in it.
+     * A group is made on purpose, grows, and can be left.
+     */
+    kind: text('kind').$type<'pair' | 'group'>().notNull().default('pair'),
+    /**
+     * A group's name, when somebody gave it one. Null draws the members'
+     * names instead. Unlike everything said inside, this is stored in the
+     * clear: the server needs no key to read it, and the screen that sets it
+     * says so.
+     */
+    title: text('title'),
     lastMessageId: text('last_message_id'),
     createdAt: createdAt(),
   },
@@ -806,6 +818,7 @@ export const dmFiles = pgTable(
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
 export type DmChannelRow = typeof dmChannels.$inferSelect;
+export type DmMemberRow = typeof dmMembers.$inferSelect;
 export type DmMessageRow = typeof dmMessages.$inferSelect;
 export type DmMessageKeyRow = typeof dmMessageKeys.$inferSelect;
 

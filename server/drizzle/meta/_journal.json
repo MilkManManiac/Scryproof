@@ -127,6 +127,13 @@
       "when": 1790131164810,
       "tag": "0017_massive_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790137301575,
+      "tag": "0018_flimsy_wolverine",
+      "breakpoints": true
     }
   ]
 }

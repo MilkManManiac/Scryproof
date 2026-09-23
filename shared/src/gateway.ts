@@ -160,6 +160,10 @@ export type ServerEvent =
    * each copy carrying only the wrapped keys addressed to that person.
    */
   | { t: 'dm_create'; d: DmChannel }
+  /** Somebody joined or left a group. Everyone still in it is sent the new list. */
+  | { t: 'dm_update'; d: DmChannel }
+  /** This person left a group, from this device or another. */
+  | { t: 'dm_left'; d: { dmId: Snowflake } }
   | { t: 'dm_message_create'; d: DmMessage }
   /** The same message sealed again by its author: an edit. */
   | { t: 'dm_message_update'; d: DmMessage }

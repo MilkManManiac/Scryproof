@@ -16,7 +16,7 @@
 import { eq } from 'drizzle-orm';
 
 import { getDb } from '../db/index.js';
-import { dmMembers } from '../db/schema.js';
+import { dmChannels, dmMembers } from '../db/schema.js';
 import { forbidden, notFound } from '../lib/http-error.js';
 import { blockBetween } from './blocks.js';
 import { sharesAServer } from './servers.js';
@@ -49,6 +49,15 @@ export async function requireDmCallAllowed(dmId: string, userId: string): Promis
   if (!memberIds.includes(userId)) {
     throw notFound('That conversation does not exist.', 'unknown_dm');
   }
+
+  // In a group, a block between two members does not stop the rest calling,
+  // the same way it does not stop the rest writing: the group chose to be
+  // together, and one person's block is theirs to act on by leaving the call.
+  const [channel] = await getDb()
+    .select({ kind: dmChannels.kind })
+    .from(dmChannels)
+    .where(eq(dmChannels.id, dmId));
+  if (channel?.kind === 'group') return memberIds;
 
   for (const memberId of memberIds) {
     if (memberId === userId) continue;

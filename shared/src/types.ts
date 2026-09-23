@@ -390,6 +390,13 @@ export interface DeviceEndorsement {
 
 export interface DmChannel {
   id: Snowflake;
+  /**
+   * 'pair' is two people, found again by who they are. 'group' is three or
+   * more, made on purpose; people can be added and can leave.
+   */
+  kind: 'pair' | 'group';
+  /** A group's name if it was given one. Stored in the clear, unlike the messages. */
+  title: string | null;
   /** Everyone in it, including the person asking. */
   members: PublicUser[];
   lastMessageId: Snowflake | null;

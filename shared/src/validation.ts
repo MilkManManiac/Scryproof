@@ -51,6 +51,13 @@ export const LIMITS = {
    * line on size and type instead.
    */
   soundSeconds: 5,
+  /**
+   * Everyone in a group conversation, the person asking included. Every
+   * message is locked once per device of everyone in it, in the sender's
+   * browser, so this is kept to a size that stays quick to send.
+   */
+  groupDmMembers: 10,
+  groupDmTitle: { max: 64 },
 } as const;
 
 /**

@@ -4209,7 +4209,8 @@ kbd {
 .dm-call-toggle {
   margin-left: auto;
 }
-.dm-call-toggle + .dm-block-toggle {
+.dm-call-toggle + .dm-block-toggle,
+.dm-call-toggle + .dm-people-anchor {
   margin-left: 12px;
 }
 
@@ -4239,6 +4240,80 @@ kbd {
 }
 .dm-call-mark + .dm-dot {
   margin-left: 6px;
+/* A group has no one face, so its row shows how many are in it. */
+.dm-group-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-size: 11px;
+  font-weight: 640;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+}
+
+.dm-picker-row.chosen {
+  background: rgb(var(--bg-rgb) / 0.6);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dm-picker-tick {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent);
+}
+.dm-picker-note {
+  margin: 0 0 10px;
+}
+
+/* The people in a group, dropped from the header. */
+.dm-people-anchor {
+  position: relative;
+  margin-left: auto;
+}
+.dm-people {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: min(320px, calc(100vw - 32px));
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-3);
+}
+.dm-people-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 14px;
+}
+.dm-people-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.dm-people-note {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.dm-people-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 2px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
 }
 
 .dm-recovery {
@@ -4618,6 +4693,7 @@ kbd {
 }
 .profile-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 2px;
 }

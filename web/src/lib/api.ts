@@ -428,6 +428,9 @@ export const api = {
       post<{ added: number }>(`/api/dms/${dmId}/keys`, body),
     list: () => get<{ dms: DmChannel[] }>('/api/dms'),
     open: (userId: string) => post<{ dm: DmChannel }>('/api/dms', { userId }),
+    createGroup: (body: { userIds: string[]; title?: string | null }) => post<{ dm: DmChannel }>('/api/dms/groups', body),
+    addMember: (dmId: string, userId: string) => post<{ dm: DmChannel }>(`/api/dms/${dmId}/members`, { userId }),
+    leave: (dmId: string) => post<{ ok: true }>(`/api/dms/${dmId}/leave`, {}),
     devices: (dmId: string) => get<{ devices: DeviceKey[] }>(`/api/dms/${dmId}/devices`),
     replay: (dmId: string, messageId: string) =>
       post<{ ok: true }>(`/api/dms/${dmId}/messages/${messageId}/replay`, {}),
