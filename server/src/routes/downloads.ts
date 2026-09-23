@@ -7,6 +7,12 @@
  * from there: https://scryproof.com/download/Scryproof-Setup.exe. Anyone can
  * fetch it; it holds no secret, and an account still needs an invite.
  *
+ * Beside it, `installer.json`: the installer's version, hash and a signature
+ * made on Wes's PC. Installed apps read it to update themselves
+ * (desktop/src/installer-core.js). The box cannot make one; it only hands it
+ * out, and never from a cache, so an app sees a new installer the moment it
+ * is published.
+ *
  * Only names on the list below are served. Nothing under `downloads/` is
  * reachable by guessing a path.
  */
@@ -22,6 +28,7 @@ import { notFound } from '../lib/http-error.js';
 
 const DOWNLOADS: Record<string, string> = {
   'Scryproof-Setup.exe': 'application/vnd.microsoft.portable-executable',
+  'installer.json': 'application/json',
 };
 
 export const downloadsDir = (): string => resolve(config.dataDir, 'downloads');
@@ -40,7 +47,8 @@ export async function registerDownloadRoutes(app: FastifyInstance): Promise<void
     }
     void reply.header('Content-Type', type);
     void reply.header('Content-Length', String(size));
-    void reply.header('Content-Disposition', `attachment; filename="${name}"`);
+    // The installer is saved by a browser; the JSON is read by the app.
+    if (!name.endsWith('.json')) void reply.header('Content-Disposition', `attachment; filename="${name}"`);
     void reply.header('Cache-Control', 'no-store');
     return reply.send(createReadStream(path));
   });

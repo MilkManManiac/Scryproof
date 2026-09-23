@@ -4,9 +4,10 @@
  * socket, and the invite links it writes for people to paste into a browser.
  *
  *
- * And two things it can ask for: to be reloaded onto a newer client that the
+ * And three things it can ask for: to be reloaded onto a newer client that the
  * main process has already fetched and checked (the page never sees the update
- * and has no say in whether it is genuine), and to be told when its
+ * and has no say in whether it is genuine), to be restarted onto a newer
+ * installer checked the same way, and to be told when its
  * push-to-talk key goes down and up while another program has the keyboard.
  *
  * CommonJS because a sandboxed preload cannot be a module.
@@ -32,6 +33,13 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('scryproof:update-ready', (_event, version) => listener(version));
     },
     applyUpdate: () => ipcRenderer.invoke('scryproof:update-apply'),
+    /** The same for the app itself: the version of a checked installer waiting, or null. */
+    shellUpdateState: () => ipcRenderer.invoke('scryproof:shell-state'),
+    onShellUpdateReady: (listener) => {
+      ipcRenderer.on('scryproof:shell-ready', (_event, version) => listener(version));
+    },
+    /** Runs the installer and closes the app; the installer opens it again. */
+    applyShellUpdate: () => ipcRenderer.invoke('scryproof:shell-apply'),
     /**
      * Watch one key (a `KeyboardEvent.code`) system-wide, or null to stop.
      * Resolves to whether it is being watched; false means fall back to the

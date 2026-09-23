@@ -1,7 +1,7 @@
 {
   "name": "scryproof-desktop",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
   "author": "Scryproof",
   "type": "module",
@@ -11,7 +11,8 @@
     "start": "electron .",
     "release": "node scripts/make-update.mjs",
     "test": "node --test test/*.test.mjs",
-    "dist": "npm run release && electron-builder --win nsis --publish never"
+    "dist": "npm run release && electron-builder --win nsis --publish never && npm run sign-installer",
+    "sign-installer": "node scripts/sign-installer.mjs"
   },
   "devDependencies": {
     "electron": "44.4.3",
@@ -24,6 +25,7 @@
       "output": "release"
     },
     "npmRebuild": false,
+    "asar": true,
     "files": [
       "src/**",
       "assets/icon.png",
@@ -47,6 +49,15 @@
       "oneClick": true,
       "perMachine": false,
       "artifactName": "Scryproof-Setup-${version}.exe"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableCookieEncryption": true,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
     }
   },
   "dependencies": {

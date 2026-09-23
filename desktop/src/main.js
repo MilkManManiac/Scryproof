@@ -15,21 +15,32 @@
  *     browser would not send it across origins.
  *   - voice, which goes to LiveKit with a token and needs nothing from us.
  *
- * One thing arrives that is code: a newer client, from /desktop-update/. It is
- * used only if it was signed by the key this build was made with, which is on
- * Wes's PC and not on the server. `update-core.js`.
+ * Two things arrive that are code: a newer client, from /desktop-update/, and
+ * a newer installer for this app itself, from /download/. Each is used only if
+ * it was signed by the key this build was made with, which is on Wes's PC and
+ * not on the server. `update-core.js` and `installer-core.js`.
  *
  * One thing this process does that a browser cannot: hear the push-to-talk
  * key while a game has the keyboard. `push-to-talk.js`, and its rules.
  */
 
 import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 import { armContextMenu } from './context-menu.js';
+import {
+  installerFileName,
+  isNewerVersion,
+  readInstallerManifest,
+  verifyInstallerFile,
+  versionFromFileName,
+} from './installer-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { shareMenuTemplate, shareStreams } from './share-menu.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
@@ -50,6 +61,13 @@ const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (proces
 const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
 const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
 const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
+/**
+ * Where newer installers are looked for. An installed copy only: a
+ * development run is electron.exe from node_modules, and running an installer
+ * from it would install over the real app.
+ */
+const INSTALLER_URL = app.isPackaged ? `${SERVER.origin}/download/` : '';
+const INSTALLER_EVERY_MS = 60 * 60_000;
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -237,6 +255,130 @@ function armUpdates() {
   });
   void checkForUpdate();
   setInterval(() => void checkForUpdate(), UPDATE_EVERY_MS).unref();
+}
+
+/* ------------------------------ shell updates ------------------------------ */
+
+/**
+ * The app around the client (Electron, this folder) changes only by running a
+ * new installer. The installer is fetched and checked here, in full, before
+ * the page hears about it; the page only chooses the moment, as it does for a
+ * client. When both are waiting the installer wins, because it carries a
+ * client of its own.
+ *
+ * What is never done: run a file that failed a check (it is deleted), or run
+ * an installer that is not newer than the app running it, however genuinely
+ * signed. There is no going back through this path; that is a reinstall by
+ * hand.
+ */
+const shellDir = () => join(app.getPath('userData'), 'shell-update');
+/** A verified installer waiting for the person to say restart: { version, path, manifest }. */
+let pendingShell = null;
+let shellChecking = false;
+
+/** Anything in the folder that is not a newer installer is gone: half downloads, and the installer that put this version here. */
+async function tidyShellDir() {
+  try {
+    for (const name of await readdir(shellDir())) {
+      const version = versionFromFileName(name);
+      if (!version || !isNewerVersion(version, app.getVersion())) await rm(join(shellDir(), name), { force: true });
+    }
+  } catch { /* no folder yet */ }
+}
+
+/** Download `url` to `path`, stopping as soon as it is bigger than it said it would be. */
+async function download(url, path, size) {
+  const reply = await net.fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
+  if (!reply.ok || !reply.body) throw new Error(`HTTP ${reply.status}`);
+  if (Number(reply.headers.get('content-length') ?? 0) > size) throw new Error('bigger than it was signed at');
+  let written = 0;
+  await pipeline(
+    Readable.fromWeb(reply.body),
+    async function* (source) {
+      for await (const chunk of source) {
+        written += chunk.length;
+        if (written > size) throw new Error('bigger than it was signed at');
+        yield chunk;
+      }
+    },
+    createWriteStream(path),
+  );
+}
+
+async function checkForShellUpdate() {
+  if (!INSTALLER_URL || !UPDATE_KEY || shellChecking) return;
+  shellChecking = true;
+  const part = join(shellDir(), 'installer.part');
+  try {
+    const get = (name) => net.fetch(new URL(name, INSTALLER_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
+    const reply = await get('installer.json');
+    if (!reply.ok) return;
+    const manifest = readInstallerManifest(await reply.text(), UPDATE_KEY);
+    // Forward only, and nothing already waiting is fetched twice.
+    if (!manifest || !isNewerVersion(manifest.version, app.getVersion())) return;
+    if (pendingShell && !isNewerVersion(manifest.version, pendingShell.version)) return;
+
+    await mkdir(shellDir(), { recursive: true });
+    const path = join(shellDir(), installerFileName(manifest.version));
+    // Fetched on an earlier run: kept only if it is still exactly what was signed.
+    if (!(await verifyInstallerFile(path, manifest))) {
+      await rm(path, { force: true });
+      await download(new URL('Scryproof-Setup.exe', INSTALLER_URL).toString(), part, manifest.size);
+      if (!(await verifyInstallerFile(part, manifest))) return;
+      await rename(part, path);
+    }
+    if (pendingShell) await rm(pendingShell.path, { force: true });
+    pendingShell = { version: manifest.version, path, manifest };
+    win?.webContents.send('scryproof:shell-ready', manifest.version);
+  } catch {
+    /* offline, the server is down, or it is mid-publish. Ask again later. */
+  } finally {
+    await rm(part, { force: true }).catch(() => {});
+    shellChecking = false;
+  }
+}
+
+/**
+ * Run the waiting installer and get out of its way. `--updated` is what
+ * electron-builder's own updater passes: the installer waits for this app to
+ * close instead of killing it, and keeps the shortcuts. `/S` is silent (a
+ * one-click install needs no questions), `--force-run` starts the new version
+ * when it is done. The login is in userData, which an upgrade leaves alone.
+ */
+async function applyShellUpdate() {
+  const waiting = pendingShell;
+  if (!waiting) return false;
+  // Checked again from scratch: the file sat on disk since it was verified.
+  if (!isNewerVersion(waiting.version, app.getVersion()) || !(await verifyInstallerFile(waiting.path, waiting.manifest))) {
+    pendingShell = null;
+    await rm(waiting.path, { force: true }).catch(() => {});
+    return false;
+  }
+  // Quit only once Windows has actually started it. An installer that never ran leaves the app open, not gone.
+  const started = await new Promise((resolve) => {
+    try {
+      const child = spawn(waiting.path, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore' });
+      child.once('spawn', () => {
+        child.unref();
+        resolve(true);
+      });
+      child.once('error', () => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+  if (!started) return false;
+  quitting = true;
+  app.quit();
+  return true;
+}
+
+function armShellUpdates() {
+  ipcMain.handle('scryproof:shell-state', (event) => (ours(event) ? (pendingShell?.version ?? null) : null));
+  ipcMain.handle('scryproof:shell-apply', (event) => (ours(event) ? applyShellUpdate() : false));
+  if (!INSTALLER_URL) return;
+  void tidyShellDir().then(checkForShellUpdate);
+  setInterval(() => void checkForShellUpdate(), INSTALLER_EVERY_MS).unref();
 }
 
 /* --------------------------------- gateway --------------------------------- */
@@ -474,5 +616,6 @@ void app.whenReady().then(async () => {
   armPermissions(session.defaultSession);
   createWindow(!startedHidden);
   armUpdates();
+  armShellUpdates();
   armPushToTalk(ipcMain, ours, () => win);
 });
