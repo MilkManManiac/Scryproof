@@ -782,7 +782,7 @@ function MessageRow({
   }
 
   async function saveEdit() {
-    const next = houseRules(fromDraft(draft.trim(), members));
+    const next = fromDraft(houseRules(draft.trim()), members);
     if (!next || next === message.content) {
       setEditing(false);
       return;

@@ -7,7 +7,7 @@
  * not silently round them.
  */
 
-import { encodeMask } from '@scryproof/shared';
+import { encodeMask, houseRules } from '@scryproof/shared';
 import type {
   Attachment,
   Category,
@@ -50,9 +50,11 @@ export function publicUser(row: User): PublicUser {
   return {
     id: row.id,
     username: row.username,
-    displayName: row.displayName,
+    // The house rule holds for names too: someone called BigBaller is shown
+    // as what the joke says they are, everywhere, without touching the row.
+    displayName: houseRules(row.displayName),
     avatarUrl: row.avatarUrl,
-    statusText: row.statusText,
+    statusText: row.statusText === null ? null : houseRules(row.statusText),
     accent: accentForId(row.id),
   };
 }
@@ -152,7 +154,7 @@ export function member(row: MemberRow, user: User, roleIds: string[]): Member {
   return {
     userId: row.userId,
     serverId: row.serverId,
-    nickname: row.nickname,
+    nickname: row.nickname === null ? null : houseRules(row.nickname),
     roleIds,
     joinedAt: isoRequired(row.joinedAt),
     timeoutUntil: iso(row.timeoutUntil),

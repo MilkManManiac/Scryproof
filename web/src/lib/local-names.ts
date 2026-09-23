@@ -8,6 +8,7 @@
  * its settings.
  */
 
+import { houseRules } from '@scryproof/shared';
 import { useSyncExternalStore } from 'react';
 
 const STORAGE_KEY = 'scryproof.local-names.v1';
@@ -64,7 +65,8 @@ export const localNames = {
  * anyway (a server nickname, a display name, "Someone").
  */
 export function nameFor(userId: string, fallback: string): string {
-  return localNames.get(userId) ?? fallback;
+  const local = localNames.get(userId);
+  return local === undefined ? fallback : houseRules(local);
 }
 
 /**

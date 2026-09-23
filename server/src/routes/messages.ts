@@ -17,6 +17,7 @@ import {
   formatRoll,
   messageSignedBytes,
   has,
+  houseRules,
   parsePollCommand,
   parseRoll,
   roll as rollDice,
@@ -97,7 +98,7 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
     return {
       id: parent.id,
       authorId: parent.authorId,
-      authorName: parentAuthor.displayName,
+      authorName: houseRules(parentAuthor.displayName),
       content: text ? text.slice(0, REPLY_PREVIEW_LENGTH) : null,
       deleted,
     };
@@ -399,7 +400,8 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       throw badRequest('This channel is not encrypted.', 'encryption_not_enabled');
     }
 
-    let content = body.content?.trim() ?? null;
+    // The house rule, again, for anything that skipped the client's copy of it.
+    let content = body.content ? houseRules(body.content.trim()) : null;
     let kind: 'text' | 'roll' | 'poll' = 'text';
     let poll: PollBody | null = null;
     const attachmentIds = body.attachmentIds ?? [];
@@ -586,7 +588,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     );
     assertNotTimedOut(ctx);
 
-    const content = body.content?.trim() ?? null;
+    const content = body.content ? houseRules(body.content.trim()) : null;
     if (content) {
       const check = validateMessageContent(content);
       if (!check.ok) throw badRequest(check.error, 'message_too_long');

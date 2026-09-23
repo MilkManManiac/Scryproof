@@ -259,7 +259,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       if (channel.encrypted) {
         await channelKeysFor(state.user?.id ?? '').send({
           channelId: channel.id,
-          text: houseRules(fromDraft(body, members)),
+          text: fromDraft(houseRules(body), members),
           replyToId: override ? null : (answering?.id ?? null),
           replyAuthorId: override ? null : (answering?.authorId ?? null),
           memberIds: new Set(members.map((member) => member.userId)),
@@ -267,7 +267,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         });
       } else {
         await api.messages.send(channel.id, {
-          content: body ? houseRules(fromDraft(body, members)) : undefined,
+          content: body ? fromDraft(houseRules(body), members) : undefined,
           replyToId: override ? undefined : answering?.id,
           attachmentIds: files.length > 0 ? files.map((file) => file.id) : undefined,
         });

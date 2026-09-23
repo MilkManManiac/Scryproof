@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission, has } from '@scryproof/shared';
+import { Permission, has, houseRules } from '@scryproof/shared';
 
 import { config } from '../config.js';
 import { requireUser } from '../app.js';
@@ -84,7 +84,7 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const token = createAccessToken({
       room: roomNameForChannel(channelId),
       identity: user.id,
-      name: user.displayName,
+      name: houseRules(user.displayName),
       canPublish: sources.length > 0,
       canSubscribe: true,
       sources,
@@ -132,7 +132,7 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const token = createAccessToken({
       room,
       identity: user.id,
-      name: user.displayName,
+      name: houseRules(user.displayName),
       canPublish: true,
       canSubscribe: true,
       sources: ['microphone', 'unknown', 'camera', 'screen_share', 'screen_share_audio'],
