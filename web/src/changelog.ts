@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-23-fifth',
+    date: '2026-09-23',
+    title: 'Group DMs, calls in a DM, and an app that updates itself',
+    notes: [
+      "Group DMs: pick two or more people with the + at the top of Direct messages, or \"Start a group\" on someone's card. Still end-to-end encrypted. Anyone in it can add someone, and you can leave. Someone added later reads from when they joined, not before.",
+      "A Call button at the top of any DM, with camera and screen share, encrypted like a channel call. Nothing rings: the others see the call marked in their list and click to join. Starting a DM call takes you out of any voice channel you are in.",
+      "The emoji picker has a search box. Type part of a name to find one.",
+      "The desktop app now updates itself. When a new version is out it downloads in the background, checks it really came from us, and offers \"Restart to install\". This is the last installer anyone has to run by hand.",
+      "The desktop app is also locked down against other programs on your computer borrowing it, and your saved sign-in is now encrypted on disk. You stay signed in.",
+    ],
+  },
+  {
     id: '2026-09-22-fourth',
     date: '2026-09-22',
     title: 'Drafts, names of your own, and better screen sharing',

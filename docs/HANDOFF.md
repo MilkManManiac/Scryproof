@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, 00:00 ET. **Batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, 00:50 ET. **Batch five is built, merged and NOT shipped** (last section): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. Waiting on Wes's OK. Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -2069,3 +2069,64 @@ one-off, not kept). DM path is typechecked, not browser-checked.
 Then tell the group to download and run the installer once. Password
 reset is live from then: `bash scripts/box.sh reset-password <username>`.
 
+## Batch five, 2026-09-23 (built, not shipped)
+
+Wes: "come up with the build plan... then ill have you fan out subagents".
+Four agents in worktrees from new briefs (`shell-update.md`,
+`emoji-search.md`) and the two DM briefs with a 2026-09-23 note each.
+Merged in the main session. Tests: server 225, web 247, desktop 36, all
+pass; `test:voice` 53/53 (DM call steps included), `test:dm` all pass
+(three-person group included) on a freshly seeded database; `test:desktop`
+passes. Shots: `docs/shots/emoji-search.png`, `docs/shots/group-dm.png`.
+
+**The shell updates itself.** `npm run dist` also writes
+`desktop/release/installer.json` (version, sha256, size, Ed25519 signature
+with the client key but its own prefix `scryproof-installer`, so neither
+signature passes as the other). `publish-installer.sh` sends both and
+checks them; `/download/installer.json` serves it. The packaged app checks
+at start and hourly, downloads to `userData/shell-update/`, verifies
+(`desktop/src/installer-core.js`), offers "Restart to install" (or "when
+your call is over"), then runs it `--updated /S --force-run` and quits.
+**Every shell release must bump `desktop/package.json` version** or no app
+offers it. The packaged app only ever talks to scryproof.com, so the full
+cycle can only be tested after a deploy.
+
+**Fuses** (read back from the built exe): RunAsNode, NODE_OPTIONS and
+inspect flags off; cookie encryption, embedded ASAR integrity, only load
+from ASAR on; file protocol extra privileges off. Cookie encryption keeps
+old plaintext cookies readable (Chromium only decrypts rows that have an
+encrypted value), so nobody is signed out; going *back* to 0.4.0 would
+sign someone out once.
+
+**Group DMs.** `dm_channels.kind` (`pair` | `group`) and `title`,
+migration `0018_flimsy_wolverine.sql`. 3 to 10 people. Add, leave; last
+one out deletes it. A newcomer reads from their join. Blocking inside a
+group: the server drops the blocked person's key copy for the blocker, the
+rest are unaffected. Group names are stored unencrypted (the picker says
+so). **Open:** group messages are not signed by the sender's device, so a
+member plus a hostile server could forge text under another member's name;
+closing it means signing each message (format change, decide later).
+Someone removed from a group is not yet pulled out of a running call.
+
+**DM calls.** `POST /api/dms/:dmId/voice/token`, room `dm_<id>`, granted
+on `dm_members`; voice state carries `dmId` and goes only to the DM's
+members. One call at a time: starting a DM call leaves the channel.
+Pair calls are refused across a block; group calls are not (main-session
+call, same reasoning as group messages). Two merge bugs fixed here: the
+store treated any voice state with no channel as leaving, so nobody saw a
+DM call; and a CSS brace lost in the conflict blanked the dev page.
+
+**Emoji search.** Searches `SHORTCODES` and the server's custom emoji.
+The list is ~400 hand-picked names, not the full Unicode set; a full set
+would need a generated data file (BUILD-ORDER 15b stays half-open).
+
+**To ship, when Wes says so:**
+
+    cd desktop && npm run dist && cd ..       (installer 0.5.0 + installer.json + a signed client)
+    bash scripts/release.sh                    (migration 0018 runs on the box)
+    bash scripts/publish-installer.sh
+
+Then install 0.5.0 on Wes's PC (`/S`), check signed in and the fuses, and
+prove the cycle: bump to 0.5.1, dist, publish, restart his app, watch the
+banner and the silent upgrade. Then the group runs 0.5.0 once, for the
+last time.

@@ -3640,12 +3640,14 @@ video.mirrored {
 .reaction-picker-search::placeholder {
   color: var(--text-faint);
 }
+/* Always the full eight columns, so two results do not shrink the picker
+   (and its search box) to the width of two emoji. */
 .reaction-picker-search-results {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 256px;
+  display: grid;
+  grid-template-columns: repeat(8, 32px);
 }
 .reaction-picker-no-results {
+  grid-column: 1 / -1;
   padding: 6px 4px;
   font-size: 13px;
   color: var(--text-dim);
