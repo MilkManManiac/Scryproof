@@ -128,6 +128,12 @@ Wes to try screen share with his brother, then ship.
 15. **Channel deletion on Lamp's server.** Probably a missing
     MANAGE_CHANNELS on his role. Confirm with him before building anything.
 
+15b. **A full emoji picker.** Wes, 2026-09-23: "pregnant man emoji isn't
+    in". It is, but only by typing `:pregnant_man:`: the picker
+    (`ReactionPicker.tsx`) is 32 chosen emoji plus recents, and the long
+    list in `lib/emoji.ts` has no screen. Add a search box to the picker
+    that searches `SHORTCODES` by name. Small; low priority per Wes.
+
 ## Session D: its own long session
 
 16. **End-to-end encrypted channels (M7).** Schema and wire format exist
