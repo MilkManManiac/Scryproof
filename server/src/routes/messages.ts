@@ -654,6 +654,9 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         mentionsEveryone: mentions.everyone,
         ...(sealed
           ? {
+              // A message from before the channel was switched to encryption
+              // is sealed by its first edit, and the readable copy goes.
+              content: null,
               ciphertext: sealed.ciphertext,
               nonce: sealed.nonce,
               keyEpoch: sealed.epoch,

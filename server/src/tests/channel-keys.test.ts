@@ -304,6 +304,36 @@ describe('encrypted channels', () => {
     );
   });
 
+  it('switches a plain channel on for good, and keeps what came before', async () => {
+    const { wes, alex } = people;
+    const made = await call(wes, 'POST', `/api/servers/${serverId}/channels`, { name: 'lore', type: 'text' });
+    const lore = made.json().channel.id as string;
+    const before = await call(wes, 'POST', `/api/channels/${lore}/messages`, { content: 'the old gods sleep' });
+    assert.equal(before.statusCode, 200);
+
+    const notAllowed = await call(alex, 'PATCH', `/api/channels/${lore}`, { encrypted: true });
+    assert.equal(notAllowed.statusCode, 403);
+    const switched = await call(wes, 'PATCH', `/api/channels/${lore}`, { encrypted: true });
+    assert.equal(switched.statusCode, 200, switched.body);
+    const channel = switched.json().channel;
+    assert.equal(channel.encrypted, true);
+    assert.ok(channel.encryptedAt && channel.encryptedAt >= before.json().message.createdAt);
+
+    const off = await call(wes, 'PATCH', `/api/channels/${lore}`, { encrypted: false });
+    assert.equal(off.statusCode, 400);
+    const plain = await call(wes, 'POST', `/api/channels/${lore}/messages`, { content: 'still readable?' });
+    assert.equal(plain.json().code, 'encryption_required');
+
+    // The old message is still there as it was, and switching again changes nothing.
+    const history = await call(wes, 'GET', `/api/channels/${lore}/messages`);
+    assert.equal(history.json().messages[0].content, 'the old gods sleep');
+    const again = await call(wes, 'PATCH', `/api/channels/${lore}`, { encrypted: true });
+    assert.equal(again.json().channel.encryptedAt, channel.encryptedAt);
+
+    const voice = (await call(wes, 'POST', `/api/servers/${serverId}/channels`, { name: 'Hall', type: 'voice' })).json().channel.id as string;
+    assert.equal((await call(wes, 'PATCH', `/api/channels/${voice}`, { encrypted: true })).json().code, 'not_text_channel');
+  });
+
   it('retires the key when someone who holds it is removed, and refuses the old one', async () => {
     const { wes, alex, mara } = people;
     const kicked = await call(wes, 'DELETE', `/api/servers/${serverId}/members/${mara.id}`);

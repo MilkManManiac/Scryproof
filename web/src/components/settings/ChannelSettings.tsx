@@ -121,6 +121,7 @@ function ChannelOverview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmEncrypt, setConfirmEncrypt] = useState(false);
   // What the overwrites say now, and what is picked. Null until fetched.
   const [wasPrivacy, setWasPrivacy] = useState<PrivacyChoice | null>(null);
   const [privacy, setPrivacy] = useState<PrivacyChoice>(PUBLIC);
@@ -260,6 +261,58 @@ function ChannelOverview({
           <p className="field-note">
             The wait between messages, per person. Anyone with Manage messages is exempt.
           </p>
+        </div>
+      ) : null}
+
+      {channel.type === 'text' ? (
+        <div className="field">
+          <label>End-to-end encryption</label>
+          {channel.encrypted ? (
+            <p className="field-note">
+              On{channel.encryptedAt ? ` since ${new Date(channel.encryptedAt).toLocaleDateString()}` : ''}. Messages are locked on
+              people's devices and the server cannot read them.
+              {channel.encryptedAt ? ' Messages from before then are not encrypted.' : ''} It cannot be turned off.
+            </p>
+          ) : (
+            <>
+              <p className="field-note">
+                From the moment it is on, new messages, files and voice messages here are locked on people's devices, and the
+                server cannot read them. Messages already here stay as they are, readable by the server. Search, polls, /roll
+                and initiative stop working in this channel. It cannot be turned off again.
+              </p>
+              {editable ? (
+                confirmEncrypt ? (
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="button secondary inline" onClick={() => setConfirmEncrypt(false)}>
+                      Not now
+                    </button>
+                    <button
+                      type="button"
+                      className="button inline"
+                      disabled={saving}
+                      onClick={() => {
+                        setSaving(true);
+                        setError(null);
+                        api.channels
+                          .update(channel.id, { encrypted: true })
+                          .then(() => setConfirmEncrypt(false))
+                          .catch((problem) =>
+                            setError(problem instanceof ApiError ? problem.message : 'Could not turn on encryption.'),
+                          )
+                          .finally(() => setSaving(false));
+                      }}
+                    >
+                      Turn it on for good
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="button secondary inline" onClick={() => setConfirmEncrypt(true)}>
+                    Turn on encryption
+                  </button>
+                )
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
 

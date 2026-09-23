@@ -261,6 +261,12 @@ export const channels = pgTable(
      * flag governs the message body only.
      */
     encrypted: boolean('encrypted').notNull().default(false),
+    /**
+     * When encryption was switched on for a channel that already had
+     * messages. Null when it was made encrypted, or is not. Messages from
+     * before this stay as they were: readable, by the server too.
+     */
+    encryptedAt: timestamp('encrypted_at', { withTimezone: true, mode: 'date' }),
     /** Bumped on every member removal so old keys stop working. */
     keyEpoch: integer('key_epoch').notNull().default(1),
     /** Seconds a member must wait between messages. 0 disables. */

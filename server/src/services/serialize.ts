@@ -112,6 +112,7 @@ export function channel(row: ChannelRow, isPrivate = false): Channel {
     position: row.position,
     slowmodeSeconds: row.slowmodeSeconds,
     encrypted: row.encrypted,
+    encryptedAt: iso(row.encryptedAt),
     private: isPrivate,
     lastMessageId: row.lastMessageId,
     createdAt: isoRequired(row.createdAt),

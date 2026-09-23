@@ -200,6 +200,8 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
         categoryId: z.string().nullable().optional(),
         position: z.number().int().min(0).max(10_000).optional(),
         slowmodeSeconds: z.number().int().min(0).max(21_600).optional(),
+        /** Only ever true: see below. */
+        encrypted: z.literal(true).optional(),
       })
       .parse(request.body);
 
@@ -209,6 +211,15 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     const [existing] = await db.select().from(channels).where(eq(channels.id, channelId)).limit(1);
     if (!existing) throw notFound('That channel does not exist.', 'unknown_channel');
 
+    // Encryption goes on and stays on. Switching it off would quietly turn a
+    // channel people believe is private back into one the server reads, and
+    // their devices could not tell the difference in time to stop typing.
+    // Text channels only; voice is always encrypted.
+    const encrypting = body.encrypted === true && !existing.encrypted;
+    if (body.encrypted && existing.type !== 'text') {
+      throw badRequest('Only a text channel can be switched to end-to-end encryption.', 'not_text_channel');
+    }
+
     const name =
       body.name === undefined
         ? undefined
@@ -216,17 +227,19 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
           ? body.name.trim().slice(0, 48)
           : slugifyChannelName(body.name);
 
-    const [updated] = await db
-      .update(channels)
-      .set({
-        ...(name !== undefined ? { name } : {}),
-        ...(body.topic !== undefined ? { topic: body.topic } : {}),
-        ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
-        ...(body.position !== undefined ? { position: body.position } : {}),
-        ...(body.slowmodeSeconds !== undefined ? { slowmodeSeconds: body.slowmodeSeconds } : {}),
-      })
-      .where(eq(channels.id, channelId))
-      .returning();
+    const changes = {
+      ...(name !== undefined ? { name } : {}),
+      ...(body.topic !== undefined ? { topic: body.topic } : {}),
+      ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+      ...(body.position !== undefined ? { position: body.position } : {}),
+      ...(body.slowmodeSeconds !== undefined ? { slowmodeSeconds: body.slowmodeSeconds } : {}),
+      ...(encrypting ? { encrypted: true, encryptedAt: new Date() } : {}),
+    };
+    // Nothing to change (switching on a channel that already is): answer with it as it is.
+    const [updated] =
+      Object.keys(changes).length === 0
+        ? [existing]
+        : await db.update(channels).set(changes).where(eq(channels.id, channelId)).returning();
 
     if (!updated) throw notFound('That channel does not exist.', 'unknown_channel');
 
@@ -236,7 +249,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       action: 'channel.update',
       targetType: 'channel',
       targetId: channelId,
-      changes: { name, topic: body.topic, categoryId: body.categoryId },
+      changes: { name, topic: body.topic, categoryId: body.categoryId, ...(encrypting ? { encrypted: true } : {}) },
     });
 
     const wasPrivate = await isPrivate(channelId, ctx.serverId);

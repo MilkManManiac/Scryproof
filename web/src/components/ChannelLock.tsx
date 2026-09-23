@@ -88,6 +88,9 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
         Messages here are locked on the sender&rsquo;s device and signed by it. The server stores scrambled bytes and
         has no key. Not encrypted: who posted and when, which message a reply points at, reactions, who was
         mentioned, and the channel&rsquo;s name and topic.
+        {channel.encryptedAt
+          ? ` Encryption was turned on ${new Date(channel.encryptedAt).toLocaleDateString()}: messages from before then are not encrypted, and the server can read them.`
+          : ''}
       </p>
 
       {problem ? <div className="error">{problem}</div> : null}

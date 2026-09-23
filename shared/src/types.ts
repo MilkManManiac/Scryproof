@@ -100,6 +100,12 @@ export interface Channel {
    */
   encrypted: boolean;
   /**
+   * When encryption was switched on for a channel that was plain before.
+   * Messages older than this were never encrypted. Null for a channel made
+   * encrypted, and for a plain one.
+   */
+  encryptedAt: string | null;
+  /**
    * Whether @everyone is denied View channel here, so only the roles and
    * people singled out can see it. Read from the overwrites, never stored on
    * its own: the switch and the editor cannot disagree.

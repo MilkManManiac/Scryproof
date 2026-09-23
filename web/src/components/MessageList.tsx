@@ -253,6 +253,11 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
 
   const newCount = newLine.count;
 
+  // The first message sent after encryption was switched on, if this channel
+  // was plain before. -1 with messages on screen: all of them are older.
+  const switchedAt = channel.encryptedAt;
+  const sealedFrom = switchedAt ? messages.findIndex((message) => message.createdAt >= switchedAt) : -1;
+
   // The line sits on the first row we hold, and there is more above it we have
   // not fetched. The count is a floor, so it is written as one rather than
   // stated as a fact we cannot check.
@@ -338,8 +343,9 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
             </div>
           ) : null}
 
-          {rows.map(({ message, grouped, day, firstNew }) => (
+          {rows.map(({ message, grouped, day, firstNew }, index) => (
             <div key={message.id}>
+              {index === sealedFrom ? <SealedLine at={channel.encryptedAt} /> : null}
               {day ? <div className="day-divider">{day}</div> : null}
               {firstNew ? (
                 <div className="new-divider" ref={divider}>
@@ -348,6 +354,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
               ) : null}
               <MessageRow
                 message={message}
+                encrypted={channel.encrypted}
                 grouped={grouped}
                 mask={mask}
                 members={members}
@@ -357,6 +364,8 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
               />
             </div>
           ))}
+
+          {switchedAt && sealedFrom === -1 && messages.length > 0 ? <SealedLine at={switchedAt} /> : null}
 
           {loadingNewer ? (
             <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
@@ -725,8 +734,22 @@ function sealedProblem(status: Message['sealed']): string {
   }
 }
 
+/**
+ * Where a channel that was plain became encrypted. Everything above it was
+ * sent before, and stays readable to the server; saying so is the point.
+ */
+function SealedLine({ at }: { at: string | null }) {
+  const when = at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
+  return (
+    <div className="sealed-line" role="note">
+      End-to-end encryption turned on{when ? `, ${when}` : ''}. Messages above this line were sent before and are not encrypted.
+    </div>
+  );
+}
+
 function MessageRow({
   message,
+  encrypted,
   grouped,
   mask,
   members,
@@ -735,6 +758,8 @@ function MessageRow({
   onEditorOpened,
 }: {
   message: Message;
+  /** The channel is encrypted now: an edit seals, even a message from before it was. */
+  encrypted: boolean;
   grouped: boolean;
   mask: bigint;
   members: Member[];
@@ -810,7 +835,7 @@ function MessageRow({
       return;
     }
     try {
-      if (message.ciphertext && selfId) {
+      if ((message.ciphertext || encrypted) && selfId) {
         const parentAuthor = message.replyTo?.authorId ?? null;
         await channelKeysFor(selfId).edit(message.id, {
           channelId: message.channelId,
