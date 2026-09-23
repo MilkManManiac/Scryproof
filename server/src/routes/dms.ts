@@ -741,6 +741,30 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  /**
+   * "Again" on a jump in a conversation. The server cannot read the message,
+   * so it passes on only which one; each side plays it if it is a jump.
+   */
+  app.post('/api/dms/:dmId/messages/:messageId/replay', async (request) => {
+    const user = requireUser(request);
+    const { dmId, messageId } = z.object({ dmId: z.string(), messageId: z.string() }).parse(request.params);
+    const { memberIds } = await requireDmMember(dmId, user.id);
+    await requireNotBlocked(user.id, memberIds);
+
+    const [existing] = await getDb()
+      .select({ id: dmMessages.id, deletedAt: dmMessages.deletedAt, reactionTo: dmMessages.reactionTo })
+      .from(dmMessages)
+      .where(and(eq(dmMessages.id, messageId), eq(dmMessages.dmId, dmId)))
+      .limit(1);
+    if (!existing || existing.deletedAt || existing.reactionTo) throw notFound('That message does not exist.', 'unknown_message');
+
+    const limit = consume(`replays:${user.id}`, 10, 30_000);
+    if (!limit.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', limit.retryAfterSeconds);
+
+    for (const memberId of memberIds) hub.sendToUser(memberId, { t: 'dm_spawn_replay', d: { dmId, messageId } });
+    return { ok: true };
+  });
+
   /* ---------------------------------- files --------------------------------- */
 
   /**

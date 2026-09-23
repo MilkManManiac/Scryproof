@@ -765,7 +765,7 @@ function DmRow({
             {/* The same parts as a channel message. There is nobody to name here
                 and no server emoji, so those come out as the text typed. */}
             {spawnOf(view.text) ? (
-              <PlayLine character={spawnOf(view.text)!} />
+              <PlayLine character={spawnOf(view.text)!} again={() => api.dms.replay(view.dmId, view.id)} />
             ) : (
               <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
             )}

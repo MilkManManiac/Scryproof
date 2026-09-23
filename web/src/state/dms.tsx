@@ -512,6 +512,15 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
       if (event.t === 'dm_read') dispatch({ type: 'read', dmId: event.d.dmId, messageId: event.d.lastReadMessageId });
 
+      // "Again" on a jump: the server says which message, this side knows what it says.
+      if (event.t === 'dm_spawn_replay') {
+        const current = stateRef.current;
+        if (!current.active || current.openId !== event.d.dmId) return;
+        const view = current.messages[event.d.dmId]?.find((entry) => entry.id === event.d.messageId);
+        const spawn = spawnOf(view?.text);
+        if (spawn) playCharacter(spawn.id);
+      }
+
       if (event.t === 'dm_message_delete') {
         if (event.d.reactionTo) {
           dispatch({ type: 'reaction-removed', dmId: event.d.dmId, id: event.d.id });

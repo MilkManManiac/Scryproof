@@ -659,12 +659,20 @@ function PollView({ message, selfId, canManage }: { message: Message; selfId?: s
 
 /**
  * What a spawn command leaves behind: the face, the name, and a click to
- * see it again. Everyone who was in the channel when it was sent saw it
- * cross; everyone else gets this.
+ * send it across again. `again` asks the server to play it for everyone
+ * looking, the clicker included (their copy comes back like everyone
+ * else's). If that fails, it still plays here.
  */
-export function PlayLine({ character }: { character: Character }) {
+export function PlayLine({ character, again }: { character: Character; again?: () => Promise<unknown> }) {
+  const onClick = () => {
+    if (!again) {
+      play(character.id);
+      return;
+    }
+    again().catch(() => play(character.id));
+  };
   return (
-    <button type="button" className="play-line" title="Again" onClick={() => play(character.id)}>
+    <button type="button" className="play-line" title="Again, for everyone looking" onClick={onClick}>
       <span
         className="meepo-face"
         style={{ backgroundImage: `url(${sheetUrl(character.id)})`, backgroundSize: `auto 100%` }}
@@ -872,7 +880,7 @@ function MessageRow({
                 <PollView message={message} selfId={selfId} canManage={can(mask, Permission.MANAGE_MESSAGES)} />
               </>
             ) : spawn ? (
-              <PlayLine character={spawn} />
+              <PlayLine character={spawn} again={() => api.messages.replay(message.id)} />
             ) : message.ciphertext && !message.content ? (
               <div className="message-text deleted">
                 Encrypted message. This client cannot open it yet.

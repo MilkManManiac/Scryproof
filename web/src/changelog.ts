@@ -36,6 +36,7 @@ export const CHANGELOG: readonly Release[] = [
       'In the desktop app: right-click for spelling suggestions, copy and paste, and Copy image or Save image. Themes has an interface scale, 90 to 130 percent.',
       'The B, I, S and <> buttons under the message box are easier to see. And the pregnant man is here.',
       'Clicking away from a profile card closes it, including while a settings window is open.',
+      '"again" on a character's jump now sends it across for everyone looking, not just you.',
     ],
   },
   {

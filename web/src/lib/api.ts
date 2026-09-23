@@ -266,6 +266,8 @@ export const api = {
     vote: (id: string, options: number[]) =>
       put<{ message: Message }>(`/api/messages/${id}/votes`, { options }),
     closePoll: (id: string) => post<{ message: Message }>(`/api/messages/${id}/close`, {}),
+    /** Play a character's jump again for everyone looking. */
+    replay: (id: string) => post<{ ok: true }>(`/api/messages/${id}/replay`, {}),
     markRead: (channelId: string, messageId: string) =>
       put<{ ok: true }>(`/api/channels/${channelId}/read`, { messageId }),
     /** Only the channels the caller can currently view and read history in. DMs are never searched. */
@@ -418,6 +420,8 @@ export const api = {
     list: () => get<{ dms: DmChannel[] }>('/api/dms'),
     open: (userId: string) => post<{ dm: DmChannel }>('/api/dms', { userId }),
     devices: (dmId: string) => get<{ devices: DeviceKey[] }>(`/api/dms/${dmId}/devices`),
+    replay: (dmId: string, messageId: string) =>
+      post<{ ok: true }>(`/api/dms/${dmId}/messages/${messageId}/replay`, {}),
     messages: (dmId: string, before?: string) =>
       get<{ messages: DmMessage[]; reactions: DmMessage[] }>(
         `/api/dms/${dmId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`,

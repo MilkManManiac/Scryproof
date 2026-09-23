@@ -2046,6 +2046,20 @@ now `webFrame.setZoomFactor` in the desktop app, and a Ctrl and + hint in
 a browser. Account settings adds a `patchUser` action to the store
 because the two-factor routes do not broadcast a user update.
 
+**Jump "again" for everyone (added after the batch).** Wes: "i can see
+when i click it, but others cant and vise verca". It was built that way:
+the history line's "again" replayed only on the clicker's screen. Now it
+asks the server (`POST /api/messages/:id/replay`, or
+`/api/dms/:dmId/messages/:id/replay`), which stores nothing and sends
+`spawn_replay` (with the jump's text) to everyone who can read the channel,
+or `dm_spawn_replay` (the id only; the server cannot read a DM) to both
+people. `Stage.tsx` plays `spawn_replay` exactly like an arriving jump; the
+clicker's own copy comes back the same way, so it plays once. Needs Send
+Messages, refuses anything that is not a jump, 10 per 30 s per person. If
+the request fails it still plays locally. `server/src/tests/replay.test.ts`;
+checked with two headless browsers both directions (the check script was a
+one-off, not kept). DM path is typechecked, not browser-checked.
+
 **To ship, when Wes says so:**
 
     bash scripts/release.sh                     (changelog must be dated today; re-date the entry if it is past midnight)

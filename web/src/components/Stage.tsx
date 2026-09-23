@@ -72,7 +72,8 @@ export function Stage() {
   useEffect(
     () =>
       onGatewayEvent((event) => {
-        if (event.t !== 'message_create' || !looking.current) return;
+        // "Again" on a jump arrives as its own event and plays the same way.
+        if ((event.t !== 'message_create' && event.t !== 'spawn_replay') || !looking.current) return;
         const server = servers.current[looking.current];
         if (!server?.channels.some((channel) => channel.id === event.d.channelId)) return;
         const character = spawnOf(event.d.content);

@@ -760,6 +760,40 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     return { reactions: current };
   });
 
+  /* ------------------------------- jump again ------------------------------- */
+
+  /**
+   * "Again" on a character's jump plays it for everyone looking at the server,
+   * not only for the one who clicked. Wes: "i can see when i click it, but
+   * others cant". Nothing is stored and no message is added.
+   */
+  app.post('/api/messages/:messageId/replay', async (request) => {
+    const user = requireUser(request);
+    const { messageId } = z.object({ messageId: z.string() }).parse(request.params);
+    const [existing] = await getDb().select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!existing || existing.deletedAt) throw notFound('That message does not exist.', 'unknown_message');
+
+    const ctx = await requireChannelPermission(
+      existing.channelId,
+      user.id,
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY | Permission.SEND_MESSAGES,
+    );
+    assertNotTimedOut(ctx);
+    const content = (existing.content ?? '').trim();
+    if (!/^\/[a-z0-9-]+-jump$/i.test(content)) throw badRequest('That message is not a jump.', 'not_a_jump');
+
+    const limit = consume(`replays:${user.id}`, 10, 30_000);
+    if (!limit.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', limit.retryAfterSeconds);
+
+    await hub.broadcastToChannel(
+      ctx.serverId,
+      existing.channelId,
+      { t: 'spawn_replay', d: { messageId: existing.id, channelId: existing.channelId, content } },
+      Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
+    );
+    return { ok: true };
+  });
+
   /* ---------------------------------- polls --------------------------------- */
 
   /**

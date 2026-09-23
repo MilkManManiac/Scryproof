@@ -59,6 +59,12 @@ export type ServerEvent =
   /** The full set for one message after any change. Whole, so a missed event cannot leave a wrong count behind. */
   | { t: 'reaction_update'; d: { messageId: Snowflake; channelId: Snowflake; reactions: Reaction[] } }
   /**
+   * Somebody pressed "again" on a character's jump: play it once more for
+   * everyone looking. Nothing is stored; `content` is the jump message's own
+   * text, so a client that has not loaded that message can still play it.
+   */
+  | { t: 'spawn_replay'; d: { messageId: Snowflake; channelId: Snowflake; content: string } }
+  /**
    * A poll's public tally after a vote or a close. Never who voted for what,
    * and never anyone else's picks, which is why this is not `message_update`:
    * that carries the whole message, and a viewer's own picks are only theirs
@@ -159,6 +165,8 @@ export type ServerEvent =
   | { t: 'dm_message_update'; d: DmMessage }
   | { t: 'dm_message_delete'; d: { id: Snowflake; dmId: Snowflake; reactionTo: Snowflake | null } }
   | { t: 'dm_read'; d: { dmId: Snowflake; lastReadMessageId: Snowflake } }
+  /** "Again" on a jump in a conversation. Only the message id: the server cannot read what it says. */
+  | { t: 'dm_spawn_replay'; d: { dmId: Snowflake; messageId: Snowflake } }
   | { t: 'error'; d: { code: string; message: string } };
 
 export type ClientEvent =
