@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Permission } from '@scryproof/shared';
+import { Permission, voiceRoomOf } from '@scryproof/shared';
 import type { Member, Role, ServerDetail, VoiceState } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
@@ -50,11 +50,13 @@ export function MemberList({ server }: { server: ServerDetail }) {
   useLocalNames();
   const live = useVoice();
   // Who is in a voice channel on this server, by user. The server keeps
-  // this; it is true whether or not we are in the call ourselves.
+  // this; it is true whether or not we are in the call ourselves. A call in
+  // one of our own conversations counts too, unnamed: we only ever hear
+  // about those when we are in the conversation.
   const calls = useMemo(() => {
     const byUser = new Map<string, VoiceState>();
     for (const voice of Object.values(state.voiceStates)) {
-      if (voice.serverId === server.id && voice.channelId) byUser.set(voice.userId, voice);
+      if ((voice.serverId === server.id && voice.channelId) || voice.dmId) byUser.set(voice.userId, voice);
     }
     return byUser;
   }, [state.voiceStates, server.id]);
@@ -148,7 +150,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
             const self = member.userId === state.user?.id;
             const until = timeoutEndsAt(member);
             const call = calls.get(member.userId) ?? null;
-            const speaking = call !== null && live.channelId === call.channelId && live.speaking.includes(member.userId);
+            const speaking = call !== null && voiceRoomOf(live) === voiceRoomOf(call) && live.speaking.includes(member.userId);
             // The server checks all of this again. Offering the menu only when
             // it would succeed keeps the list from handing out dead choices.
             const moderatable = mayModerate && !self && authority.canActOnMember(member);
@@ -201,7 +203,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
                           <CameraGlyph />
                         </span>
                       ) : null}
-                      <span className="voice-flag in-voice" title={`In ${voiceChannelName(call.channelId)}`}>
+                      <span className="voice-flag in-voice" title={call.channelId ? `In ${voiceChannelName(call.channelId)}` : 'In a call'}>
                         <VoiceGlyph />
                       </span>
                     </span>

@@ -35,6 +35,7 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
+import { voiceRoomOf } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
@@ -42,7 +43,7 @@ import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
-import { VoiceSession } from '../lib/voice-session';
+import { VoiceSession, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 
 export interface State {
@@ -154,7 +155,16 @@ type Action =
    */
   | { type: 'message-applied'; channelId: string; message: Message };
 
-const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
+/**
+ * One entry per person per server, and one for the conversation call they are
+ * in, if any: a person is in one call at a time, so the conversation need not
+ * be in the key. Matches the gateway's own bookkeeping.
+ */
+const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
+
+/** What the gateway is told to put this person in. */
+const intentFor = (place: CallPlace): { channelId: string | null; dmId: string | null } =>
+  place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id };
 
 /** First text channel the member can see, for landing on a sensible default. */
 function firstVisibleChannel(server: ServerDetail | undefined): string | null {
@@ -799,6 +809,8 @@ interface StoreValue {
   sendTyping: (channelId: string) => void;
   setPresence: (status: PresenceStatus) => void;
   joinVoice: (channelId: string) => void;
+  /** Start, or join, the call inside a direct message conversation. */
+  joinDmCall: (dmId: string) => void;
   leaveVoice: () => void;
   updateVoice: (patch: { selfMute?: boolean; selfDeaf?: boolean; sharingScreen?: boolean; cameraOn?: boolean }) => void;
   /** The live call, if any: media, keys, and the numbers the connection panel shows. */
@@ -849,7 +861,15 @@ export function StoreProvider({
 }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const gatewayRef = useRef<Gateway | null>(null);
-  const currentVoiceChannel = useRef<string | null>(null);
+  /** The call this device has asked to be in, wherever it is. */
+  const currentCall = useRef<CallPlace | null>(null);
+  /**
+   * The room each of this person's voice entries was last announced in, by
+   * entry key. A departure says only "left" with no room, so this is how a
+   * departure from the call being left behind (on the way to another one) is
+   * told apart from being taken out of the call this device is in.
+   */
+  const selfRooms = useRef(new Map<string, string>());
   const selfId = useRef<string | null>(null);
   // Read inside the long-lived gateway callback, which is created once and
   // would otherwise be looking at whatever was selected when it was made.
@@ -982,27 +1002,44 @@ export function StoreProvider({
           // A fresh gateway connection means the server forgot we were in a
           // call when the old one dropped. Rejoin rather than sit in a room
           // the server no longer thinks we are in.
-          const channelId = currentVoiceChannel.current;
-          if (channelId) {
-            void voice.join(channelId, () =>
-              gatewayRef.current?.send({ t: 'voice_state', d: { channelId } }),
+          selfRooms.current.clear();
+          for (const entry of event.d.voiceStates) {
+            const room = voiceRoomOf(entry);
+            if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
+          }
+          const place = currentCall.current;
+          if (place) {
+            void voice.join(place, () =>
+              gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
             );
           }
         }
         // The only errors the gateway sends are refusals of something we just
         // asked for. Mid-join, that is the join: show it rather than sit on
         // "connecting" forever.
-        if (event.t === 'error' && currentVoiceChannel.current) {
-          currentVoiceChannel.current = null;
+        if (event.t === 'error' && currentCall.current) {
+          currentCall.current = null;
           voice.fail(event.d.message);
         }
         if (event.t === 'voice_membership') void voice.onMembership(event.d);
         if (event.t === 'voice_signal') void voice.onSignal(event.d);
         if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {
-          if (event.d.channelId === null && currentVoiceChannel.current) {
-            // Moved out by a moderator, or removed from the server.
-            currentVoiceChannel.current = null;
-            void voice.leave();
+          const key = voiceKey(event.d.serverId, event.d.userId);
+          const room = voiceRoomOf(event.d);
+          const left = room === null ? selfRooms.current.get(key) : undefined;
+          if (room === null) selfRooms.current.delete(key);
+          else selfRooms.current.set(key, room);
+
+          if (room === null) {
+            // Moved out by a moderator, removed from the server, or refused
+            // mid-call; but only if it is the call this device is in. Starting
+            // a call somewhere else announces leaving the old one, and that
+            // must not hang up the new one.
+            const place = currentCall.current;
+            if (place && left === place.id) {
+              currentCall.current = null;
+              void voice.leave();
+            }
           } else {
             // A server mute is not a request. Enforce it here as well as in the grant.
             void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
@@ -1093,30 +1130,36 @@ export function StoreProvider({
     gatewayRef.current?.send({ t: 'presence', d: { status } });
   }, []);
 
-  const joinVoice = useCallback(
-    (channelId: string) => {
-      if (currentVoiceChannel.current === channelId) return;
-      currentVoiceChannel.current = channelId;
+  const joinCall = useCallback(
+    (place: CallPlace) => {
+      const current = currentCall.current;
+      if (current && current.kind === place.kind && current.id === place.id) return;
+      currentCall.current = place;
       // The session prepares its keys first and only then tells the gateway,
       // because the gateway answers a join with the membership event at once.
-      void voice.join(channelId, () =>
-        gatewayRef.current?.send({ t: 'voice_state', d: { channelId } }),
+      // The gateway takes this person out of any other call as it puts them
+      // in this one: one call at a time, a server's or a conversation's.
+      void voice.join(place, () =>
+        gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
       );
     },
     [voice],
   );
 
+  const joinVoice = useCallback((channelId: string) => joinCall({ kind: 'channel', id: channelId }), [joinCall]);
+  const joinDmCall = useCallback((dmId: string) => joinCall({ kind: 'dm', id: dmId }), [joinCall]);
+
   const leaveVoice = useCallback(() => {
-    currentVoiceChannel.current = null;
+    currentCall.current = null;
     gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
     void voice.leave();
   }, [voice]);
 
   const updateVoice = useCallback(
     (patch: { selfMute?: boolean; selfDeaf?: boolean; sharingScreen?: boolean; cameraOn?: boolean }) => {
-      const channelId = currentVoiceChannel.current;
-      if (!channelId) return;
-      gatewayRef.current?.send({ t: 'voice_state', d: { channelId, ...patch } });
+      const place = currentCall.current;
+      if (!place) return;
+      gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...patch } });
     },
     [],
   );
@@ -1274,6 +1317,7 @@ export function StoreProvider({
       sendTyping,
       setPresence,
       joinVoice,
+      joinDmCall,
       leaveVoice,
       updateVoice,
       voice,
@@ -1299,6 +1343,7 @@ export function StoreProvider({
       sendTyping,
       setPresence,
       joinVoice,
+      joinDmCall,
       leaveVoice,
       updateVoice,
       voice,

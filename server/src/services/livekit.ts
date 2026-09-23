@@ -87,3 +87,12 @@ export function createAccessToken(options: TokenOptions): string {
 export function roomNameForChannel(channelId: string): string {
   return `ch_${channelId}`;
 }
+
+/**
+ * The LiveKit room for the call inside a direct message conversation. A
+ * different prefix from a channel's, so the two can never name the same room
+ * even if an id were somehow reused.
+ */
+export function roomNameForDm(dmId: string): string {
+  return `dm_${dmId}`;
+}

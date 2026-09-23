@@ -176,7 +176,10 @@ export type ClientEvent =
   | {
       t: 'voice_state';
       d: {
+        /** A server voice channel to be in, or null with no `dmId` to leave any call. */
         channelId: Snowflake | null;
+        /** A direct message conversation to be in the call of. Only read when `channelId` is null. */
+        dmId?: Snowflake | null;
         selfMute?: boolean;
         selfDeaf?: boolean;
         sharingScreen?: boolean;
@@ -201,10 +204,24 @@ export interface VoiceMembership {
  * channel and pass it along. It never parses it, stores it, or logs it.
  */
 export interface VoiceSignal {
+  /**
+   * The call this is about: a voice channel's id, or a direct message
+   * conversation's id for a call inside one. Ids are unique across both, so
+   * one field names either; it keeps the name it had before DM calls existed.
+   */
   channelId: Snowflake;
   epoch: number;
   kind: 'announce' | 'key';
   payload: Record<string, unknown>;
+}
+
+/**
+ * The call a voice state is about: its voice channel, or its conversation.
+ * Null means not in a call. This is the id `voice_membership` and
+ * `voice_signal` carry in `channelId`.
+ */
+export function voiceRoomOf(state: { channelId: Snowflake | null; dmId?: Snowflake | null }): Snowflake | null {
+  return state.channelId ?? state.dmId ?? null;
 }
 
 /** Bytes of JSON. A wrapped key is about 400; an announcement about 600. */

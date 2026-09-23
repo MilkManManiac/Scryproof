@@ -20,6 +20,7 @@ import { dmUnread, otherMember, sortedDms, useDms, type DmReactionView, type DmV
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { DmCallButton, DmCallMark, DmCallStage } from './DmCall';
 import { DockButton } from './DockButton';
 import { openPicture } from './Lightbox';
 import { Modal } from './Modal';
@@ -79,6 +80,7 @@ export function DmSidebar() {
             <button key={dm.id} type="button" className={classes.join(' ')} onClick={() => openDm(dm.id)}>
               <Avatar user={other} small presence={app.presences[other.id] ?? 'offline'} />
               <span className="channel-name">{nameFor(other.id, other.displayName)}</span>
+              <DmCallMark dmId={dm.id} />
               {dmUnread(dm) ? <span className="dm-dot" aria-label="Unread" /> : null}
             </button>
           );
@@ -285,6 +287,7 @@ export function DmPane() {
         <div className="main-topic dm-lock" title="Locked on your device, opened on theirs. The server stores it and cannot read it.">
           End-to-end encrypted
         </div>
+        <DmCallButton dm={dm} />
         {other ? (
           <button
             type="button"
@@ -296,6 +299,7 @@ export function DmPane() {
           </button>
         ) : null}
       </header>
+      <DmCallStage dm={dm} />
       <DeviceWarnings dm={dm} selfId={selfId} />
       <LockedNotice dmId={dm.id} />
       <DmMessages dm={dm} selfId={selfId} onReply={(id) => setReplying((current) => ({ ...current, [dm.id]: id }))} />

@@ -407,6 +407,15 @@ export const api = {
         expiresInSeconds: number;
         can: { speak: boolean; video: boolean; screenShare: boolean };
       }>(`/api/channels/${channelId}/voice/token`),
+    /** The call inside a direct message conversation. Same answer, granted on membership. */
+    dmToken: (dmId: string) =>
+      post<{
+        token: string;
+        url: string;
+        room: string;
+        expiresInSeconds: number;
+        can: { speak: boolean; video: boolean; screenShare: boolean };
+      }>(`/api/dms/${dmId}/voice/token`),
     states: (serverId: string) =>
       get<{ voiceStates: VoiceState[] }>(`/api/servers/${serverId}/voice-states`),
   },

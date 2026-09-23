@@ -18,6 +18,10 @@
  *      arriving; decoded energy stops. That is what "cannot decrypt" looks like.
  *   5. the other person leaves and rejoins. The epoch goes up, fresh keys are
  *      exchanged, and audio comes back without anyone doing anything.
+ *   6. the same two start a call inside their direct message: it takes them
+ *      out of the server channel, is marked in the other's list, refuses a
+ *      third person who shares the server but not the conversation, and is
+ *      encrypted and measured exactly like a channel call.
  *
  * Needs three things running:
  *
@@ -466,6 +470,58 @@ async function main() {
     pair.every(Boolean) && w4.epoch > w3.epoch && w4.epoch === a4.epoch, `epoch ${w3.epoch} -> ${w4.epoch}`);
   const after = await wes.listenTo(alex.userId);
   check('and they can still hear each other', after.energy > 0.001, `+${after.energy.toFixed(4)} energy`);
+
+  // ---- a call inside a direct message ------------------------------------------
+  // Wes and alex are still in the server's voice channel. Starting the DM call
+  // from there is also the one-call-at-a-time check: the channel must lose them.
+  const dmId = await wes.evaluate(`fetch('/api/dms', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ userId: '${alex.userId}' }),
+  }).then((r) => r.json()).then((b) => b.dm.id)`);
+  await wes.evaluate(`document.querySelector('.rail-dms').click()`);
+  await wes.until(`Array.from(document.querySelectorAll('.dm-row')).some((el) => el.textContent.includes('Alex'))`);
+  await wes.evaluate(`Array.from(document.querySelectorAll('.dm-row')).find((el) => el.textContent.includes('Alex')).click()`);
+  check('the conversation has a Call button, and wes presses it', Boolean(await wes.until(`Boolean(document.querySelector('.dm-call-toggle'))`, 10_000)) && (await wes.clickButton('Call')));
+
+  const wesInDm = await wes.until(`(() => { const s = window.__voice.getSnapshot(); return s.dmId === '${dmId}' && s.channelId === null && s.phase === 'connected'; })()`, 45_000);
+  check('wes is in the DM call, and out of the server channel', Boolean(wesInDm) &&
+    Boolean(await alex.until(`!document.querySelector('.voice-member') || !Array.from(document.querySelectorAll('.voice-member')).some((el) => el.textContent.includes('Wes'))`, 10_000)));
+
+  await alex.evaluate(`document.querySelector('.rail-dms').click()`);
+  const marked = await alex.until(`Array.from(document.querySelectorAll('.dm-row')).some((el) => el.textContent.includes('Wes') && el.querySelector('.dm-call-mark'))`, 15_000);
+  check('alex sees the call marked in his list, without it ringing', Boolean(marked));
+  // Mara shares the server with both of them but is not in the conversation.
+  const maraToken = await mara.evaluate(`fetch('/api/dms/${dmId}/voice/token', { method: 'POST', credentials: 'include' }).then((r) => r.status)`);
+  check('mara, who is not in the conversation, sees no mark and is refused a token as if it did not exist',
+    maraToken === 404 && !(await mara.evaluate(`Array.from(document.querySelectorAll('.member.in-voice')).some((el) => el.textContent.includes('Wes'))`)),
+    `token: ${maraToken}`);
+
+  await alex.evaluate(`Array.from(document.querySelectorAll('.dm-row')).find((el) => el.textContent.includes('Wes')).click()`);
+  check('alex joins by clicking', Boolean(await alex.until(`Boolean(document.querySelector('.dm-call-toggle'))`, 10_000)) && (await alex.clickButton('Join call')));
+
+  const [wesDm, alexDm] = await Promise.all([wes.until(connected, 45_000), alex.until(connected, 45_000)]);
+  const [wd, ad] = await Promise.all([wes.snapshot(), alex.snapshot()]);
+  check('both connect in the DM call, each holding the other\'s verified key', Boolean(wesDm && alexDm) && wd.dmId === dmId && ad.dmId === dmId,
+    `wes: ${wd.phase} ${wd.error ?? ''} ${wd.dmId}   alex: ${ad.phase} ${ad.error ?? ''} ${ad.dmId}`);
+  check('the DM call is end-to-end encrypted, with one code for both', wd.encrypted && ad.encrypted && wd.code === ad.code && Boolean(wd.code),
+    `${wd.code}  /  ${ad.code}`);
+  check('the DM call is known to alex as the device he already met', wd.people[0]?.verdict === 'known', wd.people[0]?.verdict);
+  const dmHeard = await wes.listenTo(alex.userId);
+  check('wes decodes alex in the DM call', dmHeard.energy > 0.001, `+${dmHeard.packets} packets, +${dmHeard.energy.toFixed(4)} energy`);
+  check('the DM call has its stage above the messages and the connection panel below',
+    await wes.evaluate(`Boolean(document.querySelector('.dm-call .voice-stage')) && Boolean(document.querySelector('.connection-panel'))`));
+  await sleep(2500);
+  const dmStats = (await wes.snapshot()).stats;
+  check('the connection panel measures the DM call too', dmStats.rttMs !== null && dmStats.relayed !== null, JSON.stringify(dmStats));
+
+  const dmEpoch = (await wes.snapshot()).epoch;
+  await alex.clickButton('Leave call');
+  const dmAlone = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 15_000);
+  check('when alex hangs up, wes rotates alone and alex\'s mark clears for no one else',
+    Boolean(dmAlone) && (await wes.snapshot()).epoch > dmEpoch);
+  await wes.clickButton('Leave call');
 
   const errors = [...wes.complaints, ...alex.complaints, ...mara.complaints];
   check('no uncaught exceptions in any browser', errors.length === 0, errors.join('\n      '));
