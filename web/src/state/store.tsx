@@ -136,6 +136,12 @@ type Action =
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
   | { type: 'blocks'; blocks: string[] }
+  /**
+   * A change to this person's own account that the server does not broadcast
+   * over the gateway (turning two-factor on or off), applied straight from
+   * the response to the request that caused it.
+   */
+  | { type: 'patch-user'; patch: Partial<SelfUser> }
   /** A tracker straight from an API answer, the same shape `tracker_update` carries. */
   | { type: 'tracker'; channelId: string; tracker: Tracker | null }
   | { type: 'signed-out' }
@@ -332,6 +338,9 @@ function reducer(state: State, action: Action): State {
     // added or taken away: there is nothing to reconcile that way.
     case 'blocks':
       return { ...state, blocks: new Set(action.blocks) };
+
+    case 'patch-user':
+      return state.user ? { ...state, user: { ...state.user, ...action.patch } } : state;
 
     case 'tracker':
       return withTracker(state, action.channelId, action.tracker);
@@ -818,6 +827,8 @@ interface StoreValue {
   /** Block or unblock somebody. The list the server answers with is the one kept. */
   block: (userId: string) => Promise<void>;
   unblock: (userId: string) => Promise<void>;
+  /** Apply a change to this person's own account that the server did not broadcast, such as two-factor turning on or off. */
+  patchUser: (patch: Partial<SelfUser>) => void;
   /**
    * Hear every gateway event, after the reducer has. For state that lives
    * beside this store rather than in it; direct messages are the first.
@@ -1234,6 +1245,10 @@ export function StoreProvider({
     dispatch({ type: 'blocks', blocks });
   }, []);
 
+  const patchUser = useCallback((patch: Partial<SelfUser>) => {
+    dispatch({ type: 'patch-user', patch });
+  }, []);
+
   const onGatewayEvent = useCallback((listener: (event: ServerEvent) => void) => {
     eventListeners.current.add(listener);
     return () => {
@@ -1273,6 +1288,7 @@ export function StoreProvider({
       refreshServer,
       block,
       unblock,
+      patchUser,
       onGatewayEvent,
       signOut,
     }),
@@ -1297,6 +1313,7 @@ export function StoreProvider({
       refreshServer,
       block,
       unblock,
+      patchUser,
       onGatewayEvent,
       signOut,
     ],

@@ -24,6 +24,7 @@ import { SoundBoard } from './SoundBoard';
 import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
 import { WhatsNew } from './WhatsNew';
+import { AccountSettings } from './settings/AccountSettings';
 import { BlockedPeople } from './settings/BlockedPeople';
 
 const STATUS_LABEL: Record<PresenceStatus, string> = {
@@ -39,6 +40,7 @@ export function UserPanel() {
   const [audioOpen, setAudioOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
@@ -159,6 +161,7 @@ export function UserPanel() {
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
       {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
+      {accountOpen ? <AccountSettings onClose={() => setAccountOpen(false)} /> : null}
       {blockedOpen ? <BlockedPeople onClose={() => setBlockedOpen(false)} /> : null}
       {themesOpen ? <ThemePicker onClose={() => setThemesOpen(false)} /> : null}
       {newsOpen ? <WhatsNew onClose={() => setNewsOpen(false)} /> : null}
@@ -201,6 +204,16 @@ export function UserPanel() {
             }}
           >
             <span className="channel-name">Edit profile</span>
+          </button>
+          <button
+            type="button"
+            className="channel"
+            onClick={() => {
+              setAccountOpen(true);
+              setMenuOpen(false);
+            }}
+          >
+            <span className="channel-name">Account</span>
           </button>
           <button
             type="button"
