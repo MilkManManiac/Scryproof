@@ -29,6 +29,7 @@ import type {
   SelfUser,
   Server,
   ServerDetail,
+  Tracker,
   VoiceState,
 } from '@scryproof/shared';
 
@@ -37,6 +38,17 @@ export interface EventInput {
   note: string;
   startsAt: string;
   channelId: string | null;
+}
+
+/**
+ * One combatant to add. `initiative` or `roll`, not both. Leaving `userId`
+ * out adds the caller; null adds someone who is not a member, a monster.
+ */
+export interface TrackerEntryInput {
+  name: string;
+  initiative?: number;
+  roll?: string;
+  userId?: string | null;
 }
 
 export class ApiError extends Error {
@@ -325,6 +337,21 @@ export const api = {
         `/api/servers/${serverId}/events/${eventId}/rsvp`,
         { answer },
       ),
+  },
+
+  /** A channel's initiative tracker. Every change answers with the whole tracker. */
+  trackers: {
+    get: (channelId: string) => get<{ tracker: Tracker | null }>(`/api/channels/${channelId}/tracker`),
+    /** Starts one, or answers with the one already running. */
+    start: (channelId: string) => post<{ tracker: Tracker }>(`/api/channels/${channelId}/tracker`),
+    add: (channelId: string, body: TrackerEntryInput) =>
+      post<{ tracker: Tracker }>(`/api/channels/${channelId}/tracker/entries`, body),
+    remove: (channelId: string, entryId: string) =>
+      del<{ tracker: Tracker }>(`/api/channels/${channelId}/tracker/entries/${entryId}`),
+    reorder: (channelId: string, order: string[]) =>
+      put<{ tracker: Tracker }>(`/api/channels/${channelId}/tracker/entries`, { order }),
+    next: (channelId: string) => post<{ tracker: Tracker }>(`/api/channels/${channelId}/tracker/next`),
+    end: (channelId: string) => del<{ ok: true }>(`/api/channels/${channelId}/tracker`),
   },
 
   invites: {

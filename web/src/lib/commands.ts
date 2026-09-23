@@ -9,6 +9,7 @@
  * also means it works the same inside an encrypted DM. A **text** command
  * (`/shrug`) is replaced in the box before sending and is never seen by
  * anyone else. `/roll` is neither: the server rolls it (see `shared/dice`).
+ * `/init` is the odd one out: see `isInitCommand`.
  *
  * The characters are Wes's own, from his Meepo auto-battler; the sheets in
  * `web/public/meepo/` are made by `scripts/meepo-sheets.py`. Wes,
@@ -70,6 +71,17 @@ export const TEXT_COMMANDS: readonly { name: string; text: string; note: string 
   { name: 'unflip', text: '┬─┬ノ( º _ ºノ)', note: '┬─┬ノ( º _ ºノ)' },
 ];
 
+/**
+ * `/init`, exactly. The one command the client acts on rather than sends:
+ * it never becomes a message. The composer calls the start route instead,
+ * and the server posts "Initiative started." itself, so the history still
+ * shows the fight began. Every other command here is either sent as typed
+ * (a spawn, `/roll`, `/poll`) or rewritten into text before sending.
+ */
+export function isInitCommand(content: string): boolean {
+  return /^\/init$/i.test(content.trim());
+}
+
 /** A message that is a spawn command, or null. Exact: no other words. */
 export function spawnOf(content: string | null | undefined): Character | null {
   if (!content) return null;
@@ -129,6 +141,7 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
       name: '/poll',
       note: 'ask the room: /poll Which night? | Friday | Saturday',
     },
+    { key: 'init', written: '/init', name: '/init', note: 'start an initiative tracker for this channel' },
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,

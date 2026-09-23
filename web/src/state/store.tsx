@@ -31,6 +31,7 @@ import type {
   SelfUser,
   ServerDetail,
   ServerEvent,
+  Tracker,
   VoiceState,
 } from '@scryproof/shared';
 
@@ -75,6 +76,12 @@ export interface State {
    * (no ping, no direct message) and this only hides.
    */
   blocks: Set<string>;
+  /**
+   * The initiative tracker per channel, null when none is running. Absent
+   * means not asked yet. Fetched when a channel is opened, then kept by
+   * `tracker_update`.
+   */
+  trackers: Record<string, Tracker | null>;
 
   selectedServerId: string | null;
   selectedChannelId: string | null;
@@ -98,6 +105,7 @@ const initialState: State = {
   readStates: {},
   replyingTo: {},
   blocks: new Set<string>(),
+  trackers: {},
   selectedServerId: null,
   selectedChannelId: null,
   lastChannelByServer: {},
@@ -126,6 +134,8 @@ type Action =
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
   | { type: 'blocks'; blocks: string[] }
+  /** A tracker straight from an API answer, the same shape `tracker_update` carries. */
+  | { type: 'tracker'; channelId: string; tracker: Tracker | null }
   | { type: 'signed-out' }
   /**
    * A message this client already holds the truth about, straight from an API
@@ -171,6 +181,17 @@ function readUpTo(state: State, channelId: string, messageId: string, mentionCou
   const lastReadMessageId =
     current?.lastReadMessageId && current.lastReadMessageId > messageId ? current.lastReadMessageId : messageId;
   return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount } };
+}
+
+/**
+ * The answer to a click and the broadcast about it can arrive in either
+ * order. Both are whole trackers, so the newer one wins and an older one
+ * landing second is dropped rather than winding the turn back.
+ */
+function withTracker(state: State, channelId: string, tracker: Tracker | null): State {
+  const held = state.trackers[channelId];
+  if (tracker && held && tracker.updatedAt < held.updatedAt) return state;
+  return { ...state, trackers: { ...state.trackers, [channelId]: tracker } };
 }
 
 function upsertServer(state: State, server: ServerDetail): State {
@@ -302,6 +323,9 @@ function reducer(state: State, action: Action): State {
     // added or taken away: there is nothing to reconcile that way.
     case 'blocks':
       return { ...state, blocks: new Set(action.blocks) };
+
+    case 'tracker':
+      return withTracker(state, action.channelId, action.tracker);
 
     case 'reply-to': {
       const { [action.channelId]: removed, ...rest } = state.replyingTo;
@@ -470,6 +494,9 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         },
       };
     }
+
+    case 'tracker_update':
+      return withTracker(state, event.d.channelId, event.d.tracker);
 
     case 'read_state_update': {
       const current = state.readStates[event.d.channelId];
@@ -774,6 +801,8 @@ interface StoreValue {
   replyTo: (channelId: string, message: Message | null) => void;
   /** Replace one message with a fresher copy that only came back to this client, such as a vote's own response. */
   applyMessage: (channelId: string, message: Message) => void;
+  /** Keep a tracker that came back on the answer to this client's own request. */
+  applyTracker: (channelId: string, tracker: Tracker | null) => void;
   loadMembers: (serverId: string) => Promise<void>;
   refreshServer: (serverId: string) => Promise<void>;
   /** Block or unblock somebody. The list the server answers with is the one kept. */
@@ -1146,6 +1175,23 @@ export function StoreProvider({
     dispatch({ type: 'message-applied', channelId, message });
   }, []);
 
+  const applyTracker = useCallback((channelId: string, tracker: Tracker | null) => {
+    dispatch({ type: 'tracker', channelId, tracker });
+  }, []);
+
+  // The open channel's tracker, asked for on opening it and again after a
+  // reconnect, since any `tracker_update` sent while the socket was down is lost.
+  const selectedChannelId = state.selectedChannelId;
+  const connected = state.connection === 'open';
+  useEffect(() => {
+    if (!selectedChannelId || !connected) return;
+    const channelId = selectedChannelId;
+    void api.trackers
+      .get(channelId)
+      .then(({ tracker }) => dispatch({ type: 'tracker', channelId, tracker }))
+      .catch(() => undefined);
+  }, [selectedChannelId, connected]);
+
   const loadMembers = useCallback(async (serverId: string) => {
     const { members } = await api.servers.members(serverId);
     dispatch({ type: 'members-loaded', serverId, members });
@@ -1200,6 +1246,7 @@ export function StoreProvider({
       markRead,
       replyTo,
       applyMessage,
+      applyTracker,
       loadMembers,
       refreshServer,
       block,
@@ -1223,6 +1270,7 @@ export function StoreProvider({
       markRead,
       replyTo,
       applyMessage,
+      applyTracker,
       loadMembers,
       refreshServer,
       block,

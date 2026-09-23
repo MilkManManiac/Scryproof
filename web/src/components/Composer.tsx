@@ -11,7 +11,7 @@ import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
 import type { Attachment, Channel } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
-import { commandOffers, commandQueryAt, expandTextCommand } from '../lib/commands';
+import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
 import { applyMarkup, markerForKey } from '../lib/markup';
@@ -42,7 +42,7 @@ interface Offer {
 }
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
-  const { state, sendTyping, replyTo } = useStore();
+  const { state, sendTyping, replyTo, applyTracker } = useStore();
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [chosen, setChosen] = useState(0);
@@ -202,6 +202,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
   async function send(override?: string) {
     const typed = override ?? text.trim();
+    if (!override && isInitCommand(typed)) {
+      await startInitiative();
+      return;
+    }
     // `:fire:` becomes the emoji unless this server has its own by that
     // name; `/shrug` becomes its text. A character command goes as typed.
     const body = expandTextCommand(expandShortcodes(typed, (name) => emojis.some((emoji) => emoji.name === name)));
@@ -238,6 +242,24 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       } else {
         setError('Message did not send.');
       }
+    }
+  }
+
+  /**
+   * `/init` is not a message. It asks the server for this channel's tracker,
+   * which starts one or answers with the one already running; the server
+   * posts "Initiative started." itself when it is new.
+   */
+  async function startInitiative() {
+    setError(null);
+    setText('');
+    requestAnimationFrame(grow);
+    try {
+      const { tracker } = await api.trackers.start(channel.id);
+      applyTracker(channel.id, tracker);
+    } catch (problem) {
+      setText('/init');
+      setError(problem instanceof ApiError ? problem.message : 'Initiative did not start.');
     }
   }
 
@@ -551,7 +573,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       <div className="composer-hint">
         <span>
           {text.startsWith('/') ? (
-            'Commands: /tang-jump, /roll 2d6+3, /shrug'
+            'Commands: /tang-jump, /roll 2d6+3, /init, /shrug'
           ) : (
             <>
               {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}

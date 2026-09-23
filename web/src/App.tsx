@@ -22,6 +22,7 @@ import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { Composer } from './components/Composer';
+import { Initiative } from './components/Initiative';
 import { DmPane, DmSidebar } from './components/DirectMessages';
 import { DockButton } from './components/DockButton';
 import { InviteJoinModal } from './components/InviteJoinModal';
@@ -320,6 +321,7 @@ function Shell() {
               ) : (
                 <>
                   <MessageList channel={channel} mask={mask} />
+                  <Initiative channel={channel} mask={mask} />
                   <Composer channel={channel} mask={mask} />
                 </>
               )}
