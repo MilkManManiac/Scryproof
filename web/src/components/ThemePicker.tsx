@@ -11,6 +11,7 @@
 
 import { useMemo, useSyncExternalStore, type CSSProperties } from 'react';
 
+import { interfaceScale, SCALE_STEPS } from '../lib/interface-scale';
 import { theme } from '../lib/theme';
 import { THEMES } from '../lib/themes';
 import { Modal } from './Modal';
@@ -39,6 +40,7 @@ function tokensFor(id: string): CSSProperties {
 
 export function ThemePicker({ onClose }: { onClose: () => void }) {
   const current = useSyncExternalStore(theme.subscribe, theme.get);
+  const scale = useSyncExternalStore(interfaceScale.subscribe, interfaceScale.get);
   // Read once per opening: the stylesheets do not change while the dialog is up.
   const painted = useMemo(() => new Map(THEMES.map((entry) => [entry.id, tokensFor(entry.id)])), []);
 
@@ -86,6 +88,22 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
             </button>
           );
         })}
+      </div>
+      <p className="settings-note">
+        Interface scale. Also kept on this computer only.
+      </p>
+      <div className="scale-steps">
+        {SCALE_STEPS.map((percent) => (
+          <button
+            key={percent}
+            type="button"
+            className={percent === scale ? 'scale-step in-use' : 'scale-step'}
+            aria-pressed={percent === scale}
+            onClick={() => interfaceScale.set(percent)}
+          >
+            {percent}%
+          </button>
+        ))}
       </div>
     </Modal>
   );

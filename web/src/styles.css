@@ -90,7 +90,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
+  /* In rem, not px, so the interface scale setting (lib/interface-scale.ts)
+     actually moves it: 15px against the browser's 16px default root. */
+  font-size: 0.9375rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -850,7 +852,9 @@ select {
   /* Full --text: it is the thing on the screen that is read the most
      (Wes, 2026-09-22: more white, larger). */
   color: var(--text);
-  font-size: 16px;
+  /* In rem: the words read most, and the ones the interface scale setting
+     should move first. */
+  font-size: 1rem;
   line-height: 1.45;
   max-width: 84ch;
   text-wrap: pretty;
@@ -1512,7 +1516,8 @@ select {
   padding: 11px 0;
   max-height: 340px;
   line-height: 1.45;
-  font-size: 16px;
+  /* Same reasoning as .message-text: what is typed should scale with what is read. */
+  font-size: 1rem;
 }
 .composer-input::placeholder {
   color: var(--text-faint);
@@ -4633,6 +4638,30 @@ kbd {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--accent);
+}
+
+.scale-steps {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.scale-step {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--panel-solid);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.scale-step:hover {
+  border-color: var(--text-dim);
+}
+.scale-step.in-use {
+  border-color: var(--accent);
   color: var(--accent);
 }
 

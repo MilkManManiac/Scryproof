@@ -12,6 +12,8 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 // Sets data-theme on <html> as a side effect, before anything is drawn.
 import './lib/theme';
+// Sets the root font size on <html>, same idea.
+import './lib/interface-scale';
 import { Ambient } from './components/Ambient';
 import { captureInviteFromLocation } from './lib/invite-link';
 import { registerServiceWorker } from './lib/install';
