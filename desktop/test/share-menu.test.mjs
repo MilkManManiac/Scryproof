@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { SOUND_LABEL, shareMenuTemplate, shareStreams } from '../src/share-menu.js';
+import { pickerList, shareAnswer, shareStreams, soundOffer, sourceKind } from '../src/share-menu.js';
 
-const screen = { id: 'screen:0:0', name: 'Entire screen' };
-const game = { id: 'window:42:0', name: 'A game' };
+/** A stand-in for Electron's NativeImage: enough of it for the list. */
+const image = (url) => ({ toDataURL: () => url, isEmpty: () => url === '' });
 
-test('no sound unless the page asked for it, the person ticked it, and it is Windows', () => {
+const screen = { id: 'screen:0:0', name: 'Entire screen', thumbnail: image('data:image/png;base64,S'), appIcon: null };
+const game = { id: 'window:42:0', name: 'A game', thumbnail: image('data:image/png;base64,G'), appIcon: image('data:image/png;base64,I') };
+
+test('no sound unless the page asked for it, the person turned it on, and it is Windows', () => {
   const asked = { audioRequested: true, platform: 'win32', withSound: true };
   assert.deepEqual(shareStreams(screen, asked), { video: screen, audio: 'loopback' });
   assert.deepEqual(shareStreams(screen, { ...asked, withSound: false }), { video: screen });
@@ -14,46 +17,66 @@ test('no sound unless the page asked for it, the person ticked it, and it is Win
   assert.deepEqual(shareStreams(screen, { ...asked, platform: 'darwin' }), { video: screen });
 });
 
-test('the menu lists screens then windows, and the sound box last, showing the saved choice', () => {
-  const picked = [];
-  const toggled = [];
-  const menu = shareMenuTemplate([game, screen], {
-    audioRequested: true,
-    platform: 'win32',
-    withSound: false,
-    onPick: (source) => picked.push(source),
-    onToggleSound: (on) => toggled.push(on),
-  });
+test('sources are sorted into screens and windows by id, screens first, and nothing else gets in', () => {
+  assert.equal(sourceKind('screen:1:0'), 'screen');
+  assert.equal(sourceKind('window:7:0'), 'window');
+  assert.equal(sourceKind('tab:3'), null);
+  assert.equal(sourceKind(undefined), null);
+
+  const list = pickerList([game, { id: 'tab:3', name: 'odd' }, screen]);
   assert.deepEqual(
-    menu.map((item) => item.label ?? item.type),
-    ['Share a screen', 'Entire screen', 'separator', 'Share a window', 'A game', 'separator', SOUND_LABEL],
+    list.map((item) => [item.id, item.kind]),
+    [
+      ['screen:0:0', 'screen'],
+      ['window:42:0', 'window'],
+    ],
   );
-  const sound = menu.at(-1);
-  assert.equal(sound.type, 'checkbox');
-  assert.equal(sound.checked, false);
-  sound.click();
-  assert.deepEqual(toggled, [true]);
-  menu[4].click();
-  assert.deepEqual(picked, [game]);
+  assert.deepEqual(list[1], { id: 'window:42:0', name: 'A game', kind: 'window', thumbnail: 'data:image/png;base64,G', icon: 'data:image/png;base64,I' });
 });
 
-test('no sound box where sound cannot be sent or was not asked for', () => {
-  const base = { withSound: true, onPick() {}, onToggleSound() {} };
-  for (const options of [
-    { ...base, audioRequested: false, platform: 'win32' },
-    { ...base, audioRequested: true, platform: 'linux' },
-  ]) {
-    assert.ok(!shareMenuTemplate([screen], options).some((item) => item.type === 'checkbox'));
+test('a window with no name or no picture still gets a tile', () => {
+  const [item] = pickerList([{ id: 'window:1:0', name: '', thumbnail: image(''), appIcon: undefined }]);
+  assert.equal(item.name, 'Untitled');
+  assert.equal(item.thumbnail, null);
+  assert.equal(item.icon, null);
+});
+
+test('the sound switch is offered only where sound was asked for and can be sent, showing the saved choice', () => {
+  assert.equal(soundOffer({ audioRequested: true, platform: 'win32', withSound: true }), true);
+  assert.equal(soundOffer({ audioRequested: true, platform: 'win32', withSound: false }), false);
+  assert.equal(soundOffer({ audioRequested: false, platform: 'win32', withSound: true }), null);
+  assert.equal(soundOffer({ audioRequested: true, platform: 'linux', withSound: true }), null);
+});
+
+test('only an id that was offered is shared; anything else is a cancel', () => {
+  const offered = [screen, game];
+  const where = { audioRequested: true, platform: 'win32' };
+  assert.deepEqual(shareAnswer(offered, { id: 'window:42:0', withSound: false }, where), { streams: { video: game }, remember: false });
+  for (const answer of [null, undefined, 'window:42:0', {}, { id: 42 }, { id: 'window:99:0' }, { id: 'screen:0:0 ' }]) {
+    assert.equal(shareAnswer(offered, answer, where), null);
   }
+  // Offered, but not a screen or a window: still refused.
+  assert.equal(shareAnswer([{ id: 'tab:3', name: 'odd' }], { id: 'tab:3' }, where), null);
 });
 
-test('a window with no name still gets a label', () => {
-  const menu = shareMenuTemplate([{ id: 'window:1:0', name: '' }], {
-    audioRequested: false,
-    platform: 'win32',
-    withSound: false,
-    onPick() {},
-    onToggleSound() {},
+test('the sound choice is taken, and remembered, only where there was one to make', () => {
+  const offered = [screen];
+  assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: true, platform: 'win32' }), {
+    streams: { video: screen, audio: 'loopback' },
+    remember: true,
   });
-  assert.ok(menu.some((item) => item.label === 'Untitled'));
+  // Not a real true: off.
+  assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: 'yes' }, { audioRequested: true, platform: 'win32' }), {
+    streams: { video: screen },
+    remember: false,
+  });
+  // No switch was shown, so nothing is remembered and no sound goes.
+  assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: false, platform: 'win32' }), {
+    streams: { video: screen },
+    remember: null,
+  });
+  assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: true, platform: 'darwin' }), {
+    streams: { video: screen },
+    remember: null,
+  });
 });

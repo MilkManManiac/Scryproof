@@ -651,8 +651,9 @@ export class VoiceSession {
           // browser can, leave this call's own voices out of what is captured,
           // or everyone hears themselves come back. Asking for sound is what
           // puts the sound checkbox in Chrome's picker; the person ticks it or
-          // not. The desktop app has its own checkbox, off until ticked, and
-          // this restriction does not reach it (desktop/src/share-menu.js).
+          // not. The desktop app has its own switch in its picker, off until
+          // turned on, and this restriction does not reach it
+          // (desktop/src/share-menu.js, components/SharePicker.tsx).
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
           systemAudio: 'include',
           resolution: quality.resolution,
