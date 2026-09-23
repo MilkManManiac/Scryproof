@@ -53,7 +53,24 @@ interface Voice {
  */
 const TALKING = Math.pow(10, -45 / 10);
 /** How long one loud slice keeps someone "talking", so the ring does not flicker between syllables. */
-const HOLD_MS = 300;
+export const HOLD_MS = 300;
+
+/**
+ * The ring's on/off decision, one sample at a time: on the instant a slice is
+ * loud, and for `holdMs` after the last loud one, so a word's gaps and a
+ * breath between sentences do not flicker it off. Pure, so both the mix (for
+ * everyone we hear) and the local microphone meter (for ourselves) can share
+ * one rule and one test, instead of two hand-rolled timers drifting apart.
+ */
+export function withHold(
+  now: number,
+  loud: boolean,
+  until: number,
+  holdMs: number,
+): { speaking: boolean; until: number } {
+  const nextUntil = loud ? now + holdMs : until;
+  return { speaking: now < nextUntil, until: nextUntil };
+}
 
 /**
  * Everyone you can hear, each with their own volume, mixed into one output.
@@ -82,7 +99,7 @@ export class OutputMix {
         for (const sample of this.scratch) sum += sample * sample;
         const meanSquare = sum / this.scratch.length;
         voice.energy += meanSquare;
-        if (meanSquare > TALKING) voice.loudUntil = now + HOLD_MS;
+        voice.loudUntil = withHold(now, meanSquare > TALKING, voice.loudUntil, HOLD_MS).until;
       }
     }, 20);
   }
@@ -153,6 +170,11 @@ export class OutputMix {
     const out: string[] = [];
     for (const [key, voice] of this.voices) if (voice.loudUntil > now) out.push(key);
     return out;
+  }
+
+  /** Whether we have decoded audio for this key at all, talking or not. */
+  has(key: string): boolean {
+    return this.voices.has(key);
   }
 
   /** Sound that has reached the mix from one person so far. Flat means silence or undecryptable. */
