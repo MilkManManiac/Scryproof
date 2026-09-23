@@ -3979,6 +3979,31 @@ kbd {
   background: rgba(229, 72, 77, 0.14);
 }
 
+/* A menu opened at the pointer: a zero-size anchor there, and the menu hangs
+   from it the way it hangs from a button. */
+.volume-menu {
+  position: fixed;
+  z-index: 60;
+  width: 0;
+  height: 0;
+  cursor: default;
+}
+.volume-menu .menu {
+  top: 0;
+  width: 212px;
+}
+.volume-menu-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--text);
+}
+.volume-menu-slider .voice-range {
+  width: 100%;
+}
+
 .category-row {
   display: flex;
   align-items: center;

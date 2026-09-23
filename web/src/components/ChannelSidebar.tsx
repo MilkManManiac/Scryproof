@@ -27,6 +27,7 @@ import type { PrivacyChoice } from './settings/PrivacyPicker';
 import { ServerSettings } from './settings/ServerSettings';
 import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
+import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, ScreenGlyph } from './glyphs';
 import { useProfileCard } from './ProfileCard';
@@ -48,6 +49,8 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   /** The channel whose right-click menu is asking "really delete?". */
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  /** The person in a voice channel whose right-click volume menu is open. */
+  const [volumeMenu, setVolumeMenu] = useState<{ userId: string; spot: MenuSpot } | null>(null);
   const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
   // The version, not the text itself: only used to make React re-render this
   // list when a draft changes, and every channel reads its own text back off
@@ -330,6 +333,14 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                         }
                                       : undefined
                                   }
+                                  onContextMenu={
+                                    voice.userId !== state.user?.id
+                                      ? (event) => {
+                                          event.preventDefault();
+                                          setVolumeMenu({ userId: voice.userId, spot: spotOf(event) });
+                                        }
+                                      : undefined
+                                  }
                                 >
                                   {member ? (
                                     <Avatar user={member.user} small />
@@ -354,6 +365,14 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                       </span>
                                     ) : null}
                                   </span>
+                                  {volumeMenu?.userId === voice.userId ? (
+                                    <VolumeMenu
+                                      userId={voice.userId}
+                                      name={voiceOccupantName(voice.userId)}
+                                      spot={volumeMenu.spot}
+                                      onClose={() => setVolumeMenu(null)}
+                                    />
+                                  ) : null}
                                 </div>
                               );
                             })}
