@@ -6,6 +6,9 @@
  * already decrypted it, and what leaves the gate is encrypted afterwards.
  */
 
+import { effectChain, type EffectChain } from './voice-effects';
+import type { VoiceEffect } from './voice-prefs';
+
 /* --------------------------------- levels ---------------------------------- */
 
 /** Loudness of whatever is flowing through an analyser right now, in dBFS. */
@@ -176,6 +179,10 @@ export class OutputMix {
  *
  * The level is measured on a clone of the track, because a disabled track
  * reads as silence and the gate would never hear you start talking again.
+ * With a voice changer on, the track sent is the changer's output and the
+ * one listened to is the raw microphone: the threshold is about your voice,
+ * not the robot's, and a pitch shifter's small delay would clip the start of
+ * every word if the gate waited for it.
  */
 export class MicGate {
   private readonly probe: MediaStreamTrack;
@@ -193,9 +200,10 @@ export class MicGate {
     private readonly track: MediaStreamTrack,
     private readonly rule: () => { mode: 'open' | 'threshold' | 'push'; thresholdDb: number },
     private readonly onChange: () => void,
+    listenTo: MediaStreamTrack = track,
   ) {
     const context = audioContext();
-    this.probe = track.clone();
+    this.probe = listenTo.clone();
     this.probe.enabled = true;
     this.source = context.createMediaStreamSource(new MediaStream([this.probe]));
     this.analyser = context.createAnalyser();
@@ -244,10 +252,16 @@ export class MicGate {
 /**
  * Opens the microphone just to show its level, for choosing a device and a
  * threshold outside a call. Nothing is sent anywhere.
+ *
+ * With `preview` set to a voice changer, the changed voice is also played
+ * back to this device's own speakers, so people hear it before the table
+ * does. The bar keeps measuring the raw microphone, because that is what the
+ * gate listens to in a call and the threshold line has to mean the same thing.
  */
 export async function openMeter(
   constraints: MediaTrackConstraints,
   onLevel: (db: number) => void,
+  preview: VoiceEffect = 'none',
 ): Promise<() => void> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   const context = audioContext();
@@ -257,11 +271,24 @@ export async function openMeter(
   source.connect(analyser);
   const scratch = new Float32Array(1024);
   const timer = setInterval(() => onLevel(readDb(analyser, scratch)), 50);
-  return () => {
+
+  let chain: EffectChain | null = null;
+  const stop = () => {
     clearInterval(timer);
+    chain?.close();
     source.disconnect();
     for (const track of stream.getTracks()) track.stop();
   };
+  if (preview !== 'none') {
+    try {
+      chain = await effectChain(context, source, preview);
+      chain.output.connect(context.destination);
+    } catch (problem) {
+      stop();
+      throw problem;
+    }
+  }
+  return stop;
 }
 
 /* --------------------------------- sounds ---------------------------------- */

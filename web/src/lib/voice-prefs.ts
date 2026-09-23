@@ -17,6 +17,8 @@ export type CameraFps = 30 | 60;
  *   low:    the smallest layer, for a connection that is struggling
  */
 export type ReceiveQuality = 'auto' | 'medium' | 'low';
+/** What the microphone is run through before it is sent. `none` sends the voice as it is. */
+export type VoiceEffect = 'none' | 'robot' | 'chipmunk' | 'deep';
 
 export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
@@ -47,6 +49,7 @@ export interface VoicePrefs {
   volumes: Record<string, number>;
   sounds: boolean;
   receiveQuality: ReceiveQuality;
+  voiceEffect: VoiceEffect;
 }
 
 const DEFAULTS: VoicePrefs = {
@@ -67,6 +70,7 @@ const DEFAULTS: VoicePrefs = {
   volumes: {},
   sounds: true,
   receiveQuality: 'auto',
+  voiceEffect: 'none',
 };
 
 const STORAGE_KEY = 'scryproof.voice-prefs.v1';

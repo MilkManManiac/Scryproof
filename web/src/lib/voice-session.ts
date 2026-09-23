@@ -41,7 +41,8 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
-import { MicGate, OutputMix, sounds } from './voice-audio';
+import { MicGate, OutputMix, audioContext, sounds } from './voice-audio';
+import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
@@ -202,6 +203,8 @@ export class VoiceSession {
   private stopWatching: (() => void) | null = null;
   /** Stops the shell's system-wide key watch, when one is running. */
   private globalHold: (() => void) | null = null;
+  /** Voice changer switches, one at a time, so two quick clicks cannot race each other onto the track. */
+  private effectWork: Promise<void> = Promise.resolve();
 
   private members: string[] = [];
   /** Seats we have sent this epoch's key to, so an announcement does not trigger a second copy. */
@@ -327,7 +330,7 @@ export class VoiceSession {
       await room.connect(grant.url, grant.token);
       if (stale()) return;
 
-      if (grant.can.speak) await room.localParticipant.setMicrophoneEnabled(true);
+      if (grant.can.speak) await this.publishMicrophone(room);
       if (stale()) return;
       this.rebuildGate();
       this.watchPrefs();
@@ -521,17 +524,100 @@ export class VoiceSession {
   private rebuildGate(): void {
     this.gate?.close();
     this.gate = null;
-    const media = this.micTrack()?.mediaStreamTrack;
-    if (!media) {
+    const track = this.micTrack();
+    // With a voice changer on, what is sent is the changer's output and the
+    // gate flips that; it listens to the raw microphone underneath.
+    const sent = track?.mediaStreamTrack;
+    const processor = track?.getProcessor();
+    const heard = processor instanceof VoiceEffectProcessor && processor.microphone ? processor.microphone : sent;
+    if (!track || !sent || !heard) {
       this.update({ transmitting: false });
       return;
     }
+    // Closing a gate switches its track back on. When a voice changer has just
+    // been put in front, that track is the raw microphone, whose flag is also
+    // where LiveKit keeps mute; if we are muted, it has to stay off.
+    if (track.isMuted) heard.enabled = false;
     this.gate = new MicGate(
-      media,
+      sent,
       () => ({ mode: voicePrefs.get().inputMode, thresholdDb: voicePrefs.get().thresholdDb }),
       () => this.update({ transmitting: this.gate?.open ?? false }),
+      heard,
     );
     this.update({ transmitting: this.gate.open });
+  }
+
+  /* ----------------------------- voice changers ---------------------------- */
+
+  private chosenEffect() {
+    const effect = voicePrefs.get().voiceEffect;
+    return isVoiceEffect(effect) ? effect : 'none';
+  }
+
+  /**
+   * Opens the microphone and publishes it. With a voice changer chosen, the
+   * changer goes on before the track is published rather than after, so not
+   * one frame of the unchanged voice is sent. It is still the microphone as
+   * far as LiveKit and everyone else can tell: same source, same one track.
+   */
+  private async publishMicrophone(room: Room): Promise<void> {
+    const effect = this.chosenEffect();
+    if (effect === 'none') {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      return;
+    }
+    const [track] = await room.localParticipant.createTracks({ audio: captureOptions(voicePrefs.get()) });
+    if (!track || track.kind !== Track.Kind.Audio) throw new Error('The microphone could not be opened.');
+    const microphone = track as LocalAudioTrack;
+    const context = audioContext();
+    const processor = new VoiceEffectProcessor(effect, context);
+    try {
+      microphone.setAudioContext(context);
+      await microphone.setProcessor(processor);
+    } catch {
+      // The changer could not be built (the pitch shifter did not load). A
+      // call where nobody can hear you is worse than your own voice, so the
+      // plain microphone goes out. The settings preview builds the same
+      // chain and says so in words when it cannot.
+      await processor.destroy();
+    }
+    try {
+      await room.localParticipant.publishTrack(microphone, { source: Track.Source.Microphone });
+    } catch (problem) {
+      // We opened this microphone ourselves, so nobody else will close it.
+      microphone.stop();
+      throw problem;
+    }
+  }
+
+  private applyVoiceEffect(): Promise<void> {
+    this.effectWork = this.effectWork.then(() => this.switchVoiceEffect()).catch(() => undefined);
+    return this.effectWork;
+  }
+
+  /**
+   * A change of voice mid-call. Between one changer and another only the
+   * chain inside the processor is rebuilt; on or off swaps the track on the
+   * existing sender. Either way it is the same publication with the same
+   * encryption, and nobody sees the call change.
+   */
+  private async switchVoiceEffect(): Promise<void> {
+    const track = this.micTrack();
+    if (!track) return;
+    const effect = this.chosenEffect();
+    const processor = track.getProcessor();
+    const current = processor instanceof VoiceEffectProcessor ? processor : null;
+
+    if (current && effect !== 'none') return current.setEffect(effect);
+    if (!current && effect === 'none') return;
+    if (current) {
+      await track.stopProcessor();
+    } else {
+      const context = audioContext();
+      track.setAudioContext(context);
+      await track.setProcessor(new VoiceEffectProcessor(effect, context));
+    }
+    this.rebuildGate();
   }
 
   /**
@@ -637,6 +723,7 @@ export class VoiceSession {
       await this.micTrack()?.restartTrack(captureOptions(now)).catch(() => undefined);
       this.rebuildGate();
     }
+    if (now.voiceEffect !== before.voiceEffect) await this.applyVoiceEffect();
 
     if (now.cameraDeviceId !== before.cameraDeviceId && this.snapshot.camera) {
       const camera = this.room?.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;

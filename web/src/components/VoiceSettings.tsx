@@ -4,13 +4,15 @@
  * Everything here is stored in this browser and nowhere else. The meter opens
  * the microphone for as long as this dialog is open, to show that it works and
  * to make the threshold something you set by looking rather than guessing;
- * that audio goes to the meter and no further.
+ * that audio goes to the meter and no further. With a voice changer chosen,
+ * "Hear it" also plays the changed voice back to this device's own speakers.
  */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { isDesktop } from '../lib/desktop';
 import { openMeter, sounds } from '../lib/voice-audio';
+import { VOICE_EFFECTS, isVoiceEffect } from '../lib/voice-effects';
 import {
   cameraCostLabel,
   captureOptions,
@@ -59,8 +61,11 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState(FLOOR_DB);
   const [meterError, setMeterError] = useState<string | null>(null);
   const [capturingKey, setCapturingKey] = useState(false);
+  const [hearing, setHearing] = useState(false);
 
   const { inputDeviceId, noiseSuppression, echoCancellation, autoGain } = prefs;
+  const voiceEffect = isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none';
+  const preview = hearing && voiceEffect !== 'none' ? voiceEffect : 'none';
 
   // The meter follows the chosen microphone and processing, so what it shows
   // is what a call would send.
@@ -69,22 +74,32 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     setMeterError(null);
 
-    openMeter(captureOptions(voicePrefs.get()), setLevel)
+    openMeter(captureOptions(voicePrefs.get()), setLevel, preview)
       .then(async (close) => {
         if (cancelled) return close();
         stop = close;
         // Device names are hidden until the microphone has been allowed once.
         setDevices(await navigator.mediaDevices.enumerateDevices());
       })
-      .catch(() => {
-        if (!cancelled) setMeterError('The microphone could not be opened. Check that the browser is allowed to use it.');
+      .catch((problem: unknown) => {
+        if (cancelled) return;
+        // getUserMedia fails with one of these names; anything else came from
+        // building the voice changer.
+        const name = problem instanceof Error ? problem.name : '';
+        const microphone = ['NotAllowedError', 'NotFoundError', 'NotReadableError', 'OverconstrainedError', 'SecurityError'];
+        if (preview !== 'none' && !microphone.includes(name)) {
+          setHearing(false);
+          setMeterError('The voice changer could not be started in this browser. In a call you would sound like yourself.');
+        } else {
+          setMeterError('The microphone could not be opened. Check that the browser is allowed to use it.');
+        }
       });
 
     return () => {
       cancelled = true;
       stop?.();
     };
-  }, [inputDeviceId, noiseSuppression, echoCancellation, autoGain]);
+  }, [inputDeviceId, noiseSuppression, echoCancellation, autoGain, preview]);
 
   useEffect(() => {
     if (!capturingKey) return;
@@ -219,6 +234,37 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
             onChange={(event) => voicePrefs.set({ autoGain: event.target.checked })}
           />
         </label>
+
+        <div className="settings-subhead">Voice changer</div>
+        <div className="voice-modes" role="radiogroup" aria-label="Voice changer">
+          {VOICE_EFFECTS.map((effect) => (
+            <button
+              key={effect.id}
+              type="button"
+              role="radio"
+              aria-checked={voiceEffect === effect.id}
+              className={voiceEffect === effect.id ? 'voice-mode active' : 'voice-mode'}
+              onClick={() => voicePrefs.set({ voiceEffect: effect.id })}
+            >
+              {effect.label}
+            </button>
+          ))}
+        </div>
+        {voiceEffect === 'none' ? (
+          <p className="field-note">Robot, Chipmunk and Deep change your voice on this device, before it is encrypted and sent.</p>
+        ) : (
+          <div className="toggle-row">
+            <span>
+              {VOICE_EFFECTS.find((effect) => effect.id === voiceEffect)?.note}
+              <span className="field-note">
+                This is what everyone in the call hears. Use headphones to listen, or the speakers feed back into the microphone.
+              </span>
+            </span>
+            <button type="button" className="button secondary inline" onClick={() => setHearing((on) => !on)}>
+              {hearing ? 'Stop listening' : 'Hear it'}
+            </button>
+          </div>
+        )}
 
         <div className="settings-subhead">Speakers</div>
         {canChooseSpeaker ? (
