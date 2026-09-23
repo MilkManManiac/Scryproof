@@ -41,6 +41,13 @@ Nothing here has a screen. Do these first and by hand.
 
 ## Session B: one batch of agents, briefs in `docs/briefs/`
 
+Launched 2026-09-23 03:00 ET, seven briefs: `screen-share.md` (3 and 4,
+Opus), `speaking-ring.md` (7), `drafts.md` (5), `desktop-menu.md` (6),
+`people.md` (8, 9 and the card volume from 12), `account.md` (11),
+`small-wants.md` (the rest of 12). The two-screens check was added to
+`test:voice` first and passes in Chrome; the live logs put the failure
+in the desktop app (see `screen-share.md`).
+
 Write the briefs the way the last two batches were written (see
 `polls.md` and `events.md` for the shape). Sonnet for the small ones,
 Opus for the two voice ones. Merge, run `npm test`, `npm run typecheck`,
@@ -87,13 +94,15 @@ Wes to try screen share with his brother, then ship.
    list, messages, voice panel, mentions, DMs. Server nicknames (which
    exist, `PUT /api/servers/:id/members/:id/nickname`) stay as they are;
    a local name wins over both.
-10. **Global push-to-talk.** Promised in the plan, never built:
+10. **Global push-to-talk.** WRONG, struck 2026-09-23: it exists
+    (`desktop/src/push-to-talk.js`, `uiohook-napi`, commit 197c3c0). Was:
     `desktop/src/main.js` has no `globalShortcut`. Register the key from
     voice settings in the main process, forward down/up to the renderer
     over the preload bridge, and gate the mic with the existing
     `MicGate` in `voice-audio.ts`. Browser stays window-focused, and the
     settings row says so.
-11. **Two-factor, the switch.** The server has begin/complete/disable
+11. **Two-factor, the switch.** Brief `account.md`, which also adds
+    changing your password: the app had no screen for that either. The server has begin/complete/disable
     routes in `auth.ts` and `services/totp.ts`, the login screen already
     asks for the code, and there is no settings page. Add one under the
     account settings: QR (draw it locally, no CDN), confirm a code, show
