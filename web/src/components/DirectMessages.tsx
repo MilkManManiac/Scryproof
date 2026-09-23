@@ -27,7 +27,7 @@ import { DmPeoplePicker } from './DmPeoplePicker';
 import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
-import { PlayLine, Rich } from './MessageList';
+import { PlayLine, Rich, jumpLimitNote } from './MessageList';
 import { commandOffers, commandQueryAt, expandTextCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { emojiQueryAt } from '../lib/mentions';
@@ -1217,7 +1217,9 @@ function DmComposer({
       onCancelReply();
       setText('');
     } catch (problem) {
-      setError(problem instanceof Error ? problem.message : 'Could not send that.');
+      if (problem instanceof ApiError && problem.status === 429 && spawnOf(body)) {
+        setError(jumpLimitNote(problem.retryAfterSeconds));
+      } else setError(problem instanceof Error ? problem.message : 'Could not send that.');
     } finally {
       setBusy(false);
       input.current?.focus();

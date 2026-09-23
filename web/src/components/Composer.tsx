@@ -11,7 +11,7 @@ import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
 import type { Attachment, Channel, SealedFileRef } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
-import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand } from '../lib/commands';
+import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand, spawnOf } from '../lib/commands';
 import { channelDrafts } from '../lib/drafts';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { useLocalNames } from '../lib/local-names';
@@ -25,6 +25,7 @@ import { sealChannelFile } from '../lib/channel-crypto';
 import { KeyWait, channelKeysFor } from '../lib/channel-keys';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
+import { jumpLimitNote } from './MessageList';
 import { ReactionPicker } from './ReactionPicker';
 import { Spawner } from './Spawner';
 import { RecordButton } from './VoiceNote';
@@ -241,7 +242,12 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     // `:fire:` becomes the emoji unless this server has its own by that
     // name; `/shrug` becomes its text. A character command goes as typed.
     const body = expandTextCommand(expandShortcodes(typed, (name) => emojis.some((emoji) => emoji.name === name)));
-    if ((!body && pending.length === 0) || cooldown > 0) return;
+    if (!body && pending.length === 0) return;
+    if (cooldown > 0) {
+      // A click on the board during the wait did nothing and said nothing.
+      if (spawnOf(body)) setError(jumpLimitNote(cooldown));
+      return;
+    }
     if (channel.encrypted && SERVER_COMMAND.test(body)) {
       setError('Rolls, polls and initiative are worked out by the server, which cannot read this channel. They are off here.');
       return;
@@ -285,7 +291,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         replyTo(channel.id, answering);
       }
       if (problem instanceof ApiError) {
-        setError(problem.message);
+        setError(problem.status === 429 && spawnOf(body) ? jumpLimitNote(problem.retryAfterSeconds) : problem.message);
         if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
       } else if (problem instanceof KeyWait) {
         setError(problem.message);

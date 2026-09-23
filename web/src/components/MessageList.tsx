@@ -17,7 +17,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Permission, emojiNameFrom, houseRules, splitContent } from '@scryproof/shared';
 import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
 
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { channelKeysFor } from '../lib/channel-keys';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
@@ -699,25 +699,53 @@ function PollView({ message, selfId, canManage }: { message: Message; selfId?: s
  * else's). If that fails, it still plays here.
  */
 export function PlayLine({ character, again }: { character: Character; again?: () => Promise<unknown> }) {
+  // Said when "again" hits the limit, instead of quietly playing it for you
+  // alone, which looked as if everyone had seen it.
+  const [limited, setLimited] = useState<string | null>(null);
+  useEffect(() => {
+    if (!limited) return;
+    const timer = window.setTimeout(() => setLimited(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [limited]);
+
   const onClick = () => {
     if (!again) {
       play(character.id);
       return;
     }
-    again().catch(() => play(character.id));
+    again().catch((problem: unknown) => {
+      if (problem instanceof ApiError && problem.status === 429) {
+        setLimited(jumpLimitNote(problem.retryAfterSeconds));
+        return;
+      }
+      play(character.id);
+    });
   };
   return (
-    <button type="button" className="play-line" title="Again, for everyone looking" onClick={onClick}>
-      <span
-        className="meepo-face"
-        style={{ backgroundImage: `url(${sheetUrl(character.id)})`, backgroundSize: `auto 100%` }}
-      />
-      <span>
-        <strong>{character.name}</strong> jumped across
-      </span>
-      <span className="play-line-again">again</span>
-    </button>
+    <span className="play-line-wrap">
+      <button type="button" className="play-line" title="Again, for everyone looking" onClick={onClick}>
+        <span
+          className="meepo-face"
+          style={{ backgroundImage: `url(${sheetUrl(character.id)})`, backgroundSize: `auto 100%` }}
+        />
+        <span>
+          <strong>{character.name}</strong> jumped across
+        </span>
+        <span className="play-line-again">again</span>
+      </button>
+      {limited ? (
+        <span className="play-line-limit" role="status">
+          {limited}
+        </span>
+      ) : null}
+    </span>
   );
+}
+
+/** What hitting the jump limit says, with how long is left when the server says. */
+export function jumpLimitNote(retryAfterSeconds?: number): string {
+  const wait = retryAfterSeconds && retryAfterSeconds > 0 ? ` Try again in ${retryAfterSeconds}s.` : ' Wait a moment.';
+  return `That is a lot of jumping.${wait}`;
 }
 
 /** What a sealed message that did not open says instead. Never the bytes. */

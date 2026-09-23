@@ -5289,6 +5289,16 @@ kbd {
     border-color 90ms linear,
     background 90ms linear;
 }
+.play-line-wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.play-line-limit {
+  color: var(--text-muted);
+  font-size: 13px;
+}
 .play-line:hover {
   border-color: var(--line-strong);
   background: var(--panel-3);
