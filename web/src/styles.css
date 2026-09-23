@@ -4460,6 +4460,17 @@ kbd {
   color: var(--text);
   font-size: 13px;
 }
+.profile-card-volume {
+  margin-top: -2px;
+}
+.profile-card-volume .voice-range {
+  width: 100%;
+}
+.profile-card-volume-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
 .profile-card-status {
   font-size: 14px;
   color: var(--text-muted);

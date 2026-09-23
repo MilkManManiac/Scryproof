@@ -28,6 +28,7 @@ import type { PublicUser } from '@scryproof/shared';
 
 import { localNames, nameFor } from '../lib/local-names';
 import { placeBeside } from '../lib/place';
+import { voicePrefs } from '../lib/voice-prefs';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -96,6 +97,7 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const localNamesNow = useSyncExternalStore(localNames.subscribe, localNames.snapshot);
+  const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
 
   const { user, serverId } = opened;
   const self = state.user?.id === user.id;
@@ -117,6 +119,14 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
   const otherwiseName = member?.nickname ?? user.displayName;
   const localName = localNamesNow[user.id];
   const name = nameFor(user.id, otherwiseName);
+
+  // Are we in the same call as them, right now? The volume slider only makes
+  // sense there: it changes how loud they are for you, in that call.
+  const myCall = Object.values(state.voiceStates).find(
+    (voice) => voice.userId === state.user?.id && voice.channelId,
+  );
+  const sameCall = !self && Boolean(call) && Boolean(myCall) && call?.channelId === myCall?.channelId;
+  const volume = prefs.volumes[user.id] ?? 1;
 
   // Measured once drawn, then placed. Until then it sits off screen.
   useLayoutEffect(() => {
@@ -274,6 +284,22 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
                 <CameraGlyph />
               </span>
             ) : null}
+          </div>
+        ) : null}
+
+        {sameCall ? (
+          <div className="profile-card-volume">
+            <input
+              type="range"
+              className="voice-range"
+              min={0}
+              max={200}
+              step={5}
+              value={Math.round(volume * 100)}
+              onChange={(event) => voicePrefs.setVolumeFor(user.id, Number(event.target.value) / 100)}
+              aria-label={`Volume of ${name}, for you only`}
+            />
+            <div className="profile-card-volume-note">{Math.round(volume * 100)}% &middot; only you hear the change</div>
           </div>
         ) : null}
 
