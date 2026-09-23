@@ -4037,6 +4037,41 @@ kbd {
   line-height: 1.5;
 }
 
+.dm-picker-list {
+  display: grid;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dm-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.dm-picker-row:hover,
+.dm-picker-row:focus-visible {
+  background: rgb(var(--bg-rgb) / 0.6);
+}
+.dm-picker-row:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dm-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dm-lock {
   color: var(--text-dim);
   cursor: help;

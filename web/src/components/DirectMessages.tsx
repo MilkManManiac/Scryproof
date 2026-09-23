@@ -20,6 +20,7 @@ import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { DockButton } from './DockButton';
 import { openPicture } from './Lightbox';
+import { Modal } from './Modal';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
 import { PlayLine, Rich } from './MessageList';
@@ -45,10 +46,19 @@ export function DmSidebar() {
   const { state, openDm } = useDms();
   const selfId = app.user?.id ?? null;
   const list = sortedDms(state);
+  const [picking, setPicking] = useState(false);
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">Direct messages</div>
+      <div className="sidebar-header">
+        <span className="sidebar-header-name">Direct messages</span>
+        <span className="sidebar-header-tools">
+          <button type="button" className="icon-button" title="Start a conversation" onClick={() => setPicking(true)}>
+            +
+          </button>
+        </span>
+      </div>
+      {picking ? <DmStartPicker onClose={() => setPicking(false)} /> : null}
       <div className="sidebar-scroll">
         {state.setupError ? <p className="dm-note">{state.setupError}</p> : null}
         {list.length === 0 && !state.setupError ? (
@@ -74,6 +84,93 @@ export function DmSidebar() {
       <RecoveryStatus />
       <UserPanel />
     </aside>
+  );
+}
+
+/**
+ * Everyone who shares a server with you, from what the store already has
+ * loaded (a server's roster arrives when you first visit it, not before).
+ * Not yourself, not anyone you have blocked, one row per person even if a
+ * server is shared with several.
+ */
+function DmStartPicker({ onClose }: { onClose: () => void }) {
+  const { state: app } = useStore();
+  const { openWith } = useDms();
+  const selfId = app.user?.id ?? null;
+  const [query, setQuery] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const people = useMemo(() => {
+    const byId = new Map<string, PublicUser>();
+    for (const roster of Object.values(app.members)) {
+      for (const member of roster) {
+        if (member.userId === selfId || app.blocks.has(member.userId)) continue;
+        byId.set(member.userId, member.user);
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [app.members, app.blocks, selfId]);
+
+  const needle = query.trim().toLowerCase();
+  const filtered = needle
+    ? people.filter(
+        (person) => person.displayName.toLowerCase().includes(needle) || person.username.toLowerCase().includes(needle),
+      )
+    : people;
+
+  async function pick(userId: string) {
+    setBusyId(userId);
+    setError(null);
+    try {
+      await openWith(userId);
+      onClose();
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not start that conversation.');
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Modal
+      title="Start a conversation"
+      onClose={onClose}
+      footer={
+        <button type="button" className="button secondary inline" onClick={onClose}>
+          Cancel
+        </button>
+      }
+    >
+      <div className="field">
+        <input
+          type="text"
+          placeholder="Find someone"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </div>
+      {error ? <div className="error">{error}</div> : null}
+      {filtered.length === 0 ? (
+        <p className="dm-note">
+          {people.length === 0 ? "Nobody shares a server with you yet." : 'Nobody matches that.'}
+        </p>
+      ) : (
+        <div className="dm-picker-list">
+          {filtered.map((person) => (
+            <button
+              key={person.id}
+              type="button"
+              className="dm-picker-row"
+              disabled={busyId !== null}
+              onClick={() => void pick(person.id)}
+            >
+              <Avatar user={person} small presence={app.presences[person.id] ?? 'offline'} />
+              <span className="dm-picker-name">{person.displayName}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
