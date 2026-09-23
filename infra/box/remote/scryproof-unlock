@@ -44,6 +44,12 @@ else
   touch "$UNLOCKED_FLAG"
 fi
 
+# Room for a release build on a 1 GB box (80-swap.sh). It lives on the vault,
+# so it can only exist from here on, and what is paged out stays encrypted.
+if [ -f "$SWAP_FILE" ] && ! swap_is_on; then
+  swapon "$SWAP_FILE" && note "swap on        $SWAP_FILE"
+fi
+
 say "Starting services"
 failed=0
 while read -r unit; do

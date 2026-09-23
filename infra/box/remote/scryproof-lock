@@ -31,6 +31,8 @@ if [ -s "$BINDS_FILE" ]; then
   done
 fi
 
+# The swap file is on the vault and holds the vault open until it is off.
+if swap_is_on; then swapoff "$SWAP_FILE" && note "swap off"; fi
 if vault_is_mounted; then umount "$VAULT_MOUNT"; fi
 if vault_is_open; then cryptsetup close "$VAULT_NAME"; fi
 

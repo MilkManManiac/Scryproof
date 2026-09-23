@@ -4,6 +4,10 @@ set -Eeuo pipefail
 
 VAULT_NAME="vault"                       # /dev/mapper/vault
 VAULT_MOUNT="/mnt/vault"
+# Swap, on the vault so anything paged out is encrypted at rest like the rest
+# of it. Only on while unlocked. See 80-swap.sh.
+SWAP_FILE="$VAULT_MOUNT/swapfile"
+swap_is_on() { swapon --show=NAME --noheadings 2>/dev/null | grep -qx "$SWAP_FILE"; }
 STATE_DIR="/etc/scryproof"               # which paths and units the vault gates
 BINDS_FILE="$STATE_DIR/binds.list"
 UNITS_FILE="$STATE_DIR/units.list"
