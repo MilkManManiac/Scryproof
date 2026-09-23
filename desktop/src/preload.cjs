@@ -9,6 +9,8 @@
  * and has no say in whether it is genuine), to be restarted onto a newer
  * installer checked the same way, and to be told when its
  * push-to-talk key goes down and up while another program has the keyboard.
+ * And the screen-share picker: the page draws it, the main process decides
+ * what is actually shared.
  *
  * CommonJS because a sandboxed preload cannot be a module.
  */
@@ -59,5 +61,31 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('scryproof:ptt', relay);
       return () => ipcRenderer.removeListener('scryproof:ptt', relay);
     },
+    /**
+     * The screen-share picker. `open` is called with the screens and windows
+     * to choose from when the page asks to share, `close` when the shell has
+     * answered for it (a newer request, say). Listening tells the shell this
+     * page draws the picker. Returns the way to stop.
+     */
+    onShareRequest: (open, close) => {
+      const relayOpen = (_event, request) => open(request);
+      const relayClose = () => close();
+      ipcRenderer.on('scryproof:share-open', relayOpen);
+      ipcRenderer.on('scryproof:share-close', relayClose);
+      ipcRenderer.send('scryproof:share-listen', true);
+      return () => {
+        ipcRenderer.removeListener('scryproof:share-open', relayOpen);
+        ipcRenderer.removeListener('scryproof:share-close', relayClose);
+        ipcRenderer.send('scryproof:share-listen', false);
+      };
+    },
+    /** `{ id, withSound }` to share, null to cancel. Resolves to whether a share was started. */
+    answerShare: (answer) =>
+      ipcRenderer.invoke(
+        'scryproof:share-answer',
+        answer && typeof answer.id === 'string' ? { id: answer.id, withSound: answer.withSound === true } : null,
+      ),
+    /** Fresh pictures while the picker is open, or null once it is not. */
+    refreshShare: () => ipcRenderer.invoke('scryproof:share-refresh'),
   }),
 );

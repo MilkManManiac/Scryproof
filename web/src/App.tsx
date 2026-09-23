@@ -36,6 +36,7 @@ import { ProfileCardProvider } from './components/ProfileCard';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
+import { SharePicker } from './components/SharePicker';
 import { ShortcutHelp } from './components/ShortcutHelp';
 import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
@@ -89,6 +90,7 @@ export function App() {
           <Lightbox />
           <Stage />
           <InviteJoinModal />
+          <SharePicker />
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>

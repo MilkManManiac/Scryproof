@@ -23,6 +23,29 @@ interface DesktopBridge {
   onPushHold?: (listener: (held: boolean) => void) => () => void;
   /** Absent in shells built before the interface scale. */
   setZoom?: (factor: number) => void;
+  /** Absent in shells built before the in-app share picker (0.5.1 and older), which show a menu of their own. */
+  onShareRequest?: (open: (request: ShareRequest) => void, close: () => void) => () => void;
+  answerShare?: (answer: { id: string; withSound: boolean } | null) => Promise<boolean>;
+  refreshShare?: () => Promise<ShareSource[] | null>;
+}
+
+/** One screen or window the desktop app can share, as its shell describes it. */
+export interface ShareSource {
+  id: string;
+  name: string;
+  kind: 'screen' | 'window';
+  /** A small picture of it, as a data URL; null for a minimised window. */
+  thumbnail: string | null;
+  /** The window's app icon, as a data URL, where there is one. */
+  icon: string | null;
+}
+
+/** What the shell asks the page to choose from when it wants to share. */
+export interface ShareRequest {
+  sources: ShareSource[];
+  /** Where the switch starts, or null when sound cannot go with this share. */
+  sound: boolean | null;
+  soundLabel: string;
 }
 
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
@@ -141,4 +164,29 @@ export const applyShellUpdate = (): void => {
 export const applyClientUpdate = (): void => {
   if (bridge) void bridge.applyUpdate?.();
   else window.location.reload();
+};
+
+/**
+ * The desktop app's screen-share picker, which the page draws. `open` is
+ * called when the shell wants a screen or window chosen, `close` when it has
+ * answered for the page. Returns the way to stop, or null in a browser (whose
+ * own picker is used) or an older shell (whose menu is).
+ */
+export function onShareRequest(open: (request: ShareRequest) => void, close: () => void): (() => void) | null {
+  if (!bridge?.onShareRequest || !bridge.answerShare) return null;
+  return bridge.onShareRequest(open, close);
+}
+
+/** The choice: a source id and whether to send sound, or null to cancel. */
+export const answerShare = (answer: { id: string; withSound: boolean } | null): void => {
+  void bridge?.answerShare?.(answer).catch(() => false);
+};
+
+/** Fresh pictures for the open picker, or null once the shell has closed it. */
+export const refreshShare = async (): Promise<ShareSource[] | null> => {
+  try {
+    return (await bridge?.refreshShare?.()) ?? null;
+  } catch {
+    return null;
+  }
 };

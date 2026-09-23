@@ -42,7 +42,7 @@ import {
   versionFromFileName,
 } from './installer-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
-import { shareMenuTemplate, shareStreams } from './share-menu.js';
+import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -68,6 +68,7 @@ const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPRO
  */
 const INSTALLER_URL = app.isPackaged ? `${SERVER.origin}/download/` : '';
 const INSTALLER_EVERY_MS = 60 * 60_000;
+const TIDY_AGAIN_MS = 60_000;
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -281,7 +282,8 @@ async function tidyShellDir() {
   try {
     for (const name of await readdir(shellDir())) {
       const version = versionFromFileName(name);
-      if (!version || !isNewerVersion(version, app.getVersion())) await rm(join(shellDir(), name), { force: true });
+      // One file still held (the installer, just after an update) does not stop the rest.
+      if (!version || !isNewerVersion(version, app.getVersion())) await rm(join(shellDir(), name), { force: true }).catch(() => {});
     }
   } catch { /* no folder yet */ }
 }
@@ -378,6 +380,12 @@ function armShellUpdates() {
   ipcMain.handle('scryproof:shell-apply', (event) => (ours(event) ? applyShellUpdate() : false));
   if (!INSTALLER_URL) return;
   void tidyShellDir().then(checkForShellUpdate);
+  // The installer that just updated this app is still running when the app
+  // starts, and holds its own file, so the first tidy cannot remove it. Again
+  // a minute later, once it has let go; not while a download is being written.
+  setTimeout(() => {
+    if (!shellChecking) void tidyShellDir();
+  }, TIDY_AGAIN_MS).unref();
   setInterval(() => void checkForShellUpdate(), INSTALLER_EVERY_MS).unref();
 }
 
@@ -411,50 +419,103 @@ function armPermissions(ses) {
   ses.setPermissionRequestHandler((contents, permission, done) => done(ours(contents.getURL().slice(0, APP_ORIGIN.length)) && GRANTED.has(permission)));
   ses.setPermissionCheckHandler((_contents, permission, origin) => ours(origin) && GRANTED.has(permission));
 
-  // Windows has no picker of its own to hand over to, so this is ours: a plain
-  // list, and a sound checkbox that is off until ticked. "With sound" is the
-  // whole machine's audio, the call included; `share-menu.js` says why.
-  ses.setDisplayMediaRequestHandler((request, done) => {
-    void (async () => {
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      let answered = false;
-      let reopening = false;
-      const answer = (streams) => {
-        if (answered) return;
-        answered = true;
-        try { done(streams); } catch { /* an empty answer throws to cancel; that is the cancel */ }
-      };
-      const open = () => {
-        const withSound = shareWithSound();
-        Menu.buildFromTemplate(
-          shareMenuTemplate(sources, {
-            audioRequested: request.audioRequested,
-            platform: process.platform,
-            withSound,
-            onPick: (source) => answer(shareStreams(source, { audioRequested: request.audioRequested, platform: process.platform, withSound })),
-            onToggleSound: (on) => {
-              // Any click closes the menu, the checkbox too. Save the choice and put the menu back.
-              reopening = true;
-              void setShareWithSound(on);
-              setTimeout(() => {
-                reopening = false;
-                open();
-              }, 0);
-            },
-          }),
-        ).popup({
-          callback: () => {
-            // Closed without choosing. Electron wants an answer either way. A
-            // tick later, because the item's click can arrive after the close.
-            setTimeout(() => {
-              if (!reopening) answer({});
-            }, 0);
-          },
-        });
-      };
-      open();
-    })();
+  // Windows has no picker of its own to hand over to, so the page draws one.
+  ses.setDisplayMediaRequestHandler((request, done) => void openSharePicker(request, done));
+}
+
+/* ------------------------------- share picker ------------------------------ */
+
+/**
+ * The screen-share picker. On a request, this process gathers the screens
+ * and windows with small pictures and app icons, and sends the page a plain
+ * list (`share-menu.js`, `pickerList`). The page shows it and answers with one
+ * id and the sound choice, or a cancel. Only an id from a list this process
+ * sent is shared; anything else is a cancel. While the picker is open the page
+ * asks for fresh pictures every couple of seconds, so it looks live.
+ *
+ * Electron wants every request answered, so one always is: when the page
+ * answers, when a newer request replaces it, and when the page reloads, dies,
+ * or the window closes mid-pick.
+ */
+const THUMBNAIL_SIZE = { width: 320, height: 180 };
+/** The open request: { done, audioRequested, offered: Map(id, source) }, or null. */
+let picking = null;
+/** Whether the page on screen has said it draws the picker. A new page says so again. */
+let pickerListening = false;
+
+const shareSources = () => desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: THUMBNAIL_SIZE, fetchWindowIcons: true });
+
+/** Answer the open request, once. `{}` is a cancel. */
+function finishPick(pick, streams) {
+  if (picking === pick) picking = null;
+  if (pick.answered) return;
+  pick.answered = true;
+  try { pick.done(streams); } catch { /* an empty answer throws to cancel; that is the cancel */ }
+}
+
+/** Cancel whatever is open, and tell the page to close its picker if it still has one up. */
+function cancelPick() {
+  const pick = picking;
+  if (!pick) return;
+  finishPick(pick, {});
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('scryproof:share-close');
+}
+
+/** Remember every source offered in this pick, so an answer made from an older list still counts. */
+function offer(pick, sources) {
+  for (const source of sources) pick.offered.set(source.id, source);
+  return pickerList(sources);
+}
+
+async function openSharePicker(request, done) {
+  cancelPick();
+  const pick = { done, audioRequested: request.audioRequested, offered: new Map(), answered: false };
+  picking = pick;
+  // No page that draws the picker (a client older than this shell): nothing to show it with.
+  if (!win || !pickerListening) return finishPick(pick, {});
+  let sources;
+  try {
+    sources = await shareSources();
+  } catch {
+    return finishPick(pick, {});
+  }
+  // Replaced or cancelled while the pictures were being taken.
+  if (picking !== pick || !win) return finishPick(pick, {});
+  win.webContents.send('scryproof:share-open', {
+    sources: offer(pick, sources),
+    sound: soundOffer({ audioRequested: pick.audioRequested, platform: process.platform, withSound: shareWithSound() }),
+    soundLabel: SOUND_LABEL,
   });
+}
+
+function armSharePicker() {
+  ipcMain.on('scryproof:share-listen', (event, on) => {
+    if (ours(event)) pickerListening = on === true;
+  });
+  ipcMain.handle('scryproof:share-answer', (event, answer) => {
+    const pick = picking;
+    if (!ours(event) || !pick) return false;
+    const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform });
+    if (chosen && chosen.remember !== null) void setShareWithSound(chosen.remember);
+    finishPick(pick, chosen ? chosen.streams : {});
+    return chosen !== null;
+  });
+  ipcMain.handle('scryproof:share-refresh', async (event) => {
+    const pick = picking;
+    if (!ours(event) || !pick) return null;
+    try {
+      const sources = await shareSources();
+      return picking === pick ? offer(pick, sources) : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+/** The page that drew the picker is going away: answer for it, and wait for the next page to say it listens. */
+function pageGone() {
+  pickerListening = false;
+  cancelPick();
 }
 
 /** Whether the last share was sent with sound. Remembered on this machine; off until ticked once. */
@@ -590,7 +651,15 @@ function createWindow(visible = true) {
   // A page that goes away (reload onto a newer client) takes its request for
   // the key with it. The next page asks again if it wants it.
   win.webContents.on('did-navigate', stopPushToTalk);
+  // The same for an open share picker, which also needs its answer. Before the
+  // new page starts, so its own "I draw the picker" is not undone; a route
+  // change inside the page is not a new page.
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) pageGone();
+  });
+  win.webContents.on('render-process-gone', pageGone);
   win.on('closed', () => {
+    pageGone();
     win = null;
     stopPushToTalk();
   });
@@ -614,6 +683,7 @@ void app.whenReady().then(async () => {
   protocol.handle('app', handle);
   armGateway(session.defaultSession);
   armPermissions(session.defaultSession);
+  armSharePicker();
   createWindow(!startedHidden);
   armUpdates();
   armShellUpdates();
