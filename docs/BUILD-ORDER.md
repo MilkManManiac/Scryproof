@@ -20,7 +20,8 @@ changelog entry dated today in `web/src/changelog.ts`.
 
 Nothing here has a screen. Do these first and by hand.
 
-1. **Backups.** There are none. Nightly `pg_dump` plus the attachments
+1. **Backups.** DONE 2026-09-23, live, restore proven (HANDOFF, last
+   section). Was: there are none. Nightly `pg_dump` plus the attachments
    directory, encrypted on the box with a key that only Wes's PC can open
    (age or gpg public key; the private half never on the box), then copied
    off. Simplest honest target: Wes's PC pulls it over ssh with the existing
@@ -30,7 +31,8 @@ Nothing here has a screen. Do these first and by hand.
    into `infra/box/README.md`. Non-negotiables 1 and 8 apply: the backup
    holds channel text, which the server can read anyway, and DM ciphertext,
    which stays ciphertext.
-2. **Password reset, the box command.** `server/src/routes/auth.ts` has
+2. **Password reset, the box command.** BUILT `fc25098`, ships with the
+   next deploy. `server/src/routes/auth.ts` has
    change-password only. Add a script the main session runs over ssh
    (pattern: `scripts/box.sh`) that sets a temporary password for a
    username, revokes every session, and marks the account "must change
@@ -139,5 +141,5 @@ channel (exists; if Loaf still sees otherwise it is a bug, get a repro).
 ## Open for Wes
 
 - Should @everyone get Manage events, so the whole group can plan?
-- Backups: to his PC over ssh, or to paid object storage? PC is free and
-  under his control; object storage survives his PC dying too.
+- Backups: decided, to the PC (free). Wes still needs to put the private
+  key file in the password manager.

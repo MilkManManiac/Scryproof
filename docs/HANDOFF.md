@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, 01:10 ET. **Next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, 02:45 ET. Session A of `docs/BUILD-ORDER.md` is built (last section): nightly encrypted backups are running on the box with a restore proven, and the password reset is committed, waiting to ship with the next batch. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1975,4 +1975,37 @@ Could not reproduce headless any other way (dev and production bundle,
 two users, spaced and overlapping). `vite preview` on 4173 now proxies
 `/api` and `/gateway` so the production bundle can be tested locally;
 `shot.mjs` takes `WEB_URL=http://localhost:4173`.
+
+## Session A: backups and password reset, 2026-09-23 night
+
+**Backups: live on the box, no deploy needed.** `infra/box/README.md`
+"Backups" has the whole story and the restore steps for a fresh box. Nightly
+at 08:00 UTC the box writes `/mnt/vault/backups/scryproof-<time>.tar.gpg`
+(database as SQL plus uploads), encrypted to a key made on the PC by
+`scripts/backup-key.sh`. Private half at `~/.scryproof-backup/` on Wes's PC
+only. First backup, 34.8 MB, pulled with `scripts/backup-pull.sh` and
+checked with `node scripts/backup-check.mjs`: 32 tables, 17 migrations, 254
+messages, 238 DMs, 23 stored files, none missing, `RESTORE OK`.
+
+Still open: Wes puts `~/.scryproof-backup/backup-private-key.asc` in the
+password manager (without it, the box's copies are unreadable if the PC
+dies). Pulling is by hand for now; a Windows scheduled task for
+`backup-pull.sh` is a change to his PC, so ask first. Destination decided
+as the PC (free, his); object storage stays possible later with the same
+encrypted files.
+
+**Password reset: committed `fc25098`, not deployed.** From the PC, after
+the person asked in person or on a call:
+
+    bash scripts/box.sh reset-password <username>              (add --clear-2fa if the phone is gone too)
+
+Prints a temporary password like `k7mp-2qxv-9hrt`, signs them out
+everywhere, sets `users.must_change_password` (migration 0017). Until they
+pick a new one the server answers only `me`, `password`, `logout` and
+`context` (hook in `app.ts`), and the gateway refuses the socket; the
+client shows `NewPasswordScreen`. DMs untouched. Logged, without the
+password, to `/mnt/vault/logs/password-resets.log`. The box command
+refuses to run until a build with `server/dist/reset-password.js` is
+deployed. Test: `server/src/tests/password-reset.test.ts`. Needs a
+changelog line when it ships ("If you forget your password, ask Wes...").
 
