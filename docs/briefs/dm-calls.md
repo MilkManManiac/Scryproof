@@ -52,3 +52,12 @@ and a ring with no way to decline is worse than none).
 
 Ringing and push. Group DMs themselves (`group-dms.md`), though a group
 call is the same room with more people once both exist.
+
+## 2026-09-23: handed to an Opus agent
+
+Built alongside `group-dms.md` by a second agent. Grant on `dm_members`
+only, never on a pair key, so a group call works as soon as groups exist.
+You own `VoiceState.dmId`; do not touch `DmChannel`. Put the call button
+and the "In a call" mark in their own small pieces so the merge with the
+group header is easy. Non-negotiables 2 and 7 hold in a DM: E2EE on, the
+connection panel shown.

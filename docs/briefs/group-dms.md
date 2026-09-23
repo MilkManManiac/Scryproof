@@ -64,3 +64,14 @@ no such key.
 ## Not the job
 
 Calls inside a group; see `dm-calls.md`. Read receipts. Group pictures.
+
+## 2026-09-23: handed to an Opus agent
+
+Built alongside `dm-calls.md` by a second agent. You own `DmChannel.kind`
+and `title` and the one migration. Keep header changes in
+`DirectMessages.tsx` in their own small component or block, since the call
+button lands in the same header. Re-read the DM code first: the recovery
+phrase (`dm-recovery.ts`), vouching (`endorsedBy`) and `wrapped_by`
+rewrapping landed after this was written; a new member's devices must be
+assessed the same way. Blocking and `requireNotBlocked` changed too: in a
+group, a block must not stop the other members talking to each other.
