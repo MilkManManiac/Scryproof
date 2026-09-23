@@ -30,6 +30,8 @@ import {
   customType,
 } from 'drizzle-orm/pg-core';
 
+import type { TrackerEntry } from '@scryproof/shared';
+
 /**
  * Postgres bytea. Drizzle has no first-class bytea, and we want real binary
  * rather than base64-in-text so the ciphertext column cannot be accidentally
@@ -360,6 +362,29 @@ export const pollVotes = pgTable(
     index('poll_votes_message_idx').on(table.messageId),
   ],
 );
+
+/**
+ * A channel's initiative tracker: who is in the fight, in what order, and
+ * whose turn it is. One per channel at a time, so the channel is the key.
+ * No history: ending the fight deletes the row, and the "Initiative ended"
+ * message in the channel is what remains of it.
+ *
+ * The entries are one jsonb list rather than a table of their own because
+ * the list is always read, changed and sent whole, and its order is the
+ * point of it.
+ */
+export const trackers = pgTable('trackers', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id, { onDelete: 'cascade' }),
+  startedBy: text('started_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  round: integer('round').notNull().default(1),
+  turn: integer('turn').notNull().default(0),
+  entries: jsonb('entries').$type<TrackerEntry[]>().notNull().default(sql`'[]'::jsonb`),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+});
 
 /** Profile pictures. One row per picture ever uploaded; the current one is named by `users.avatar_url`. */
 export const avatars = pgTable('avatars', {
@@ -764,6 +789,7 @@ export type ChannelRow = typeof channels.$inferSelect;
 export type CategoryRow = typeof categories.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type PollVoteRow = typeof pollVotes.$inferSelect;
+export type TrackerRow = typeof trackers.$inferSelect;
 export type ReactionRow = typeof reactions.$inferSelect;
 export type EmojiRow = typeof emojis.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;

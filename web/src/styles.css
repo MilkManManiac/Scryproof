@@ -966,6 +966,169 @@ select {
   text-decoration: underline;
 }
 
+/* initiative */
+
+/* Sits on the composer's own gutter, so the fight and the box read as one place. */
+.initiative {
+  flex: 0 0 auto;
+  margin: 0 18px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  font-size: 13px;
+}
+
+.initiative-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.initiative-round {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.initiative-now {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.initiative-now-name {
+  font-weight: 640;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.initiative-now-label {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.initiative-error {
+  margin-top: 6px;
+  color: var(--bad);
+}
+
+.initiative-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.initiative-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.initiative-row.current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.initiative-number {
+  width: 32px;
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.initiative-row.current .initiative-number {
+  color: var(--text);
+  font-weight: 640;
+}
+
+.initiative-face {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 640;
+  color: var(--text-dim);
+  background: var(--panel-3);
+}
+
+.initiative-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.initiative-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.initiative-row-actions {
+  display: flex;
+  margin-left: auto;
+}
+
+.initiative-row-actions .icon-button {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.initiative-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.initiative-add input,
+.initiative-add select {
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+}
+
+.initiative-add input {
+  flex: 1 1 120px;
+}
+
+.initiative-add .initiative-value {
+  flex: 0 1 110px;
+  font-family: var(--mono);
+}
+
+.initiative-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--text-dim);
+}
+
 .message.grouped .message-hover-time {
   position: absolute;
   left: 16px;

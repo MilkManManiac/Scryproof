@@ -28,6 +28,7 @@ import type {
   VoiceState,
   PublicUser,
 } from './types.js';
+import type { Tracker } from './initiative.js';
 
 export const GATEWAY_PATH = '/gateway';
 
@@ -58,6 +59,12 @@ export type ServerEvent =
    * to see.
    */
   | { t: 'poll_update'; d: { messageId: Snowflake; channelId: Snowflake; counts: number[]; closedAt: Timestamp | null } }
+  /**
+   * A channel's initiative tracker after any change, whole, so a missed event
+   * cannot leave anyone looking at the wrong turn. `tracker` is null once the
+   * fight has ended.
+   */
+  | { t: 'tracker_update'; d: { channelId: Snowflake; tracker: Tracker | null } }
   /** Sent only to the person it belongs to, on all their devices: read here, read everywhere. */
   | { t: 'read_state_update'; d: ReadState }
   | { t: 'typing_start'; d: { channelId: Snowflake; userId: Snowflake; at: number } }
