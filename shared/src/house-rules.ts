@@ -54,15 +54,16 @@ function readAs(char: string): string {
  * a person and not a ball: baller, balla, ballah, ballar, ballr, and plurals.
  * Repeated letters are already one, so "ll" reads as "l".
  */
-const RULE = /blgbal(?:[ea][rh]?|r|h)[sz]?/g;
+const RULE = /blgbal(?:er|eh|a[rh]?|r|h)[sz]?/g;
 const BIG_BAL = 6;
 
 /**
- * Stretches of text the rule must not reach into: a mention or custom emoji
- * token (`<@id>`, `<:name:id>`), whose ids are digits and letters that could
- * spell anything once read, and links.
+ * Stretches of text the rule must not reach into: a mention token (`<@id>`,
+ * the only bracketed token this app has; the id is hex that could spell
+ * anything once read) and links. Anything else in angle brackets is just
+ * text with brackets round it.
  */
-const UNTOUCHABLE = /<[@#:a-z][^<>\s]*>|https?:\/\/\S+/gi;
+const UNTOUCHABLE = /<@[0-9a-f-]{36}>|https?:\/\/\S+/gi;
 
 /** Replaces the joke in one stretch of free text. */
 function applyTo(text: string): string {
@@ -97,6 +98,13 @@ function applyTo(text: string): string {
     const endingAlone = spaced(first + BIG_BAL - 1);
     const ballSpaced = spaced(first + 3) && spaced(first + 4);
     if (endingAlone && !ballSpaced) continue;
+    // "a big balance", "the big ballet", "big ballroom", "Big Bailey": the
+    // reading goes on without a break, so it is a longer word, not the joke.
+    // Only a real letter carries a word on ("baller!" and "baller1" end it,
+    // whatever the ! and the 1 read as), and not one that starts the joke again.
+    const next = last + 1;
+    const carriesOn = next < reading.length && !spaced(last) && /\p{L}/u.test(chars[from[next]!]!);
+    if (carriesOn && !reading.startsWith('blgbal', next)) continue;
     cuts.push({ start: from[first]!, end: to[last]! });
   }
   if (cuts.length === 0) return text;

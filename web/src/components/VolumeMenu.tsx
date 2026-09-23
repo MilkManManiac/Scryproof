@@ -63,7 +63,10 @@ export function VolumeMenu({
       className="volume-menu"
       style={{ left: spot.x, top: spot.y }}
       onClick={keep}
-      onKeyDown={keep}
+      onKeyDown={(event) => {
+        // Escape is for the menu's own window listener, which closes it.
+        if (event.key !== 'Escape') keep(event);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         keep(event);

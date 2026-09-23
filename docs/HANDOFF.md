@@ -2340,3 +2340,53 @@ comes back only with the unlock.
 sends a line and a picture, then over ssh: `select content, ciphertext from
 messages order by created_at desc limit 3` and the attachment row, shown to
 him. Screenshot into this section.
+
+## Review of the push, 2026-09-23 afternoon (fixed on main, NOT deployed)
+
+Two reviewers went over the batch after it shipped. Real findings, all
+fixed and committed, **not yet deployed; ask Wes, then `bash scripts/release.sh`**
+(no shell change, no installer):
+
+- **House rule, live bug:** `<bigballer>`, `<:bigballer:1>` and `<@bigballer>`
+  passed untouched (the exemption skipped anything in angle brackets; only
+  `<@uuid>` mention tokens and links are exempt now). Worse, "a big balance
+  sheet", "the big ballet", "big ballroom", "Big Bailey", "a big bale of hay"
+  were mangled, and since the server rewrites channel text before storing
+  it, permanently. Now a real letter carrying the word on means it is a
+  longer word, not the joke; "baller!" and "baller1" still count. Tests
+  added for all of these. Known remaining dodge: "big ball er" (the
+  ball-of-fire exemption). Anything already mangled in the database stays
+  mangled; nothing was, as of 17:03 ET (checked the newest messages).
+- Composer: a slowmode wait said "That is a lot of jumping" when the board
+  was clicked, and a jump wait said "Slowmode" in the box. `cooldownFor`
+  tells them apart.
+- Editing an old message in a channel just switched to encryption failed
+  silently (editor closed, nothing changed). It now stays open and says why.
+- The "encryption turned on" line was drawn above the first *loaded*
+  message even when the switch was further up; drawn only between two
+  messages we hold now.
+- "sender not proven" was shown on your own old group messages. Read the
+  signed-in id through a ref: putting `selfId` in `toView`'s deps remade it
+  at sign-in and the conversation never finished opening (test:dm caught it).
+- Volume menu: Escape did nothing once the slider had focus.
+- Picture viewer on a phone had no way to zoom at all after the click was
+  removed: a tap now zooms in around the finger, a tap when zoomed fits.
+- Attachment refusal wording for a stale client: "This channel is encrypted
+  now. Reload the app to send files here."
+
+Not fixed, for Wes to decide or for later:
+- Flags category shows letter pairs on Windows (no flag glyphs in Segoe UI
+  Emoji). Options: drop country flags on Windows, or bundle a flag font.
+- Millisecond race: a plain message posted in the same instant the switch
+  is turned on could land after `encryptedAt`. Close it with a re-check in
+  the message insert.
+- Emoji grid: ~1,900 tab stops, no arrow keys; Escape from the skin-tone
+  popover closes the whole picker; share picker focuses the sound switch
+  first. Low.
+- The lock panel does not say the server sees that a file was sent and its
+  size (it does). One clause.
+- `desktop/test/share-menu.test.mjs` is not run by the root `npm test`.
+
+Checks after the fixes: `npm test` 239 + 292; `test:channels` 53 pass;
+`test:dm` all pass; typecheck and build clean. `test:smoke`, `test:voice`
+not rerun (nothing they cover changed).

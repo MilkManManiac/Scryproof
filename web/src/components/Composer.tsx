@@ -63,6 +63,8 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  /** What started the wait: the jump limit, or slowmode and the like. */
+  const cooldownFor = useRef<'jump' | 'other'>('other');
   const input = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   /** Which of the two boards beside Send is open. */
@@ -245,7 +247,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     if (!body && pending.length === 0) return;
     if (cooldown > 0) {
       // A click on the board during the wait did nothing and said nothing.
-      if (spawnOf(body)) setError(jumpLimitNote(cooldown));
+      // The wait is the jump limit only when a jump started it: a slowmode
+      // wait is slowmode, whatever was clicked.
+      if (spawnOf(body)) setError(cooldownFor.current === 'jump' ? jumpLimitNote(cooldown) : `Slowmode. Wait ${cooldown}s.`);
       return;
     }
     if (channel.encrypted && SERVER_COMMAND.test(body)) {
@@ -291,8 +295,12 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         replyTo(channel.id, answering);
       }
       if (problem instanceof ApiError) {
-        setError(problem.status === 429 && spawnOf(body) ? jumpLimitNote(problem.retryAfterSeconds) : problem.message);
-        if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
+        const jumping = problem.status === 429 && Boolean(spawnOf(body));
+        setError(jumping ? jumpLimitNote(problem.retryAfterSeconds) : problem.message);
+        if (problem.retryAfterSeconds) {
+          cooldownFor.current = jumping ? 'jump' : 'other';
+          setCooldown(problem.retryAfterSeconds);
+        }
       } else if (problem instanceof KeyWait) {
         setError(problem.message);
       } else {
@@ -396,7 +404,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       }
       if (answering) replyTo(channel.id, null);
     } catch (problem) {
-      if (problem instanceof ApiError && problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
+      if (problem instanceof ApiError && problem.retryAfterSeconds) {
+        cooldownFor.current = 'other';
+        setCooldown(problem.retryAfterSeconds);
+      }
       throw problem instanceof ApiError || problem instanceof KeyWait
         ? new Error(problem.message)
         : new Error('The voice message did not send.');
@@ -530,7 +541,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           placeholder={
             mayPost
               ? cooldown > 0
-                ? `Slowmode. ${cooldown}s`
+                ? cooldownFor.current === 'jump'
+                  ? `Wait ${cooldown}s`
+                  : `Slowmode. ${cooldown}s`
                 : 'Write something'
               : timedOutUntil
                 ? `You are timed out until ${timedOutUntil.toLocaleString()}.`

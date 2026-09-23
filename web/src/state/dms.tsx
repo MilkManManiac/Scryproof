@@ -284,6 +284,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const { state: app, onGatewayEvent } = useStore();
   const [state, dispatch] = useReducer(reducer, initialState);
   const selfId = app.user?.id ?? null;
+  const selfRef = useRef(selfId);
+  selfRef.current = selfId;
   const blocks = app.blocks;
 
   const device = useRef<DmDevice | null>(null);
@@ -416,7 +418,11 @@ export function DmProvider({ children }: { children: ReactNode }) {
       unverified: !isTrusted(sender.verdict),
       // Between two people nobody else holds the key, so the old format proves
       // enough. With more, it does not.
-      unproven: opened.legacy && isGroup(stateRef.current.dms[message.dmId]),
+      // Your own messages are yours, whatever the format.
+      // Read through a ref: making `toView` depend on the signed-in id
+      // remade it on sign-in and the conversation never finished opening
+      // (test:dm, 2026-09-23).
+      unproven: opened.legacy && message.authorId !== selfRef.current && isGroup(stateRef.current.dms[message.dmId]),
     };
   }, [open]);
 

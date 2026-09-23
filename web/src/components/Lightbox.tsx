@@ -129,10 +129,24 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
   // Closing is decided here, not in a click handler: the stage captures the
   // pointer, so a drag that began on the picture ends with a click whose
   // target is the stage, and that looked exactly like a click on the dark.
-  const onPointerUp = () => {
+  const onPointerUp = (event: React.PointerEvent) => {
     const start = drag.current;
     drag.current = null;
-    if (start && start.onBackdrop && !start.moved) onClose();
+    if (!start || start.moved) return;
+    if (start.onBackdrop) {
+      onClose();
+      return;
+    }
+    // A finger has no wheel and no keyboard: a tap on the picture zooms in
+    // around it, and a tap when zoomed fits it again. A mouse click does
+    // nothing, on purpose: it kept firing at the end of a drag.
+    if (event.pointerType !== 'touch') return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const at = { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 };
+    setView((v) => {
+      if (!v || !natural) return v;
+      return zoomed(v) ? { ...v, scale: fitScale(natural, box()), x: 0, y: 0 } : zoomAround(v, v.scale * 2.5, at);
+    });
   };
 
   async function copy() {

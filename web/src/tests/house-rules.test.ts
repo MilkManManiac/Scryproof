@@ -65,6 +65,13 @@ describe('houseRules', () => {
       'a big ball, really',
       'the big ball era',
       "I'm an idiot",
+      // longer words that begin the same way
+      'a big balance sheet',
+      'the big ballet',
+      'a big bale of hay',
+      'the big ballroom',
+      'Big Bailey is here',
+      'big ballad',
     ]) {
       assert.equal(houseRules(line), line, line);
     }
@@ -75,10 +82,16 @@ describe('houseRules', () => {
     assert.equal(houseRules('bigballerbigballer'), "I'm an idiotI'm an idiot");
   });
 
-  it('never reaches into mentions, emoji tokens or links', () => {
-    const line = 'hey <@8196b411-4a3e-4f00-9e11-3e7a1b6c9d2a> look https://example.com/bigballer <:bigballer:81698411a3e>';
+  it('never reaches into mentions or links', () => {
+    const line = 'hey <@8196b411-4a3e-4f00-9e11-3e7a1b6c9d2a> look https://example.com/bigballer';
     assert.equal(houseRules(line), line);
     assert.equal(houseRules('<@abc> is a bigballer'), "<@abc> is a I'm an idiot");
+  });
+
+  it('is not fooled by brackets, which are only text', () => {
+    assert.equal(houseRules('<bigballer>'), "<I'm an idiot>");
+    assert.equal(houseRules('<:bigballer:1>'), "<:I'm an idiot:1>");
+    assert.equal(houseRules('<@bigballer>'), "<@I'm an idiot>");
   });
 
   it('turns an @ of someone named for the joke into the confession too', () => {

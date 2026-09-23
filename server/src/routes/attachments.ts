@@ -76,7 +76,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
       .limit(1);
     if (!channel) throw notFound('That channel does not exist.', 'unknown_channel');
     if (channel.encrypted && !sealed) {
-      throw badRequest('Files in an encrypted channel are locked before they are sent.', 'encryption_required');
+      throw badRequest('This channel is encrypted now. Reload the app to send files here.', 'encryption_required');
     }
     if (!channel.encrypted && sealed) {
       throw badRequest('A locked file can only be sent in an encrypted channel.', 'encryption_not_enabled');

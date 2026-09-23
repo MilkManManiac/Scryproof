@@ -256,6 +256,9 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   // The first message sent after encryption was switched on, if this channel
   // was plain before. -1 with messages on screen: all of them are older.
   const switchedAt = channel.encryptedAt;
+  // Only drawn between two messages we hold: at 0 the switch happened above
+  // what has been fetched, and the line would sit over encrypted messages
+  // claiming they are not. It appears once the older page is in.
   const sealedFrom = switchedAt ? messages.findIndex((message) => message.createdAt >= switchedAt) : -1;
 
   // The line sits on the first row we hold, and there is more above it we have
@@ -345,7 +348,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
 
           {rows.map(({ message, grouped, day, firstNew }, index) => (
             <div key={message.id}>
-              {index === sealedFrom ? <SealedLine at={channel.encryptedAt} /> : null}
+              {index === sealedFrom && sealedFrom > 0 ? <SealedLine at={channel.encryptedAt} /> : null}
               {day ? <div className="day-divider">{day}</div> : null}
               {firstNew ? (
                 <div className="new-divider" ref={divider}>
@@ -800,6 +803,7 @@ function MessageRow({
   const card = useProfileCard();
   const serverId = members[0]?.serverId ?? null;
   const [editing, setEditing] = useState(false);
+  const [editProblem, setEditProblem] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
   /** The picker under the + after the reactions, as opposed to the hover tray. */
@@ -862,6 +866,7 @@ function MessageRow({
       setEditing(false);
       return;
     }
+    setEditProblem(null);
     try {
       if ((message.ciphertext || encrypted) && selfId) {
         const parentAuthor = message.replyTo?.authorId ?? null;
@@ -877,8 +882,12 @@ function MessageRow({
       } else {
         await api.messages.edit(message.id, next);
       }
-    } finally {
       setEditing(false);
+    } catch (problem) {
+      // The editor stays open with the text in it, and says why. Closing it
+      // quietly looked like a save that did nothing (a channel just switched
+      // to encryption, before this device has its key, was the usual case).
+      setEditProblem(problem instanceof Error && problem.message ? problem.message : 'The edit did not save.');
     }
   }
 
@@ -973,7 +982,7 @@ function MessageRow({
             />
             <div className="edit-tools">
               <MarkupTools input={editBox} setValue={setDraft} />
-              <span>Enter to save, Escape to leave it</span>
+              <span>{editProblem ?? 'Enter to save, Escape to leave it'}</span>
             </div>
           </>
         ) : (
