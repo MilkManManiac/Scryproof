@@ -24,7 +24,7 @@ Living state. Update this at the end of every working session.
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **First real use, 2026-09-21:** camera and screen share both worked for Wes and a friend on the box. **Not done:** the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
 | M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. **Judged on 2026-09-21: not done.** Wes used it for real and said "some of the UI is kind of funky" and "we'll definitely need a good UI pass". No specifics yet; he offered screenshots. Read `references/the-wall.md` in the milk-project skill before starting that pass. |
 | M6 desktop | **A working shell with an installer, 2026-09-21.** Electron. Signs in, connects, uploads; `npm run test:desktop`. Not yet: tray, push-to-talk, notifications, signed updates. See "The desktop app, moved up". |
-| M7 text end-to-end encryption | **Stage 1 built 2026-09-23, not deployed.** DMs were already encrypted. Text channels can now be made end-to-end encrypted: epoch keys made on members' devices, handed device to device, retired when someone loses access, every message signed. Proven in real browsers (`npm run test:channels`). Stages 2 (files, voice messages) and 3 (switch on an existing channel) built the same day, not deployed. |
+| M7 text end-to-end encryption | **Stages 1-3 live 2026-09-23.** Proof screenshot of ciphertext rows still owed (below). DMs were already encrypted. Text channels can now be made end-to-end encrypted: epoch keys made on members' devices, handed device to device, retired when someone loses access, every message signed. Proven in real browsers (`npm run test:channels`). Stage 2: files and voice messages. Stage 3: switch encryption on for an existing channel. |
 
 **Repo:** https://github.com/MilkManManiac/Scryproof (private)
 
@@ -2341,10 +2341,10 @@ sends a line and a picture, then over ssh: `select content, ciphertext from
 messages order by created_at desc limit 3` and the attachment row, shown to
 him. Screenshot into this section.
 
-## Review of the push, 2026-09-23 afternoon (fixed on main, NOT deployed)
+## Review of the push, 2026-09-23 afternoon (live 13:26 ET, client 1790184320279)
 
 Two reviewers went over the batch after it shipped. Real findings, all
-fixed and committed, **not yet deployed; ask Wes, then `bash scripts/release.sh`**
+fixed and deployed with Wes's go ("ok finish up")
 (no shell change, no installer):
 
 - **House rule, live bug:** `<bigballer>`, `<:bigballer:1>` and `<@bigballer>`
