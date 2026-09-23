@@ -34,6 +34,7 @@ import { FRAME, sheetUrl, spawnOf } from '../lib/commands';
 import { play } from '../lib/stage';
 import type { Character } from '../lib/commands';
 import { isVoiceFile, isVoiceLabel } from '../lib/voice-note';
+import { SealedFile } from './SealedFile';
 import { VoicePlayer } from './VoiceNote';
 
 /** Consecutive messages from one author within this window share a header. */
@@ -797,6 +798,7 @@ function MessageRow({
           replyAuthorId: parentAuthor,
           memberIds: new Set(members.map((member) => member.userId)),
           canMentionEveryone: can(mask, Permission.MENTION_EVERYONE),
+          files: message.sealedFiles,
         });
       } else {
         await api.messages.edit(message.id, next);
@@ -918,7 +920,11 @@ function MessageRow({
             ) : message.content &&
               // A voice message's body only names it for search and previews;
               // the player below says the same thing.
-              !(isVoiceLabel(message.content) && message.attachments.some((file) => isVoiceFile(file.filename))) ? (
+              !(
+                isVoiceLabel(message.content) &&
+                (message.attachments.some((file) => !file.sealed && isVoiceFile(file.filename)) ||
+                  (message.sealedFiles ?? []).some((file) => isVoiceFile(file.name)))
+              ) ? (
               <MessageContent
                 content={message.content}
                 members={members}
@@ -938,7 +944,13 @@ function MessageRow({
               </span>
             ) : null}
 
-            {message.attachments.map((attachment) =>
+            {(message.sealedFiles ?? []).map((file) => {
+              const locked = message.attachments.find((attachment) => attachment.id === file.id);
+              return locked ? <SealedFile key={file.id} channelId={message.channelId} file={file} locked={locked} /> : null;
+            })}
+
+            {/* Locked copies are drawn above, from what the message says they are, or not at all. */}
+            {message.attachments.filter((attachment) => !attachment.sealed).map((attachment) =>
               isVoiceFile(attachment.filename) ? (
                 <VoicePlayer
                   key={attachment.id}

@@ -165,6 +165,7 @@ export function member(row: MemberRow, user: User, roleIds: string[]): Member {
 export function attachment(row: AttachmentRow, url: string): Attachment {
   return {
     id: row.id,
+    ...(row.sealed ? { sealed: true } : {}),
     filename: row.filename,
     contentType: row.contentType,
     size: row.size,

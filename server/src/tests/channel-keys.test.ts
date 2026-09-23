@@ -253,8 +253,55 @@ describe('encrypted channels', () => {
     assert.equal(wrongKey.json().code, 'bad_signature');
     const strangerPing = await call(wes, 'POST', `/api/channels/${channelId}/messages`, await sealed(wes, 1, { mentionIds: [stranger.id] }));
     assert.equal(strangerPing.json().code, 'unknown_member');
-    const files = await call(wes, 'POST', `/api/channels/${channelId}/messages`, { ...(await sealed(wes, 1)), attachmentIds: ['x'] });
-    assert.equal(files.json().code, 'encrypted_files_unsupported');
+  });
+
+  /** A multipart upload, as a browser's FormData would send it. */
+  const upload = (person: Person, toChannel: string, sealedCopy: boolean, name = 'map.png', type = 'image/png') => {
+    const boundary = '----scryproof-test';
+    const payload = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`),
+      randomBytes(64),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    return app.inject({
+      method: 'POST',
+      url: `/api/channels/${toChannel}/attachments${sealedCopy ? '?sealed=1' : ''}`,
+      headers: { cookie: person.cookie, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload,
+    });
+  };
+
+  it('takes only locked files, told nothing about them, and never a readable one', async () => {
+    const { wes } = people;
+    const plainChannel = (await call(wes, 'POST', `/api/servers/${serverId}/channels`, { name: 'open', type: 'text' })).json().channel.id as string;
+
+    const readable = await upload(wes, channelId, false);
+    assert.equal(readable.statusCode, 400);
+    assert.equal(readable.json().code, 'encryption_required');
+    const lockedInPlain = await upload(wes, plainChannel, true);
+    assert.equal(lockedInPlain.json().code, 'encryption_not_enabled');
+
+    const locked = await upload(wes, channelId, true, 'secret plans.png', 'image/png');
+    assert.equal(locked.statusCode, 200, locked.body);
+    const attachment = locked.json().attachment;
+    assert.equal(attachment.sealed, true);
+    assert.equal(attachment.filename, 'sealed.bin');
+    assert.equal(attachment.contentType, 'application/octet-stream');
+
+    // A readable upload made for another channel cannot be carried in here.
+    const smuggled = (await upload(wes, plainChannel, false)).json().attachment.id as string;
+    const carried = await call(wes, 'POST', `/api/channels/${channelId}/messages`, { ...(await sealed(wes, 1)), attachmentIds: [smuggled] });
+    assert.equal(carried.json().code, 'encryption_required');
+    // Nor a locked one out into a plain channel.
+    const outward = await call(wes, 'POST', `/api/channels/${plainChannel}/messages`, { content: 'look', attachmentIds: [attachment.id] });
+    assert.equal(outward.json().code, 'encryption_not_enabled');
+
+    const sent = await call(wes, 'POST', `/api/channels/${channelId}/messages`, { ...(await sealed(wes, 1)), attachmentIds: [attachment.id] });
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.deepEqual(
+      sent.json().message.attachments.map((entry: { id: string; sealed?: boolean }) => [entry.id, entry.sealed]),
+      [[attachment.id, true]],
+    );
   });
 
   it('retires the key when someone who holds it is removed, and refuses the old one', async () => {

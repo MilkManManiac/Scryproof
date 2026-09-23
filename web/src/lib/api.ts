@@ -274,7 +274,7 @@ export const api = {
     },
     send: (
       channelId: string,
-      body: { content?: string; replyToId?: string; attachmentIds?: string[] } | (SealedChannelMessage & { replyToId?: string }),
+      body: { content?: string; replyToId?: string; attachmentIds?: string[] } | (SealedChannelMessage & { replyToId?: string; attachmentIds?: string[] }),
     ) => post<{ message: Message }>(`/api/channels/${channelId}/messages`, body),
     pin: (id: string) => put<{ message: Message }>(`/api/messages/${id}/pin`),
     unpin: (id: string) => del<{ message: Message }>(`/api/messages/${id}/pin`),
@@ -540,5 +540,28 @@ export const api = {
       );
     }
     return payload.attachment as Attachment;
+  },
+
+  /** A file for an encrypted channel, locked here first. The server is told neither its name nor its type. */
+  async uploadSealed(channelId: string, sealed: Uint8Array): Promise<Attachment> {
+    const form = new FormData();
+    form.append('file', new Blob([sealed as BlobPart], { type: 'application/octet-stream' }), 'sealed.bin');
+    const response = await fetch(`/api/channels/${channelId}/attachments?sealed=1`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: form,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
+    }
+    return payload.attachment as Attachment;
+  },
+
+  /** The locked bytes of a sealed attachment, to be opened with the key in its message. */
+  async downloadSealed(url: string): Promise<Uint8Array> {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    if (!response.ok) throw new ApiError(response.status, 'download_failed', 'That file could not be fetched.');
+    return new Uint8Array(await response.arrayBuffer());
   },
 };

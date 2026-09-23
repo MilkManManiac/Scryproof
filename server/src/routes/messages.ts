@@ -383,11 +383,6 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       if (body.content) {
         throw badRequest('Plaintext is not accepted in an encrypted channel.', 'encryption_required');
       }
-      // Stage 2 locks files in the browser. Until then a file here would be the
-      // one readable thing in a channel that says it is not.
-      if ((body.attachmentIds ?? []).length > 0) {
-        throw badRequest('Files cannot be sent in an encrypted channel yet.', 'encrypted_files_unsupported');
-      }
       sealed = await checkSeal({
         channel,
         authorId: user.id,
@@ -439,6 +434,27 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
 
     if (attachmentIds.length > 0 && !has(ctx.channelPermissions, Permission.ATTACH_FILES)) {
       throw forbidden('You cannot attach files in this channel.');
+    }
+
+    // A readable file in an encrypted channel would be the one thing in it the
+    // server can open, and a locked one in a plain channel is a file nobody
+    // there has the key to. Either way the upload was made for somewhere else.
+    if (attachmentIds.length > 0) {
+      const files = await db
+        .select({ sealed: attachments.sealed })
+        .from(attachments)
+        .where(
+          and(
+            inArray(attachments.id, attachmentIds),
+            eq(attachments.uploaderId, user.id),
+            isNull(attachments.messageId),
+          ),
+        );
+      if (files.some((file) => file.sealed !== channel.encrypted)) {
+        throw channel.encrypted
+          ? badRequest('Files in an encrypted channel are locked before they are sent.', 'encryption_required')
+          : badRequest('A locked file can only be sent in an encrypted channel.', 'encryption_not_enabled');
+      }
     }
 
     // Slowmode applies to everyone who cannot manage the channel, which is the

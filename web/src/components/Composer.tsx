@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
-import type { Attachment, Channel } from '@scryproof/shared';
+import type { Attachment, Channel, SealedFileRef } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand } from '../lib/commands';
@@ -21,6 +21,7 @@ import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { voiceLabel } from '../lib/voice-note';
+import { sealChannelFile } from '../lib/channel-crypto';
 import { KeyWait, channelKeysFor } from '../lib/channel-keys';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
@@ -55,6 +56,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const [chosen, setChosen] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [pending, setPending] = useState<Attachment[]>([]);
+  // In an encrypted channel, what each pending upload really is. The server's
+  // copy is called sealed.bin and says nothing; the name and the key are here.
+  const [lockedFiles, setLockedFiles] = useState<Record<string, SealedFileRef>>({});
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -80,7 +84,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const mayPost = can(mask, Permission.SEND_MESSAGES) && !timedOutUntil;
   // Files are not locked in the browser yet, so an encrypted channel takes none
   // rather than store the one readable thing in it (docs/channel-e2ee.md).
-  const mayAttach = can(mask, Permission.ATTACH_FILES) && !timedOutUntil && !channel.encrypted;
+  const mayAttach = can(mask, Permission.ATTACH_FILES) && !timedOutUntil;
   const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
 
   const emojis = state.servers[channel.serverId]?.emojis ?? [];
@@ -264,6 +268,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           replyAuthorId: override ? null : (answering?.authorId ?? null),
           memberIds: new Set(members.map((member) => member.userId)),
           canMentionEveryone: mayPingEveryone,
+          files: files.map((file) => lockedFiles[file.id]).filter((file): file is SealedFileRef => file !== undefined),
         });
       } else {
         await api.messages.send(channel.id, {
@@ -323,7 +328,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         // the GPS coordinates in a phone photo are never sent. If that fails
         // the upload stops: sending the original instead would defeat it.
         const clean = await scrubImage(file);
-        const attachment = await api.upload(channel.id, clean);
+        const attachment = channel.encrypted ? await lockAndUpload(clean) : await api.upload(channel.id, clean);
         setPending((prev) => [...prev, attachment]);
       }
     } catch (problem) {
@@ -333,6 +338,23 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       setUploading(false);
       if (filePicker.current) filePicker.current.value = '';
     }
+  }
+
+  /**
+   * In an encrypted channel a file is locked here, under a key of its own,
+   * and only the locked copy is uploaded. The key and the real name go into
+   * the message, which is locked too.
+   */
+  async function lockAndUpload(file: File): Promise<Attachment> {
+    // The lock adds a few bytes; the server's limit is on what it receives.
+    if (file.size > LIMITS.attachmentBytes - 64) {
+      throw new ApiError(413, 'file_too_large', `Files are limited to ${Math.floor(LIMITS.attachmentBytes / (1024 * 1024))} MB.`);
+    }
+    const { sealed, key, iv } = await sealChannelFile(channel.id, new Uint8Array(await file.arrayBuffer()));
+    const attachment = await api.uploadSealed(channel.id, sealed);
+    const ref: SealedFileRef = { id: attachment.id, name: file.name, type: file.type, size: file.size, key, iv };
+    setLockedFiles((prev) => ({ ...prev, [attachment.id]: ref }));
+    return attachment;
   }
 
   /**
@@ -346,16 +368,32 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     const answering = replyingTo;
     setError(null);
     try {
-      const attachment = await api.upload(channel.id, file);
-      await api.messages.send(channel.id, {
-        content: voiceLabel(seconds),
-        replyToId: answering?.id,
-        attachmentIds: [attachment.id],
-      });
+      if (channel.encrypted) {
+        const { sealed, key, iv } = await sealChannelFile(channel.id, new Uint8Array(await file.arrayBuffer()));
+        const attachment = await api.uploadSealed(channel.id, sealed);
+        await channelKeysFor(state.user?.id ?? '').send({
+          channelId: channel.id,
+          text: voiceLabel(seconds),
+          replyToId: answering?.id ?? null,
+          replyAuthorId: answering?.authorId ?? null,
+          memberIds: new Set(members.map((member) => member.userId)),
+          canMentionEveryone: false,
+          files: [{ id: attachment.id, name: file.name, type: file.type, size: file.size, key, iv }],
+        });
+      } else {
+        const attachment = await api.upload(channel.id, file);
+        await api.messages.send(channel.id, {
+          content: voiceLabel(seconds),
+          replyToId: answering?.id,
+          attachmentIds: [attachment.id],
+        });
+      }
       if (answering) replyTo(channel.id, null);
     } catch (problem) {
       if (problem instanceof ApiError && problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
-      throw problem instanceof ApiError ? new Error(problem.message) : new Error('The voice message did not send.');
+      throw problem instanceof ApiError || problem instanceof KeyWait
+        ? new Error(problem.message)
+        : new Error('The voice message did not send.');
     }
   }
 
@@ -373,7 +411,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         <div className="composer-pending">
           {pending.map((file) => (
             <span className="pending-file" key={file.id}>
-              {file.filename}
+              {lockedFiles[file.id]?.name ?? file.filename}
               <button
                 type="button"
                 className="icon-button"

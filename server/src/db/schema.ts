@@ -435,6 +435,12 @@ export const attachments = pgTable(
     size: integer('size').notNull(),
     width: integer('width'),
     height: integer('height'),
+    /**
+     * Locked in the browser before upload, for an encrypted channel. The name
+     * is a placeholder and the type is octet-stream; the real ones, and the
+     * key, are inside the message that carries it.
+     */
+    sealed: boolean('sealed').notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [

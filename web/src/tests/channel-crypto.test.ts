@@ -20,7 +20,9 @@ import {
   describeEpoch,
   handOver,
   keyMatchesEpoch,
+  openChannelFile,
   openChannelMessage,
+  sealChannelFile,
   sealChannelMessage,
   takeOver,
 } from '../lib/channel-crypto';
@@ -241,6 +243,50 @@ describe('messages', () => {
     assert.equal(
       await takeOver({ channelId: CHANNEL, epoch: 1, self: wes.device, from: wes.published, copy: { iv: 'AAAA', key: '!!' } }),
       null,
+    );
+  });
+});
+
+describe('files', () => {
+  test('a file opens with the key in its message, in its own channel, and nowhere else', async () => {
+    const bytes = new TextEncoder().encode('the map to the vault, drawn badly');
+    const locked = await sealChannelFile(CHANNEL, bytes);
+    assert.equal(Buffer.from(locked.sealed).toString('latin1').includes('vault'), false);
+
+    assert.deepEqual(await openChannelFile(CHANNEL, locked, locked.sealed), bytes);
+    // Passed off as a file from another channel.
+    assert.equal(await openChannelFile(OTHER_CHANNEL, locked, locked.sealed), null);
+    // The server swaps a byte of the stored copy.
+    const tampered = locked.sealed.slice();
+    tampered[0] = (tampered[0] ?? 0) ^ 1;
+    assert.equal(await openChannelFile(CHANNEL, locked, tampered), null);
+    // Or hands over another file's bytes under this one's id.
+    const other = await sealChannelFile(CHANNEL, bytes);
+    assert.equal(await openChannelFile(CHANNEL, locked, other.sealed), null);
+  });
+
+  test('what a file is travels inside the sealed, signed message, and a bad list does not open', async () => {
+    const wes = await makeDevice('wes');
+    const key = createEpochKey();
+    const locked = await sealChannelFile(CHANNEL, new Uint8Array([1, 2, 3]));
+    const file = { id: 'attachment-1', name: 'secret plans.png', type: 'image/png', size: 3, key: locked.key, iv: locked.iv };
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key, sender: wes.device,
+      body: { v: 1, text: '', files: [file] }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+    });
+    assert.equal(JSON.stringify(sealed).includes('secret plans'), false);
+    assert.deepEqual(
+      await openChannelMessage({ frame: frameOf(sealed, 'wes'), senderDevice: wes.published, key, ...sealed }),
+      { ok: true, body: { v: 1, text: '', files: [file] } },
+    );
+
+    const junk = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key, sender: wes.device,
+      body: { v: 1, text: 'hi', files: [{ id: 5 }] as never }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+    });
+    assert.deepEqual(
+      await openChannelMessage({ frame: frameOf(junk, 'wes'), senderDevice: wes.published, key, ...junk }),
+      { ok: false, reason: 'failed' },
     );
   });
 });

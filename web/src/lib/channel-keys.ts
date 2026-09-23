@@ -16,6 +16,7 @@ import type { ChannelEpoch, ChannelKeyState, DeviceKey, Message } from '@scrypro
 
 import { ApiError, api } from './api';
 import {
+  type ChannelFileRef,
   type SealedChannelMessage,
   createEpochKey,
   describeEpoch,
@@ -71,11 +72,23 @@ const at = (userId: string, deviceId: string): string => `${userId}/${deviceId}`
 /** Retried once on these: the channel moved to a new key between asking and sending. */
 const STALE = new Set(['key_rotated', 'no_epoch', 'epoch_exists']);
 
+/**
+ * The files a message's body lists, kept only where the server also holds a
+ * locked copy under that id on this message: a body naming a file from some
+ * other message shows nothing, not somebody else's upload.
+ */
+function withFiles(message: Message, files: readonly ChannelFileRef[]): Message {
+  if (files.length === 0) return message;
+  const held = new Set(message.attachments.filter((attachment) => attachment.sealed).map((attachment) => attachment.id));
+  const kept = files.filter((file) => held.has(file.id));
+  return kept.length > 0 ? { ...message, sealedFiles: kept } : message;
+}
+
 export class ChannelKeys {
   private readonly pins = new IndexedDbIdentityStore();
   private readonly entries = new Map<string, Entry>();
   /** Opened messages, by id, with the signature they were opened under. */
-  private readonly opened = new Map<string, { signature: string; text: string | null; status: SealStatus }>();
+  private readonly opened = new Map<string, { signature: string; text: string | null; files: ChannelFileRef[]; status: SealStatus }>();
 
   /** When this device last asked for a channel's keys. */
   private readonly asked = new Map<string, number>();
@@ -336,11 +349,12 @@ export class ChannelKeys {
 
     const cached = this.opened.get(message.id);
     if (cached && cached.signature === signature && cached.status !== 'no-key') {
-      return { ...message, content: cached.text, sealed: cached.status };
+      return withFiles({ ...message, content: cached.text, sealed: cached.status }, cached.files);
     }
 
     let status: SealStatus;
     let text: string | null = null;
+    let files: ChannelFileRef[] = [];
     try {
       const key = await this.keyFor(message.channelId, keyEpoch);
       const sender = key ? await this.deviceAt(message.channelId, message.authorId, senderDeviceId) : null;
@@ -365,14 +379,15 @@ export class ChannelKeys {
         });
         if (result.ok) {
           text = result.body.text;
+          files = result.body.files ?? [];
           status = isTrusted(sender.verdict) ? 'ok' : 'unverified';
         } else status = result.reason;
       }
     } catch {
       status = 'failed';
     }
-    this.opened.set(message.id, { signature, text, status });
-    return { ...message, content: text, sealed: status };
+    this.opened.set(message.id, { signature, text, files, status });
+    return withFiles({ ...message, content: text, sealed: status }, files);
   }
 
   /** The text of a message this device has opened, for reply previews and jumps. */
@@ -392,6 +407,8 @@ export class ChannelKeys {
     replyAuthorId: string | null;
     memberIds: ReadonlySet<string>;
     canMentionEveryone: boolean;
+    /** Locked and uploaded already (`sealChannelFile`, `api.uploadSealed`). An edit carries the message's own. */
+    files?: readonly ChannelFileRef[];
   }): Promise<SealedChannelMessage> {
     const self = await this.device();
     const parsed = parseMentions(input.text);
@@ -403,7 +420,7 @@ export class ChannelKeys {
       epoch,
       key,
       sender: self,
-      body: { v: 1, text: input.text },
+      body: { v: 1, text: input.text, ...(input.files && input.files.length > 0 ? { files: [...input.files] } : {}) },
       replyToId: input.replyToId,
       mentionIds,
       mentionsEveryone: parsed.everyone && input.canMentionEveryone,
@@ -415,7 +432,11 @@ export class ChannelKeys {
     for (let attempt = 0; ; attempt += 1) {
       const sealed = await this.seal(input);
       try {
-        const { message } = await api.messages.send(input.channelId, { ...sealed, ...(input.replyToId ? { replyToId: input.replyToId } : {}) });
+        const { message } = await api.messages.send(input.channelId, {
+          ...sealed,
+          ...(input.replyToId ? { replyToId: input.replyToId } : {}),
+          ...(input.files && input.files.length > 0 ? { attachmentIds: input.files.map((file) => file.id) } : {}),
+        });
         return message;
       } catch (problem) {
         if (attempt === 0 && problem instanceof ApiError && STALE.has(problem.code)) {

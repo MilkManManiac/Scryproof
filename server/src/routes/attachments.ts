@@ -16,7 +16,7 @@ import { LIMITS, Permission } from '@scryproof/shared';
 import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import { attachments, messages } from '../db/schema.js';
+import { attachments, channels, messages } from '../db/schema.js';
 import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as serialize from '../services/serialize.js';
@@ -59,6 +59,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
   app.post('/api/channels/:channelId/attachments', async (request) => {
     const user = requireUser(request);
     const { channelId } = z.object({ channelId: z.string() }).parse(request.params);
+    const { sealed } = z.object({ sealed: z.literal('1').optional() }).parse(request.query);
 
     await requireChannelPermission(
       channelId,
@@ -66,12 +67,29 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
       Permission.SEND_MESSAGES | Permission.ATTACH_FILES,
     );
 
+    // An encrypted channel takes only bytes locked in the browser, and a plain
+    // one only files it can show. Checked again when the message claims them.
+    const [channel] = await getDb()
+      .select({ encrypted: channels.encrypted })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    if (!channel) throw notFound('That channel does not exist.', 'unknown_channel');
+    if (channel.encrypted && !sealed) {
+      throw badRequest('Files in an encrypted channel are locked before they are sent.', 'encryption_required');
+    }
+    if (!channel.encrypted && sealed) {
+      throw badRequest('A locked file can only be sent in an encrypted channel.', 'encryption_not_enabled');
+    }
+
     const file = await request.file();
     if (!file) throw badRequest('No file was uploaded.', 'no_file');
 
-    const filename = file.filename.slice(0, 200) || 'file';
+    // A locked file is told nothing about itself: its name and type are inside
+    // the message, where only the people in the channel can read them.
+    const filename = sealed ? 'sealed.bin' : file.filename.slice(0, 200) || 'file';
     // Never trust a client-declared content type for anything but display.
-    const contentType = INLINE_TYPES.has(file.mimetype)
+    const contentType = !sealed && INLINE_TYPES.has(file.mimetype)
       ? file.mimetype
       : 'application/octet-stream';
 
@@ -98,6 +116,7 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
         filename,
         contentType,
         size: stored.size,
+        sealed: Boolean(sealed),
       })
       .returning();
 

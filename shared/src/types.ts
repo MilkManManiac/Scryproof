@@ -209,8 +209,26 @@ export interface ServerDetail extends Server {
   permissions: MaskString;
 }
 
+/**
+ * A file inside a sealed channel message, as the body describes it: the
+ * attachment row that holds its locked bytes, and what the server is never
+ * told (its name, its type, its size and the key that opens it).
+ */
+export interface SealedFileRef {
+  id: Snowflake;
+  name: string;
+  type: string;
+  /** Of the file itself, not of the locked copy. */
+  size: number;
+  /** base64. A key used for this one file and never again. */
+  key: string;
+  iv: string;
+}
+
 export interface Attachment {
   id: Snowflake;
+  /** Locked in the browser before upload. Its name is a placeholder and its bytes open only with a key in the message. */
+  sealed?: boolean;
   filename: string;
   contentType: string;
   size: number;
@@ -290,6 +308,12 @@ export interface Message {
    * 'no-key', 'forged' or 'failed'. When set, `content` is what opened, or null.
    */
   sealed?: 'ok' | 'unverified' | 'no-key' | 'forged' | 'failed';
+  /**
+   * Never sent by the server. The files a sealed message carries, as its
+   * opened body describes them, each with the key that opens it. Only files
+   * whose locked copy is also in `attachments` are listed.
+   */
+  sealedFiles?: SealedFileRef[];
   attachments: Attachment[];
   replyToId: Snowflake | null;
   /** Null when this is not a reply, or the parent is gone entirely. */
