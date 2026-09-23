@@ -8,7 +8,9 @@
  *     never become markup in someone else's browser.
  *   - Scroll position is only pinned to the bottom when the reader was already
  *     at the bottom. Yanking someone back down while they are reading history
- *     is the single most annoying thing a chat client does.
+ *     is the single most annoying thing a chat client does. While pinned, the
+ *     list follows every change in size, not only new messages: see
+ *     lib/stick-to-bottom.ts for why that was the difference.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +23,7 @@ import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { EDIT_LAST, on } from '../lib/signals';
+import { BottomPin } from '../lib/stick-to-bottom';
 import { unreadLine } from '../lib/unread-line';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
@@ -67,7 +70,8 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   const { state, loadMessages, loadNewerMessages, markRead } = useStore();
   useLocalNames();
   const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const pin = useRef(new BottomPin());
+  const content = useRef<HTMLDivElement>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [focused, setFocused] = useState(() => document.hasFocus());
@@ -115,7 +119,7 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   // neither does the end of a jump window: that is not the newest message.
   const newestId = messages.at(-1)?.id;
   useEffect(() => {
-    if (newestId && loaded && focused && !windowed && pinned.current) markRead(channel.id, newestId);
+    if (newestId && loaded && focused && !windowed && pin.current.pinned) markRead(channel.id, newestId);
   }, [channel.id, newestId, loaded, focused, windowed, markRead]);
 
   // Up in an empty composer edits the last thing this person said here. Only
@@ -135,26 +139,41 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   // Re-pin on channel change, before paint, so a switch always lands at the
   // newest message rather than wherever the previous channel was scrolled to.
   useLayoutEffect(() => {
-    pinned.current = true;
     const element = scroller.current;
-    if (element) element.scrollTop = element.scrollHeight;
+    if (element) pin.current.open(element);
+    else pin.current.pinned = true;
   }, [channel.id]);
 
   // A window's last row is not the bottom of the channel, so nothing is pinned
   // to it: the jump decides where the eye goes, not this.
   useLayoutEffect(() => {
-    if (windowed) pinned.current = false;
     const element = scroller.current;
-    if (element && pinned.current) element.scrollTop = element.scrollHeight;
+    if (!element) return;
+    if (windowed) pin.current.release(element);
+    else pin.current.settle(element);
   }, [messages.length, windowed]);
+
+  // Everything else that moves the bottom without adding a message: pictures
+  // loading, voice players and polls filling in, the unread bar appearing above
+  // the list and taking some of its height. Watching the list itself and its
+  // contents catches all of them without each one having to report in.
+  useEffect(() => {
+    const element = scroller.current;
+    const inner = content.current;
+    if (!element || !inner) return;
+    const observer = new ResizeObserver(() => pin.current.settle(element));
+    observer.observe(element);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, [canReadHistory]);
 
   async function onScroll() {
     const element = scroller.current;
     if (!element) return;
 
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-    pinned.current = !windowed && distanceFromBottom < 80;
-    if (pinned.current && newestId && focused) markRead(channel.id, newestId);
+    const pinned = pin.current.scrolled(element, !windowed);
+    if (pinned && newestId && focused) markRead(channel.id, newestId);
 
     // Out of a window the same way in: scrolling down fetches the page after
     // the one on screen, until the list reaches the present and stops being a
@@ -300,49 +319,51 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
       ) : null}
 
       <div className="messages" ref={scroller} onScroll={() => void onScroll()}>
-        {loadingOlder ? (
-          <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
-            <div className="spinner" />
-          </div>
-        ) : null}
+        <div ref={content}>
+          {loadingOlder ? (
+            <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
+              <div className="spinner" />
+            </div>
+          ) : null}
 
-        {loaded && messages.length === 0 ? (
-          <div className="channel-intro">
-            <h2>#{channel.name}</h2>
-            <p>
-              This is the start of the channel. {channel.topic ? channel.topic : 'Say something.'}
-              {channel.encrypted
-                ? ' Messages here are end-to-end encrypted: locked on your devices, and unreadable to the server.'
-                : ''}
-            </p>
-          </div>
-        ) : null}
+          {loaded && messages.length === 0 ? (
+            <div className="channel-intro">
+              <h2>#{channel.name}</h2>
+              <p>
+                This is the start of the channel. {channel.topic ? channel.topic : 'Say something.'}
+                {channel.encrypted
+                  ? ' Messages here are end-to-end encrypted: locked on your devices, and unreadable to the server.'
+                  : ''}
+              </p>
+            </div>
+          ) : null}
 
-        {rows.map(({ message, grouped, day, firstNew }) => (
-          <div key={message.id}>
-            {day ? <div className="day-divider">{day}</div> : null}
-            {firstNew ? (
-              <div className="new-divider" ref={divider}>
-                New
-              </div>
-            ) : null}
-            <MessageRow
-              message={message}
-              grouped={grouped}
-              mask={mask}
-              members={members}
-              emojis={emojis}
-              openEditor={editRequest === message.id}
-              onEditorOpened={() => setEditRequest(null)}
-            />
-          </div>
-        ))}
+          {rows.map(({ message, grouped, day, firstNew }) => (
+            <div key={message.id}>
+              {day ? <div className="day-divider">{day}</div> : null}
+              {firstNew ? (
+                <div className="new-divider" ref={divider}>
+                  New
+                </div>
+              ) : null}
+              <MessageRow
+                message={message}
+                grouped={grouped}
+                mask={mask}
+                members={members}
+                emojis={emojis}
+                openEditor={editRequest === message.id}
+                onEditorOpened={() => setEditRequest(null)}
+              />
+            </div>
+          ))}
 
-        {loadingNewer ? (
-          <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
-            <div className="spinner" />
-          </div>
-        ) : null}
+          {loadingNewer ? (
+            <div style={{ display: 'grid', placeItems: 'center', padding: 8 }}>
+              <div className="spinner" />
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="typing">

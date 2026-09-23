@@ -27,6 +27,7 @@ import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
 import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
+import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
 
 /**
  * Someone from one of this person's conversations. A call in a conversation
@@ -144,6 +145,8 @@ export function VoiceStage(
   const accentOf = useAccents();
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
   const [adjusting, setAdjusting] = useState<string | null>(null);
+  /** Whose right-click volume menu is open: the same setting as the slider, where Discord keeps it. */
+  const [volumeMenu, setVolumeMenu] = useState<{ userId: string; spot: MenuSpot } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [picture, setPicture] = useState<Picture | null>(null);
   const focusFrame = useRef<HTMLDivElement>(null);
@@ -300,6 +303,14 @@ export function VoiceStage(
                   if (mine) return camera ? setFocused(videoKey(camera)) : undefined;
                   setAdjusting(open ? null : occupant.userId);
                 }}
+                onContextMenu={
+                  mine
+                    ? undefined
+                    : (event) => {
+                        event.preventDefault();
+                        setVolumeMenu({ userId: occupant.userId, spot: spotOf(event) });
+                      }
+                }
                 title={mine ? undefined : `Change how loud ${name} is for you`}
               >
                 {showCamera ? (
@@ -373,6 +384,14 @@ export function VoiceStage(
                       </button>
                     ) : null}
                   </div>
+                ) : null}
+                {volumeMenu?.userId === occupant.userId ? (
+                  <VolumeMenu
+                    userId={occupant.userId}
+                    name={name}
+                    spot={volumeMenu.spot}
+                    onClose={() => setVolumeMenu(null)}
+                  />
                 ) : null}
               </div>
             );
