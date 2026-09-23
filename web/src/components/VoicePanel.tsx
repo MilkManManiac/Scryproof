@@ -21,7 +21,8 @@ import { useTimeoutEnd } from '../lib/usePermissions';
 import { publicOrigin } from '../lib/desktop';
 import { voicePrefs } from '../lib/voice-prefs';
 import { initials } from './Avatar';
-import type { VoicePerson, VoiceVideo } from '../lib/voice-session';
+import { noPictureLabel } from '../lib/frame-watch';
+import { screenSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 
 function useNames(): (userId: string) => string {
@@ -162,6 +163,12 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
     if (video.source === 'camera') return mine ? 'You' : nameOf(video.userId);
     return mine ? 'Your screen' : `${nameOf(video.userId)}'s screen`;
   };
+  // Only other people's screens are watched for stalls: our own is not decoded here.
+  const stalledNote = (video: VoiceVideo): string | null => {
+    const seconds = video.source === 'screen' ? voice.stalled[screenSound(video.userId)] : undefined;
+    return seconds === undefined ? null : noPictureLabel(nameOf(video.userId), seconds);
+  };
+  const screenVolume = (userId: string): number => prefs.volumes[screenSound(userId)] ?? 1;
 
   return (
     <div className={`voice-stage${big ? ' has-focus' : ''}`}>
@@ -178,6 +185,28 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
               <span className="voice-focus-picture" title="What is being drawn on your screen right now">
                 {pictureLabel(picture, voice.stats.videoCodec)}
               </span>
+            ) : null}
+            {stalledNote(big) ? <span className="voice-stalled">{stalledNote(big)}</span> : null}
+            {big.source === 'screen' && big.sound && big.userId !== state.user?.id ? (
+              <label className="voice-focus-volume" title="The sound of this screen, apart from their voice. Only you hear the change.">
+                Screen sound
+                <input
+                  type="range"
+                  className="voice-range"
+                  min={0}
+                  max={200}
+                  step={5}
+                  value={Math.round(screenVolume(big.userId) * 100)}
+                  onChange={(event) => voicePrefs.setVolumeFor(screenSound(big.userId), Number(event.target.value) / 100)}
+                  aria-label={`Volume of ${nameOf(big.userId)}'s screen, for you only`}
+                />
+                {Math.round(screenVolume(big.userId) * 100)}%
+              </label>
+            ) : null}
+            {big.source === 'camera' && big.userId !== state.user?.id ? (
+              <button type="button" className="link-button" onClick={() => session.setCameraHidden(big.userId, true)}>
+                Hide for me
+              </button>
             ) : null}
             <button
               type="button"
@@ -215,6 +244,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
               >
                 <VideoView key={video.sid} video={video} className="voice-tile-video" />
                 <div className="voice-tile-name">{labelOf(video)}</div>
+                {stalledNote(video) ? <div className="voice-tile-note voice-stalled">{stalledNote(video)}</div> : null}
               </div>
             ))}
 
@@ -246,6 +276,21 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                   </div>
                 )}
                 <div className="voice-tile-name">{name}</div>
+                {voice.hiddenCameras.includes(occupant.userId) ? (
+                  <div className="voice-tile-note">
+                    Camera hidden{' '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        session.setCameraHidden(occupant.userId, false);
+                      }}
+                    >
+                      Show
+                    </button>
+                  </div>
+                ) : null}
                 <div className="voice-tile-note">
                   {security === 'held'
                     ? 'Needs your OK'
@@ -283,6 +328,16 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
                         Make their camera bigger
                       </button>
                     ) : null}
+                    {camera ? (
+                      <button
+                        type="button"
+                        className="link-button"
+                        title="Stop fetching their camera on this device. They keep sending it to everyone else."
+                        onClick={() => session.setCameraHidden(occupant.userId, true)}
+                      >
+                        Hide for me
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -302,6 +357,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
         </p>
       ) : null}
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
+      {live && voice.shareNotice && !voice.sharing ? <p className="voice-stage-error">{voice.shareNotice}</p> : null}
 
       <div className="voice-stage-controls">
         {live && voice.phase === 'connected' && voice.can.video ? (
@@ -469,6 +525,11 @@ export function ConnectionPanel() {
         {stats.receiving ? (
           <span className="connection-stat" title="The largest picture arriving right now">
             Video {stats.receiving}
+          </span>
+        ) : null}
+        {voice.lastShareStop ? (
+          <span className="connection-stat" title="The last time your screen share ended without Stop being pressed">
+            {new Date(voice.lastShareStop.at).toLocaleTimeString()} {voice.lastShareStop.reason}
           </span>
         ) : null}
         {voice.phase === 'connected' ? (

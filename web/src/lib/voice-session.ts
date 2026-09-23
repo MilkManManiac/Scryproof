@@ -29,6 +29,7 @@ import {
   RoomEvent,
   ScreenSharePresets,
   Track,
+  TrackEvent,
   VideoQuality,
   type LocalAudioTrack,
   type Participant as LiveKitParticipant,
@@ -41,6 +42,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
+import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { loadSound } from './sounds';
 import { MicGate, OutputMix, audioContext, sounds } from './voice-audio';
 import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
@@ -84,6 +86,14 @@ export interface VoiceVideo {
   source: 'camera' | 'screen';
   /** Changes when the underlying track does, so the screen knows to re-attach. */
   sid: string;
+  /** A screen that carries sound, so its volume slider has something to turn. Always false for a camera. */
+  sound: boolean;
+}
+
+/** Why this device's own screen share ended without Stop being pressed, and when. */
+export interface ShareStop {
+  reason: string;
+  at: number;
 }
 
 export interface VoiceStats {
@@ -122,6 +132,17 @@ export interface VoiceSnapshot {
   videos: VoiceVideo[];
   /** Why the camera or screen share did not start, in words. */
   mediaError: string | null;
+  /** One line for the voice panel when our share stopped on its own. Cleared by the next share. */
+  shareNotice: string | null;
+  /** The last time our share stopped on its own, kept for the connection panel for the rest of the call. */
+  lastShareStop: ShareStop | null;
+  /**
+   * Screens we are watching that have decoded no new frame for a while, as
+   * "<userId>:screen" to whole seconds. Absent while the picture is moving.
+   */
+  stalled: Record<string, number>;
+  /** People whose camera is on but not being fetched, because this device asked to hide it. */
+  hiddenCameras: string[];
   stats: VoiceStats;
   can: { speak: boolean; video: boolean; screenShare: boolean };
   /** True once the soundboard's track is published, so a click will be heard by the room. */
@@ -154,6 +175,10 @@ const IDLE: VoiceSnapshot = {
   sharing: false,
   videos: [],
   mediaError: null,
+  shareNotice: null,
+  lastShareStop: null,
+  stalled: {},
+  hiddenCameras: [],
   stats: EMPTY_STATS,
   can: { speak: false, video: false, screenShare: false },
   soundboard: false,
@@ -178,12 +203,14 @@ function isWrappedKey(value: Record<string, unknown>): value is Record<string, u
 
 /**
  * A shared screen's sound is mixed separately from the same person's
- * microphone, and so is their soundboard. Each is its own entry in the mix,
- * turned up and down by that person's one volume slider. The soundboard is the
- * only thing published with an unknown source, since the voice token grants
- * that source for nothing else.
+ * microphone, and so is their soundboard. Each is its own entry in the mix.
+ * The soundboard follows the person's volume slider; the screen has a slider
+ * of its own, saved under this same key, because a loud game and a quiet
+ * friend want opposite things. The soundboard is the only thing published
+ * with an unknown source, since the voice token grants that source for
+ * nothing else.
  */
-const screenSound = (userId: string): string => `${userId}:screen`;
+export const screenSound = (userId: string): string => `${userId}:screen`;
 const boardSound = (userId: string): string => `${userId}:soundboard`;
 const mixKey = (userId: string, source: Track.Source): string =>
   source === Track.Source.ScreenShareAudio
@@ -191,6 +218,9 @@ const mixKey = (userId: string, source: Track.Source): string =>
     : source === Track.Source.Unknown
       ? boardSound(userId)
       : userId;
+/** The saved volume for one entry in the mix: the screen's own, or the person's. */
+const savedVolume = (prefs: VoicePrefs, userId: string, source: Track.Source): number =>
+  (source === Track.Source.ScreenShareAudio ? prefs.volumes[screenSound(userId)] : prefs.volumes[userId]) ?? 1;
 
 /**
  * The soundboard's outgoing side. Clips are played into `destination`, whose
@@ -213,7 +243,22 @@ function describeCaptureProblem(problem: unknown, what: 'camera' | 'screen'): st
     if (name === 'NotReadableError') return 'The camera is in use by another program.';
     return 'The camera could not be started.';
   }
-  return 'The screen share could not be started.';
+  const detail = problem instanceof Error && problem.message ? `: ${problem.message}` : '.';
+  return `The screen share could not be started${detail}`;
+}
+
+/** One inbound picture's counters from a stats report, or null when it has none yet. */
+function inboundVideo(report: RTCStatsReport): { frames: number; width: number; packets: number } | null {
+  let found: { frames: number; width: number; packets: number } | null = null;
+  report.forEach((entry: Record<string, unknown>) => {
+    if (entry.type !== 'inbound-rtp') return;
+    found = {
+      frames: typeof entry.framesDecoded === 'number' ? entry.framesDecoded : 0,
+      width: typeof entry.frameWidth === 'number' ? entry.frameWidth : 0,
+      packets: typeof entry.packetsReceived === 'number' ? entry.packetsReceived : 0,
+    };
+  });
+  return found;
 }
 
 export class VoiceSession {
@@ -253,6 +298,14 @@ export class VoiceSession {
   /** A membership event that arrived before the call state was ready. */
   private pendingMembership: VoiceMembership | null = null;
   private previousLoss: { lost: number; received: number } | null = null;
+  /** Decoded-frame counts of the screens we are watching, by track sid. Fed by `measure`. */
+  private frameWatch = new Map<string, FrameWatch>();
+  /** Cameras this device has asked not to fetch, by user id. Until undone or the call ends. */
+  private readonly hiddenCameras = new Set<string>();
+  /** True while our own Stop is taking the share down, so that is not reported as the share dying. */
+  private stoppingShare = false;
+  /** Set when the screen track itself ended (the window closed, the browser's own Stop bar). */
+  private shareEnded: string | null = null;
 
   constructor(
     /** Read when needed: the session outlives sign-in, so the id is not known at construction. */
@@ -404,6 +457,10 @@ export class VoiceSession {
     this.rejected = 0;
     this.pendingMembership = null;
     this.previousLoss = null;
+    this.frameWatch = new Map();
+    this.hiddenCameras.clear();
+    this.stoppingShare = false;
+    this.shareEnded = null;
     this.stopWatching?.();
     this.stopWatching = null;
     this.gate?.close();
@@ -553,16 +610,21 @@ export class VoiceSession {
   async setScreenShare(on: boolean): Promise<void> {
     const room = this.room;
     if (!room || !this.snapshot.can.screenShare) return;
-    this.update({ mediaError: null });
+    this.update(on ? { mediaError: null, shareNotice: null } : { mediaError: null });
     const quality = screenShareOptions(voicePrefs.get());
+    this.stoppingShare = !on;
     try {
       await room.localParticipant.setScreenShareEnabled(
         on,
         {
           // Game sound, untouched: the voice clean-up would mangle it. Where the
           // browser can, leave this call's own voices out of what is captured,
-          // or everyone hears themselves come back.
+          // or everyone hears themselves come back. Asking for sound is what
+          // puts the sound checkbox in Chrome's picker; the person ticks it or
+          // not. The desktop app has its own checkbox, off until ticked, and
+          // this restriction does not reach it (desktop/src/share-menu.js).
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+          systemAudio: 'include',
           resolution: quality.resolution,
           contentHint: 'motion',
           selfBrowserSurface: 'exclude',
@@ -581,9 +643,32 @@ export class VoiceSession {
     } catch (problem) {
       // Closing the picker without choosing is not an error worth a message.
       const cancelled = problem instanceof Error && problem.name === 'NotAllowedError';
-      if (!cancelled) this.update({ mediaError: describeCaptureProblem(problem, 'screen') });
+      if (!cancelled) {
+        const message = describeCaptureProblem(problem, 'screen');
+        this.update({ mediaError: message, ...(on ? { lastShareStop: { reason: message, at: Date.now() } } : {}) });
+      }
+    } finally {
+      this.stoppingShare = false;
     }
     if (this.room === room) this.refreshVideos();
+  }
+
+  /** Our share ended without Stop being pressed: say so now, and keep it for the connection panel. */
+  private noteShareStop(reason: string): void {
+    const line = `Your share stopped: ${reason}.`;
+    this.update({ shareNotice: line, lastShareStop: { reason: line, at: Date.now() } });
+  }
+
+  /**
+   * Stop fetching one person's camera, or start again. Only this device
+   * changes: they keep sending, and everyone else keeps seeing them. Saves
+   * the bandwidth of a picture nobody here wants.
+   */
+  setCameraHidden(userId: string, hidden: boolean): void {
+    if (hidden) this.hiddenCameras.add(userId);
+    else this.hiddenCameras.delete(userId);
+    this.room?.remoteParticipants.get(userId)?.getTrackPublication(Track.Source.Camera)?.setSubscribed(!hidden);
+    this.refreshVideos();
   }
 
   /** Show one person's camera or screen in a <video>. Returns the undo. */
@@ -624,8 +709,17 @@ export class VoiceSession {
     const room = this.room;
     if (!room) return;
     const videos: VoiceVideo[] = [];
+    const hiddenCameras: string[] = [];
     for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
       for (const publication of participant.trackPublications.values()) {
+        if (
+          publication.source === Track.Source.Camera &&
+          participant !== room.localParticipant &&
+          this.hiddenCameras.has(participant.identity) &&
+          !publication.isMuted
+        ) {
+          hiddenCameras.push(participant.identity);
+        }
         if (publication.kind !== Track.Kind.Video || !publication.track || publication.isMuted) continue;
         const source =
           publication.source === Track.Source.ScreenShare
@@ -633,11 +727,14 @@ export class VoiceSession {
             : publication.source === Track.Source.Camera
               ? 'camera'
               : null;
-        if (source) videos.push({ userId: participant.identity, source, sid: publication.trackSid });
+        if (!source) continue;
+        const sound = source === 'screen' && Boolean(participant.getTrackPublication(Track.Source.ScreenShareAudio)?.track);
+        videos.push({ userId: participant.identity, source, sid: publication.trackSid, sound });
       }
     }
     this.update({
       videos,
+      hiddenCameras,
       camera: room.localParticipant.isCameraEnabled,
       sharing: room.localParticipant.isScreenShareEnabled,
     });
@@ -847,7 +944,7 @@ export class VoiceSession {
     for (const person of this.room?.remoteParticipants.values() ?? []) {
       const volume = now.volumes[person.identity] ?? 1;
       this.mix?.setVolumeFor(person.identity, volume);
-      this.mix?.setVolumeFor(screenSound(person.identity), volume);
+      this.mix?.setVolumeFor(screenSound(person.identity), now.volumes[screenSound(person.identity)] ?? 1);
       this.mix?.setVolumeFor(boardSound(person.identity), volume);
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
@@ -1027,6 +1124,12 @@ export class VoiceSession {
         publication.setSubscribed(false);
         return;
       }
+      // A camera hidden on this device, arriving anyway (it was already on
+      // its way when Hide was pressed, or the person turned it off and on).
+      if (publication.source === Track.Source.Camera && this.hiddenCameras.has(participant.identity)) {
+        publication.setSubscribed(false);
+        return this.refreshVideos();
+      }
       if (track.kind !== Track.Kind.Audio) {
         this.capPicture(publication);
         return this.refreshVideos();
@@ -1042,13 +1145,43 @@ export class VoiceSession {
         // person talking, so neither rings anyone.
         this.ears = setInterval(() => this.refreshSpeaking(), 100);
       }
-      const volume = voicePrefs.get().volumes[participant.identity] ?? 1;
+      const volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
       this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume);
+      // A screen's sound arriving is what puts a volume slider on its tile.
+      if (publication.source === Track.Source.ScreenShareAudio) this.refreshVideos();
     });
 
     room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication, participant) => {
       if (track.kind === Track.Kind.Audio) this.mix?.remove(mixKey(participant.identity, publication.source));
-      else this.refreshVideos();
+      if (track.kind !== Track.Kind.Audio || publication.source === Track.Source.ScreenShareAudio) this.refreshVideos();
+    });
+
+    // Someone turning a camera on while it is hidden here: do not fetch it.
+    // Either way the list of hidden cameras may have changed.
+    room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      if (publication.source === Track.Source.Camera && this.hiddenCameras.has(participant.identity)) {
+        publication.setSubscribed(false);
+      }
+      this.refreshVideos();
+    });
+    room.on(RoomEvent.TrackUnpublished, () => this.refreshVideos());
+
+    // Our own share ending without our Stop. The track's own "ended" comes
+    // from the window closing or the browser's Stop bar; LiveKit answers it
+    // by unpublishing inside the same event, before our listener on the track
+    // has run. So the unpublish waits one turn for the reason.
+    room.on(RoomEvent.LocalTrackPublished, (publication) => {
+      if (publication.source !== Track.Source.ScreenShare) return;
+      this.shareEnded = null;
+      publication.track?.on(TrackEvent.Ended, () => {
+        this.shareEnded = 'the screen or window it showed went away, or it was stopped outside Scryproof';
+      });
+    });
+    room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (publication.source !== Track.Source.ScreenShare || this.stoppingShare) return;
+      setTimeout(() => {
+        if (this.room === room) this.noteShareStop(this.shareEnded ?? 'the call stopped sending it, with no reason given');
+      }, 0);
     });
 
     // Includes the browser's own "Stop sharing" bar, which ends a share
@@ -1086,13 +1219,27 @@ export class VoiceSession {
       const report = await publication.track?.getRTCStatsReport();
       if (report) reports.push(report);
     }
+    // The same reports say whether each screen we are watching still moves.
+    const watched = new Map<string, FrameWatch>();
+    const stalled: Record<string, number> = {};
     for (const participant of room.remoteParticipants.values()) {
       for (const publication of participant.trackPublications.values()) {
         const report = await publication.track?.getRTCStatsReport();
-        if (report) reports.push(report);
+        if (!report) continue;
+        reports.push(report);
+        // A screen paused because its tile is out of sight is not a stalled one.
+        if (publication.source !== Track.Source.ScreenShare || !publication.isEnabled) continue;
+        const inbound = inboundVideo(report);
+        if (!inbound) continue;
+        const now = Date.now();
+        const watch = noteFrames(this.frameWatch.get(publication.trackSid), inbound.frames, now);
+        watched.set(publication.trackSid, watch);
+        const seconds = stalledSeconds(watch, now);
+        if (seconds !== null) stalled[screenSound(participant.identity)] = seconds;
       }
     }
     if (this.room !== room) return;
+    this.frameWatch = watched;
 
     let rttMs: number | null = null;
     let jitterMs: number | null = null;
@@ -1154,6 +1301,7 @@ export class VoiceSession {
 
     this.update({
       stats: { rttMs, jitterMs, lossPercent, codec, videoCodec, relayed, receiving },
+      stalled,
       encrypted: room.isE2EEEnabled,
     });
   }
@@ -1208,14 +1356,8 @@ export class VoiceSession {
         if (publication.kind !== Track.Kind.Video) continue;
         const source = publication.source === Track.Source.ScreenShare ? 'screen' : 'camera';
         const report = await publication.track?.getRTCStatsReport();
-        report?.forEach((entry: Record<string, unknown>) => {
-          if (entry.type !== 'inbound-rtp') return;
-          result[`${participant.identity}:${source}`] = {
-            frames: typeof entry.framesDecoded === 'number' ? entry.framesDecoded : 0,
-            width: typeof entry.frameWidth === 'number' ? entry.frameWidth : 0,
-            packets: typeof entry.packetsReceived === 'number' ? entry.packetsReceived : 0,
-          };
-        });
+        const inbound = report ? inboundVideo(report) : null;
+        if (inbound) result[`${participant.identity}:${source}`] = inbound;
       }
     }
     return result;
