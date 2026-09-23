@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-22, night. Commands and the Meepo characters are live (last section); Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-22, late night. The big one is merged on main and not deployed (last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -1912,3 +1912,43 @@ briefs (invite link, polls, events, bookmarks, voice messages) and three
 Opus briefs (soundboard, voice changers, initiative tracker), each a
 file beside it. The DM commands and the Delete item ship with that
 batch.
+
+## The big one, 2026-09-22 night (merged on main, not deployed)
+
+Wes: "Wanna fan out and tackle those?" Eight agents, eight worktrees,
+all eight merged the same night. Sonnet built the invite link, polls
+and bookmarks; Opus built events, voice messages, the soundboard, the
+voice changers and the initiative tracker. Migrations 0012 to 0016
+(events, bookmarks, polls, trackers, sounds), renumbered on merge by
+deleting the branch's migration and running `db:generate` on top of
+main, which is the clean way to do it. Tests: server 206, web 207;
+`test:voice` all 35 with both voice branches in. Shots: `poll.png`,
+`events.png`, `saved.png`, `invite-link.png`, `initiative.png`,
+`voice-changer.png`, `sounds-pane.png`. Changelog `2026-09-22-big-one`.
+
+![Polls](shots/poll.png)
+![Initiative](shots/initiative.png)
+
+**Things the agents decided that Wes should know:**
+- Polls: votes fan out as `poll_update` with only the tally; your own
+  picks come back in your own HTTP answer. The brief said to broadcast
+  the message, which would have leaked picks. The agent caught it.
+- Events: Manage events is a new permission bit (27), not on @everyone,
+  so only owner and admins can plan until a role gets it. One-line
+  change if the group should all plan. Reminders go from a once-a-minute
+  interval in the one server process.
+- Soundboard: the LiveKit grant now allows an `unknown` source track
+  for anyone with SPEAK (the second audio track). Sounds use MANAGE_SERVER
+  like emoji. A server mute blocks the soundboard client-side.
+- Voice changers: uses LiveKit's track processor, not a hand-rolled
+  swap; the meter shows the raw voice, "Hear it" plays the changed one.
+  Robot at 40 Hz ring mod is a guess until someone listens.
+- Voice messages: the server's inline type list lacks `audio/webm`, so
+  the player fetches bytes itself. Releasing while the browser is still
+  asking about the microphone sends nothing.
+- Initiative: players cannot remove themselves or press Next on their
+  own turn; only the starter or Manage messages. Encrypted channels
+  refuse a tracker (the list is plain text on the server).
+
+**Not tried by a person:** any of it. Voice messages, the soundboard in
+a real call, and what the voice changers sound like most of all.

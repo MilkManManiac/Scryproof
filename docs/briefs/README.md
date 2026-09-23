@@ -69,7 +69,7 @@ Two more main-session jobs, written up 2026-09-22 after lamp asked for
 them: `group-dms.md` and `dm-calls.md`. Both change the E2EE path or how
 voice rooms are granted, which is why they are not agent briefs.
 
-## Third batch, written 2026-09-22 night, not yet launched
+## Third batch, written 2026-09-22 night; all eight built and merged the same night
 
 Wes: "We can do a big one next. What else can we build? Come up with a
 plan and we can give to sonnet or opus to build." Everything from the
