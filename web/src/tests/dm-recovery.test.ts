@@ -107,7 +107,7 @@ describe('the device the words stand for', () => {
     // Later, somewhere else, from the words alone.
     const rebuilt = await recoveryDevice('wes', phrase);
     const opened = await openMessage({ dmId: DM, self: rebuilt, authorId: 'sam', senderDevice: sam.published, ...sealed });
-    assert.deepEqual(opened, { ok: true, body: { v: 1, text: 'the old laptop is gone' } });
+    assert.deepEqual(opened, { ok: true, body: { v: 1, text: 'the old laptop is gone' }, legacy: false });
 
     const wrong = await recoveryDevice('wes', newPhrase());
     const refused = await openMessage({ dmId: DM, self: wrong, authorId: 'sam', senderDevice: sam.published, ...sealed });
@@ -217,6 +217,7 @@ describe('history from before the phrase', () => {
     assert.deepEqual(await openMessage({ ...base, ownDevices: [laptop.published] }), {
       ok: true,
       body: { v: 1, text: 'from before there was a phrase' },
+      legacy: false,
     });
 
     // The laptop has to be one this person believes. Unlisted, its copy counts for nothing.

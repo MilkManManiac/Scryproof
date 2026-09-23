@@ -44,6 +44,14 @@ const DEVICE_CONTEXT = 'scryproof/dm/device/v1';
 /** Must match `ENDORSE_CONTEXT` in server/src/routes/dms.ts. */
 const ENDORSE_CONTEXT = 'scryproof/dm/endorse/v1';
 const WRAP_CONTEXT = 'scryproof/dm/wrap/v1';
+/**
+ * Since 2026-09-23 a copy of a message key is also bound to a hash of the
+ * sealed body. Before, in a group, anyone handed the key could lock different
+ * words under it and a server could pass them off with the sender's own
+ * copies, which open fine: a forgery in the sender's name. A copy now opens
+ * only for the exact bytes the sender sealed.
+ */
+const WRAP_CONTEXT_V2 = 'scryproof/dm/wrap/v2';
 const BODY_CONTEXT = 'scryproof/dm/body/v1';
 const FILE_CONTEXT = 'scryproof/dm/file/v1';
 
@@ -416,9 +424,16 @@ async function wrappingKey(d: Direction, privateKey: CryptoKey, theirDmKey: Uint
   );
 }
 
-/** Binds a wrapped key to one body, so it cannot be moved onto another message. */
-const wrapAad = (d: Direction, bodyIv: Uint8Array): Uint8Array =>
+/** Binds a wrapped key to one body, so it cannot be moved onto another message. The first format: see WRAP_CONTEXT_V2. */
+const wrapAadV1 = (d: Direction, bodyIv: Uint8Array): Uint8Array =>
   concatLabelled(WRAP_CONTEXT, d.dmId, d.senderId, d.senderDeviceId, d.recipientId, d.recipientDeviceId, bodyIv);
+
+/** Binds a wrapped key to one body and its exact sealed bytes. */
+const wrapAadV2 = (d: Direction, bodyIv: Uint8Array, bodyHash: Uint8Array): Uint8Array =>
+  concatLabelled(WRAP_CONTEXT_V2, d.dmId, d.senderId, d.senderDeviceId, d.recipientId, d.recipientDeviceId, bodyIv, bodyHash);
+
+const hashOf = async (bytes: Uint8Array): Promise<Uint8Array> =>
+  new Uint8Array(await subtle().digest('SHA-256', bytes as BufferSource));
 
 const bodyAad = (dmId: string, senderId: string, senderDeviceId: string): Uint8Array =>
   concatLabelled(BODY_CONTEXT, dmId, senderId, senderDeviceId);
@@ -445,6 +460,7 @@ export async function sealMessage(options: {
     text.encode(JSON.stringify(options.body)) as BufferSource,
   );
 
+  const bodyHash = await hashOf(new Uint8Array(sealed));
   const keys: DmWrappedKey[] = [];
   for (const recipient of options.recipients) {
     const direction: Direction = {
@@ -457,7 +473,7 @@ export async function sealMessage(options: {
     const key = await wrappingKey(direction, sender.dm.privateKey, fromBase64(recipient.dmKey));
     const wrapIv = randomBytes(12);
     const wrapped = await subtle().encrypt(
-      { name: 'AES-GCM', iv: wrapIv as BufferSource, additionalData: wrapAad(direction, iv) as BufferSource },
+      { name: 'AES-GCM', iv: wrapIv as BufferSource, additionalData: wrapAadV2(direction, iv, bodyHash) as BufferSource },
       key,
       messageKeyBytes as BufferSource,
     );
@@ -473,7 +489,12 @@ export async function sealMessage(options: {
 }
 
 export type OpenResult =
-  | { ok: true; body: DmBody }
+  /**
+   * `legacy`: the copy was made in the first format, which does not bind it
+   * to these exact bytes. Fine between two people; in a group it means the
+   * words cannot be proven to be the sender's.
+   */
+  | { ok: true; body: DmBody; legacy: boolean }
   /** No copy of the key was made for this device: it is newer than the message, or was not accepted. */
   | { ok: false; reason: 'no-key' }
   /** A copy exists and does not open. Tampering, or a key that is not the one claimed. */
@@ -492,6 +513,8 @@ interface Sealed {
   authorId: string;
   senderDevice: DeviceKey;
   iv: string;
+  /** The sealed body, base64. Its hash is what a copy of the key is bound to. */
+  ciphertext: string;
   keys: DmWrappedKey[];
   /**
    * This person's own devices that are believed. A copy passed on by one of
@@ -506,7 +529,7 @@ interface Sealed {
  * made later by the reader's own device names that device in `wrappedBy`, and
  * is opened against that device's key instead.
  */
-async function messageKeyFor(options: Sealed, mine: DmWrappedKey): Promise<ArrayBuffer> {
+async function messageKeyFor(options: Sealed, mine: DmWrappedKey): Promise<{ bytes: ArrayBuffer; legacy: boolean }> {
   const { dmId, self, senderDevice } = options;
   let wrapper = { userId: options.authorId, device: senderDevice };
   if (mine.wrappedBy) {
@@ -522,15 +545,19 @@ async function messageKeyFor(options: Sealed, mine: DmWrappedKey): Promise<Array
     recipientDeviceId: self.identity.deviceId,
   };
   const key = await wrappingKey(direction, self.dm.privateKey, fromBase64(wrapper.device.dmKey));
-  return subtle().decrypt(
-    {
-      name: 'AES-GCM',
-      iv: fromBase64(mine.iv) as BufferSource,
-      additionalData: wrapAad(direction, fromBase64(options.iv)) as BufferSource,
-    },
-    key,
-    fromBase64(mine.key) as BufferSource,
-  );
+  const bodyIv = fromBase64(options.iv);
+  const unwrap = (additionalData: Uint8Array) =>
+    subtle().decrypt(
+      { name: 'AES-GCM', iv: fromBase64(mine.iv) as BufferSource, additionalData: additionalData as BufferSource },
+      key,
+      fromBase64(mine.key) as BufferSource,
+    );
+  try {
+    return { bytes: await unwrap(wrapAadV2(direction, bodyIv, await hashOf(fromBase64(options.ciphertext)))), legacy: false };
+  } catch {
+    // Made before copies were bound to the body. Throws in turn if it is not that either.
+    return { bytes: await unwrap(wrapAadV1(direction, bodyIv)), legacy: true };
+  }
 }
 
 const copyFor = (options: Pick<Sealed, 'self' | 'keys'>): DmWrappedKey | undefined =>
@@ -549,7 +576,7 @@ export async function rewrapKey(
   const mine = copyFor(options);
   if (!mine || target.userId !== self.userId || options.senderDevice.userId !== options.authorId) return null;
   try {
-    const messageKeyBytes = await messageKeyFor(options, mine);
+    const { bytes: messageKeyBytes, legacy } = await messageKeyFor(options, mine);
     const direction: Direction = {
       dmId: options.dmId,
       senderId: self.userId,
@@ -559,8 +586,14 @@ export async function rewrapKey(
     };
     const key = await wrappingKey(direction, self.dm.privateKey, fromBase64(target.dmKey));
     const wrapIv = randomBytes(12);
+    // Passed on in the format it came in: a copy in the first format does not
+    // become proof of the exact bytes by being passed on.
+    const bodyIv = fromBase64(options.iv);
+    const additionalData = legacy
+      ? wrapAadV1(direction, bodyIv)
+      : wrapAadV2(direction, bodyIv, await hashOf(fromBase64(options.ciphertext)));
     const wrapped = await subtle().encrypt(
-      { name: 'AES-GCM', iv: wrapIv as BufferSource, additionalData: wrapAad(direction, fromBase64(options.iv)) as BufferSource },
+      { name: 'AES-GCM', iv: wrapIv as BufferSource, additionalData: additionalData as BufferSource },
       key,
       messageKeyBytes,
     );
@@ -574,7 +607,7 @@ export async function rewrapKey(
  * Open a message. Never throws: a hostile server can send anything it likes,
  * and every one of those is a message that does not open, not a crash.
  */
-export async function openMessage(options: Sealed & { ciphertext: string }): Promise<OpenResult> {
+export async function openMessage(options: Sealed): Promise<OpenResult> {
   const { dmId, senderDevice } = options;
   const mine = copyFor(options);
   if (!mine) return { ok: false, reason: 'no-key' };
@@ -583,7 +616,7 @@ export async function openMessage(options: Sealed & { ciphertext: string }): Pro
 
   try {
     const bodyIv = fromBase64(options.iv);
-    const messageKeyBytes = await messageKeyFor(options, mine);
+    const { bytes: messageKeyBytes, legacy } = await messageKeyFor(options, mine);
     const messageKey = await subtle().importKey('raw', messageKeyBytes, 'AES-GCM', false, ['decrypt']);
     const opened = await subtle().decrypt(
       {
@@ -596,7 +629,7 @@ export async function openMessage(options: Sealed & { ciphertext: string }): Pro
     );
     const body = parseBody(JSON.parse(new TextDecoder().decode(opened)));
     if (!body) return { ok: false, reason: 'failed' };
-    return { ok: true, body };
+    return { ok: true, body, legacy };
   } catch {
     return { ok: false, reason: 'failed' };
   }

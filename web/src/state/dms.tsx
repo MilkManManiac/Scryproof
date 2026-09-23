@@ -77,6 +77,12 @@ export interface DmView {
   problem: null | 'no-key' | 'failed';
   /** Opened, but from a device this person has not accepted yet. */
   unverified: boolean;
+  /**
+   * A group message sealed before copies of its key were bound to its exact
+   * bytes (2026-09-23): it opened, but anyone else in the group could have
+   * written it in the sender's name.
+   */
+  unproven?: boolean;
   /** The message this one answers. Read from inside the sealed body. */
   replyTo: string | null;
   files: DmFileRef[];
@@ -374,6 +380,8 @@ export function DmProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const isGroup = (dm: DmChannel | undefined): boolean => !dm || dm.kind === 'group' || dm.members.length > 2;
+
   const toView = useCallback(async (message: DmMessage, known: AssessedDevice[]): Promise<DmView> => {
     const base = {
       id: message.id,
@@ -406,6 +414,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
       files: opened.body.files ?? [],
       problem: null,
       unverified: !isTrusted(sender.verdict),
+      // Between two people nobody else holds the key, so the old format proves
+      // enough. With more, it does not.
+      unproven: opened.legacy && isGroup(stateRef.current.dms[message.dmId]),
     };
   }, [open]);
 
@@ -458,7 +469,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
     const keys: { messageId: string; iv: string; key: string }[] = [];
     for (const message of messages) {
-      if (message.deleted || !message.iv || message.keys.some((key) => key.deviceId === target.deviceId)) continue;
+      if (message.deleted || !message.iv || !message.ciphertext || message.keys.some((key) => key.deviceId === target.deviceId)) continue;
       const sender = known.find(
         (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
       );
@@ -469,6 +480,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
         authorId: message.authorId,
         senderDevice: sender.device,
         iv: message.iv,
+        ciphertext: message.ciphertext,
         keys: message.keys,
         target,
       });

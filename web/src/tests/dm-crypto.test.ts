@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { concatLabelled } from '@scryproof/shared';
 import type { DeviceKey } from '@scryproof/shared';
 
 import {
@@ -54,7 +55,7 @@ describe('sealing and opening', () => {
 
     for (const reader of [sam, wes]) {
       const opened = await openMessage({ dmId: DM, self: reader.device, authorId: 'wes', senderDevice: wes.published, ...sealed });
-      assert.deepEqual(opened, { ok: true, body: { v: 1, text: 'see you thursday' } });
+      assert.deepEqual(opened, { ok: true, body: { v: 1, text: 'see you thursday' }, legacy: false });
     }
   });
 
@@ -70,7 +71,7 @@ describe('sealing and opening', () => {
       const sealed = await sealMessage({ dmId: DM, sender: wes.device, body, recipients: [sam.published] });
       assert.equal(JSON.stringify(sealed).includes('message-7'), false);
       const opened = await openMessage({ dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...sealed });
-      assert.deepEqual(opened, { ok: true, body });
+      assert.deepEqual(opened, { ok: true, body, legacy: false });
     }
   });
 
@@ -182,6 +183,50 @@ describe('a server that lies', () => {
     const one = await sealMessage({ dmId: DM, sender: wes.device, body: { v: 1, text: 'one' }, recipients: [sam.published] });
     const two = await sealMessage({ dmId: DM, sender: wes.device, body: { v: 1, text: 'two' }, recipients: [sam.published] });
     const opened = await openMessage({ dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...two, keys: one.keys });
+    assert.deepEqual(opened, { ok: false, reason: 'failed' });
+  });
+
+  test('in a group, someone holding the key cannot put their words under the sender\'s copies', async () => {
+    const wes = await makeDevice('wes');
+    const sam = await makeDevice('sam');
+    const eve = await makeDevice('eve');
+    const sealed = await sealMessage({
+      dmId: DM, sender: wes.device, body: { v: 1, text: 'see you all friday' }, recipients: [sam.published, eve.published],
+    });
+
+    // Eve opens her own copy the way her app does, and keeps the message key.
+    const subtle = globalThis.crypto.subtle;
+    const mine = sealed.keys.find((key) => key.userId === 'eve')!;
+    const theirs = await subtle.importKey('spki', fromBase64(wes.published.dmKey) as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const shared = await subtle.deriveBits({ name: 'ECDH', public: theirs }, eve.device.dm.privateKey, 256);
+    const material = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
+    const wrapping = await subtle.deriveKey(
+      {
+        name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode(DM) as BufferSource,
+        info: concatLabelled('scryproof/dm/wrap/v1', 'wes', wes.published.deviceId, 'eve', eve.published.deviceId) as BufferSource,
+      },
+      material, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
+    );
+    const bodyHash = new Uint8Array(await subtle.digest('SHA-256', fromBase64(sealed.ciphertext) as BufferSource));
+    const messageKey = await subtle.decrypt(
+      {
+        name: 'AES-GCM', iv: fromBase64(mine.iv) as BufferSource,
+        additionalData: concatLabelled('scryproof/dm/wrap/v2', DM, 'wes', wes.published.deviceId, 'eve', eve.published.deviceId, fromBase64(sealed.iv), bodyHash) as BufferSource,
+      },
+      wrapping, fromBase64(mine.key) as BufferSource,
+    );
+
+    // She locks her own words under it, exactly as Wes's app would have, and
+    // the server hands Sam Wes's real copies with her body.
+    const key = await subtle.importKey('raw', messageKey, 'AES-GCM', false, ['encrypt']);
+    const forged = await subtle.encrypt(
+      { name: 'AES-GCM', iv: fromBase64(sealed.iv) as BufferSource, additionalData: concatLabelled('scryproof/dm/body/v1', DM, 'wes', wes.published.deviceId) as BufferSource },
+      key,
+      new TextEncoder().encode(JSON.stringify({ v: 1, text: 'friday is off, stay home' })) as BufferSource,
+    );
+    const opened = await openMessage({
+      dmId: DM, self: sam.device, authorId: 'wes', senderDevice: wes.published, ...sealed, ciphertext: toBase64(new Uint8Array(forged)),
+    });
     assert.deepEqual(opened, { ok: false, reason: 'failed' });
   });
 

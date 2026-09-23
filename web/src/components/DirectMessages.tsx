@@ -887,7 +887,8 @@ function DmRow({
             player below says the same thing. */}
         {(view.text && !(isVoiceLabel(view.text) && view.files.some((file) => isVoiceFile(file.name)))) ||
         view.editedAt ||
-        view.unverified ? (
+        view.unverified ||
+        view.unproven ? (
           <div className="message-text">
             {/* The same parts as a channel message. There is nobody to name here
                 and no server emoji, so those come out as the text typed. */}
@@ -900,6 +901,14 @@ function DmRow({
             {view.unverified ? (
               <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
                 unaccepted device
+              </span>
+            ) : null}
+            {view.unproven ? (
+              <span
+                className="dm-unverified"
+                title="Sent before group messages were tied to their sender. It opened, but anyone else in this group could have written it in their name."
+              >
+                sender not proven
               </span>
             ) : null}
           </div>
