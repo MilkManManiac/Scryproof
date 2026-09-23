@@ -1,7 +1,7 @@
 {
   "name": "scryproof-desktop",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
   "author": "Scryproof",
   "type": "module",
