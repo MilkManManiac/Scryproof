@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, 02:45 ET. Session A of `docs/BUILD-ORDER.md` is built (last section): nightly encrypted backups are running on the box with a restore proven, and the password reset is committed, waiting to ship with the next batch. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-22, 23:40 ET. Batch four (Session B of `docs/BUILD-ORDER.md`) is merged on main and **not deployed**: it waits for Wes to say ship (last section has the exact steps, including a new installer). Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -2008,4 +2008,50 @@ password, to `/mnt/vault/logs/password-resets.log`. The box command
 refuses to run until a build with `server/dist/reset-password.js` is
 deployed. Test: `server/src/tests/password-reset.test.ts`. Needs a
 changelog line when it ships ("If you forget your password, ask Wes...").
+
+## Batch four, 2026-09-22 late (merged, not deployed)
+
+Seven briefs in `docs/briefs/` (`screen-share`, `speaking-ring`, `drafts`,
+`desktop-menu`, `people`, `account`, `small-wants`), built by agents in
+worktrees and merged into main. After merge: `npm test` 208 server + 237
+web pass, typecheck clean, build clean, `npm run test:voice` 41 of 41
+(including the new two-screens block), `npm run test:dm` all pass (on a
+fresh seeded database; the check now opens the DM through the profile
+card, which it had not since the card arrived), `npm run test:desktop` all
+pass. Changelog entry `2026-09-22-fourth` written. Desktop shell bumped to
+0.4.0.
+
+**Two screens at once.** Works in Chrome (the voice check proves it). Live
+logs from Wes and his brother's try (both in the desktop app, both "with
+sound"): zrhunter's share restarted four times in two minutes, then he
+rejoined twice. Leading suspect, not proven: Electron's `loopback` sound is
+the whole machine including the call, so two sharers feed each other.
+Sound is now a choice, off by default; a share that stops says why; a
+frozen screen says "No picture from X". Retest with sound off first; if a
+share still dies, the new messages say which side. Still unanswered: what
+each of them saw.
+
+**The desktop shell changed** (right-click menu, the share menu's sound
+checkbox, window zoom for the interface scale). The app updates only its
+web client by itself, so these reach people only when they run the new
+installer once. The interface scale shows a download link in an older
+shell. Item 13 (the shell updating itself) would end this.
+
+**Other notes from the agents.** Local names skip the DM device-warning
+text on purpose (a pet name is the wrong thing to verify against). The
+profile card bug was modals stopping `mousedown` on their content, fixed
+by listening in the capture phase. The interface scale first set the root
+font size, which moved almost nothing because the stylesheet is px; it is
+now `webFrame.setZoomFactor` in the desktop app, and a Ctrl and + hint in
+a browser. Account settings adds a `patchUser` action to the store
+because the two-factor routes do not broadcast a user update.
+
+**To ship, when Wes says so:**
+
+    bash scripts/release.sh                     (changelog must be dated today; re-date the entry if it is past midnight)
+    cd desktop && npm run dist && cd ..
+    bash scripts/publish-installer.sh
+
+Then tell the group to download and run the installer once. Password
+reset is live from then: `bash scripts/box.sh reset-password <username>`.
 

@@ -20,6 +20,25 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-22-fourth',
+    date: '2026-09-22',
+    title: 'Drafts, names of your own, and better screen sharing',
+    notes: [
+      "Half a message is no longer lost when you click another channel or DM. It is waiting when you come back, until you close the app. It is never saved to disk.",
+      'Call someone whatever you like, just for you: click their name, then "Call them...". Everywhere you see them, you see your name for them. Nobody else sees it, and they are not told.',
+      'Sharing your screen now asks whether to include sound, and it starts off. In the desktop app, "with sound" means everything your computer plays, the call included, so two people sharing with sound can echo.',
+      "If your share stops without you pressing Stop, it now says why. If someone's screen freezes, their picture says so instead of just sitting there.",
+      'A Screen sound slider on a shared screen, separate from their voice. On a camera, "Hide for me" stops it coming to you at all.',
+      'The green ring for whoever is talking follows the sound itself now, so it lights and lets go right away instead of lagging behind.',
+      'Account, in the menu under your name: change your password, and turn on two-factor (a code from an app on your phone when you sign in).',
+      'If you forget your password, ask Wes. He can give you a temporary one, and the app asks you to choose a new one straight away. Your DMs are not affected.',
+      'The + at the top of Direct messages starts a conversation with anyone you share a server with. Their profile card has their volume slider when you are in a call together.',
+      'In the desktop app: right-click for spelling suggestions, copy and paste, and Copy image or Save image. Themes has an interface scale, 90 to 130 percent.',
+      'The B, I, S and <> buttons under the message box are easier to see. And the pregnant man is here.',
+      'Clicking away from a profile card closes it, including while a settings window is open.',
+    ],
+  },
+  {
     id: '2026-09-22-big-one',
     date: '2026-09-22',
     title: 'The big one',
