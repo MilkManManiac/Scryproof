@@ -4700,6 +4700,58 @@ kbd {
   white-space: nowrap;
 }
 
+/* The soundboard: the same board, hung from the voice bar at the bottom of
+   the sidebar, so it opens to the right over the channel rather than off the
+   left edge of the window. */
+.spawner.soundboard {
+  left: 0;
+  right: auto;
+}
+.soundboard-tile {
+  padding: 10px 4px 8px;
+  gap: 6px;
+}
+.soundboard-tile.loading {
+  opacity: 0.6;
+}
+.soundboard-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--panel-4);
+  color: var(--text);
+}
+.soundboard-tile:hover .soundboard-mark {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.soundboard-error {
+  margin: 0 4px 6px;
+  font-size: 12px;
+  color: #f0a294;
+}
+.soundboard-empty {
+  margin: 0;
+  padding: 4px 4px 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sound-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sound-row-name input {
+  width: 100%;
+}
+.sound-row-size {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 /* Where a picker hangs from: the hover tray (default), the + after the
    reactions, or the button beside Send. */
 .reaction-picker.below-left {

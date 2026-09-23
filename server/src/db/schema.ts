@@ -467,6 +467,33 @@ export const emojis = pgTable(
   (table) => [uniqueIndex('emojis_server_name_key').on(table.serverId, table.name)],
 );
 
+/**
+ * The soundboard: short clips a server uploaded, played into calls.
+ *
+ * Names are not unique, unlike emoji: a sound is picked by clicking its tile,
+ * never by typing its name, so two called "boo" cost nothing. The clip lives
+ * in the object store under `storage_key`, as emoji and attachments do, and
+ * `content_type` is one of the three the upload route accepts.
+ */
+export const sounds = pgTable(
+  'sounds',
+  {
+    id: id(),
+    serverId: text('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    storageKey: text('storage_key').notNull(),
+    contentType: text('content_type').notNull(),
+    bytes: integer('bytes').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (table) => [index('sounds_server_idx').on(table.serverId, table.createdAt)],
+);
+
 /** One row per person, per emoji, per message. The key is what makes adding twice harmless. */
 export const reactions = pgTable(
   'reactions',
@@ -766,6 +793,7 @@ export type MessageRow = typeof messages.$inferSelect;
 export type PollVoteRow = typeof pollVotes.$inferSelect;
 export type ReactionRow = typeof reactions.$inferSelect;
 export type EmojiRow = typeof emojis.$inferSelect;
+export type SoundRow = typeof sounds.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type OverwriteRow = typeof channelOverwrites.$inferSelect;

@@ -35,7 +35,7 @@ export interface TokenOptions {
   name: string;
   canPublish: boolean;
   canSubscribe: boolean;
-  /** 'camera' | 'microphone' | 'screen_share' | 'screen_share_audio' */
+  /** 'camera' | 'microphone' | 'screen_share' | 'screen_share_audio' | 'unknown' */
   sources: string[];
 }
 

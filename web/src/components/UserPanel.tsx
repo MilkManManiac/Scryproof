@@ -14,10 +14,13 @@ import { buildLabel, isDesktop } from '../lib/desktop';
 import { canInstall, install, subscribeInstall } from '../lib/install';
 import { hasUnread, subscribeUnread } from '../lib/whats-new';
 import { useStore } from '../state/store';
+import { useVoice } from '../state/useVoice';
 import { Avatar } from './Avatar';
+import { VoiceGlyph } from './glyphs';
 import { NotifySettings } from './NotifySettings';
 import { useProfileCard } from './ProfileCard';
 import { ProfileSettings } from './ProfileSettings';
+import { SoundBoard } from './SoundBoard';
 import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
 import { WhatsNew } from './WhatsNew';
@@ -39,6 +42,8 @@ export function UserPanel() {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
+  const call = useVoice();
   const card = useProfileCard();
   const installable = useSyncExternalStore(subscribeInstall, canInstall) && !isDesktop;
   const news = useSyncExternalStore(subscribeUnread, hasUnread);
@@ -48,6 +53,11 @@ export function UserPanel() {
 
   const myVoice = Object.values(state.voiceStates).find((voice) => voice.userId === user.id);
   const status = state.presences[user.id] ?? 'online';
+  // The board belongs to the server whose call you are in, which need not be
+  // the one on screen. Offered only once its track is up, and not while a
+  // moderator has you muted; the session refuses in both cases anyway.
+  const boardServer = myVoice ? state.servers[myVoice.serverId] : undefined;
+  const boardReady = Boolean(boardServer) && call.soundboard && !myVoice?.serverMute;
 
   const connectionLabel =
     state.connection === 'open'
@@ -102,6 +112,17 @@ export function UserPanel() {
           >
             {'\u{1F3A7}'}
           </button>
+          {boardReady ? (
+            <button
+              type="button"
+              className={boardOpen ? 'icon-button on' : 'icon-button'}
+              title="Soundboard"
+              aria-label="Soundboard"
+              onClick={() => setBoardOpen((open) => !open)}
+            >
+              <VoiceGlyph />
+            </button>
+          ) : null}
           <button
             type="button"
             className="icon-button danger"
@@ -132,6 +153,9 @@ export function UserPanel() {
       </button>
       </span>
 
+      {boardOpen && boardReady && boardServer ? (
+        <SoundBoard server={boardServer} onClose={() => setBoardOpen(false)} />
+      ) : null}
       {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
       {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
       {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}

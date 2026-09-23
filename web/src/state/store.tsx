@@ -31,6 +31,7 @@ import type {
   SelfUser,
   ServerDetail,
   ServerEvent,
+  Sound,
   VoiceState,
 } from '@scryproof/shared';
 
@@ -122,6 +123,7 @@ type Action =
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
   | { type: 'emojis-loaded'; serverId: string; emojis: Emoji[] }
+  | { type: 'sounds-loaded'; serverId: string; sounds: Sound[] }
   | { type: 'voice-states-refreshed'; serverId: string; voiceStates: VoiceState[] }
   | { type: 'marked-read'; channelId: string; messageId: string }
   | { type: 'reply-to'; channelId: string; message: Message | null }
@@ -275,6 +277,13 @@ function reducer(state: State, action: Action): State {
       const server = state.servers[action.serverId];
       if (!server) return state;
       return upsertServer(state, { ...server, emojis: action.emojis });
+    }
+
+    // The soundboard, wholesale, for the same reason.
+    case 'sounds-loaded': {
+      const server = state.servers[action.serverId];
+      if (!server) return state;
+      return upsertServer(state, { ...server, sounds: action.sounds });
     }
 
     /**
@@ -640,6 +649,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     // The list itself is fetched by the effect in the provider, which then
     // dispatches 'emojis-loaded'. Nothing to do from the event alone.
     case 'emojis_changed':
+    case 'sounds_changed':
       return state;
 
     case 'event_create':
@@ -956,6 +966,10 @@ export function StoreProvider({
           } else {
             // A server mute is not a request. Enforce it here as well as in the grant.
             void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
+            // The soundboard is a separate track, so a moderator's mute has to
+            // reach it separately. Muting yourself does not: picking a sound
+            // is as deliberate as unmuting.
+            voice.setServerMuted(event.d.serverMute);
             voice.setDeafened(event.d.selfDeaf || event.d.serverDeaf);
           }
         }
@@ -965,6 +979,14 @@ export function StoreProvider({
           void api.emojis
             .list(serverId)
             .then(({ emojis }) => dispatch({ type: 'emojis-loaded', serverId, emojis }))
+            .catch(() => undefined);
+        }
+
+        if (event.t === 'sounds_changed') {
+          const serverId = event.d.serverId;
+          void api.sounds
+            .list(serverId)
+            .then(({ sounds }) => dispatch({ type: 'sounds-loaded', serverId, sounds }))
             .catch(() => undefined);
         }
 

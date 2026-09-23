@@ -22,6 +22,7 @@ import type {
   Role,
   SelfUser,
   Server,
+  Sound,
 } from '@scryproof/shared';
 
 import { accentForId } from '../lib/crypto.js';
@@ -35,6 +36,7 @@ import type {
   MessageRow,
   RoleRow,
   ServerRow,
+  SoundRow,
   User,
 } from '../db/schema.js';
 import type { PollTally } from './polls.js';
@@ -124,6 +126,23 @@ export function emoji(row: EmojiRow): Emoji {
     name: row.name,
     uploaderId: row.uploaderId,
     url: `/api/emojis/${row.id}/image`,
+    createdAt: isoRequired(row.createdAt),
+  };
+}
+
+/**
+ * The name rides in the address only so a saved copy gets a sensible file
+ * name; the route finds the clip by id alone. A rename changes the address,
+ * which is harmless: the client refetches the list on `sounds_changed`.
+ */
+export function sound(row: SoundRow): Sound {
+  return {
+    id: row.id,
+    serverId: row.serverId,
+    name: row.name,
+    bytes: row.bytes,
+    createdBy: row.createdBy,
+    url: `/api/sounds/${row.id}/${encodeURIComponent(row.name)}`,
     createdAt: isoRequired(row.createdAt),
   };
 }

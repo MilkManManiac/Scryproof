@@ -29,6 +29,7 @@ import type {
   SelfUser,
   Server,
   ServerDetail,
+  Sound,
   VoiceState,
 } from '@scryproof/shared';
 
@@ -308,6 +309,30 @@ export const api = {
     },
     remove: (serverId: string, emojiId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/emojis/${emojiId}`),
+  },
+
+  sounds: {
+    list: (serverId: string) => get<{ sounds: Sound[] }>(`/api/servers/${serverId}/sounds`),
+    /** Name first, then the file, for the same reason as an emoji. */
+    async add(serverId: string, name: string, file: File): Promise<Sound> {
+      const form = new FormData();
+      form.append('name', name);
+      form.append('file', file);
+      const response = await fetch(`/api/servers/${serverId}/sounds`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
+      }
+      return payload.sound as Sound;
+    },
+    rename: (serverId: string, soundId: string, name: string) =>
+      patch<{ sound: Sound }>(`/api/servers/${serverId}/sounds/${soundId}`, { name }),
+    remove: (serverId: string, soundId: string) =>
+      del<{ ok: true }>(`/api/servers/${serverId}/sounds/${soundId}`),
   },
 
   events: {
