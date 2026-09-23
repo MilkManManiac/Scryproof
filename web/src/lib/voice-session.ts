@@ -41,6 +41,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
+import { loadSound } from './sounds';
 import { MicGate, OutputMix, audioContext, sounds } from './voice-audio';
 import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
@@ -58,6 +59,8 @@ import { ScryproofKeyProvider, voiceSupport } from './voice-key-provider';
 
 /** LiveKit keeps a ring of this many keys per participant, addressed by index. */
 const KEYRING_SIZE = 16;
+/** The name the soundboard's track is published under. Receivers go by its source, not this. */
+const SOUNDBOARD_TRACK = 'soundboard';
 const STATS_INTERVAL_MS = 2000;
 
 export type VoicePhase = 'idle' | 'connecting' | 'connected' | 'failed';
@@ -121,6 +124,8 @@ export interface VoiceSnapshot {
   mediaError: string | null;
   stats: VoiceStats;
   can: { speak: boolean; video: boolean; screenShare: boolean };
+  /** True once the soundboard's track is published, so a click will be heard by the room. */
+  soundboard: boolean;
 }
 
 const EMPTY_STATS: VoiceStats = {
@@ -151,6 +156,7 @@ const IDLE: VoiceSnapshot = {
   mediaError: null,
   stats: EMPTY_STATS,
   can: { speak: false, video: false, screenShare: false },
+  soundboard: false,
 };
 
 type SendSignal = (signal: VoiceSignal & { to?: string }) => void;
@@ -170,10 +176,34 @@ function isWrappedKey(value: Record<string, unknown>): value is Record<string, u
   );
 }
 
-/** A shared screen's sound is mixed separately from the same person's microphone. */
+/**
+ * A shared screen's sound is mixed separately from the same person's
+ * microphone, and so is their soundboard. Each is its own entry in the mix,
+ * turned up and down by that person's one volume slider. The soundboard is the
+ * only thing published with an unknown source, since the voice token grants
+ * that source for nothing else.
+ */
 const screenSound = (userId: string): string => `${userId}:screen`;
+const boardSound = (userId: string): string => `${userId}:soundboard`;
 const mixKey = (userId: string, source: Track.Source): string =>
-  source === Track.Source.ScreenShareAudio ? screenSound(userId) : userId;
+  source === Track.Source.ScreenShareAudio
+    ? screenSound(userId)
+    : source === Track.Source.Unknown
+      ? boardSound(userId)
+      : userId;
+
+/**
+ * The soundboard's outgoing side. Clips are played into `destination`, whose
+ * track is published once for the whole call and is silent between clips.
+ * `local` carries the same clip to this device's speakers, so you hear what
+ * you played at the volume you hear everyone else.
+ */
+interface Soundboard {
+  destination: MediaStreamAudioDestinationNode;
+  track: MediaStreamTrack;
+  local: GainNode;
+  playing: AudioBufferSourceNode | null;
+}
 
 function describeCaptureProblem(problem: unknown, what: 'camera' | 'screen'): string {
   const name = problem instanceof Error ? problem.name : '';
@@ -199,6 +229,13 @@ export class VoiceSession {
   private ears: ReturnType<typeof setInterval> | null = null;
   private serverSpeakers: string[] = [];
   private gate: MicGate | null = null;
+  private board: Soundboard | null = null;
+  /**
+   * A moderator's mute, which silences the soundboard as well as the
+   * microphone. Not reset on leave: the gateway reports it again on the next
+   * join, and until then the safe answer is the last one it gave.
+   */
+  private serverMuted = false;
   private prefs: VoicePrefs = voicePrefs.get();
   private stopWatching: (() => void) | null = null;
   /** Stops the shell's system-wide key watch, when one is running. */
@@ -332,6 +369,8 @@ export class VoiceSession {
 
       if (grant.can.speak) await this.publishMicrophone(room);
       if (stale()) return;
+      if (grant.can.speak) await this.openSoundboard(room);
+      if (stale()) return;
       this.rebuildGate();
       this.watchPrefs();
 
@@ -369,6 +408,7 @@ export class VoiceSession {
     this.stopWatching = null;
     this.gate?.close();
     this.gate = null;
+    this.closeSoundboard();
     this.mix?.close();
     this.mix = null;
     if (this.ears) clearInterval(this.ears);
@@ -392,6 +432,101 @@ export class VoiceSession {
   setDeafened(deafened: boolean): void {
     this.deafened = deafened;
     this.mix?.setDeafened(deafened);
+    this.tuneSoundboard();
+  }
+
+  /* ------------------------------- soundboard ------------------------------ */
+
+  /**
+   * Publish the soundboard's track: the output of a Web Audio node, silent
+   * until a clip is played into it. It goes through the same encrypted room as
+   * the microphone, so LiveKit encrypts it with this person's key like every
+   * other track, and nobody's side needs anything new to decrypt it.
+   *
+   * It is a separate track on purpose. The gate and push-to-talk switch the
+   * microphone track's `enabled` flag, and mute turns the microphone off;
+   * neither reaches this one, so a clip is heard whether or not you are
+   * talking. If publishing fails, the call carries on without a soundboard.
+   */
+  private async openSoundboard(room: Room): Promise<void> {
+    const context = audioContext();
+    const destination = context.createMediaStreamDestination();
+    const [track] = destination.stream.getAudioTracks();
+    if (!track) return;
+    try {
+      await room.localParticipant.publishTrack(track, {
+        source: Track.Source.Unknown,
+        name: SOUNDBOARD_TRACK,
+        // Silence between clips costs next to nothing on the wire this way.
+        dtx: true,
+      });
+    } catch {
+      track.stop();
+      return;
+    }
+    if (this.room !== room) {
+      track.stop();
+      return;
+    }
+    const local = context.createGain();
+    local.connect(context.destination);
+    this.board = { destination, track, local, playing: null };
+    this.tuneSoundboard();
+    this.update({ soundboard: true });
+  }
+
+  private closeSoundboard(): void {
+    const board = this.board;
+    this.board = null;
+    if (!board) return;
+    board.playing?.stop();
+    board.local.disconnect();
+    board.track.stop();
+  }
+
+  /** What you hear of your own clips follows your output volume, and deafen. */
+  private tuneSoundboard(): void {
+    if (this.board) this.board.local.gain.value = this.deafened ? 0 : voicePrefs.get().outputVolume;
+  }
+
+  setServerMuted(muted: boolean): void {
+    this.serverMuted = muted;
+    if (muted) this.board?.playing?.stop();
+  }
+
+  /**
+   * Play one clip into the call, and on this device. A second click cuts off
+   * the first rather than stacking on it, so one person cannot build a wall
+   * of sound. When nothing was played, says why in words.
+   */
+  async playSound(url: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const muted = { ok: false as const, reason: 'A moderator has muted you, and that includes the soundboard.' };
+    const board = this.board;
+    if (!board) return { ok: false, reason: 'The soundboard is not ready in this call.' };
+    if (this.serverMuted) return muted;
+    let buffer: AudioBuffer;
+    try {
+      buffer = await loadSound(url);
+    } catch {
+      return { ok: false, reason: 'That sound could not be loaded.' };
+    }
+    // Fetching and decoding take a moment, in which the call can end or a
+    // moderator can step in.
+    if (this.board !== board) return { ok: false, reason: 'The call ended.' };
+    if (this.serverMuted) return muted;
+
+    board.playing?.stop();
+    const source = audioContext().createBufferSource();
+    source.buffer = buffer;
+    source.connect(board.destination);
+    source.connect(board.local);
+    source.onended = () => {
+      source.disconnect();
+      if (board.playing === source) board.playing = null;
+    };
+    board.playing = source;
+    source.start();
+    return { ok: true };
   }
 
   /* --------------------------- camera and screen --------------------------- */
@@ -658,6 +793,7 @@ export class VoiceSession {
 
     const { outputDeviceId, outputVolume } = this.prefs;
     this.mix?.setVolume(outputVolume);
+    this.tuneSoundboard();
     if (outputDeviceId) void this.mix?.setOutputDevice(outputDeviceId);
   }
 
@@ -707,10 +843,12 @@ export class VoiceSession {
     if (before.inputMode !== now.inputMode || before.pushKey !== now.pushKey) void this.armGlobalHold();
 
     this.mix?.setVolume(now.outputVolume);
+    this.tuneSoundboard();
     for (const person of this.room?.remoteParticipants.values() ?? []) {
       const volume = now.volumes[person.identity] ?? 1;
       this.mix?.setVolumeFor(person.identity, volume);
       this.mix?.setVolumeFor(screenSound(person.identity), volume);
+      this.mix?.setVolumeFor(boardSound(person.identity), volume);
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
 
@@ -882,6 +1020,13 @@ export class VoiceSession {
 
   private listenTo(room: Room): void {
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
+      // The unknown source is granted for the soundboard, which is sound. The
+      // grant cannot say "sound only", so a picture under that source is
+      // somebody's client misbehaving: stop fetching it and draw nothing.
+      if (publication.source === Track.Source.Unknown && track.kind !== Track.Kind.Audio) {
+        publication.setSubscribed(false);
+        return;
+      }
       if (track.kind !== Track.Kind.Audio) {
         this.capPicture(publication);
         return this.refreshVideos();
@@ -893,7 +1038,8 @@ export class VoiceSession {
         const speaker = voicePrefs.get().outputDeviceId;
         if (speaker) void this.mix.setOutputDevice(speaker);
         // The ring: what we hear, plus whoever the server says. Screen-share
-        // sound is a game, not a voice, so it never rings anyone.
+        // sound is a game, not a voice, and a soundboard clip is not the
+        // person talking, so neither rings anyone.
         this.ears = setInterval(() => this.refreshSpeaking(), 100);
       }
       const volume = voicePrefs.get().volumes[participant.identity] ?? 1;
@@ -1023,7 +1169,9 @@ export class VoiceSession {
    */
   /** Merge the server's speaker list with our own ears, and publish only on change. */
   private refreshSpeaking(): void {
-    const heard = (this.mix?.talking() ?? []).filter((key) => !key.endsWith(':screen'));
+    const heard = (this.mix?.talking() ?? []).filter(
+      (key) => !key.endsWith(':screen') && !key.endsWith(':soundboard'),
+    );
     const speaking = [...new Set([...this.serverSpeakers, ...heard])].sort();
     const before = this.snapshot.speaking;
     if (before.length === speaking.length && before.every((id, i) => id === speaking[i])) return;
@@ -1093,6 +1241,33 @@ export class VoiceSession {
     // An instrument that cannot see must say so, not report a clean result.
     if (found === 0) throw new Error('no peer connection found to inspect');
     return [...new Set(urls)];
+  }
+
+  /**
+   * Sound decoded from each person's soundboard so far, by user id. The same
+   * measure as `debugInbound`, on the second track instead of the microphone.
+   */
+  debugSoundboard(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const participant of this.room?.remoteParticipants.values() ?? []) {
+      result[participant.identity] = this.mix?.energyOf(boardSound(participant.identity)) ?? 0;
+    }
+    return result;
+  }
+
+  /** Play a generated tone through the soundboard, so a test needs no uploaded clip. */
+  debugPlayTone(seconds = 1): boolean {
+    const board = this.board;
+    if (!board) return false;
+    const context = audioContext();
+    const buffer = context.createBuffer(1, Math.round(context.sampleRate * seconds), context.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i += 1) samples[i] = 0.4 * Math.sin((2 * Math.PI * 660 * i) / context.sampleRate);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(board.destination);
+    source.start();
+    return true;
   }
 
   debugGate(): { level: number; open: boolean } {

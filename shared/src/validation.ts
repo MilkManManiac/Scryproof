@@ -41,7 +41,27 @@ export const LIMITS = {
    * ahead, and small enough that the list sent with every server stays small.
    */
   eventsPerServer: 50,
+  soundName: { min: 1, max: 32 },
+  /** Enough for a board that fits on one panel without scrolling far. */
+  soundsPerServer: 24,
+  soundBytes: 1024 * 1024,
+  /**
+   * A soundboard clip is a sting, not a song. The browser measures the length
+   * before upload; the server cannot without decoding audio, so it holds the
+   * line on size and type instead.
+   */
+  soundSeconds: 5,
 } as const;
+
+/**
+ * What a soundboard clip may be. Every browser this app runs in decodes all
+ * three, and none of them is a document that could carry script.
+ */
+export const SOUND_TYPES = ['audio/webm', 'audio/ogg', 'audio/mpeg'] as const;
+export type SoundType = (typeof SOUND_TYPES)[number];
+
+export const isSoundType = (value: string): value is SoundType =>
+  (SOUND_TYPES as readonly string[]).includes(value);
 
 /** Lowercase, digits, underscore, dot, hyphen. No leading or trailing marks. */
 const USERNAME_RE = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
@@ -335,6 +355,15 @@ export function validateEmojiName(value: string): Validation {
   if (value.length < LIMITS.emojiName.min) return fail(`An emoji name is at least ${LIMITS.emojiName.min} characters.`);
   if (value.length > LIMITS.emojiName.max) return fail(`An emoji name is at most ${LIMITS.emojiName.max} characters.`);
   if (!isEmojiName(value)) return fail('Emoji names use lowercase letters, numbers and underscore.');
+  return ok;
+}
+
+/** A sound's name is only ever read off its tile, so any readable text goes, within the length. */
+export function validateSoundName(value: string): Validation {
+  const trimmed = value.trim();
+  if (trimmed.length < LIMITS.soundName.min) return fail('A sound needs a name.');
+  if (trimmed.length > LIMITS.soundName.max) return fail(`A sound name is at most ${LIMITS.soundName.max} characters.`);
+  if (/\p{Cc}/u.test(trimmed)) return fail('A sound name cannot contain control characters.');
   return ok;
 }
 

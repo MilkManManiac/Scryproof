@@ -92,6 +92,8 @@ export type ServerEvent =
    * subtly wrong the way a per-emoji delta could.
    */
   | { t: 'emojis_changed'; d: { serverId: Snowflake } }
+  /** The same for the soundboard: a clip was added, renamed or removed. Refetch. */
+  | { t: 'sounds_changed'; d: { serverId: Snowflake } }
   /**
    * Events in the "Coming up" list. A create carries nobody's answer, since
    * nobody has given one yet; an update carries none either, and each client

@@ -144,6 +144,24 @@ export interface Emoji {
   createdAt: Timestamp;
 }
 
+/**
+ * A short clip a server uploaded for its soundboard, played into a call from
+ * the voice bar as a second track, encrypted like the microphone.
+ *
+ * `url` points at our own API for the reason an emoji's does: the bytes go
+ * only to members of the server.
+ */
+export interface Sound {
+  id: Snowflake;
+  serverId: Snowflake;
+  /** What the tile says. 1 to 32 characters, not necessarily unique. */
+  name: string;
+  bytes: number;
+  createdBy: Snowflake;
+  url: string;
+  createdAt: Timestamp;
+}
+
 /** An answer to "are you coming". `no` is the one the buttons call "Can't". */
 export type RsvpAnswer = 'going' | 'maybe' | 'no';
 
@@ -180,6 +198,8 @@ export interface ServerDetail extends Server {
   channels: Channel[];
   roles: Role[];
   emojis: Emoji[];
+  /** The soundboard, oldest first, so a new clip lands at the end of the grid. */
+  sounds: Sound[];
   /** Upcoming events, soonest first. Past ones are never sent. */
   events: ScheduledEvent[];
   memberCount: number;

@@ -67,8 +67,13 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     // The grant is built from the caller's actual permissions, so the media
     // server enforces them independently of anything the client sends. Someone
     // without SPEAK connects and hears, but cannot publish audio at all.
+    //
+    // `unknown` is the soundboard's track, which rides beside the microphone
+    // and so needs the same permission. LiveKit cannot tell a grant "audio
+    // only" for a source, so an unknown-source video is possible in principle;
+    // every client unsubscribes from one and draws nothing (voice-session.ts).
     const sources: string[] = [];
-    if (has(ctx.channelPermissions, Permission.SPEAK)) sources.push('microphone');
+    if (has(ctx.channelPermissions, Permission.SPEAK)) sources.push('microphone', 'unknown');
     if (has(ctx.channelPermissions, Permission.VIDEO)) sources.push('camera');
     if (has(ctx.channelPermissions, Permission.SHARE_SCREEN)) {
       sources.push('screen_share', 'screen_share_audio');

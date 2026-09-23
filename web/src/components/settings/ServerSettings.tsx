@@ -24,10 +24,21 @@ import { EmojiPane } from './EmojiPane';
 import { LayoutPane } from './LayoutPane';
 import { OverwritePane } from './OverwritePane';
 import { RolesPane } from './RolesPane';
+import { SoundsPane } from './SoundsPane';
 import { authorityFor } from './authority';
 import type { Authority } from './authority';
 
-type Section = 'overview' | 'layout' | 'roles' | 'categories' | 'emoji' | 'members' | 'invites' | 'bans' | 'audit';
+type Section =
+  | 'overview'
+  | 'layout'
+  | 'roles'
+  | 'categories'
+  | 'emoji'
+  | 'sounds'
+  | 'members'
+  | 'invites'
+  | 'bans'
+  | 'audit';
 
 export function ServerSettings({
   server,
@@ -63,6 +74,7 @@ export function ServerSettings({
       visible: authority.can(Permission.MANAGE_ROLES) && server.categories.length > 0,
     },
     { id: 'emoji', label: 'Emoji', visible: authority.can(Permission.MANAGE_SERVER) },
+    { id: 'sounds', label: 'Sounds', visible: authority.can(Permission.MANAGE_SERVER) },
     { id: 'members', label: 'Members', visible: true },
     { id: 'invites', label: 'Invites', visible: authority.can(Permission.CREATE_INVITE) },
     { id: 'bans', label: 'Bans', visible: authority.can(Permission.BAN_MEMBERS) },
@@ -108,6 +120,7 @@ export function ServerSettings({
             <CategoriesPane server={server} members={members} authority={authority} />
           ) : null}
           {section === 'emoji' ? <EmojiPane server={server} authority={authority} /> : null}
+          {section === 'sounds' ? <SoundsPane server={server} authority={authority} /> : null}
           {section === 'members' ? (
             <MembersPane server={server} members={members} authority={authority} />
           ) : null}
