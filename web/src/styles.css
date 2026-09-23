@@ -4205,6 +4205,42 @@ kbd {
   margin-left: auto;
 }
 
+/* The call button takes the push to the right, and Block sits beside it. */
+.dm-call-toggle {
+  margin-left: auto;
+}
+.dm-call-toggle + .dm-block-toggle {
+  margin-left: 12px;
+}
+
+/* A conversation's call sits above its messages rather than replacing them,
+   so it is given a share of the height, not all of it. */
+.dm-call {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 60%;
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+.dm-call .voice-stage {
+  height: auto;
+  flex: 1;
+  padding: 16px;
+  gap: 12px;
+}
+.dm-call .voice-stage-title {
+  font-size: 16px;
+}
+
+/* In the list: the call mark sits before the unread dot, and takes the push
+   to the right when there is no dot. */
+.dm-call-mark {
+  margin-left: auto;
+}
+.dm-call-mark + .dm-dot {
+  margin-left: 6px;
+}
+
 .dm-recovery {
   border-top: 1px solid var(--line);
   padding: 10px 14px 12px;

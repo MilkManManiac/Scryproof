@@ -15,13 +15,17 @@ import type { VoiceSignal, VoiceState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { channels } from '../db/schema.js';
+import { HttpError } from '../lib/http-error.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../lib/rate-limit.js';
+import { requireDmCallAllowed } from '../services/dm-calls.js';
 import { computePermissionsInChannel, loadMemberContext } from '../services/permissions.js';
 import * as hub from './hub.js';
 
 export interface VoiceStateIntent {
   channelId: string | null;
+  /** A conversation's call to be in. Only read when `channelId` is null. */
+  dmId?: string | null;
   selfMute?: boolean;
   selfDeaf?: boolean;
   sharingScreen?: boolean;
@@ -32,11 +36,14 @@ export async function handleVoiceStateIntent(
   connection: hub.Connection,
   intent: VoiceStateIntent,
 ): Promise<void> {
-  // Leaving: clear every voice state this user holds and tell their servers.
+  if (intent.channelId === null && typeof intent.dmId === 'string') {
+    await handleDmCallIntent(connection, intent.dmId, intent);
+    return;
+  }
+
+  // Leaving: clear every voice state this user holds and tell whoever could see it.
   if (intent.channelId === null) {
-    for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(connection.userId)) {
-      await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
-    }
+    await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
     return;
   }
 
@@ -66,14 +73,12 @@ export async function handleVoiceStateIntent(
   }
 
   // One call at a time. A person has one microphone, and their device holds
-  // one set of call keys; standing in two servers' voice channels at once
-  // would leave a ghost in whichever one the client is not actually connected to.
-  for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(
-    connection.userId,
-    channel.serverId,
-  )) {
-    await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
-  }
+  // one set of call keys; standing in two servers' voice channels at once, or
+  // in a channel and a conversation's call, would leave a ghost in whichever
+  // one the client is not actually connected to.
+  await hub.announceCleared(
+    hub.clearVoiceStatesForUser(connection.userId, (state) => state.serverId === channel.serverId),
+  );
 
   const previous = hub.getVoiceState(channel.serverId, connection.userId);
 
@@ -94,6 +99,7 @@ export async function handleVoiceStateIntent(
     userId: connection.userId,
     serverId: channel.serverId,
     channelId: channel.id,
+    dmId: null,
     selfMute: intent.selfMute ?? previous?.selfMute ?? false,
     selfDeaf: intent.selfDeaf ?? previous?.selfDeaf ?? false,
     serverMute: previous?.serverMute ?? false,
@@ -114,6 +120,64 @@ export async function handleVoiceStateIntent(
     { userId: connection.userId, channelId: channel.id },
     'voice state updated',
   );
+}
+
+/**
+ * Joining, or changing mute and camera in, the call inside a conversation.
+ *
+ * The same shape as a channel join with the permission check swapped: being
+ * in the conversation is the whole grant, so everyone in it may speak, show a
+ * camera and share a screen, and there is no moderator to server-mute anyone.
+ * The refusals (not a member, a block either way, no longer sharing a server)
+ * are the ones the token route gives, from the same function.
+ */
+async function handleDmCallIntent(
+  connection: hub.Connection,
+  dmId: string,
+  intent: VoiceStateIntent,
+): Promise<void> {
+  try {
+    await requireDmCallAllowed(dmId, connection.userId);
+  } catch (problem) {
+    const message = problem instanceof HttpError ? problem.message : 'You cannot join that call.';
+    const code = problem instanceof HttpError ? problem.code : 'forbidden';
+    // Refused while already in this call (blocked since joining, say): out of
+    // it, which rotates the key the others hold so this device loses it. The
+    // departure goes first so the client hangs up before it reads why.
+    if (hub.getDmVoiceState(connection.userId)?.dmId === dmId) {
+      await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+    }
+    connection.ws.send(JSON.stringify({ t: 'error', d: { code, message } }));
+    return;
+  }
+
+  // Leaves any server call, and any other conversation's call, first. The
+  // conversation's own entry is kept so that muting does not look like
+  // leaving and coming back.
+  await hub.announceCleared(
+    hub.clearVoiceStatesForUser(connection.userId, (state) => state.dmId === dmId),
+  );
+
+  const previous = hub.getDmVoiceState(connection.userId);
+  const staying = previous?.dmId === dmId;
+
+  const state: VoiceState = {
+    userId: connection.userId,
+    serverId: null,
+    channelId: null,
+    dmId,
+    selfMute: intent.selfMute ?? previous?.selfMute ?? false,
+    selfDeaf: intent.selfDeaf ?? previous?.selfDeaf ?? false,
+    serverMute: false,
+    serverDeaf: false,
+    sharingScreen: intent.sharingScreen ?? (staying && previous.sharingScreen),
+    cameraOn: intent.cameraOn ?? (staying && previous.cameraOn),
+  };
+
+  hub.setVoiceState(state);
+  await hub.announceDmVoiceState(dmId, state);
+
+  logger.debug({ userId: connection.userId, dmId }, 'dm call state updated');
 }
 
 /** Force someone out of voice. Used by MUTE_MEMBERS and MOVE_MEMBERS. */

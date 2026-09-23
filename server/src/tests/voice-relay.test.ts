@@ -51,6 +51,7 @@ function voiceState(userId: string, channelId: string | null, extra: Partial<Voi
     userId,
     serverId: 'srv',
     channelId,
+    dmId: null,
     selfMute: false,
     selfDeaf: false,
     serverMute: false,
@@ -307,5 +308,112 @@ describe('voice presence reaches only the people who can see the channel', () =>
     seatAll([[wes, VIEW_CHANNEL]]);
     await hub.announceVoiceState('srv', null, voiceState(wes.connection.userId, null));
     assert.equal(states(wes).length, 0);
+  });
+});
+
+/**
+ * The call inside a direct message conversation.
+ *
+ * It is the same machinery keyed by the conversation's id instead of a
+ * channel's: the same epochs, the same relay, the same rotation on every
+ * change. What differs is who hears about it (the conversation's members,
+ * nobody else) and that it is one of the calls a person can only be in one of.
+ */
+describe('a call inside a direct message', () => {
+  const dmState = (userId: string, dmId: string | null, extra: Partial<VoiceState> = {}): VoiceState => ({
+    ...voiceState(userId, null),
+    serverId: null,
+    dmId,
+    ...extra,
+  });
+  const states = (seat: Seat) =>
+    seat.inbox.flatMap((event) => (event.t === 'voice_state_update' ? [event.d] : []));
+
+  it('rotates on join and leave, keyed by the conversation', () => {
+    const dm = `dm${run}`;
+    hub.setVoiceState(dmState(wes.connection.userId, dm));
+    hub.setVoiceState(dmState(alex.connection.userId, dm));
+    assert.equal(hub.voiceEpoch(dm), 2);
+    assert.deepEqual(hub.voiceOccupants(dm).sort(), [alex.connection.userId, wes.connection.userId].sort());
+
+    hub.clearVoiceStatesForUser(alex.connection.userId);
+    assert.equal(hub.voiceEpoch(dm), 3);
+    assert.deepEqual(memberships(wes).at(-1)?.members, [wes.connection.userId]);
+  });
+
+  it('relays keys between the people in it and no one else', () => {
+    const dm = `dm${run}`;
+    const payload = { sealed: 'opaque-to-the-server' };
+    hub.setVoiceState(dmState(wes.connection.userId, dm));
+    hub.setVoiceState(dmState(alex.connection.userId, dm));
+    const epoch = hub.voiceEpoch(dm);
+
+    handleVoiceSignal(wes.connection, { channelId: dm, epoch, kind: 'announce', payload });
+    handleVoiceSignal(mara.connection, { channelId: dm, epoch, kind: 'announce', payload });
+
+    assert.equal(signals(alex).length, 1);
+    assert.equal(signals(alex)[0]?.from, wes.connection.userId);
+    assert.equal(signals(mara).length, 0);
+  });
+
+  it('is kept apart from server calls in every lookup', () => {
+    const dm = `dm${run}`;
+    hub.setVoiceState(dmState(wes.connection.userId, dm));
+    hub.setVoiceState(voiceState(alex.connection.userId, room));
+
+    assert.deepEqual(hub.allVoiceStatesFor(['srv']).filter((s) => s.userId === wes.connection.userId), []);
+    assert.deepEqual(hub.dmVoiceStatesFor([dm]).map((s) => s.userId), [wes.connection.userId]);
+    assert.equal(hub.getDmVoiceState(wes.connection.userId)?.dmId, dm);
+    assert.equal(hub.getVoiceState('srv', wes.connection.userId), null);
+  });
+
+  it('starting one leaves a server call, and the channel rotates', () => {
+    const dm = `dm${run}`;
+    hub.setVoiceState(voiceState(wes.connection.userId, room));
+    hub.setVoiceState(voiceState(alex.connection.userId, room));
+    const before = hub.voiceEpoch(room);
+
+    // What the gateway does on a DM join: everything but this conversation goes.
+    const cleared = hub.clearVoiceStatesForUser(alex.connection.userId, (s) => s.dmId === dm);
+    hub.setVoiceState(dmState(alex.connection.userId, dm));
+
+    assert.equal(cleared.length, 1);
+    assert.equal(cleared[0]?.leftChannelId, room);
+    assert.equal(cleared[0]?.leftDmId, null);
+    assert.equal(cleared[0]?.announcement.channelId, null);
+    assert.equal(hub.voiceEpoch(room), before + 1);
+    assert.deepEqual(hub.voiceOccupants(room), [wes.connection.userId]);
+    assert.deepEqual(hub.voiceOccupants(dm), [alex.connection.userId]);
+  });
+
+  it('muting inside it keeps the entry and does not rotate', () => {
+    const dm = `dm${run}`;
+    hub.setVoiceState(dmState(wes.connection.userId, dm));
+    const before = hub.voiceEpoch(dm);
+    const cleared = hub.clearVoiceStatesForUser(wes.connection.userId, (s) => s.dmId === dm);
+    hub.setVoiceState(dmState(wes.connection.userId, dm, { selfMute: true }));
+
+    assert.equal(cleared.length, 0);
+    assert.equal(hub.voiceEpoch(dm), before);
+  });
+
+  it('leaving it names the conversation left, so the right people are told', () => {
+    const dm = `dm${run}`;
+    hub.setVoiceState(dmState(wes.connection.userId, dm));
+    const [left] = hub.clearVoiceStatesForUser(wes.connection.userId);
+    assert.equal(left?.leftDmId, dm);
+    assert.equal(left?.announcement.dmId, null);
+    assert.equal(left?.announcement.serverId, null);
+  });
+
+  it('is announced to the members of the conversation and nobody else', () => {
+    const dm = `dm${run}`;
+    hub.sendToDmMembers(
+      [wes.connection.userId, alex.connection.userId],
+      dmState(wes.connection.userId, dm, { cameraOn: true }),
+    );
+    assert.equal(states(wes).length, 1);
+    assert.equal(states(alex)[0]?.dmId, dm);
+    assert.equal(states(mara).length, 0);
   });
 });

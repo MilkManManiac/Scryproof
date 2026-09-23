@@ -16,7 +16,7 @@
 import { eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 
-import { Permission, encodeEvent, has } from '@scryproof/shared';
+import { Permission, encodeEvent, has, voiceRoomOf } from '@scryproof/shared';
 import type { Presence, ServerEvent, VoiceState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
@@ -47,7 +47,13 @@ const byUser = new Map<string, Set<Connection>>();
 /** Ephemeral, so it lives in memory and dies with a restart, as it should. */
 const voiceStates = new Map<string, VoiceState>();
 
-const voiceKey = (serverId: string, userId: string): string => `${serverId}:${userId}`;
+/**
+ * One entry per person per server, plus one for whichever conversation's call
+ * they are in. A person is in one call at a time, so the conversation does not
+ * need to be part of the key: moving from one conversation's call to another
+ * replaces the entry.
+ */
+const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
 
 export function addConnection(connection: Connection): void {
   connections.set(connection.id, connection);
@@ -321,52 +327,82 @@ export function getVoiceState(serverId: string, userId: string): VoiceState | nu
   return voiceStates.get(voiceKey(serverId, userId)) ?? null;
 }
 
+/** The person's place in a direct message call, if they are in one. */
+export function getDmVoiceState(userId: string): VoiceState | null {
+  return voiceStates.get(voiceKey(null, userId)) ?? null;
+}
+
+/** Everyone in the calls of these conversations, for the ready frame. */
+export function dmVoiceStatesFor(dmIds: readonly string[]): VoiceState[] {
+  const wanted = new Set(dmIds);
+  return [...voiceStates.values()].filter((state) => state.dmId !== null && wanted.has(state.dmId));
+}
+
 export function allVoiceStatesFor(serverIds: readonly string[]): VoiceState[] {
   const wanted = new Set(serverIds);
-  return [...voiceStates.values()].filter((state) => wanted.has(state.serverId));
+  return [...voiceStates.values()].filter((state) => state.serverId !== null && wanted.has(state.serverId));
 }
 
 export function setVoiceState(state: VoiceState): void {
   const key = voiceKey(state.serverId, state.userId);
-  const before = voiceStates.get(key)?.channelId ?? null;
+  const previous = voiceStates.get(key);
+  const before = previous ? voiceRoomOf(previous) : null;
+  const after = voiceRoomOf(state);
 
-  if (state.channelId === null) voiceStates.delete(key);
+  if (after === null) voiceStates.delete(key);
   else voiceStates.set(key, state);
 
   // Muting and unmuting come through here too and must not rotate anything.
-  if (before !== state.channelId) {
+  if (before !== after) {
     if (before) voiceMembershipChanged(before);
-    if (state.channelId) voiceMembershipChanged(state.channelId);
+    if (after) voiceMembershipChanged(after);
   }
 }
 
-/** Clear every voice state for a user across all their servers. */
 /**
- * The announcement carries `channelId: null`, which is what "they left" looks
- * like on the wire — but the channel they left is what decides who is allowed
- * to hear it, so it comes back alongside rather than being thrown away.
+ * The announcement carries `channelId: null` and `dmId: null`, which is what
+ * "they left" looks like on the wire — but the channel or conversation they
+ * left is what decides who is allowed to hear it, so it comes back alongside
+ * rather than being thrown away.
  */
 export interface ClearedVoiceState {
   announcement: VoiceState;
   leftChannelId: string | null;
+  leftDmId: string | null;
 }
 
+/**
+ * Clear every voice state for a user, in every server and in any
+ * conversation, except the ones `keep` says to leave alone.
+ */
 export function clearVoiceStatesForUser(
   userId: string,
-  exceptServerId?: string,
+  keep?: (state: VoiceState) => boolean,
 ): ClearedVoiceState[] {
   const cleared: ClearedVoiceState[] = [];
   for (const [key, state] of voiceStates) {
     if (state.userId !== userId) continue;
-    if (state.serverId === exceptServerId) continue;
+    if (keep?.(state)) continue;
     voiceStates.delete(key);
     cleared.push({
-      announcement: { ...state, channelId: null, sharingScreen: false, cameraOn: false },
+      announcement: { ...state, channelId: null, dmId: null, sharingScreen: false, cameraOn: false },
       leftChannelId: state.channelId,
+      leftDmId: state.dmId,
     });
-    if (state.channelId) voiceMembershipChanged(state.channelId);
+    const room = voiceRoomOf(state);
+    if (room) voiceMembershipChanged(room);
   }
   return cleared;
+}
+
+/** Tell the right people about each call just left. */
+export async function announceCleared(cleared: readonly ClearedVoiceState[]): Promise<void> {
+  for (const { announcement, leftChannelId, leftDmId } of cleared) {
+    if (leftDmId) await announceDmVoiceState(leftDmId, announcement);
+    else if (announcement.serverId) {
+      await announceVoiceState(announcement.serverId, leftChannelId, announcement);
+    }
+  }
 }
 
 /**
@@ -392,8 +428,30 @@ export async function announceVoiceState(
   await broadcastToChannel(serverId, aboutChannelId, { t: 'voice_state_update', d: state });
 }
 
+/**
+ * A call inside a conversation is news to the people in that conversation and
+ * to nobody else: not the servers they share, not anyone looking at a member
+ * list. Everyone in it hears, in the call or not, because that is how the
+ * others learn there is a call to join.
+ *
+ * `aboutDmId` is the conversation the state concerns, which on a departure is
+ * not what the state itself says.
+ */
+export async function announceDmVoiceState(aboutDmId: string, state: VoiceState): Promise<void> {
+  const { dmMemberIds } = await import('../services/dm-calls.js');
+  sendToDmMembers(await dmMemberIds(aboutDmId), state);
+}
+
+/** The fan-out itself, apart from the lookup so it can be tested without a database. */
+export function sendToDmMembers(memberIds: readonly string[], state: VoiceState): void {
+  for (const userId of memberIds) sendToUser(userId, { t: 'voice_state_update', d: state });
+}
+
 /*
  * Voice epochs.
+ *
+ * Epochs, occupants and the signal relay are keyed by the call's room id:
+ * a voice channel's id, or a conversation's id for a call inside one.
  *
  * Every time the set of people in a voice channel changes, that channel's
  * epoch goes up by one and the occupants are told. Clients answer by throwing
@@ -418,7 +476,7 @@ export function voiceEpoch(channelId: string): number {
 export function voiceOccupants(channelId: string): string[] {
   const occupants: string[] = [];
   for (const state of voiceStates.values()) {
-    if (state.channelId === channelId) occupants.push(state.userId);
+    if (voiceRoomOf(state) === channelId) occupants.push(state.userId);
   }
   return occupants;
 }

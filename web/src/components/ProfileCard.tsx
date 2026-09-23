@@ -24,6 +24,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { voiceRoomOf } from '@scryproof/shared';
 import type { PublicUser } from '@scryproof/shared';
 
 import { localNames, nameFor } from '../lib/local-names';
@@ -110,8 +111,8 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
       .filter((role) => !role.isEveryone && member.roleIds.includes(role.id))
       .sort((a, b) => b.position - a.position);
   }, [server, member]);
-  const call = Object.values(state.voiceStates).find((voice) => voice.userId === user.id && voice.channelId);
-  const callServer = call ? state.servers[call.serverId] : null;
+  const call = Object.values(state.voiceStates).find((voice) => voice.userId === user.id && voiceRoomOf(voice));
+  const callServer = call?.serverId ? (state.servers[call.serverId] ?? null) : null;
   const callChannel = callServer?.channels.find((channel) => channel.id === call?.channelId);
   const blocked = state.blocks.has(user.id);
   // What this device would show without a local name: the server nickname,
@@ -123,9 +124,9 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
   // Are we in the same call as them, right now? The volume slider only makes
   // sense there: it changes how loud they are for you, in that call.
   const myCall = Object.values(state.voiceStates).find(
-    (voice) => voice.userId === state.user?.id && voice.channelId,
+    (voice) => voice.userId === state.user?.id && voiceRoomOf(voice),
   );
-  const sameCall = !self && Boolean(call) && Boolean(myCall) && call?.channelId === myCall?.channelId;
+  const sameCall = !self && call !== undefined && myCall !== undefined && voiceRoomOf(call) === voiceRoomOf(myCall);
   const volume = prefs.volumes[user.id] ?? 1;
 
   // Measured once drawn, then placed. Until then it sits off screen.
@@ -267,13 +268,14 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
           </div>
         ) : null}
 
-        {call && callChannel ? (
+        {call && (callChannel || call.dmId) ? (
           <div className="profile-card-line">
             <span className="voice-flag in-voice">
               <VoiceGlyph />
             </span>
-            In {callChannel.name}
-            {callServer && callServer.id !== serverId ? ` on ${callServer.name}` : ''}
+            {/* A conversation's call has no name to give, and says nothing about which conversation. */}
+            {callChannel ? `In ${callChannel.name}` : 'In a call'}
+            {callChannel && callServer && callServer.id !== serverId ? ` on ${callServer.name}` : ''}
             {call.sharingScreen ? (
               <span className="voice-flag sharing" title="Sharing their screen">
                 <ScreenGlyph />

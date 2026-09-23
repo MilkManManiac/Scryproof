@@ -58,7 +58,8 @@ export function UserPanel() {
   // The board belongs to the server whose call you are in, which need not be
   // the one on screen. Offered only once its track is up, and not while a
   // moderator has you muted; the session refuses in both cases anyway.
-  const boardServer = myVoice ? state.servers[myVoice.serverId] : undefined;
+  // A call in a conversation has no server, so no board.
+  const boardServer = myVoice?.serverId ? state.servers[myVoice.serverId] : undefined;
   const boardReady = Boolean(boardServer) && call.soundboard && !myVoice?.serverMute;
 
   const connectionLabel =

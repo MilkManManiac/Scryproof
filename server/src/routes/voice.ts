@@ -26,7 +26,9 @@ import {
   createAccessToken,
   isLivekitConfigured,
   roomNameForChannel,
+  roomNameForDm,
 } from '../services/livekit.js';
+import { requireDmCallAllowed } from '../services/dm-calls.js';
 import {
   assertNotTimedOut,
   requireChannelPermission,
@@ -101,6 +103,49 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
         video: has(ctx.channelPermissions, Permission.VIDEO),
         screenShare: has(ctx.channelPermissions, Permission.SHARE_SCREEN),
       },
+    };
+  });
+
+  /**
+   * The call inside a direct message conversation. Being in the conversation
+   * is the whole grant: no roles, so everyone in it may speak, show a camera
+   * and share a screen. Refused, from the same function the gateway asks, to
+   * anyone not in it, to either side of a block, and to someone who no longer
+   * shares a server with the others. The encryption is the channel call's,
+   * unchanged: the room is only a name to it.
+   */
+  app.post('/api/dms/:dmId/voice/token', async (request) => {
+    const user = requireUser(request);
+    const { dmId } = z.object({ dmId: z.string() }).parse(request.params);
+
+    await requireDmCallAllowed(dmId, user.id);
+
+    if (!isLivekitConfigured()) {
+      throw new HttpError(
+        503,
+        'voice_unavailable',
+        'Voice is not configured on this server yet.',
+      );
+    }
+
+    const room = roomNameForDm(dmId);
+    const token = createAccessToken({
+      room,
+      identity: user.id,
+      name: user.displayName,
+      canPublish: true,
+      canSubscribe: true,
+      sources: ['microphone', 'unknown', 'camera', 'screen_share', 'screen_share_audio'],
+    });
+
+    logger.info({ userId: user.id, dmId }, 'issued dm call token');
+
+    return {
+      token,
+      url: config.livekit.url,
+      room,
+      expiresInSeconds: config.livekit.tokenTtlSeconds,
+      can: { speak: true, video: true, screenShare: true },
     };
   });
 

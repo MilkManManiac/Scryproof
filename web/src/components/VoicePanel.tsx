@@ -15,7 +15,9 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { PublicUser } from '@scryproof/shared';
 
+import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
 import { publicOrigin } from '../lib/desktop';
@@ -23,24 +25,42 @@ import { voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
-import { screenSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
+import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
+
+/**
+ * Someone from one of this person's conversations. A call in a conversation
+ * is often with somebody who is not in the server on screen, and the
+ * conversation already knows who they are.
+ */
+function useDmPeople(): (userId: string) => PublicUser | undefined {
+  const { state } = useDms();
+  return (userId) => {
+    for (const dm of Object.values(state.dms)) {
+      const found = dm.members.find((member) => member.id === userId);
+      if (found) return found;
+    }
+    return undefined;
+  };
+}
 
 function useNames(): (userId: string) => string {
   const { state } = useStore();
+  const dmPerson = useDmPeople();
   useLocalNames();
   const members = state.members[state.selectedServerId ?? ''] ?? [];
   return (userId) => {
     const member = members.find((entry) => entry.userId === userId);
-    return nameFor(userId, member?.nickname ?? member?.user.displayName ?? 'Someone');
+    return nameFor(userId, member?.nickname ?? member?.user.displayName ?? dmPerson(userId)?.displayName ?? 'Someone');
   };
 }
 
 /** The same colour a person has everywhere else, so a tile is recognisably them. */
 function useAccents(): (userId: string) => string | undefined {
   const { state } = useStore();
+  const dmPerson = useDmPeople();
   const members = state.members[state.selectedServerId ?? ''] ?? [];
-  return (userId) => members.find((entry) => entry.userId === userId)?.user.accent;
+  return (userId) => members.find((entry) => entry.userId === userId)?.user.accent ?? dmPerson(userId)?.accent;
 }
 
 
@@ -108,8 +128,17 @@ const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}
 
 /* --------------------------------- the stage -------------------------------- */
 
-export function VoiceStage({ channelId, channelName }: { channelId: string; channelName: string }) {
-  const { state, voice: session, joinVoice, leaveVoice } = useStore();
+/**
+ * The call's stage, for a voice channel or for the call inside a
+ * conversation. Everything below the first lines is the same for both: the
+ * same tiles, the same encryption labels, the same controls.
+ */
+export function VoiceStage(
+  props: { channelId: string; channelName: string } | { dmId: string; channelName: string },
+) {
+  const { channelName } = props;
+  const place: CallPlace = 'dmId' in props ? { kind: 'dm', id: props.dmId } : { kind: 'channel', id: props.channelId };
+  const { state, voice: session, joinVoice, joinDmCall, leaveVoice } = useStore();
   const voice = useVoice();
   const nameOf = useNames();
   const accentOf = useAccents();
@@ -119,21 +148,24 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
   const [picture, setPicture] = useState<Picture | null>(null);
   const focusFrame = useRef<HTMLDivElement>(null);
 
-  const occupants = Object.values(state.voiceStates).filter((entry) => entry.channelId === channelId);
+  const inPlace = (entry: { channelId: string | null; dmId: string | null }): boolean =>
+    place.kind === 'dm' ? entry.dmId === place.id : entry.channelId === place.id;
+  const occupants = Object.values(state.voiceStates).filter(inPlace);
   const here = occupants.some((entry) => entry.userId === state.user?.id);
   // `mine` from the moment Join is pressed; `live` only once the server lists
   // us. A join that dies before that point (a browser that cannot encrypt,
   // a refusal from the gateway) is still ours to explain.
-  const mine = voice.channelId === channelId;
+  const mine = inPlace(voice);
   const live = here && mine;
   const joining = mine && !here && voice.phase === 'connecting';
 
   // Timed out, the token request is refused, so offering Join would only
   // produce an error. Leave stays: a timeout should not trap anyone in a room.
+  // A timeout is a server's, and says nothing about a call in a conversation.
   const timedOutUntil = useTimeoutEnd(
-    (state.selectedServerId ? state.members[state.selectedServerId] : undefined)?.find(
-      (member) => member.userId === state.user?.id,
-    ),
+    place.kind === 'channel' && state.selectedServerId
+      ? state.members[state.selectedServerId]?.find((member) => member.userId === state.user?.id)
+      : undefined,
   );
 
   const securityOf = (userId: string): VoicePerson['state'] | 'self' | 'unknown' => {
@@ -385,7 +417,7 @@ export function VoiceStage({ channelId, channelName }: { channelId: string; chan
             type="button"
             className={here ? 'button secondary inline' : 'button inline'}
             disabled={joining}
-            onClick={() => (here ? leaveVoice() : joinVoice(channelId))}
+            onClick={() => (here ? leaveVoice() : place.kind === 'dm' ? joinDmCall(place.id) : joinVoice(place.id))}
           >
             {here ? 'Leave' : joining ? 'Joining…' : 'Join'}
           </button>

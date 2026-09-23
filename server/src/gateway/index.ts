@@ -25,6 +25,7 @@ import { resolveSession } from '../services/auth.js';
 import { loadAllServerDetails, memberIdsForServers } from '../services/server-detail.js';
 import { readStatesFor } from '../services/read-state.js';
 import { blockedBy } from '../services/blocks.js';
+import { dmIdsFor } from '../services/dm-calls.js';
 import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
@@ -208,9 +209,13 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       // Scoped to what this member can see. `serverDetails` has already had
       // the hidden channels taken out of it, so reusing that set is the same
       // answer the rest of the frame gives rather than a second one.
-      voiceStates: hub
-        .allVoiceStatesFor(serverIds)
-        .filter((state) => visibleChannelIds.has(state.channelId ?? '')),
+      voiceStates: [
+        ...hub
+          .allVoiceStatesFor(serverIds)
+          .filter((state) => visibleChannelIds.has(state.channelId ?? '')),
+        // Calls inside this person's own conversations, and no others.
+        ...hub.dmVoiceStatesFor(await dmIdsFor(connection.userId)),
+      ],
       readStates: await readStatesFor(connection.userId),
       // Here rather than fetched after the first paint, or a blocked person's
       // messages would be drawn and then taken away again.
@@ -242,9 +247,7 @@ async function announceDeparture(connection: hub.Connection): Promise<void> {
   }
 
   // Someone whose browser died should not be left standing in a voice channel.
-  for (const { announcement, leftChannelId } of hub.clearVoiceStatesForUser(connection.userId)) {
-    await hub.announceVoiceState(announcement.serverId, leftChannelId, announcement);
-  }
+  await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
 }
 
 async function handleClientEvent(

@@ -334,11 +334,21 @@ export interface AuditLogEntry {
   createdAt: Timestamp;
 }
 
-/** Live voice state for one member in one voice channel. */
+/**
+ * Live voice state for one person in one call.
+ *
+ * A call is either in a server's voice channel or inside a direct message
+ * conversation. While someone is in one, exactly one of `channelId` and
+ * `dmId` is set; the announcement that says they left has both null. A
+ * person is in at most one call at a time, wherever it is.
+ */
 export interface VoiceState {
   userId: Snowflake;
-  serverId: Snowflake;
+  /** The server whose voice channel the call is in. Null for a call in a direct message. */
+  serverId: Snowflake | null;
   channelId: Snowflake | null;
+  /** The conversation the call is in. Null for a call in a server. */
+  dmId: Snowflake | null;
   selfMute: boolean;
   selfDeaf: boolean;
   serverMute: boolean;

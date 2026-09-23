@@ -109,9 +109,19 @@ export interface VoiceStats {
   receiving: string | null;
 }
 
+/**
+ * Where a call is: a server's voice channel, or a direct message
+ * conversation. Only the token and the labels differ; the key agreement and
+ * the media are the same for both, keyed by the id.
+ */
+export type CallPlace = { kind: 'channel'; id: string } | { kind: 'dm'; id: string };
+
 export interface VoiceSnapshot {
   phase: VoicePhase;
+  /** The voice channel this call is in. Null for a call in a conversation. */
   channelId: string | null;
+  /** The conversation this call is in. Null for a call in a server. */
+  dmId: string | null;
   error: string | null;
   /** True when the error's remedy is the desktop app, so its download link belongs under the words. */
   installer: boolean;
@@ -162,6 +172,7 @@ const EMPTY_STATS: VoiceStats = {
 const IDLE: VoiceSnapshot = {
   phase: 'idle',
   channelId: null,
+  dmId: null,
   error: null,
   installer: false,
   encrypted: false,
@@ -319,6 +330,11 @@ export class VoiceSession {
     return this.whoAmI();
   }
 
+  /** The id the gateway knows this call by: its channel, or its conversation. */
+  private get roomId(): string | null {
+    return this.snapshot.channelId ?? this.snapshot.dmId;
+  }
+
   /* ------------------------------- observing ------------------------------ */
 
   subscribe = (listener: () => void): (() => void) => {
@@ -351,12 +367,18 @@ export class VoiceSession {
    * with a membership event straight away, and the call state has to exist to
    * receive it.
    */
-  async join(channelId: string, enterChannel: () => void): Promise<void> {
+  async join(place: CallPlace, enterChannel: () => void): Promise<void> {
     await this.leave();
     const generation = (this.generation += 1);
     const stale = () => generation !== this.generation;
+    const roomId = place.id;
 
-    this.update({ ...IDLE, phase: 'connecting', channelId });
+    this.update({
+      ...IDLE,
+      phase: 'connecting',
+      channelId: place.kind === 'channel' ? place.id : null,
+      dmId: place.kind === 'dm' ? place.id : null,
+    });
 
     const support = voiceSupport();
     if (!support.ok) {
@@ -374,13 +396,13 @@ export class VoiceSession {
       if (stale()) return;
 
       this.call = new VoiceCall({
-        callId: channelId,
+        callId: roomId,
         userId: this.userId,
         identity,
         callKeys,
         pins: new IndexedDbIdentityStore(),
       });
-      this.myAnnouncement = await announce(channelId, this.userId, identity, callKeys);
+      this.myAnnouncement = await announce(roomId, this.userId, identity, callKeys);
       await this.call.admit([this.myAnnouncement]);
 
       this.keyProvider = new ScryproofKeyProvider();
@@ -415,7 +437,9 @@ export class VoiceSession {
         await this.onMembership(pending);
       }
 
-      const grant = await api.voice.token(channelId);
+      // The only step that knows what kind of place this is. Each route
+      // decides on the server what this person may do there.
+      const grant = place.kind === 'channel' ? await api.voice.token(place.id) : await api.voice.dmToken(place.id);
       if (stale()) return;
       this.update({ can: grant.can });
 
@@ -999,7 +1023,7 @@ export class VoiceSession {
   }
 
   private async handleMembership(event: VoiceMembership): Promise<void> {
-    if (event.channelId !== this.snapshot.channelId) return;
+    if (event.channelId !== this.roomId) return;
     const call = this.call;
     if (!call || !this.myAnnouncement) {
       this.pendingMembership = event;
@@ -1033,7 +1057,7 @@ export class VoiceSession {
 
   private async handleSignal(event: VoiceSignal & { from: string }): Promise<void> {
     const call = this.call;
-    if (!call || event.channelId !== this.snapshot.channelId) return;
+    if (!call || event.channelId !== this.roomId) return;
     // The gateway sends a membership event before it relays anything labelled
     // with that epoch, on one ordered connection, so "ahead of us" cannot
     // happen honestly and "behind us" is simply stale.
@@ -1072,7 +1096,7 @@ export class VoiceSession {
   }
 
   private async sendKeys(call: VoiceCall): Promise<void> {
-    const channelId = this.snapshot.channelId;
+    const channelId = this.roomId;
     if (!channelId) return;
     for (const wrapped of await call.distribute()) {
       const seat = `${wrapped.recipientId}:${wrapped.recipientDeviceId}`;
