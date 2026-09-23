@@ -434,8 +434,33 @@ async function main() {
   check('the newcomer decodes both of the others', fromWes.energy > 0.001 && fromAlex.energy > 0.001,
     `wes +${fromWes.energy.toFixed(4)}, alex +${fromAlex.energy.toFixed(4)}`);
 
+  // ---- two screens at once: Wes and his brother tried it and "it did not work" --
+  const alexScreen = `${alex.userId}:screen`;
+  const wesScreen = `${wes.userId}:screen`;
+  check('alex shares his screen again', await alex.clickButton('Share your screen'));
+  await mara.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen')`, 15_000);
+  check('wes shares his screen while alex is still sharing', await wes.clickButton('Share your screen'));
+  const bothListed = await mara.until(`(() => { const v = window.__voice.getSnapshot().videos; return v.some((x) => x.userId === '${alex.userId}' && x.source === 'screen') && v.some((x) => x.userId === '${wes.userId}' && x.source === 'screen'); })()`, 15_000);
+  const [ws2, as2] = await Promise.all([wes.snapshot(), alex.snapshot()]);
+  check('mara is told about both screens', Boolean(bothListed),
+    JSON.stringify((await mara.snapshot()).videos.map((v) => `${v.userId === wes.userId ? 'wes' : v.userId === alex.userId ? 'alex' : v.userId}:${v.source}`))
+      + `  wes: ${ws2.sharing ?? ''} ${ws2.mediaError ?? ''}  alex: ${as2.sharing ?? ''} ${as2.mediaError ?? ''}`);
+  await sleep(1500);
+  const [maraSeesAlex, maraSeesWes] = await Promise.all([mara.watch(alexScreen), mara.watch(wesScreen)]);
+  check('mara decodes both screens at once', maraSeesAlex.frames > 5 && maraSeesWes.frames > 5,
+    `alex +${maraSeesAlex.frames} frames ${maraSeesAlex.width}px, wes +${maraSeesWes.frames} frames ${maraSeesWes.width}px`);
+  const [wesSeesAlex, alexSeesWes] = await Promise.all([wes.watch(alexScreen), alex.watch(wesScreen)]);
+  check('each sharer still sees the other one\'s screen', wesSeesAlex.frames > 5 && alexSeesWes.frames > 5,
+    `wes sees alex +${wesSeesAlex.frames}, alex sees wes +${alexSeesWes.frames}`);
+  const onStage = await mara.evaluate(`document.querySelectorAll('video.voice-focus-video, video.voice-tile-video').length`);
+  check('mara has both screens on her screen, one big and one tile', onStage >= 2, `${onStage} video elements`);
+  if (process.env.VOICE_CHECK_TWO_SHOT) {
+    const shot = await mara.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(process.env.VOICE_CHECK_TWO_SHOT, Buffer.from(shot.data, 'base64'));
+  }
+
   await mara.clickButton('Leave');
-  const pair = await Promise.all([wes.until(connected, 30_000), alex.until(connected, 30_000)]);
+  const pair =await Promise.all([wes.until(connected, 30_000), alex.until(connected, 30_000)]);
   const [w4, a4] = await Promise.all([wes.snapshot(), alex.snapshot()]);
   check('when the third leaves, the two who stay move to a key she never had',
     pair.every(Boolean) && w4.epoch > w3.epoch && w4.epoch === a4.epoch, `epoch ${w3.epoch} -> ${w4.epoch}`);
