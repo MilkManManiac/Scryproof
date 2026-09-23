@@ -2391,7 +2391,7 @@ Checks after the fixes: `npm test` 239 + 292; `test:channels` 53 pass;
 `test:dm` all pass; typecheck and build clean. `test:smoke`, `test:voice`
 not rerun (nothing they cover changed).
 
-## Calls like Discord, 2026-09-23 evening (built, NOT deployed)
+## Calls like Discord, 2026-09-23 evening (live 15:11 ET, client 1790190599411)
 
 Wes's screenshots and notes after the push went live: "call in dm ui is
 kinda bad. Make it look like discord", no new servers for anyone else,
