@@ -16,6 +16,7 @@ import { Permission, emojiNameFrom, houseRules, splitContent } from '@scryproof/
 import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { channelKeysFor } from '../lib/channel-keys';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -309,6 +310,9 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
             <h2>#{channel.name}</h2>
             <p>
               This is the start of the channel. {channel.topic ? channel.topic : 'Say something.'}
+              {channel.encrypted
+                ? ' Messages here are end-to-end encrypted: locked on your devices, and unreadable to the server.'
+                : ''}
             </p>
           </div>
         ) : null}
@@ -685,6 +689,20 @@ export function PlayLine({ character, again }: { character: Character; again?: (
   );
 }
 
+/** What a sealed message that did not open says instead. Never the bytes. */
+function sealedProblem(status: Message['sealed']): string {
+  switch (status) {
+    case 'no-key':
+      return "Locked. This device doesn't have the key for this message yet.";
+    case 'forged':
+      return "Not shown: its signature doesn't match the person it says it's from.";
+    case undefined:
+      return 'Encrypted message.';
+    default:
+      return 'This message would not open.';
+  }
+}
+
 function MessageRow({
   message,
   grouped,
@@ -770,7 +788,19 @@ function MessageRow({
       return;
     }
     try {
-      await api.messages.edit(message.id, next);
+      if (message.ciphertext && selfId) {
+        const parentAuthor = message.replyTo?.authorId ?? null;
+        await channelKeysFor(selfId).edit(message.id, {
+          channelId: message.channelId,
+          text: next,
+          replyToId: message.replyToId,
+          replyAuthorId: parentAuthor,
+          memberIds: new Set(members.map((member) => member.userId)),
+          canMentionEveryone: can(mask, Permission.MENTION_EVERYONE),
+        });
+      } else {
+        await api.messages.edit(message.id, next);
+      }
     } finally {
       setEditing(false);
     }
@@ -796,7 +826,9 @@ function MessageRow({
               ? 'Message deleted'
               : parent.content
                 ? toPlainLine(parent.content, members)
-                : 'Sent a file'}
+                : message.ciphertext
+                  ? 'Encrypted message'
+                  : 'Sent a file'}
           </span>
         </button>
       ) : null}
@@ -881,10 +913,8 @@ function MessageRow({
               </>
             ) : spawn ? (
               <PlayLine character={spawn} again={() => api.messages.replay(message.id)} />
-            ) : message.ciphertext && !message.content ? (
-              <div className="message-text deleted">
-                Encrypted message. This client cannot open it yet.
-              </div>
+            ) : message.ciphertext && message.content === null ? (
+              <div className="message-text deleted sealed-problem">{sealedProblem(message.sealed)}</div>
             ) : message.content &&
               // A voice message's body only names it for search and previews;
               // the player below says the same thing.
@@ -899,6 +929,14 @@ function MessageRow({
             ) : null}
 
             {message.editedAt ? <span className="message-edited">edited</span> : null}
+            {message.sealed === 'unverified' ? (
+              <span
+                className="message-edited sealed-unverified"
+                title="Signed by a device of theirs that you have not accepted yet. Open the lock at the top of the channel to check it."
+              >
+                unverified device
+              </span>
+            ) : null}
 
             {message.attachments.map((attachment) =>
               isVoiceFile(attachment.filename) ? (

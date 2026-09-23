@@ -6,8 +6,12 @@
  * cannot read it and cannot be replayed from another machine.
  */
 
+import type { SealedChannelMessage } from './channel-crypto';
 import type {
   Attachment,
+  ChannelEpoch,
+  ChannelKeyState,
+  ChannelKeyWant,
   AuditLogEntry,
   BlockedPerson,
   BookmarkedMessage,
@@ -179,6 +183,7 @@ export const api = {
         name: string;
         type: 'text' | 'voice';
         categoryId?: string | null;
+        encrypted?: boolean;
         private?: { private: boolean; roleIds: string[]; memberIds: string[] };
       },
     ) => post<{ channel: Channel }>(`/api/servers/${serverId}/channels`, body),
@@ -228,6 +233,27 @@ export const api = {
       del<{ ok: true }>(`/api/categories/${categoryId}/permissions/${targetId}`),
   },
 
+  /** An encrypted channel's keys. Everything here is locked before it reaches this file. */
+  channelKeys: {
+    state: (channelId: string, deviceId: string) =>
+      get<ChannelKeyState>(`/api/channels/${channelId}/keys?deviceId=${encodeURIComponent(deviceId)}`),
+    devices: (channelId: string) =>
+      get<{ devices: DeviceKey[]; readers: string[] }>(`/api/channels/${channelId}/key-devices`),
+    makeEpoch: (
+      channelId: string,
+      body: { epoch: number; deviceId: string; commitment: string; signature: string; keys: { userId: string; deviceId: string; iv: string; key: string }[] },
+    ) => post<{ epoch: ChannelEpoch | null }>(`/api/channels/${channelId}/epochs`, body),
+    wanted: (channelId: string, deviceId: string) =>
+      get<{ wanted: ChannelKeyWant[]; devices: DeviceKey[] }>(
+        `/api/channels/${channelId}/keys/wanted?deviceId=${encodeURIComponent(deviceId)}`,
+      ),
+    handOver: (
+      channelId: string,
+      body: { deviceId: string; keys: { epoch: number; userId: string; deviceId: string; iv: string; key: string }[] },
+    ) => post<{ added: number }>(`/api/channels/${channelId}/keys`, body),
+    request: (channelId: string) => post<{ ok: true }>(`/api/channels/${channelId}/keys/request`, {}),
+  },
+
   messages: {
     /**
      * A page of a channel's history. `before` reads backward, `after` reads
@@ -248,15 +274,15 @@ export const api = {
     },
     send: (
       channelId: string,
-      body: { content?: string; replyToId?: string; attachmentIds?: string[] },
+      body: { content?: string; replyToId?: string; attachmentIds?: string[] } | (SealedChannelMessage & { replyToId?: string }),
     ) => post<{ message: Message }>(`/api/channels/${channelId}/messages`, body),
     pin: (id: string) => put<{ message: Message }>(`/api/messages/${id}/pin`),
     unpin: (id: string) => del<{ message: Message }>(`/api/messages/${id}/pin`),
     pins: (channelId: string) => get<{ messages: Message[] }>(`/api/channels/${channelId}/pins`),
     bookmark: (id: string) => put<{ ok: true }>(`/api/messages/${id}/bookmark`),
     unbookmark: (id: string) => del<{ ok: true }>(`/api/messages/${id}/bookmark`),
-    edit: (id: string, content: string) =>
-      patch<{ message: Message }>(`/api/messages/${id}`, { content }),
+    edit: (id: string, content: string | SealedChannelMessage) =>
+      patch<{ message: Message }>(`/api/messages/${id}`, typeof content === 'string' ? { content } : content),
     remove: (id: string) => del<{ ok: true }>(`/api/messages/${id}`),
     react: (id: string, emoji: string) =>
       put<{ ok: true }>(`/api/messages/${id}/reactions/${encodeURIComponent(emoji)}`, {}),

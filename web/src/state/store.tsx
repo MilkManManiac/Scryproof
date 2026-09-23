@@ -43,6 +43,7 @@ import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
+import { channelKeysFor } from '../lib/channel-keys';
 import { VoiceSession, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 
@@ -467,9 +468,15 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         ...state,
         messages: {
           ...state.messages,
-          [event.d.channelId]: existing.map((message) =>
-            message.id === event.d.id ? event.d : message,
-          ),
+          [event.d.channelId]: existing.map((message) => {
+            if (message.id === event.d.id) return event.d;
+            // A reply quotes its parent. When the parent is edited, the quote
+            // follows, or the old wording lives on above every answer to it.
+            if (message.replyTo?.id === event.d.id && event.d.content !== null) {
+              return { ...message, replyTo: { ...message.replyTo, content: event.d.content.slice(0, 140) } };
+            }
+            return message;
+          }),
         },
       };
     }
@@ -902,194 +909,237 @@ export function StoreProvider({
   }
 
   useEffect(() => {
-    const gateway = new Gateway({
-      onEvent: (event) => {
-        dispatch({ type: 'gateway', event });
-        for (const listener of eventListeners.current) listener(event);
+    const handleEvent = (event: ServerEvent): void => {
+      dispatch({ type: 'gateway', event });
+      for (const listener of eventListeners.current) listener(event);
 
-        if (event.t === 'message_create') {
-          // Looked up once and reused: the sound decision, the pop-up decision,
-          // and the notice's own server/channel names all need it.
-          const server = Object.values(serversRef.current).find((entry) =>
-            entry.channels.some((channel) => channel.id === event.d.channelId),
-          );
-          const muted = isMuted(notifyPrefs.get(), server?.id ?? null, event.d.channelId);
-          const blocked = blocksRef.current.has(event.d.authorId);
+      if (event.t === 'message_create') {
+        // Looked up once and reused: the sound decision, the pop-up decision,
+        // and the notice's own server/channel names all need it.
+        const server = Object.values(serversRef.current).find((entry) =>
+          entry.channels.some((channel) => channel.id === event.d.channelId),
+        );
+        const muted = isMuted(notifyPrefs.get(), server?.id ?? null, event.d.channelId);
+        const blocked = blocksRef.current.has(event.d.authorId);
 
-          const sound = soundFor({
-            authorId: event.d.authorId,
-            mentions: event.d.mentions ?? [],
-            mentionsEveryone: event.d.mentionsEveryone ?? false,
-            selfId: selfId.current,
-            channelId: event.d.channelId,
-            serverId: server?.id ?? null,
-            openChannelId: openChannel.current,
-            windowFocused: document.hasFocus(),
-            blocked,
-            prefs: notifyPrefs.get(),
-          });
-          if (sound) play(sound);
+        const sound = soundFor({
+          authorId: event.d.authorId,
+          mentions: event.d.mentions ?? [],
+          mentionsEveryone: event.d.mentionsEveryone ?? false,
+          selfId: selfId.current,
+          channelId: event.d.channelId,
+          serverId: server?.id ?? null,
+          openChannelId: openChannel.current,
+          windowFocused: document.hasFocus(),
+          blocked,
+          prefs: notifyPrefs.get(),
+        });
+        if (sound) play(sound);
 
-          const message = event.d;
-          const focused = document.hasFocus();
-          const verdict = noticeFor({
-            authorId: message.authorId,
-            selfId: selfId.current,
-            addressedToMe:
-              (message.mentionsEveryone ?? false) || (message.mentions ?? []).includes(selfId.current ?? ''),
-            watching: focused && message.channelId === openChannel.current,
-            windowFocused: focused,
-            muted,
-            blocked,
-          });
-          if (verdict.list) {
-            const channel = server?.channels.find((entry) => entry.id === message.channelId);
-            notices.arrived(
-              {
-                id: message.id,
-                at: Date.now(),
-                kind: 'mention',
-                authorId: message.authorId,
-                authorName: message.author.displayName,
-                serverId: server?.id ?? null,
-                serverName: server?.name ?? null,
-                channelId: message.channelId,
-                channelName: channel?.name ?? null,
-                dmId: null,
-                preview: previewOf(message.content),
-                read: false,
-              },
-              verdict.popup,
-            );
-          }
-        }
-
-        if (event.t === 'event_reminder') {
-          const server = serversRef.current[event.d.serverId];
-          // The channel comes from the list this member already holds, where it
-          // is null if they cannot see it; the reminder itself never names one.
-          const planned = server?.events?.find((entry) => entry.id === event.d.eventId);
-          const channelId = planned?.channelId ?? null;
-          const channel = channelId ? server?.channels.find((entry) => entry.id === channelId) : undefined;
-          const prefs = notifyPrefs.get();
-          const muted =
-            prefs.mutedServers.includes(event.d.serverId) || (channelId !== null && prefs.mutedChannels.includes(channelId));
-
-          // Treated as a mention: the same sound, and the same rule for the pop-up.
-          if (!muted && prefs.mention) play('mention');
-          const verdict = eventNoticeFor({ windowFocused: document.hasFocus(), muted });
+        const message = event.d;
+        const focused = document.hasFocus();
+        const verdict = noticeFor({
+          authorId: message.authorId,
+          selfId: selfId.current,
+          addressedToMe:
+            (message.mentionsEveryone ?? false) || (message.mentions ?? []).includes(selfId.current ?? ''),
+          watching: focused && message.channelId === openChannel.current,
+          windowFocused: focused,
+          muted,
+          blocked,
+        });
+        if (verdict.list) {
+          const channel = server?.channels.find((entry) => entry.id === message.channelId);
           notices.arrived(
             {
-              id: `event-${event.d.eventId}`,
+              id: message.id,
               at: Date.now(),
-              kind: 'event',
-              authorId: planned?.createdBy ?? '',
-              authorName: event.d.title,
-              serverId: event.d.serverId,
+              kind: 'mention',
+              authorId: message.authorId,
+              authorName: message.author.displayName,
+              serverId: server?.id ?? null,
               serverName: server?.name ?? null,
-              channelId,
+              channelId: message.channelId,
               channelName: channel?.name ?? null,
               dmId: null,
-              preview: `Starts ${fullWhen(event.d.startsAt)}`,
+              preview: previewOf(message.content),
               read: false,
             },
             verdict.popup,
           );
         }
+      }
 
-        if (event.t === 'ready') {
-          selfId.current = event.d.user.id;
-          notices.use(event.d.user.id);
-          // A fresh gateway connection means the server forgot we were in a
-          // call when the old one dropped. Rejoin rather than sit in a room
-          // the server no longer thinks we are in.
-          selfRooms.current.clear();
-          for (const entry of event.d.voiceStates) {
-            const room = voiceRoomOf(entry);
-            if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
-          }
+      if (event.t === 'event_reminder') {
+        const server = serversRef.current[event.d.serverId];
+        // The channel comes from the list this member already holds, where it
+        // is null if they cannot see it; the reminder itself never names one.
+        const planned = server?.events?.find((entry) => entry.id === event.d.eventId);
+        const channelId = planned?.channelId ?? null;
+        const channel = channelId ? server?.channels.find((entry) => entry.id === channelId) : undefined;
+        const prefs = notifyPrefs.get();
+        const muted =
+          prefs.mutedServers.includes(event.d.serverId) || (channelId !== null && prefs.mutedChannels.includes(channelId));
+
+        // Treated as a mention: the same sound, and the same rule for the pop-up.
+        if (!muted && prefs.mention) play('mention');
+        const verdict = eventNoticeFor({ windowFocused: document.hasFocus(), muted });
+        notices.arrived(
+          {
+            id: `event-${event.d.eventId}`,
+            at: Date.now(),
+            kind: 'event',
+            authorId: planned?.createdBy ?? '',
+            authorName: event.d.title,
+            serverId: event.d.serverId,
+            serverName: server?.name ?? null,
+            channelId,
+            channelName: channel?.name ?? null,
+            dmId: null,
+            preview: `Starts ${fullWhen(event.d.startsAt)}`,
+            read: false,
+          },
+          verdict.popup,
+        );
+      }
+
+      if (event.t === 'ready') {
+        selfId.current = event.d.user.id;
+        notices.use(event.d.user.id);
+        // A fresh gateway connection means the server forgot we were in a
+        // call when the old one dropped. Rejoin rather than sit in a room
+        // the server no longer thinks we are in.
+        selfRooms.current.clear();
+        for (const entry of event.d.voiceStates) {
+          const room = voiceRoomOf(entry);
+          if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
+        }
+        const place = currentCall.current;
+        if (place) {
+          void voice.join(place, () =>
+            gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
+          );
+        }
+      }
+      // The only errors the gateway sends are refusals of something we just
+      // asked for. Mid-join, that is the join: show it rather than sit on
+      // "connecting" forever.
+      if (event.t === 'error' && currentCall.current) {
+        currentCall.current = null;
+        voice.fail(event.d.message);
+      }
+      if (event.t === 'voice_membership') void voice.onMembership(event.d);
+      if (event.t === 'voice_signal') void voice.onSignal(event.d);
+      if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {
+        const key = voiceKey(event.d.serverId, event.d.userId);
+        const room = voiceRoomOf(event.d);
+        const left = room === null ? selfRooms.current.get(key) : undefined;
+        if (room === null) selfRooms.current.delete(key);
+        else selfRooms.current.set(key, room);
+
+        if (room === null) {
+          // Moved out by a moderator, removed from the server, or refused
+          // mid-call; but only if it is the call this device is in. Starting
+          // a call somewhere else announces leaving the old one, and that
+          // must not hang up the new one.
           const place = currentCall.current;
-          if (place) {
-            void voice.join(place, () =>
-              gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
-            );
+          if (place && left === place.id) {
+            currentCall.current = null;
+            void voice.leave();
+          }
+        } else {
+          // A server mute is not a request. Enforce it here as well as in the grant.
+          void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
+          // The soundboard is a separate track, so a moderator's mute has to
+          // reach it separately. Muting yourself does not: picking a sound
+          // is as deliberate as unmuting.
+          voice.setServerMuted(event.d.serverMute);
+          voice.setDeafened(event.d.selfDeaf || event.d.serverDeaf);
+        }
+      }
+
+      if (event.t === 'emojis_changed') {
+        const serverId = event.d.serverId;
+        void api.emojis
+          .list(serverId)
+          .then(({ emojis }) => dispatch({ type: 'emojis-loaded', serverId, emojis }))
+          .catch(() => undefined);
+      }
+
+      if (event.t === 'sounds_changed') {
+        const serverId = event.d.serverId;
+        void api.sounds
+          .list(serverId)
+          .then(({ sounds }) => dispatch({ type: 'sounds-loaded', serverId, sounds }))
+          .catch(() => undefined);
+      }
+
+      // Any permission change anywhere means our view of that server may be
+      // wrong. Refetching is cheap and cannot be subtly incorrect the way a
+      // client-side delta would be.
+      if (event.t === 'permissions_stale') {
+        const serverId = event.d.serverId;
+        void api.servers
+          .one(serverId)
+          .then(({ server }) => dispatch({ type: 'server-refreshed', server }))
+          .catch(() => {
+            // Losing access entirely produces a 404; the server_delete or
+            // member_leave event that accompanies it handles the cleanup.
+          });
+        // And who is in a call, which the channel list does not carry. Being
+        // let into a voice channel has to show the people already in it, and
+        // nobody is going to move just to generate an event.
+        void api.voice
+          .states(serverId)
+          .then(({ voiceStates }) =>
+            dispatch({ type: 'voice-states-refreshed', serverId, voiceStates }),
+          )
+          .catch(() => undefined);
+      }
+    };
+
+    /**
+     * Sealed messages are opened here, before anything else sees them, so the
+     * reducer, the listeners and the notices all get what the rest of the app
+     * expects: a message with its text. `channel-keys.ts`.
+     */
+    const prepareEvent = async (event: ServerEvent): Promise<ServerEvent> => {
+      const me = selfId.current;
+      if (!me) return event;
+      const keys = channelKeysFor(me);
+      if ((event.t === 'message_create' || event.t === 'message_update') && event.d.ciphertext) {
+        const [opened] = await keys.open([event.d]);
+        return { ...event, d: opened ?? event.d };
+      }
+      if (event.t === 'spawn_replay' && event.d.content === null) {
+        return { ...event, d: { ...event.d, content: keys.textOf(event.d.messageId) } };
+      }
+      if (event.t === 'channel_keys') {
+        keys.keysChanged(event.d.channelId, event.d.wanted);
+        // A copy may have just arrived for this device: try again whatever did not open.
+        const waiting = (messagesRef.current[event.d.channelId] ?? []).filter(
+          (message) => message.ciphertext && message.sealed && message.sealed !== 'ok' && !message.deleted,
+        );
+        if (waiting.length > 0) {
+          keys.forgetUnopened(event.d.channelId, waiting);
+          for (const message of await keys.open(waiting)) {
+            if (message.sealed !== 'no-key') dispatch({ type: 'gateway', event: { t: 'message_update', d: message } });
           }
         }
-        // The only errors the gateway sends are refusals of something we just
-        // asked for. Mid-join, that is the join: show it rather than sit on
-        // "connecting" forever.
-        if (event.t === 'error' && currentCall.current) {
-          currentCall.current = null;
-          voice.fail(event.d.message);
-        }
-        if (event.t === 'voice_membership') void voice.onMembership(event.d);
-        if (event.t === 'voice_signal') void voice.onSignal(event.d);
-        if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {
-          const key = voiceKey(event.d.serverId, event.d.userId);
-          const room = voiceRoomOf(event.d);
-          const left = room === null ? selfRooms.current.get(key) : undefined;
-          if (room === null) selfRooms.current.delete(key);
-          else selfRooms.current.set(key, room);
+      }
+      return event;
+    };
 
-          if (room === null) {
-            // Moved out by a moderator, removed from the server, or refused
-            // mid-call; but only if it is the call this device is in. Starting
-            // a call somewhere else announces leaving the old one, and that
-            // must not hang up the new one.
-            const place = currentCall.current;
-            if (place && left === place.id) {
-              currentCall.current = null;
-              void voice.leave();
-            }
-          } else {
-            // A server mute is not a request. Enforce it here as well as in the grant.
-            void voice.setMuted(event.d.selfMute || event.d.serverMute || event.d.selfDeaf);
-            // The soundboard is a separate track, so a moderator's mute has to
-            // reach it separately. Muting yourself does not: picking a sound
-            // is as deliberate as unmuting.
-            voice.setServerMuted(event.d.serverMute);
-            voice.setDeafened(event.d.selfDeaf || event.d.serverDeaf);
-          }
-        }
-
-        if (event.t === 'emojis_changed') {
-          const serverId = event.d.serverId;
-          void api.emojis
-            .list(serverId)
-            .then(({ emojis }) => dispatch({ type: 'emojis-loaded', serverId, emojis }))
-            .catch(() => undefined);
-        }
-
-        if (event.t === 'sounds_changed') {
-          const serverId = event.d.serverId;
-          void api.sounds
-            .list(serverId)
-            .then(({ sounds }) => dispatch({ type: 'sounds-loaded', serverId, sounds }))
-            .catch(() => undefined);
-        }
-
-        // Any permission change anywhere means our view of that server may be
-        // wrong. Refetching is cheap and cannot be subtly incorrect the way a
-        // client-side delta would be.
-        if (event.t === 'permissions_stale') {
-          const serverId = event.d.serverId;
-          void api.servers
-            .one(serverId)
-            .then(({ server }) => dispatch({ type: 'server-refreshed', server }))
-            .catch(() => {
-              // Losing access entirely produces a 404; the server_delete or
-              // member_leave event that accompanies it handles the cleanup.
-            });
-          // And who is in a call, which the channel list does not carry. Being
-          // let into a voice channel has to show the people already in it, and
-          // nobody is going to move just to generate an event.
-          void api.voice
-            .states(serverId)
-            .then(({ voiceStates }) =>
-              dispatch({ type: 'voice-states-refreshed', serverId, voiceStates }),
-            )
-            .catch(() => undefined);
-        }
+    // Events are handled one at a time, in order. Most pass straight through;
+    // a sealed message is opened first, which is asynchronous, and nothing
+    // behind it may overtake it (a delete arriving before its create).
+    let queue: Promise<void> = Promise.resolve();
+    const gateway = new Gateway({
+      onEvent: (raw) => {
+        queue = queue.then(async () => {
+          const event = await prepareEvent(raw).catch(() => raw);
+          handleEvent(event);
+        });
       },
       onStatus: (status) => {
         dispatch({ type: 'connection', status });
@@ -1187,8 +1237,15 @@ export function StoreProvider({
   const messagesRef = useRef(state.messages);
   messagesRef.current = state.messages;
 
+  /** Sealed messages in a page are opened before the page reaches the store. */
+  const openSealed = useCallback(async (messages: Message[]): Promise<Message[]> => {
+    const me = selfId.current ?? state.user?.id ?? null;
+    if (!me || !messages.some((message) => message.ciphertext)) return messages;
+    return channelKeysFor(me).open(messages);
+  }, [state.user?.id]);
+
   const loadMessages = useCallback(async (channelId: string, before?: string) => {
-    const { messages } = await api.messages.list(channelId, { before, limit: 50 });
+    const messages = await openSealed((await api.messages.list(channelId, { before, limit: 50 })).messages);
     dispatch({
       type: 'messages-loaded',
       channelId,
@@ -1203,7 +1260,7 @@ export function StoreProvider({
   const loadNewerMessages = useCallback(async (channelId: string) => {
     const newest = (messagesRef.current[channelId] ?? []).at(-1);
     if (!newest) return;
-    const { messages } = await api.messages.list(channelId, { after: newest.id, limit: 50 });
+    const messages = await openSealed((await api.messages.list(channelId, { after: newest.id, limit: 50 })).messages);
     dispatch({
       type: 'messages-loaded',
       channelId,
@@ -1218,7 +1275,7 @@ export function StoreProvider({
   const jumpToMessage = useCallback(async (channelId: string, messageId: string) => {
     const known = (messagesRef.current[channelId] ?? []).some((message) => message.id === messageId);
     if (!known) {
-      const { messages } = await api.messages.list(channelId, { around: messageId });
+      const messages = await openSealed((await api.messages.list(channelId, { around: messageId })).messages);
       // A window is only a window if the half after the target came back full;
       // a short half means the newest message is already in hand.
       const at = messages.findIndex((message) => message.id === messageId);

@@ -58,6 +58,7 @@ import {
   loadRecoveryKey,
   saveRecoveryKey,
 } from '../lib/voice-identity';
+import { deviceFor, setRecoveryOpener } from '../lib/this-device';
 import { useStore } from './store';
 
 /** A message as the screen draws it. */
@@ -273,38 +274,6 @@ interface DmValue {
 
 const DmContext = createContext<DmValue | null>(null);
 
-/**
- * One device per browser, made once. React's development mode runs effects
- * twice, and two set-ups racing each other made two identities, published both,
- * and left IndexedDB holding half of each. The promise is shared so the second
- * caller waits for the first instead of starting again.
- */
-const devices = new Map<string, Promise<DmDevice>>();
-
-function deviceFor(userId: string, pins: IndexedDbIdentityStore): Promise<DmDevice> {
-  const existing = devices.get(userId);
-  if (existing) return existing;
-
-  const made = (async () => {
-    const identity = await loadDeviceIdentity(createDeviceIdentity);
-    const dm = await loadDmKeypair(createDmKeypair, describeDmKeypair);
-    const mine: DmDevice = { userId, identity, dm };
-    // This device believes itself whatever else it has seen. Without this, a
-    // laptop that once pinned its owner's phone in a call would treat its own
-    // key as the unfamiliar one.
-    await pins.set(userId, identity.deviceId, identity.fingerprint);
-
-    const { userId: _self, ...published } = await describeDevice(mine);
-    void _self;
-    await api.dms.publishDevice(published);
-    return mine;
-  })();
-  // A failure should be retried on the next sign-in, not remembered.
-  made.catch(() => devices.delete(userId));
-  devices.set(userId, made);
-  return made;
-}
-
 export function DmProvider({ children }: { children: ReactNode }) {
   const { state: app, onGatewayEvent } = useStore();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -341,6 +310,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
         const held = Boolean(stored && published && stored.deviceId === published.deviceId);
         recovery.current =
           held && stored ? { userId: selfId, identity: { deviceId: stored.deviceId }, dm: { privateKey: stored.privateKey } } : null;
+        setRecoveryOpener(recovery.current);
         dispatch({ type: 'recovery', exists: Boolean(published), held });
         dispatch({ type: 'dms', dms });
         dispatch({ type: 'ready' });
@@ -883,6 +853,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       await vouchForThisDevice(self, phrase);
       // This device made the phrase and needs nothing from it, so nothing of it is kept here.
       recovery.current = null;
+      setRecoveryOpener(null);
       dispatch({ type: 'recovery', exists: true, held: false });
 
       // Everything already written, in every conversation, newest page first.
@@ -925,6 +896,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       await pins.current.set(self.userId, phrase.identity.deviceId, phrase.identity.fingerprint);
       await vouchForThisDevice(self, phrase);
       recovery.current = { userId: self.userId, identity: { deviceId: phrase.identity.deviceId }, dm: { privateKey: phrase.dm.privateKey } };
+      setRecoveryOpener(recovery.current);
       dispatch({ type: 'recovery', exists: true, held: true });
 
       // What is on screen was drawn as locked. Draw it again.

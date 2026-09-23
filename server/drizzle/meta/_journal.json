@@ -134,6 +134,13 @@
       "when": 1790137301575,
       "tag": "0018_flimsy_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790173350612,
+      "tag": "0019_awesome_the_captain",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,7 @@ import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { voiceLabel } from '../lib/voice-note';
+import { KeyWait, channelKeysFor } from '../lib/channel-keys';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
 import { ReactionPicker } from './ReactionPicker';
@@ -42,6 +43,9 @@ interface Offer {
   /** Set for a built-in emoji, drawn as itself. */
   glyph?: string;
 }
+
+/** Commands the server carries out by reading the text: not possible where it cannot read it. */
+const SERVER_COMMAND = /^\/(?:roll|r|poll|init)(?:\s|$)/i;
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, sendTyping, replyTo, applyTracker } = useStore();
@@ -74,7 +78,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const timedOutUntil = useTimeoutEnd(members.find((member) => member.userId === state.user?.id));
 
   const mayPost = can(mask, Permission.SEND_MESSAGES) && !timedOutUntil;
-  const mayAttach = can(mask, Permission.ATTACH_FILES) && !timedOutUntil;
+  // Files are not locked in the browser yet, so an encrypted channel takes none
+  // rather than store the one readable thing in it (docs/channel-e2ee.md).
+  const mayAttach = can(mask, Permission.ATTACH_FILES) && !timedOutUntil && !channel.encrypted;
   const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
 
   const emojis = state.servers[channel.serverId]?.emojis ?? [];
@@ -93,7 +99,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
   const offers = useMemo<Offer[]>(() => {
     if (commandQuery !== undefined) {
-      return commandOffers(commandQuery).map((offer) => ({
+      return commandOffers(commandQuery)
+        // What the server would have to read is not offered where it cannot.
+        .filter((offer) => !channel.encrypted || !SERVER_COMMAND.test(offer.written))
+        .map((offer) => ({
         key: offer.key,
         written: offer.written,
         name: offer.name,
@@ -221,7 +230,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
   async function send(override?: string) {
     const typed = override ?? text.trim();
-    if (!override && isInitCommand(typed)) {
+    if (!override && isInitCommand(typed) && !channel.encrypted) {
       await startInitiative();
       return;
     }
@@ -229,6 +238,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     // name; `/shrug` becomes its text. A character command goes as typed.
     const body = expandTextCommand(expandShortcodes(typed, (name) => emojis.some((emoji) => emoji.name === name)));
     if ((!body && pending.length === 0) || cooldown > 0) return;
+    if (channel.encrypted && SERVER_COMMAND.test(body)) {
+      setError('Rolls, polls and initiative are worked out by the server, which cannot read this channel. They are off here.');
+      return;
+    }
     const answering = replyingTo;
     // From the board, the command goes on its own: whatever was half typed
     // stays in the box, and the files waiting there stay waiting.
@@ -243,11 +256,22 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     setError(null);
 
     try {
-      await api.messages.send(channel.id, {
-        content: body ? houseRules(fromDraft(body, members)) : undefined,
-        replyToId: override ? undefined : answering?.id,
-        attachmentIds: files.length > 0 ? files.map((file) => file.id) : undefined,
-      });
+      if (channel.encrypted) {
+        await channelKeysFor(state.user?.id ?? '').send({
+          channelId: channel.id,
+          text: houseRules(fromDraft(body, members)),
+          replyToId: override ? null : (answering?.id ?? null),
+          replyAuthorId: override ? null : (answering?.authorId ?? null),
+          memberIds: new Set(members.map((member) => member.userId)),
+          canMentionEveryone: mayPingEveryone,
+        });
+      } else {
+        await api.messages.send(channel.id, {
+          content: body ? houseRules(fromDraft(body, members)) : undefined,
+          replyToId: override ? undefined : answering?.id,
+          attachmentIds: files.length > 0 ? files.map((file) => file.id) : undefined,
+        });
+      }
     } catch (problem) {
       // Put the draft back rather than losing what someone typed.
       if (!override) {
@@ -258,6 +282,8 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       if (problem instanceof ApiError) {
         setError(problem.message);
         if (problem.retryAfterSeconds) setCooldown(problem.retryAfterSeconds);
+      } else if (problem instanceof KeyWait) {
+        setError(problem.message);
       } else {
         setError('Message did not send.');
       }
@@ -592,7 +618,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       <div className="composer-hint">
         <span>
           {text.startsWith('/') ? (
-            'Commands: /tang-jump, /roll 2d6+3, /init, /shrug'
+            channel.encrypted ? 'Commands: /tang-jump, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /shrug'
           ) : (
             <>
               {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}

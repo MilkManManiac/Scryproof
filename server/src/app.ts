@@ -34,6 +34,7 @@ import { registerInviteRoutes } from './routes/invites.js';
 import { registerAttachmentRoutes } from './routes/attachments.js';
 import { registerVoiceRoutes } from './routes/voice.js';
 import { registerDmRoutes } from './routes/dms.js';
+import { registerChannelKeyRoutes } from './routes/channel-keys.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerBlockRoutes } from './routes/blocks.js';
 import { registerDownloadRoutes } from './routes/downloads.js';
@@ -244,6 +245,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAttachmentRoutes(app);
   await registerVoiceRoutes(app);
   await registerDmRoutes(app);
+  await registerChannelKeyRoutes(app);
   await registerProfileRoutes(app);
   await registerBlockRoutes(app);
   await registerDownloadRoutes(app);

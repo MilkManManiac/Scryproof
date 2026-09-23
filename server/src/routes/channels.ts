@@ -104,7 +104,8 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
         type: body.type,
         name,
         topic: body.topic ?? null,
-        encrypted: body.encrypted ?? false,
+        // A voice channel is always encrypted; the flag is about text.
+        encrypted: body.type === 'text' && (body.encrypted ?? false),
         position: nextPosition,
       })
       .returning();

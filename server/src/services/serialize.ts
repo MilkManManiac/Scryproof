@@ -190,8 +190,11 @@ export function message(
     // A deleted message keeps its place in the timeline so replies still point
     // at something, but its body never goes back out over the wire.
     content: deleted ? null : row.content,
-    ciphertext: deleted || !row.ciphertext ? null : row.ciphertext.toString('base64'),
+    ciphertext: deleted || !row.ciphertext ? null : Buffer.from(row.ciphertext).toString('base64'),
     keyEpoch: row.keyEpoch,
+    nonce: deleted || !row.nonce ? null : Buffer.from(row.nonce).toString('base64'),
+    senderDeviceId: deleted ? null : row.senderDeviceId,
+    signature: deleted || !row.signature ? null : Buffer.from(row.signature).toString('base64'),
     // A deleted poll keeps no tally either: nothing left to vote on or read.
     poll:
       deleted || kind !== 'poll' || !row.poll

@@ -27,6 +27,7 @@
     "dev:livekit": "node scripts/dev-livekit.mjs",
     "test:voice": "node scripts/voice-check.mjs",
     "test:dm": "node scripts/dm-check.mjs",
+    "test:channels": "node scripts/channel-check.mjs",
     "test:desktop": "node --test desktop/test/*.test.mjs && node scripts/desktop-check.mjs",
     "release:client": "node desktop/scripts/make-update.mjs"
   },

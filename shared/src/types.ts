@@ -278,6 +278,18 @@ export interface Message {
   ciphertext: string | null;
   /** Which channel key epoch encrypted this message. */
   keyEpoch: number | null;
+  /** base64. The AES-GCM IV of `ciphertext`. Null in a plaintext channel. */
+  nonce?: string | null;
+  /** The author's device that sealed and signed `ciphertext`. */
+  senderDeviceId?: string | null;
+  /** base64. That device's identity-key signature over the sealed message. */
+  signature?: string | null;
+  /**
+   * Never sent by the server. Set in the browser after it tries to open a
+   * sealed message: 'ok', 'unverified' (signed by a device not yet accepted),
+   * 'no-key', 'forged' or 'failed'. When set, `content` is what opened, or null.
+   */
+  sealed?: 'ok' | 'unverified' | 'no-key' | 'forged' | 'failed';
   attachments: Attachment[];
   replyToId: Snowflake | null;
   /** Null when this is not a reply, or the parent is gone entirely. */
@@ -406,6 +418,52 @@ export interface DmChannel {
 }
 
 /** A message key, locked for exactly one device. */
+/**
+ * An encrypted channel's key for one epoch, as the server knows it: who made
+ * it and their signed commitment, never the key. `docs/channel-e2ee.md`.
+ */
+export interface ChannelEpoch {
+  epoch: number;
+  creatorId: Snowflake;
+  creatorDeviceId: string;
+  /** base64 */
+  commitment: string;
+  /** base64 */
+  signature: string;
+}
+
+/** One device's locked copy of one epoch's key. */
+export interface ChannelKeyCopy {
+  epoch: number;
+  userId: Snowflake;
+  deviceId: string;
+  wrapperId: Snowflake;
+  wrapperDeviceId: string;
+  /** base64 */
+  iv: string;
+  /** base64 */
+  key: string;
+}
+
+/** Everything a device needs to read and send in an encrypted channel. */
+export interface ChannelKeyState {
+  /** The epoch new messages must be sealed under. */
+  current: number;
+  /** Every epoch that has been made, oldest first. */
+  epochs: ChannelEpoch[];
+  /** This device's copies (and its recovery phrase's), every epoch it has one for. */
+  keys: ChannelKeyCopy[];
+  /** Who holds the current epoch's key: what the "who can read this" list draws. */
+  holders: { userId: Snowflake; deviceId: string }[];
+}
+
+/** A copy some device can read the channel with and does not have yet. */
+export interface ChannelKeyWant {
+  epoch: number;
+  userId: Snowflake;
+  deviceId: string;
+}
+
 export interface DmWrappedKey {
   userId: Snowflake;
   deviceId: string;

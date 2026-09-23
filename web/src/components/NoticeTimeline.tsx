@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { BookmarkedMessage } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { channelKeysFor } from '../lib/channel-keys';
 import { toPlainLine } from '../lib/mentions';
 import { bySource, notices } from '../lib/notices';
 import type { Notice } from '../lib/notices';
@@ -226,9 +227,14 @@ function SavedTab({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
+    const selfId = state.user?.id ?? null;
     api.bookmarks
       .list()
-      .then(({ messages }) => {
+      // Saved messages from an encrypted channel arrive sealed and are opened here.
+      .then(async ({ messages }) =>
+        selfId ? ((await channelKeysFor(selfId).open(messages)) as BookmarkedMessage[]) : messages,
+      )
+      .then((messages) => {
         if (!cancelled) setSaved(messages);
       })
       .catch(() => {

@@ -15,6 +15,7 @@ import {
   POLL_LIMITS,
   Permission,
   formatRoll,
+  messageSignedBytes,
   has,
   parsePollCommand,
   parseRoll,
@@ -25,9 +26,9 @@ import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/sha
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { attachments, bookmarks, channels, messages, reactions, users } from '../db/schema.js';
+import { attachments, bookmarks, channelEpochs, channels, deviceKeys, messages, reactions, users } from '../db/schema.js';
 import type { PollBody } from '../db/schema.js';
-import { badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
+import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { rollDie } from '../lib/crypto.js';
 import { uuidv7 } from '../lib/ids.js';
 import { consume } from '../lib/rate-limit.js';
@@ -37,13 +38,14 @@ import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { publicUrlFor } from '../services/storage.js';
 import { assertNotTimedOut, requireChannelPermission, requireMember } from '../services/permissions.js';
-import { NO_MENTIONS, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
+import { type ResolvedMentions, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
+import { freshEpoch, identitySigned } from '../services/channel-keys.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { setVotes, tallyForMessages } from '../services/polls.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
 import { searchMessages } from '../services/search.js';
 import { bookmarksFor, isBookmarked } from '../services/bookmarks.js';
-import type { MessageRow, User } from '../db/schema.js';
+import type { ChannelRow, MessageRow, User } from '../db/schema.js';
 
 /** How much of a parent message rides along with a reply. */
 const REPLY_PREVIEW_LENGTH = 140;
@@ -138,6 +140,102 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
       });
     })
     .filter((message): message is Message => message !== null);
+}
+
+/** What a sealed message carries besides its body. Shared by sending and editing. */
+const sealedShape = {
+  ciphertext: z.string().max(64_000).optional(),
+  nonce: z.string().max(256).optional(),
+  senderDeviceId: z.string().min(8).max(64).optional(),
+  signature: z.string().max(256).optional(),
+  mentionIds: z.array(z.string().max(64)).max(100).optional(),
+  mentionsEveryone: z.boolean().optional(),
+};
+
+interface CheckedSeal {
+  ciphertext: Buffer;
+  nonce: Buffer;
+  epoch: number;
+  senderDeviceId: string;
+  signature: Buffer;
+  mentions: ResolvedMentions;
+}
+
+/**
+ * The checks an encrypted channel's message passes before it is stored: sealed
+ * under the current key, which has been made; signed by a device of the
+ * author; pinging only members, and everyone only if allowed. Refused rather
+ * than trimmed, because the signature covers the list and a trimmed one would
+ * not verify for anyone reading it.
+ */
+async function checkSeal(input: {
+  channel: ChannelRow;
+  authorId: string;
+  replyToId: string | null;
+  body: {
+    ciphertext?: string;
+    nonce?: string;
+    senderDeviceId?: string;
+    signature?: string;
+    mentionIds?: string[];
+    mentionsEveryone?: boolean;
+  };
+  epoch: number | undefined;
+  canMentionEveryone: boolean;
+}): Promise<CheckedSeal> {
+  const { channel, body } = input;
+  if (!body.ciphertext || !body.nonce || !body.senderDeviceId || !body.signature || input.epoch === undefined) {
+    throw badRequest('This channel is end-to-end encrypted.', 'encryption_required');
+  }
+  const current = await freshEpoch(channel);
+  if (input.epoch !== current) throw conflict('The channel has moved to a newer key.', 'key_rotated');
+
+  const db = getDb();
+  const [made] = await db
+    .select({ epoch: channelEpochs.epoch })
+    .from(channelEpochs)
+    .where(and(eq(channelEpochs.channelId, channel.id), eq(channelEpochs.epoch, current)))
+    .limit(1);
+  if (!made) throw conflict('Nobody has made this key yet.', 'no_epoch');
+
+  const [device] = await db
+    .select({ identityKey: deviceKeys.identityKey })
+    .from(deviceKeys)
+    .where(and(eq(deviceKeys.userId, input.authorId), eq(deviceKeys.deviceId, body.senderDeviceId)))
+    .limit(1);
+  if (!device) throw badRequest('This device has not published its keys.', 'unknown_device');
+
+  const mentionIds = [...new Set(body.mentionIds ?? [])];
+  const everyone = body.mentionsEveryone ?? false;
+  if (everyone && !input.canMentionEveryone) throw forbidden('You cannot mention everyone in this channel.');
+  const memberIds = await serverMemberIds(channel.serverId);
+  if (mentionIds.some((id) => !memberIds.has(id))) throw badRequest('That person is not in this server.', 'unknown_member');
+
+  const ciphertext = Buffer.from(body.ciphertext, 'base64');
+  const nonce = Buffer.from(body.nonce, 'base64');
+  const signature = Buffer.from(body.signature, 'base64');
+  const signed = messageSignedBytes({
+    channelId: channel.id,
+    epoch: current,
+    authorId: input.authorId,
+    senderDeviceId: body.senderDeviceId,
+    replyToId: input.replyToId,
+    mentionIds,
+    mentionsEveryone: everyone,
+    nonce,
+    ciphertext,
+  });
+  if (!(await identitySigned(device.identityKey, signature, signed))) {
+    throw badRequest('That message is not signed by this device.', 'bad_signature');
+  }
+  return {
+    ciphertext,
+    nonce,
+    epoch: current,
+    senderDeviceId: body.senderDeviceId,
+    signature,
+    mentions: { userIds: mentionIds.filter((id) => id !== input.authorId), everyone },
+  };
 }
 
 export async function registerMessageRoutes(app: FastifyInstance): Promise<void> {
@@ -252,8 +350,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     const body = z
       .object({
         content: z.string().max(LIMITS.message.max).optional(),
-        ciphertext: z.string().max(64_000).optional(),
-        nonce: z.string().max(256).optional(),
+        ...sealedShape,
         keyEpoch: z.number().int().min(1).optional(),
         replyToId: z.string().optional(),
         attachmentIds: z.array(z.string()).max(LIMITS.attachmentsPerMessage).optional(),
@@ -280,13 +377,24 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     // An encrypted channel must receive ciphertext and a plaintext channel
     // must receive text. Accepting either in both would let a client silently
     // downgrade a private channel to readable-by-the-server.
+    let sealed: CheckedSeal | null = null;
     if (channel.encrypted) {
-      if (!body.ciphertext) {
-        throw badRequest('This channel is end-to-end encrypted.', 'encryption_required');
-      }
       if (body.content) {
         throw badRequest('Plaintext is not accepted in an encrypted channel.', 'encryption_required');
       }
+      // Stage 2 locks files in the browser. Until then a file here would be the
+      // one readable thing in a channel that says it is not.
+      if ((body.attachmentIds ?? []).length > 0) {
+        throw badRequest('Files cannot be sent in an encrypted channel yet.', 'encrypted_files_unsupported');
+      }
+      sealed = await checkSeal({
+        channel,
+        authorId: user.id,
+        replyToId: body.replyToId ?? null,
+        body,
+        epoch: body.keyEpoch,
+        canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+      });
     } else if (body.ciphertext) {
       throw badRequest('This channel is not encrypted.', 'encryption_not_enabled');
     }
@@ -366,12 +474,11 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       replyAuthorId = parent.authorId;
     }
 
-    // In an encrypted channel the server cannot read the body, so it pings
-    // nobody, including the person replied to: a count it cannot explain would
-    // be a claim about content it has never seen.
-    const memberIds = channel.encrypted ? new Set<string>() : await serverMemberIds(ctx.serverId);
-    const mentions = channel.encrypted
-      ? NO_MENTIONS
+    // In an encrypted channel the server cannot read the body, so the sender's
+    // device names who it pings, inside the signature (see `checkSeal`).
+    const memberIds = await serverMemberIds(ctx.serverId);
+    const mentions = sealed
+      ? sealed.mentions
       : resolveMentions({
           content,
           senderId: user.id,
@@ -391,9 +498,11 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         content: channel.encrypted ? null : content,
         kind,
         poll,
-        ciphertext: body.ciphertext ? Buffer.from(body.ciphertext, 'base64') : null,
-        nonce: body.nonce ? Buffer.from(body.nonce, 'base64') : null,
-        keyEpoch: channel.encrypted ? (body.keyEpoch ?? channel.keyEpoch) : null,
+        ciphertext: sealed?.ciphertext ?? null,
+        nonce: sealed?.nonce ?? null,
+        keyEpoch: sealed?.epoch ?? null,
+        senderDeviceId: sealed?.senderDeviceId ?? null,
+        signature: sealed?.signature ?? null,
         replyToId: body.replyToId ?? null,
         mentions: mentions.userIds,
         mentionsEveryone: mentions.everyone,
@@ -452,8 +561,8 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     const body = z
       .object({
         content: z.string().max(LIMITS.message.max).optional(),
-        ciphertext: z.string().max(64_000).optional(),
-        nonce: z.string().max(256).optional(),
+        ...sealedShape,
+        keyEpoch: z.number().int().min(1).optional(),
       })
       .parse(request.body);
 
@@ -494,8 +603,24 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         .limit(1);
       replyAuthorId = parent?.authorId ?? null;
     }
-    const mentions = body.ciphertext
-      ? NO_MENTIONS
+    const [channel] = await db.select().from(channels).where(eq(channels.id, existing.channelId)).limit(1);
+    if (!channel) throw notFound('That channel does not exist.', 'unknown_channel');
+    let sealed: CheckedSeal | null = null;
+    if (channel.encrypted) {
+      if (body.content) throw badRequest('Plaintext is not accepted in an encrypted channel.', 'encryption_required');
+      sealed = await checkSeal({
+        channel,
+        authorId: user.id,
+        replyToId: existing.replyToId,
+        body,
+        epoch: body.keyEpoch,
+        canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+      });
+    } else if (body.ciphertext) {
+      throw badRequest('This channel is not encrypted.', 'encryption_not_enabled');
+    }
+    const mentions = sealed
+      ? sealed.mentions
       : resolveMentions({
           content,
           senderId: user.id,
@@ -509,10 +634,13 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .set({
         mentions: mentions.userIds,
         mentionsEveryone: mentions.everyone,
-        ...(body.ciphertext
+        ...(sealed
           ? {
-              ciphertext: Buffer.from(body.ciphertext, 'base64'),
-              nonce: body.nonce ? Buffer.from(body.nonce, 'base64') : existing.nonce,
+              ciphertext: sealed.ciphertext,
+              nonce: sealed.nonce,
+              keyEpoch: sealed.epoch,
+              senderDeviceId: sealed.senderDeviceId,
+              signature: sealed.signature,
             }
           : { content }),
         editedAt: new Date(),
@@ -561,6 +689,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         content: null,
         ciphertext: null,
         nonce: null,
+        signature: null,
       })
       .where(eq(messages.id, messageId));
 
@@ -779,8 +908,11 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY | Permission.SEND_MESSAGES,
     );
     assertNotTimedOut(ctx);
-    const content = (existing.content ?? '').trim();
-    if (!/^\/[a-z0-9-]+-jump$/i.test(content)) throw badRequest('That message is not a jump.', 'not_a_jump');
+    // In an encrypted channel the server cannot tell a jump from anything else.
+    // It passes the id along and each client checks what the message says.
+    const sealed = existing.ciphertext !== null;
+    const content = sealed ? null : (existing.content ?? '').trim();
+    if (content !== null && !/^\/[a-z0-9-]+-jump$/i.test(content)) throw badRequest('That message is not a jump.', 'not_a_jump');
 
     const limit = consume(`replays:${user.id}`, 10, 30_000);
     if (!limit.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', limit.retryAfterSeconds);

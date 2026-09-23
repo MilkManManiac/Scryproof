@@ -411,6 +411,7 @@ function NewChannelDialog({
   const [type, setType] = useState<'text' | 'voice'>('text');
   const [categoryId, setCategoryId] = useState<string | null>(initialCategoryId);
   const [privacy, setPrivacy] = useState<PrivacyChoice>(PUBLIC);
+  const [encrypted, setEncrypted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { state } = useStore();
@@ -429,6 +430,7 @@ function NewChannelDialog({
         name: slug,
         type,
         categoryId,
+        encrypted: type === 'text' && encrypted,
         private: privacy.private ? privacy : undefined,
       });
       onClose();
@@ -518,6 +520,20 @@ function NewChannelDialog({
 
       {state.user ? (
         <PrivacyPicker serverId={server.id} roles={server.roles} value={privacy} onChange={setPrivacy} selfId={state.user.id} />
+      ) : null}
+
+      {type === 'text' ? (
+        <div className="field">
+          <label className="check">
+            <input type="checkbox" checked={encrypted} onChange={(event) => setEncrypted(event.target.checked)} />
+            End-to-end encrypted
+          </label>
+          <p className="field-note">
+            {encrypted
+              ? 'Messages are locked on your devices, and the server stores only scrambled bytes. No search, files, polls, rolls or initiative here yet. Cannot be turned off later.'
+              : 'Messages are stored on our server where it could read them, like a normal channel. Voice is always encrypted either way.'}
+          </p>
+        </div>
       ) : null}
     </Modal>
   );

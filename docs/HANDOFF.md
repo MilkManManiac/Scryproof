@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-23, 00:50 ET. **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-23, day. **Encrypted channels, stage 1: built, all checks pass, NOT deployed** (last section; `docs/channel-e2ee.md`). Waiting on Wes's go. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -24,7 +24,7 @@ Living state. Update this at the end of every working session.
 | M4 video and screen share | **Works locally, encrypted, and tested.** Camera and screen share (1080p at 30, with the shared sound kept apart from the voice clean-up) go through the same per-person keys as the microphone: the test shows pictures decoding with the right key and **zero frames with the wrong one while packets keep arriving**. A share from someone else takes over the stage; click any picture to enlarge it; full screen works. Camera choice is in the voice settings. `docs/shots/voice-video.png`, `docs/shots/voice-video-tiles.png`. **First real use, 2026-09-21:** camera and screen share both worked for Wes and a friend on the box. **Not done:** the headless test shares a fake source, so a real game capture, shared system sound, and the echo guard (`restrictOwnAudio`, Chromium only) are untested until a person tries them; no per-stream quality choice. |
 | M5 feel | **Built, unjudged.** Reactions, mentions, replies, unread marks and mention badges, the line saying where you stopped and a bar that gets you to it, link handling, the quick switcher and the keyboard, message sounds. Everything in the milestone exists and is covered by tests. **Judged on 2026-09-21: not done.** Wes used it for real and said "some of the UI is kind of funky" and "we'll definitely need a good UI pass". No specifics yet; he offered screenshots. Read `references/the-wall.md` in the milk-project skill before starting that pass. |
 | M6 desktop | **A working shell with an installer, 2026-09-21.** Electron. Signs in, connects, uploads; `npm run test:desktop`. Not yet: tray, push-to-talk, notifications, signed updates. See "The desktop app, moved up". |
-| M7 text end-to-end encryption | Schema and wire format ready. The device identity keys built for M3 are the ones this needs, so half of it is already paid for. |
+| M7 text end-to-end encryption | **Stage 1 built 2026-09-23, not deployed.** DMs were already encrypted. Text channels can now be made end-to-end encrypted: epoch keys made on members' devices, handed device to device, retired when someone loses access, every message signed. Proven in real browsers (`npm run test:channels`). Not yet: files and voice messages (stage 2), switching on an existing channel (stage 3). |
 
 **Repo:** https://github.com/MilkManManiac/Scryproof (private)
 
@@ -2144,3 +2144,84 @@ that, shell updates arrive by themselves.
 upgrade stays in `userData/shell-update/` until the next launch, because
 the tidy at start runs while the installer process still holds the file.
 Run `tidyShellDir()` again a minute after start.
+
+## Encrypted channels, stage 1, 2026-09-23 (built, not deployed)
+
+Wes: "do what we should do" (next on BUILD-ORDER was Session D, M7). Design
+first in `docs/channel-e2ee.md`; read it before touching any of this.
+
+**The decision:** no MLS (GAMEPLAN M7 said look again; the look is in the
+doc: 25 people, unaudited browser libraries, voice already said no). No new
+dependency. One key per channel per epoch, made on a member's device with a
+signed commitment, handed device to device with the DM keys, retired lazily
+by the server when a holder should no longer read. Every message is signed
+by the sender's device, which closes, for channels, the forgery gap group
+DMs still have.
+
+**Where it lives.** Crypto: `web/src/lib/channel-crypto.ts` (pure; 12 tests
+in `web/src/tests/channel-crypto.test.ts` play a lying server; the signature
+and commitment checks were each switched off once to prove the tests fail).
+Working half: `web/src/lib/channel-keys.ts` (fetch, open, seal, hand out,
+accept). Server: `server/src/routes/channel-keys.ts`,
+`server/src/services/channel-keys.ts` (`freshEpoch` is the rotation), and
+`checkSeal` in `routes/messages.ts`. Byte layouts both sides sign:
+`shared/src/channel-e2ee.ts`. Migration `0019_awesome_the_captain.sql`
+(`channel_epochs`, `channel_keys`, `messages.sender_device_id`,
+`messages.signature`). The device keys moved from `state/dms.tsx` to
+`lib/this-device.ts` so DMs and channels share one device.
+
+**How it reaches the screen.** Gateway events now go through a queue in
+`store.tsx` (`prepareEvent`): a sealed message is opened before the reducer,
+the listeners or the notices see it, so the rest of the app sees an ordinary
+message with text. History pages, pins and the saved list are opened the
+same way. `Message.sealed` (client only) says ok / unverified / no-key /
+forged / failed; `MessageList` draws each honestly. Notifications for a
+sealed message say who, not what.
+
+**Screens.** "End-to-end encrypted" tick in New channel (text only; cannot be
+undone). An "Encrypted" button in the channel header opens the lock panel:
+who holds the current key, any device waiting to be accepted, and what is
+not encrypted. Files, voice messages, /roll, /poll, /init are refused in an
+encrypted channel with a reason, and not offered. Shots:
+`docs/shots/channel-encrypted.png`, `channel-lock-panel.png`,
+`channel-locked-new-device.png`.
+
+**Tests.** `npm test`: server 236 (11 new in `channel-keys.test.ts`), web
+259 (12 new). `npm run test:channels` (new: three browsers plus a second
+device for Alex) all pass; `npm run test:smoke` 104 pass; `npm run test:dm`
+all pass (the device move touched it). Typecheck and build clean. Not run:
+`test:voice` (needs local LiveKit; nothing in voice changed) and
+`test:desktop` (nothing in `desktop/` changed).
+
+**Also fixed on the way:** editing a message now updates the quote above
+every reply to it, in every channel (it used to keep the old wording).
+bytea columns were serialized with `row.x.toString('base64')`, which prints
+"12,200,7" under PGlite; now `Buffer.from(...)`, as dms.ts already did.
+
+**Friction to watch with real people.** A person's new device has to be
+accepted, by anyone in the channel, before it gets the key; and that new
+device will not *send* until it believes the device that made the current
+key (its owner's old laptop, say). Both are one click in the lock panel and
+both are the right call (a server that invents a device must get nothing),
+but it is a click nobody has had to make in a channel before. A recovery
+phrase typed on the new device skips both.
+
+**Honest limits, in the doc:** no forward secrecy within an epoch (same as
+DMs); the server can replay or reorder one of your own signed messages
+within the same channel; reactions, reply pointers, mentions, authors and
+times are visible to the server.
+
+**To ship, when Wes says so:**
+
+    bash scripts/release.sh          (changelog entry 2026-09-23-sealed is on top; migration 0019 runs on the box)
+
+No installer: nothing in `desktop/` changed, and the app picks up the new
+client by itself. After it is live, the M7 done-when: Wes makes an
+encrypted channel and sends a line, and the main session runs a
+`select content, ciphertext from messages` on the box over ssh (there is no
+`box.sh` wrapper for psql yet) so he sees an empty content column and
+gibberish. Screenshot it into this file.
+
+**Next:** stage 2, files and voice messages locked in the browser
+(`sealFile` in `dm-crypto.ts` is the pattern; the file key rides inside the
+sealed body). Stage 3, turn encryption on for an existing channel.

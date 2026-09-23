@@ -324,6 +324,13 @@ export const messages = pgTable(
     ciphertext: bytea('ciphertext'),
     nonce: bytea('nonce'),
     keyEpoch: integer('key_epoch'),
+    /**
+     * Which of the author's devices sealed it, and that device's signature
+     * over the sealed bytes. The channel key lets any member lock a message;
+     * only the signature says who wrote it. `web/src/lib/channel-crypto.ts`.
+     */
+    senderDeviceId: text('sender_device_id'),
+    signature: bytea('signature'),
 
     replyToId: text('reply_to_id'),
     /** Set while pinned. Kept on the row: a pin is a fact about the message, not a list of its own. */
@@ -814,6 +821,61 @@ export const dmFiles = pgTable(
   },
   (table) => [index('dm_files_message_id_idx').on(table.messageId)],
 );
+
+/**
+ * One key per encrypted channel per epoch, made on a member's device. The
+ * server keeps the maker's signed commitment to the key, which lets every
+ * holder check that the copy they were handed is the same key everyone else
+ * has, and never the key itself. `docs/channel-e2ee.md`.
+ */
+export const channelEpochs = pgTable(
+  'channel_epochs',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    epoch: integer('epoch').notNull(),
+    creatorId: text('creator_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    creatorDeviceId: text('creator_device_id').notNull(),
+    commitment: bytea('commitment').notNull(),
+    signature: bytea('signature').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [primaryKey({ columns: [table.channelId, table.epoch] })],
+);
+
+/**
+ * An epoch's key, locked once for each device allowed to read the channel, by
+ * whichever device handed it over. First copy wins: a second hand-out to the
+ * same device changes nothing.
+ */
+export const channelKeys = pgTable(
+  'channel_keys',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    epoch: integer('epoch').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    deviceId: text('device_id').notNull(),
+    wrapperId: text('wrapper_id').notNull(),
+    wrapperDeviceId: text('wrapper_device_id').notNull(),
+    iv: bytea('iv').notNull(),
+    wrapped: bytea('wrapped').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.channelId, table.epoch, table.userId, table.deviceId] }),
+    index('channel_keys_device_idx').on(table.userId, table.deviceId),
+  ],
+);
+
+export type ChannelEpochRow = typeof channelEpochs.$inferSelect;
+export type ChannelKeyRow = typeof channelKeys.$inferSelect;
 
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;

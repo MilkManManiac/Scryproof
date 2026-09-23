@@ -63,7 +63,14 @@ export type ServerEvent =
    * everyone looking. Nothing is stored; `content` is the jump message's own
    * text, so a client that has not loaded that message can still play it.
    */
-  | { t: 'spawn_replay'; d: { messageId: Snowflake; channelId: Snowflake; content: string } }
+  /** `content` is null in an encrypted channel: the server cannot read the jump, the clients can. */
+  | { t: 'spawn_replay'; d: { messageId: Snowflake; channelId: Snowflake; content: string | null } }
+  /**
+   * An encrypted channel's keys changed: a new epoch was made, the current one
+   * was retired because someone lost access, or a device is waiting for a
+   * copy. Carries no key; whoever hears it asks for what concerns them.
+   */
+  | { t: 'channel_keys'; d: { channelId: Snowflake; current: number; wanted: boolean } }
   /**
    * A poll's public tally after a vote or a close. Never who voted for what,
    * and never anyone else's picks, which is why this is not `message_update`:

@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-23-sealed',
+    date: '2026-09-23',
+    title: 'Encrypted channels',
+    notes: [
+      "A text channel can now be end-to-end encrypted, like DMs. Tick \"End-to-end encrypted\" when you make one. Messages are locked on your device, and the server keeps only scrambled bytes it has no key for. Anyone looking at the server's database, Wes included, sees gibberish.",
+      'Everyone in the channel reads everything, history included. Someone new is handed the key by whoever is online. Someone who leaves or is removed gets nothing written after they go.',
+      'The Encrypted button at the top of the channel shows who holds the key. If a friend signs in on a new phone or computer, it says so there, and they get the key once you (or anyone else in the channel) press Accept.',
+      'What an encrypted channel cannot do yet: search, files, voice messages, polls, /roll and initiative. The server would have to read them. Who posted, when, reactions and who was mentioned are not hidden.',
+      'Every message is signed by the device that sent it, so nobody, in the channel or on the server, can post in your name.',
+      'Editing a message now updates the quote above every reply to it.',
+    ],
+  },
+  {
     id: '2026-09-23-fifth',
     date: '2026-09-23',
     title: 'Group DMs, calls in a DM, and an app that updates itself',

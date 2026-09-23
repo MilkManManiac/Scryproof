@@ -436,7 +436,7 @@ function DeviceWarnings({ dm, selfId }: { dm: DmChannel; selfId: string | null }
   );
 }
 
-function DeviceWarning({
+export function DeviceWarning({
   entry,
   person,
   mine,

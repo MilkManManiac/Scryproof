@@ -5317,3 +5317,48 @@ kbd {
 .coming-up-note-input:focus {
   border-color: var(--accent-dim);
 }
+
+/* Encrypted channels: the lock in the header and the panel behind it. */
+.channel-lock-button {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 9px;
+  margin-left: 8px;
+  cursor: pointer;
+  flex: none;
+}
+
+.channel-lock-button:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.lock-holders {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lock-holders li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--accent-wash);
+}
+
+.lock-devices {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.sealed-unverified {
+  cursor: help;
+}

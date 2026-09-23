@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import type { Message } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { channelKeysFor } from '../lib/channel-keys';
 import { toPlainLine } from '../lib/mentions';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -22,9 +23,12 @@ export function PinnedMessages({ channelId, onClose }: { channelId: string; onCl
 
   useEffect(() => {
     let cancelled = false;
+    const selfId = state.user?.id ?? null;
     api.messages
       .pins(channelId)
-      .then(({ messages }) => {
+      // In an encrypted channel the server hands back sealed pins; they are opened here.
+      .then(({ messages }) => (selfId ? channelKeysFor(selfId).open(messages) : messages))
+      .then((messages) => {
         if (!cancelled) setPins(messages);
       })
       .catch(() => {

@@ -135,7 +135,7 @@ async function endorsementHolds(
   }
 }
 
-const toDeviceKey = (row: DeviceKeyRow): DeviceKey => ({
+export const toDeviceKey = (row: DeviceKeyRow): DeviceKey => ({
   userId: row.userId,
   deviceId: row.deviceId,
   identityKey: row.identityKey,
@@ -326,7 +326,7 @@ function checkRecipients(keys: SealedKeys, memberIds: string[]): void {
  * The other side opens a message with the sender device's public key, so a
  * device nobody has heard of would produce a message nobody can read.
  */
-async function requirePublishedDevice(userId: string, deviceId: string): Promise<void> {
+export async function requirePublishedDevice(userId: string, deviceId: string): Promise<void> {
   const [sender] = await getDb()
     .select({ deviceId: deviceKeys.deviceId })
     .from(deviceKeys)

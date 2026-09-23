@@ -26,6 +26,7 @@ import { Composer } from './components/Composer';
 import { Initiative } from './components/Initiative';
 import { DmPane, DmSidebar } from './components/DirectMessages';
 import { DockButton } from './components/DockButton';
+import { ChannelLock } from './components/ChannelLock';
 import { InviteJoinModal } from './components/InviteJoinModal';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
@@ -287,6 +288,7 @@ function Shell() {
                   <span className="channel-sigil">{channel.type === 'voice' ? '♫' : '#'}</span>
                   {channel.name}
                 </div>
+                <ChannelLock channel={channel} />
                 {channel.topic ? <div className="main-topic">{channel.topic}</div> : null}
                 <div className="main-actions">
                   {phone ? (
