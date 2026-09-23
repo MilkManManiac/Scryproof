@@ -125,8 +125,13 @@ Wes to try screen share with his brother, then ship.
     and `dm-calls.md`. Re-read them against the current DM code before
     handing them out; the recovery phrase and vouching landed after they
     were written.
-15. **Channel deletion on Lamp's server.** Probably a missing
-    MANAGE_CHANNELS on his role. Confirm with him before building anything.
+15. **Channel deletion on Lamp's server.** CHECKED 2026-09-23, not a bug,
+    nothing built. Read-only on the box: lamp owns "Superest Secretest
+    Seahorse" (owner has every permission); its only other member is milky;
+    neither has a role, and @everyone has no Manage channels. Until the
+    release of 2026-09-23 00:44 ET there was no Delete anywhere in the UI
+    (it came in 59085e5, right-click on a channel). So lamp can delete
+    now; anyone else needs a role from him with Manage channels.
 
 15b. **A full emoji picker.** Wes, 2026-09-23: "pregnant man emoji isn't
     in". It is, but only by typing `:pregnant_man:`: the picker
