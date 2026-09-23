@@ -129,13 +129,20 @@ function ProfileCard({ opened, onClose, onEdit }: { opened: Opened; onClose: () 
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
-    // Next tick, or the click that opened the card closes it.
-    const timer = setTimeout(() => window.addEventListener('mousedown', onDown), 0);
+    // Capture phase, not bubble: several overlays in this app (Modal,
+    // QuickSwitcher, NoticeTimeline, PinnedMessages) call stopPropagation on
+    // mousedown inside their own box, so that clicking them does not also
+    // trigger their own backdrop's onClick-to-close. That stops the event
+    // before it bubbles up to a plain `window.addEventListener('mousedown',
+    // ...)`, so a card left open behind one of those never saw the click
+    // that should have closed it. Listening on the way down instead runs
+    // before any of that, and nothing below this can stop it.
+    const timer = setTimeout(() => window.addEventListener('mousedown', onDown, true), 0);
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onClose);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onClose);
     };
