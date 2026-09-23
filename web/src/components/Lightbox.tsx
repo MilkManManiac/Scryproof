@@ -2,9 +2,12 @@
  * A picture, held up to the light.
  *
  * Click any image in a message and it fills the screen. Scroll to zoom
- * around the pointer, drag to move, click the picture to flip between
- * fitted and actual size, Escape or the backdrop to put it down. Copy puts
- * the picture on the clipboard; Save downloads it under its own name.
+ * around the pointer, drag to move once zoomed, double-click to fit it
+ * again, Escape or a click on the dark around it to put it down. A single
+ * click on the picture does nothing: it used to flip between fitted and
+ * actual size, and the end of every drag counted as that click, so moving
+ * a zoomed picture snapped it back. Copy puts the picture on the clipboard;
+ * Save downloads it under its own name.
  *
  * It takes a URL and a name and nothing else, so it works the same for a
  * channel attachment (a URL on our API) and a DM picture (a blob this
@@ -55,7 +58,7 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [copied, setCopied] = useState<CopyState>('idle');
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean; onBackdrop: boolean } | null>(null);
 
   const box = () => {
     const element = stage.current;
@@ -99,19 +102,17 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
     return () => element.removeEventListener('wheel', onWheel);
   }, []);
 
-  /** Fitted and actual size, back and forth, around the click. */
-  const toggle = (event: React.MouseEvent) => {
-    if (!natural || !view) return;
-    const fitted = fitScale(natural, box());
-    const rect = stage.current!.getBoundingClientRect();
-    const at = { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 };
-    if (Math.abs(view.scale - fitted) < 0.001 && fitted < 1) setView(zoomAround(view, 1, at));
-    else setView({ scale: fitted, x: 0, y: 0 });
-  };
+  /** Bigger than fitted: only then is there anything to drag into view. */
+  const zoomed = (v: View | null): boolean => Boolean(v && natural && v.scale > fitScale(natural, box()) + 0.001);
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
-    drag.current = { x: event.clientX, y: event.clientY, moved: false };
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      moved: false,
+      onBackdrop: event.target === event.currentTarget,
+    };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
   const onPointerMove = (event: React.PointerEvent) => {
@@ -123,14 +124,15 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
     start.moved = true;
     start.x = event.clientX;
     start.y = event.clientY;
-    setView((v) => (v ? { ...v, x: v.x + dx, y: v.y + dy } : v));
+    setView((v) => (v && zoomed(v) ? { ...v, x: v.x + dx, y: v.y + dy } : v));
   };
-  const onPointerUp = (event: React.PointerEvent) => {
+  // Closing is decided here, not in a click handler: the stage captures the
+  // pointer, so a drag that began on the picture ends with a click whose
+  // target is the stage, and that looked exactly like a click on the dark.
+  const onPointerUp = () => {
     const start = drag.current;
     drag.current = null;
-    // A tap on the picture flips its size; a tap on the backdrop is the
-    // click handler's, and closes.
-    if (start && !start.moved && (event.target as HTMLElement).tagName === 'IMG') toggle(event);
+    if (start && start.onBackdrop && !start.moved) onClose();
   };
 
   async function copy() {
@@ -180,9 +182,8 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => (drag.current = null)}
-        onClick={(event) => {
-          // The backdrop puts the picture down; the picture itself does not.
-          if (event.target === event.currentTarget) onClose();
+        onDoubleClick={(event) => {
+          if (event.target !== event.currentTarget) fit();
         }}
       >
         <img
@@ -200,7 +201,7 @@ function LightboxView({ picture, onClose }: { picture: Picture; onClose: () => v
                   width: natural.width,
                   height: natural.height,
                   transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-                  cursor: view.scale > fitScale(natural, box()) + 0.001 ? 'grab' : 'zoom-in',
+                  cursor: zoomed(view) ? 'grab' : 'default',
                 }
               : { visibility: 'hidden' }
           }
