@@ -190,6 +190,14 @@ Wes to try screen share with his brother, then ship.
     model, where the crypto lives, and what is known and accepted. Their
     findings come back as a list and get fixed like any batch.
 
+25. **A tip link.** Wes, 2026-09-23: "something somewhere with my venmo
+    profile so people can tip/pay me. Can be very simple." A plain link
+    to his Venmo profile at the foot of settings, and once in What's
+    new. No Venmo script, image or QR fetched by the app; the desktop app
+    opens it in the default browser. Needs his @handle (ask). Before it
+    ships, remind him to set Venmo's privacy to Private, since payments
+    are public by default.
+
 ## Already done, so off the list
 
 Private channel switch on create (exists). Tray icon and start with
