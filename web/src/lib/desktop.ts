@@ -17,11 +17,17 @@ interface DesktopBridge {
   /** Absent in shells built before global push-to-talk. */
   watchPushKey?: (code: string | null) => Promise<boolean>;
   onPushHold?: (listener: (held: boolean) => void) => () => void;
+  /** Absent in shells built before the interface scale. */
+  setZoom?: (factor: number) => void;
 }
 
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+
+/** Zoom the whole window, where the app can. False in a browser or an older shell. */
+export const canZoom = typeof bridge?.setZoom === 'function';
+export const setZoom = (factor: number): void => bridge?.setZoom?.(factor);
 
 declare const __BUILD__: { commit: string; at: number };
 

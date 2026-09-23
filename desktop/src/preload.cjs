@@ -12,7 +12,7 @@
  * CommonJS because a sandboxed preload cannot be a module.
  */
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const read = (name) => {
   const flag = `--scryproof-${name}=`;
@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld(
      */
     watchPushKey: (code) => ipcRenderer.invoke('scryproof:ptt-watch', code),
     /** Held or released, for the watched key only. Returns the way to stop listening. */
+    /**
+     * The interface scale from the page's settings: the browser's own zoom,
+     * so every size and every pop-up position scales together.
+     */
+    setZoom: (factor) => {
+      if (typeof factor === 'number' && factor >= 0.5 && factor <= 2) webFrame.setZoomFactor(factor);
+    },
     onPushHold: (listener) => {
       const relay = (_event, held) => listener(held === true);
       ipcRenderer.on('scryproof:ptt', relay);

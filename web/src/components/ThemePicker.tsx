@@ -9,12 +9,13 @@
  * that theme. Same-origin stylesheets only, which is all this app has.
  */
 
-import { useMemo, useSyncExternalStore, type CSSProperties } from 'react';
+import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
 
-import { interfaceScale, SCALE_STEPS } from '../lib/interface-scale';
-import { theme } from '../lib/theme';
-import { THEMES } from '../lib/themes';
-import { Modal } from './Modal';
+import { canZoom, isDesktop, publicOrigin } from "../lib/desktop";
+import { interfaceScale, SCALE_STEPS } from "../lib/interface-scale";
+import { theme } from "../lib/theme";
+import { THEMES } from "../lib/themes";
+import { Modal } from "./Modal";
 
 function tokensFor(id: string): CSSProperties {
   const wanted = `:root[data-theme="${id}"]`;
@@ -28,10 +29,13 @@ function tokensFor(id: string): CSSProperties {
     }
     for (const rule of Array.from(rules)) {
       if (!(rule instanceof CSSStyleRule)) continue;
-      const selectors = rule.selectorText.split(',').map((entry) => entry.trim());
+      const selectors = rule.selectorText
+        .split(",")
+        .map((entry) => entry.trim());
       if (!selectors.includes(wanted)) continue;
       for (const name of Array.from(rule.style)) {
-        if (name.startsWith('--')) tokens[name] = rule.style.getPropertyValue(name).trim();
+        if (name.startsWith("--"))
+          tokens[name] = rule.style.getPropertyValue(name).trim();
       }
     }
   }
@@ -40,9 +44,15 @@ function tokensFor(id: string): CSSProperties {
 
 export function ThemePicker({ onClose }: { onClose: () => void }) {
   const current = useSyncExternalStore(theme.subscribe, theme.get);
-  const scale = useSyncExternalStore(interfaceScale.subscribe, interfaceScale.get);
+  const scale = useSyncExternalStore(
+    interfaceScale.subscribe,
+    interfaceScale.get,
+  );
   // Read once per opening: the stylesheets do not change while the dialog is up.
-  const painted = useMemo(() => new Map(THEMES.map((entry) => [entry.id, tokensFor(entry.id)])), []);
+  const painted = useMemo(
+    () => new Map(THEMES.map((entry) => [entry.id, tokensFor(entry.id)])),
+    [],
+  );
 
   return (
     <Modal
@@ -56,7 +66,8 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
       }
     >
       <p className="settings-note">
-        The room behind everything. Kept on this computer only; nobody else sees your choice.
+        The room behind everything. Kept on this computer only; nobody else sees
+        your choice.
       </p>
       <div className="theme-cards">
         {THEMES.map((entry) => {
@@ -65,7 +76,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
             <button
               key={entry.id}
               type="button"
-              className={inUse ? 'theme-card in-use' : 'theme-card'}
+              className={inUse ? "theme-card in-use" : "theme-card"}
               data-theme={entry.id}
               style={painted.get(entry.id)}
               aria-pressed={inUse}
@@ -75,7 +86,11 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
                 <div className="theme-card-page">
                   <strong>Scryproof</strong>
                   <span>
-                    <em>#</em> {entry.name.toLowerCase().replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '')}
+                    <em>#</em>{" "}
+                    {entry.name
+                      .toLowerCase()
+                      .replace(/[^a-z]+/g, "-")
+                      .replace(/^-|-$/g, "")}
                   </span>
                 </div>
               </div>
@@ -90,21 +105,36 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
         })}
       </div>
       <p className="settings-note">
-        Interface scale. Also kept on this computer only.
+        Interface scale.{" "}
+        {canZoom ? (
+          "Also kept on this computer only."
+        ) : isDesktop ? (
+          <>
+            Needs the newest desktop app:{" "}
+            <a href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
+              download it
+            </a>{" "}
+            and run it once.
+          </>
+        ) : (
+          "In a browser, hold Ctrl and press + or - to do the same."
+        )}
       </p>
-      <div className="scale-steps">
-        {SCALE_STEPS.map((percent) => (
-          <button
-            key={percent}
-            type="button"
-            className={percent === scale ? 'scale-step in-use' : 'scale-step'}
-            aria-pressed={percent === scale}
-            onClick={() => interfaceScale.set(percent)}
-          >
-            {percent}%
-          </button>
-        ))}
-      </div>
+      {canZoom ? (
+        <div className="scale-steps">
+          {SCALE_STEPS.map((percent) => (
+            <button
+              key={percent}
+              type="button"
+              className={percent === scale ? "scale-step in-use" : "scale-step"}
+              aria-pressed={percent === scale}
+              onClick={() => interfaceScale.set(percent)}
+            >
+              {percent}%
+            </button>
+          ))}
+        </div>
+      ) : null}
     </Modal>
   );
 }
