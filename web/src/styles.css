@@ -573,6 +573,12 @@ select {
   flex: 0 0 auto;
 }
 
+.channel-draft {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
 .voice-members {
   padding: 2px 0 4px 28px;
   display: flex;

@@ -12,6 +12,7 @@ import type { ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';
+import { channelDrafts, isShortDraft } from '../lib/drafts';
 import { notifyPrefs } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
@@ -46,6 +47,10 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
+  // The version, not the text itself: only used to make React re-render this
+  // list when a draft changes, and every channel reads its own text back off
+  // the store below.
+  useSyncExternalStore(channelDrafts.subscribe, channelDrafts.getVersion);
 
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
   const canInvite = canOnServer(server, Permission.CREATE_INVITE);
@@ -195,6 +200,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     // disagreeing.
                     const { unread, mentions } = unreadFor(state, channel);
                     const muted = notifyState.mutedChannels.includes(channel.id);
+                    const hasDraft = isShortDraft(channelDrafts.get(channel.id));
 
                     // The type is a class too, so a voice channel can be told from a
                     // text one by selector (the screenshot script needs that).
@@ -230,6 +236,11 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                           {channel.encrypted ? (
                             <span className="channel-lock" title="End-to-end encrypted">
                               &#128274;
+                            </span>
+                          ) : null}
+                          {hasDraft ? (
+                            <span className="channel-draft" title="You have an unsent draft here">
+                              &#9998;
                             </span>
                           ) : null}
                           {mentions > 0 ? (
