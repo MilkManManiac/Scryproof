@@ -29,6 +29,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { armContextMenu } from './context-menu.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
@@ -299,6 +300,14 @@ function armPermissions(ses) {
 
 /* ---------------------------------- window --------------------------------- */
 
+/** Opens a web address in the real browser. Used for links out of the page, and "Open link" on the right-click menu. */
+const outside = (target) => {
+  try {
+    const url = new URL(target);
+    if (url.protocol === 'https:' || url.protocol === 'http:') void shell.openExternal(url.toString());
+  } catch { /* not an address */ }
+};
+
 let win = null;
 let tray = null;
 /** Closing the window leaves the app in the tray, so a call or a pop-up survives it. Quit is in the tray menu. */
@@ -383,12 +392,6 @@ function createWindow(visible = true) {
 
   // The window shows this app and nothing else. A link in a message opens in
   // the real browser, and only if it is a web address.
-  const outside = (target) => {
-    try {
-      const url = new URL(target);
-      if (url.protocol === 'https:' || url.protocol === 'http:') void shell.openExternal(url.toString());
-    } catch { /* not an address */ }
-  };
   win.webContents.setWindowOpenHandler(({ url }) => {
     outside(url);
     return { action: 'deny' };
@@ -399,6 +402,7 @@ function createWindow(visible = true) {
     outside(url);
   });
   win.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  armContextMenu(win.webContents, outside);
   win.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
