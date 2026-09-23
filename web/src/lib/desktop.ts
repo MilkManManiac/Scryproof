@@ -14,6 +14,10 @@ interface DesktopBridge {
   updateState?: () => Promise<number | null>;
   onUpdateReady?: (listener: (version: number) => void) => void;
   applyUpdate?: () => Promise<boolean>;
+  /** Absent in shells built before the app could update itself (0.4.0 and older). */
+  shellUpdateState?: () => Promise<string | null>;
+  onShellUpdateReady?: (listener: (version: string) => void) => void;
+  applyShellUpdate?: () => Promise<boolean>;
   /** Absent in shells built before global push-to-talk. */
   watchPushKey?: (code: string | null) => Promise<boolean>;
   onPushHold?: (listener: (held: boolean) => void) => () => void;
@@ -116,6 +120,23 @@ export async function holdPushKey(code: string, onHold: (held: boolean) => void)
     void bridge.watchPushKey?.(null);
   };
 }
+
+/**
+ * Tell `listener` when a newer installer for the app itself has been fetched
+ * and checked by the shell. Never in a browser or an older shell.
+ */
+export function onShellUpdate(listener: () => void): void {
+  if (!bridge?.shellUpdateState || !bridge.onShellUpdateReady) return;
+  bridge.onShellUpdateReady(() => listener());
+  void bridge.shellUpdateState().then((version) => {
+    if (version !== null) listener();
+  });
+}
+
+/** Close the app and run the waiting installer, which opens it again. */
+export const applyShellUpdate = (): void => {
+  void bridge?.applyShellUpdate?.();
+};
 
 export const applyClientUpdate = (): void => {
   if (bridge) void bridge.applyUpdate?.();

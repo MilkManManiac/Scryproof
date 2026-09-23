@@ -17,37 +17,21 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 import { openBundle, packBundle, readManifest, signBundle } from '../src/update-core.js';
+import { keyMismatchMessage, loadSigningKey, matchesBakedKey, publicKeyPath, root } from './signing-key.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const keyPath = process.env.SCRYPROOF_UPDATE_KEY ?? join(homedir(), '.scryproof', 'update-key.pem');
-const publicKeyPath = join(root, 'desktop', 'src', 'update-key.pub.pem');
 const outDir = process.env.SCRYPROOF_UPDATE_OUT ?? join(root, 'web', 'public', 'desktop-update');
 const dist = join(root, 'web', 'dist');
 
-if (!existsSync(keyPath)) {
-  const { privateKey } = generateKeyPairSync('ed25519');
-  mkdirSync(dirname(keyPath), { recursive: true });
-  writeFileSync(keyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-  console.log(`Made a new signing key at ${keyPath}. Apps built before now will not accept updates signed with it.`);
-}
-const privateKey = createPrivateKey(readFileSync(keyPath));
-const publicKeyPem = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
+const { privateKey, publicKeyPem } = loadSigningKey({ create: true });
 
 // The key the apps are built with has to be the other half of the one signing. Out of step, every update would be refused.
 if (!process.env.SCRYPROOF_UPDATE_OUT) {
-  // Git on Windows may have rewritten the line endings. The key is the same key.
-  if (existsSync(publicKeyPath) && readFileSync(publicKeyPath, 'utf8').replace(/\r\n/g, '\n') !== publicKeyPem) {
-    console.error(
-      `The signing key at ${keyPath} is not the one installed apps trust (desktop/src/update-key.pub.pem).\n` +
-        'If the old key is lost, delete that .pem file, run this again, and build and hand out a new installer.',
-    );
+  if (!matchesBakedKey(publicKeyPem)) {
+    console.error(keyMismatchMessage());
     process.exit(1);
   }
   writeFileSync(publicKeyPath, publicKeyPem);

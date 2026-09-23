@@ -13,7 +13,7 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
-import { applyClientUpdate, onClientUpdate } from './lib/desktop';
+import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
 import { OPEN_DOCK, on } from './lib/signals';
 import { usePhone } from './lib/usePhone';
@@ -100,11 +100,30 @@ export function App() {
  * call, so the person picks the moment. Nothing reloads on its own (Wes,
  * 2026-09-21). Left alone, it is simply there next time the app or the tab
  * is opened.
+ *
+ * In the app, a newer installer can be waiting too. That one wins: it carries
+ * a client of its own, and restarting installs both.
  */
 function UpdateBanner({ inVoice }: { inVoice: boolean }) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => onClientUpdate(() => setReady(true)), []);
-  if (!ready) return null;
+  const [client, setClient] = useState(false);
+  const [shell, setShell] = useState(false);
+  useEffect(() => onClientUpdate(() => setClient(true)), []);
+  useEffect(() => onShellUpdate(() => setShell(true)), []);
+  if (shell) {
+    return (
+      <div className="banner update">
+        A new version of the app is ready.{' '}
+        {inVoice ? (
+          'Restart to install when your call is over.'
+        ) : (
+          <button type="button" className="link-button" onClick={applyShellUpdate}>
+            Restart to install
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (!client) return null;
   return (
     <div className="banner update">
       A newer Scryproof is ready.{' '}
