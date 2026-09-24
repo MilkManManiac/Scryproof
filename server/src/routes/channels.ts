@@ -81,7 +81,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 
     const db = getDb();
 
-    if (body.categoryId) {
+    if (body.categoryId !== undefined && body.categoryId !== null) {
       const [category] = await db
         .select()
         .from(categories)
@@ -216,6 +216,15 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     const db = getDb();
     const [existing] = await db.select().from(channels).where(eq(channels.id, channelId)).limit(1);
     if (!existing) throw notFound('That channel does not exist.', 'unknown_channel');
+
+    if (body.categoryId !== undefined && body.categoryId !== null) {
+      const [category] = await db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(and(eq(categories.id, body.categoryId), eq(categories.serverId, ctx.serverId)))
+        .limit(1);
+      if (!category) throw badRequest('That category does not exist.', 'unknown_category');
+    }
 
     // Encryption goes on and stays on. Switching it off would quietly turn a
     // channel people believe is private back into one the server reads, and
@@ -358,17 +367,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       throw forbidden('You can only change permissions you have yourself.');
     }
 
-    if (body.targetType === 'role') {
-      const [role] = await getDb()
-        .select()
-        .from(roles)
-        .where(and(eq(roles.id, targetId), eq(roles.serverId, ctx.serverId)))
-        .limit(1);
-      if (!role) throw badRequest('That role does not exist.', 'unknown_role');
-      // @everyone sits at position 0 and is editable by anyone with the
-      // permission; any other role must sit below the actor's highest.
-      if (!role.isEveryone) requireRoleBelow(ctx, role.position);
-    }
+    await requireOverwriteTarget(ctx, body.targetType, targetId);
 
     const db = getDb();
     await db
@@ -766,15 +765,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       throw forbidden('You can only change permissions you have yourself.');
     }
 
-    if (body.targetType === 'role') {
-      const [role] = await getDb()
-        .select()
-        .from(roles)
-        .where(and(eq(roles.id, targetId), eq(roles.serverId, category.serverId)))
-        .limit(1);
-      if (!role) throw badRequest('That role does not exist.', 'unknown_role');
-      if (!role.isEveryone) requireRoleBelow(ctx, role.position);
-    }
+    await requireOverwriteTarget(ctx, body.targetType, targetId);
 
     await getDb()
       .insert(categoryOverwrites)
@@ -832,6 +823,33 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     hub.invalidateServerPermissions(category.serverId);
     return { ok: true };
   });
+}
+
+async function requireOverwriteTarget(
+  ctx: MemberContext,
+  targetType: 'role' | 'member',
+  targetId: string,
+): Promise<void> {
+  const db = getDb();
+  if (targetType === 'member') {
+    const [member] = await db
+      .select({ userId: members.userId })
+      .from(members)
+      .where(and(eq(members.serverId, ctx.serverId), eq(members.userId, targetId)))
+      .limit(1);
+    if (!member) throw badRequest('That member does not exist.', 'unknown_member');
+    return;
+  }
+
+  const [role] = await db
+    .select()
+    .from(roles)
+    .where(and(eq(roles.id, targetId), eq(roles.serverId, ctx.serverId)))
+    .limit(1);
+  if (!role) throw badRequest('That role does not exist.', 'unknown_role');
+  // @everyone sits at position 0 and is editable by anyone with the
+  // permission; any other role must sit below the actor's highest.
+  if (!role.isEveryone) requireRoleBelow(ctx, role.position);
 }
 
 /**

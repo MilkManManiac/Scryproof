@@ -145,6 +145,37 @@ export async function sharesAServer(a: string, b: string): Promise<boolean> {
   return Boolean(shared);
 }
 
+/** User ids whose profiles the viewer may see: themselves or shared-server members. */
+export async function visibleProfileUserIds(
+  viewerId: string,
+  targetIds: Iterable<string>,
+): Promise<Set<string>> {
+  const wanted = new Set(targetIds);
+  const visible = new Set<string>();
+
+  if (wanted.delete(viewerId)) visible.add(viewerId);
+  if (wanted.size === 0) return visible;
+
+  const db = getDb();
+  const mine = await db
+    .select({ serverId: members.serverId })
+    .from(members)
+    .where(eq(members.userId, viewerId));
+  if (mine.length === 0) return visible;
+
+  const shared = await db
+    .select({ userId: members.userId })
+    .from(members)
+    .where(
+      and(
+        inArray(members.serverId, mine.map((row) => row.serverId)),
+        inArray(members.userId, [...wanted]),
+      ),
+    );
+  for (const row of shared) visible.add(row.userId);
+  return visible;
+}
+
 export async function isBanned(serverId: string, userId: string): Promise<boolean> {
   const [row] = await getDb()
     .select({ userId: bans.userId })

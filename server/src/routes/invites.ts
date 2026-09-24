@@ -16,7 +16,7 @@ import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { invites, members, servers } from '../db/schema.js';
-import { badRequest, notFound } from '../lib/http-error.js';
+import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { inviteCode } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
@@ -24,7 +24,7 @@ import * as serialize from '../services/serialize.js';
 import { consumeInvitePreflight } from '../services/auth.js';
 import { loadMemberContext, requireMember, requireServerPermission } from '../services/permissions.js';
 import { buildServerDetail } from '../services/server-detail.js';
-import { addMember } from '../services/servers.js';
+import { addMember, canCreateServers } from '../services/servers.js';
 
 const EXPIRY_PRESETS = {
   '30m': 30 * 60 * 1000,
@@ -225,6 +225,10 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
         expiresIn: z.enum(['30m', '6h', '1d', '7d', 'never']).default('7d'),
       })
       .parse(request.body ?? {});
+
+    if (!(await canCreateServers(user.id))) {
+      throw forbidden('Only the host can create account invitations.');
+    }
 
     const ttl = EXPIRY_PRESETS[body.expiresIn];
     const code = inviteCode();

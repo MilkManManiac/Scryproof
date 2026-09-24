@@ -23,6 +23,7 @@ import { badRequest, notFound } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as serialize from '../services/serialize.js';
 import { buildStorageKey, deleteObject, readFromS3, readStream, saveStream } from '../services/storage.js';
+import { visibleProfileUserIds } from '../services/servers.js';
 import { config } from '../config.js';
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -107,8 +108,11 @@ export async function registerProfileRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.get('/api/avatars/:userId/:avatarId', async (request, reply) => {
-    requireUser(request);
+    const user = requireUser(request);
     const { userId, avatarId } = z.object({ userId: z.string(), avatarId: z.string() }).parse(request.params);
+    const visibleIds = await visibleProfileUserIds(user.id, [userId]);
+    if (!visibleIds.has(userId)) throw notFound('No such picture.', 'unknown_avatar');
+
     const [row] = await getDb().select().from(avatars).where(eq(avatars.id, avatarId)).limit(1);
     if (!row || row.userId !== userId) throw notFound('No such picture.', 'unknown_avatar');
 

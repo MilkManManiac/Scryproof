@@ -21,15 +21,15 @@ import {
   requireHigherThan,
   requireServerPermission,
 } from '../services/permissions.js';
-import { buildServerDetail, loadAllServerDetails, loadServerDetail } from '../services/server-detail.js';
+import { loadAllServerDetails, loadServerDetail } from '../services/server-detail.js';
 import {
-  addMember,
   canCreateServers,
   createServer,
   deleteServer,
   leaveServer,
   removeMember,
   transferOwnership,
+  visibleProfileUserIds,
 } from '../services/servers.js';
 
 /** Members plus their roles, in one pass rather than a query per member. */
@@ -416,42 +416,16 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     return { entries: await audit.list(serverId) };
   });
 
-  /**
-   * Join by id is intentionally absent. The only way into a server is an
-   * invite (see routes/invites.ts), so a member list is never discoverable by
-   * guessing.
-   */
-  app.post('/api/servers/:serverId/members/:userId', async (request) => {
-    const actor = requireUser(request);
-    const { serverId, userId } = z
-      .object({ serverId: z.string(), userId: z.string() })
-      .parse(request.params);
-
-    if (userId !== actor.id) {
-      throw badRequest('People join with an invite, they are not added.', 'use_invite');
-    }
-
-    await addMember(serverId, userId);
-    const ctx = await requireMember(serverId, userId);
-    const detail = await buildServerDetail(ctx);
-    if (!detail) throw notFound('That server does not exist.', 'unknown_server');
-
-    hub.addUserToServer(userId, serverId);
-    hub.sendToUser(userId, { t: 'server_create', d: detail });
-
-    const joined = (await listMembers(serverId)).find((m) => m.userId === userId);
-    if (joined) hub.broadcastToServer(serverId, { t: 'member_join', d: joined });
-
-    return { server: detail };
-  });
-
   /** Used by the role editor to resolve ids to people in one request. */
   app.post('/api/users/lookup', async (request) => {
-    requireUser(request);
+    const user = requireUser(request);
     const body = z.object({ ids: z.array(z.string()).max(200) }).parse(request.body);
     if (body.ids.length === 0) return { users: [] };
 
-    const rows = await getDb().select().from(users).where(inArray(users.id, body.ids));
+    const visibleIds = await visibleProfileUserIds(user.id, body.ids);
+    if (visibleIds.size === 0) return { users: [] };
+
+    const rows = await getDb().select().from(users).where(inArray(users.id, [...visibleIds]));
     return { users: rows.map(serialize.publicUser) };
   });
 }
