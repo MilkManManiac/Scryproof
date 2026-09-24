@@ -20,8 +20,8 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-09-23-expiry',
-    date: '2026-09-23',
+    id: '2026-09-24-expiry',
+    date: '2026-09-24',
     title: 'Messages that do not last',
     notes: [
       'A channel can now keep its messages for 1 day, 7 days, 30 days or 90 days instead of forever. Pick it under "Messages last" in the channel settings.',
@@ -30,8 +30,8 @@ export const CHANGELOG: readonly Release[] = [
     ],
   },
   {
-    id: '2026-09-23-waiting',
-    date: '2026-09-23',
+    id: '2026-09-24-waiting',
+    date: '2026-09-24',
     title: 'See who messaged you',
     notes: [
       'When someone DMs you, their picture shows up under the @ button on the left with how many messages are waiting. Click it to go straight to the conversation.',
