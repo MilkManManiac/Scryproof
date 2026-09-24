@@ -23,7 +23,6 @@ import {
 } from '../services/permissions.js';
 import { buildServerDetail, loadAllServerDetails, loadServerDetail } from '../services/server-detail.js';
 import {
-  addMember,
   canCreateServers,
   createServer,
   deleteServer,
@@ -418,32 +417,11 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * Join by id is intentionally absent. The only way into a server is an
-   * invite (see routes/invites.ts), so a member list is never discoverable by
-   * guessing.
+   * invite (see routes/invites.ts), so a server is never enterable by
+   * guessing its id. A self-join route lived here until 2026-09-24; Alex
+   * found that any signed-in account could walk into any server with it.
+   * `server/src/tests/join-by-id.test.ts` keeps it gone.
    */
-  app.post('/api/servers/:serverId/members/:userId', async (request) => {
-    const actor = requireUser(request);
-    const { serverId, userId } = z
-      .object({ serverId: z.string(), userId: z.string() })
-      .parse(request.params);
-
-    if (userId !== actor.id) {
-      throw badRequest('People join with an invite, they are not added.', 'use_invite');
-    }
-
-    await addMember(serverId, userId);
-    const ctx = await requireMember(serverId, userId);
-    const detail = await buildServerDetail(ctx);
-    if (!detail) throw notFound('That server does not exist.', 'unknown_server');
-
-    hub.addUserToServer(userId, serverId);
-    hub.sendToUser(userId, { t: 'server_create', d: detail });
-
-    const joined = (await listMembers(serverId)).find((m) => m.userId === userId);
-    if (joined) hub.broadcastToServer(serverId, { t: 'member_join', d: joined });
-
-    return { server: detail };
-  });
 
   /** Used by the role editor to resolve ids to people in one request. */
   app.post('/api/users/lookup', async (request) => {

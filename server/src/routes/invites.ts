@@ -16,7 +16,7 @@ import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { invites, members, servers } from '../db/schema.js';
-import { badRequest, notFound } from '../lib/http-error.js';
+import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { inviteCode } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
@@ -24,7 +24,7 @@ import * as serialize from '../services/serialize.js';
 import { consumeInvitePreflight } from '../services/auth.js';
 import { loadMemberContext, requireMember, requireServerPermission } from '../services/permissions.js';
 import { buildServerDetail } from '../services/server-detail.js';
-import { addMember } from '../services/servers.js';
+import { addMember, canCreateServers } from '../services/servers.js';
 
 const EXPIRY_PRESETS = {
   '30m': 30 * 60 * 1000,
@@ -215,10 +215,15 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * An invite that creates an account rather than joining a server. This is
-   * how a new person gets onto a private instance at all.
+   * how a new person gets onto a private instance at all, so only the host
+   * (the same person who may make servers) hands them out. Until 2026-09-24
+   * any signed-in account could; Alex found it.
    */
   app.post('/api/instance-invites', async (request) => {
     const user = requireUser(request);
+    if (!(await canCreateServers(user.id))) {
+      throw forbidden('Only the host can invite new people to this instance.');
+    }
     const body = z
       .object({
         maxUses: z.number().int().min(1).max(100).nullable().optional(),
