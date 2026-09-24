@@ -12,8 +12,9 @@ import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { notifyPrefs } from '../lib/notify';
-import { unreadDmCount, useDms } from '../state/dms';
+import { dmWaiting, othersIn, titleOf, unreadDmCount, useDms, waitingDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
+import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
@@ -30,8 +31,12 @@ function tile(name: string): string {
 
 export function ServerRail() {
   const { state, selectServer, refreshServer } = useStore();
-  const { state: dms, showDms, hideDms } = useDms();
+  const { state: dms, showDms, hideDms, openDm } = useDms();
   const waiting = unreadDmCount(dms);
+  const selfId = state.user?.id ?? null;
+  // Who is waiting on you, as faces under the DM button, the way Discord does
+  // it. Five at most; the @ badge still counts every one.
+  const faces = waitingDms(dms).slice(0, 5);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [name, setName] = useState('');
@@ -97,6 +102,25 @@ export function ServerRail() {
         @
         {waiting > 0 ? <span className="badge">{badgeText(waiting)}</span> : null}
       </button>
+      {faces.map((dm) => {
+        const title = titleOf(dm, selfId);
+        const count = dmWaiting(dm);
+        const others = othersIn(dm, selfId);
+        const face = dm.kind === 'pair' && others.length === 1 ? others[0]! : null;
+        const looking = dms.active && dms.openId === dm.id;
+        return (
+          <button
+            key={dm.id}
+            type="button"
+            className={`rail-item rail-face unread${looking ? ' active' : ''}${face ? '' : ' group'}`}
+            title={`${title} — ${count} unread`}
+            onClick={() => openDm(dm.id)}
+          >
+            {face ? <Avatar user={face} /> : tile(title)}
+            <span className="badge">{badgeText(count)}</span>
+          </button>
+        );
+      })}
       <NoticeBell />
       <div className="rail-divider" />
 

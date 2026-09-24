@@ -145,7 +145,7 @@ type Action =
   | { type: 'reactions'; dmId: string; reactions: DmReactionView[] }
   | { type: 'reaction-removed'; dmId: string; id: string }
   | { type: 'deleted'; dmId: string; id: string }
-  | { type: 'touched'; dmId: string; messageId: string }
+  | { type: 'touched'; dmId: string; messageId: string; fromOther: boolean }
   | { type: 'read'; dmId: string; messageId: string };
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -231,12 +231,23 @@ function reducer(state: DmState, action: Action): DmState {
     case 'touched': {
       const dm = state.dms[action.dmId];
       if (!dm || (dm.lastMessageId && dm.lastMessageId >= action.messageId)) return state;
-      return { ...state, dms: { ...state.dms, [action.dmId]: { ...dm, lastMessageId: action.messageId } } };
+      const unreadCount = (dm.unreadCount ?? 0) + (action.fromOther ? 1 : 0);
+      return { ...state, dms: { ...state.dms, [action.dmId]: { ...dm, lastMessageId: action.messageId, unreadCount } } };
     }
     case 'read': {
       const dm = state.dms[action.dmId];
       if (!dm || (dm.lastReadMessageId && dm.lastReadMessageId >= action.messageId)) return state;
-      return { ...state, dms: { ...state.dms, [action.dmId]: { ...dm, lastReadMessageId: action.messageId } } };
+      // Read to the newest is read. Read part way (another device, mid-scroll)
+      // keeps the count until the list is fetched again: a count that is a
+      // little high beats one that says nothing is waiting when something is.
+      const caughtUp = !dm.lastMessageId || action.messageId >= dm.lastMessageId;
+      return {
+        ...state,
+        dms: {
+          ...state.dms,
+          [action.dmId]: { ...dm, lastReadMessageId: action.messageId, unreadCount: caughtUp ? 0 : dm.unreadCount },
+        },
+      };
     }
     default:
       return state;
@@ -589,7 +600,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
           const { dms } = await api.dms.list();
           dispatch({ type: 'dms', dms });
         }
-        dispatch({ type: 'touched', dmId: message.dmId, messageId: message.id });
+        dispatch({ type: 'touched', dmId: message.dmId, messageId: message.id, fromOther: message.authorId !== selfId });
         if (message.authorId === selfId) dispatch({ type: 'read', dmId: message.dmId, messageId: message.id });
 
         const looking = stateRef.current.active && stateRef.current.openId === message.dmId;
@@ -764,7 +775,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       const { known, message } = await seal(dmId, body);
       const { message: created } = await api.dms.send(dmId, { ...message, fileIds: files?.map((file) => file.id) });
       remember([created]);
-      dispatch({ type: 'touched', dmId, messageId: created.id });
+      dispatch({ type: 'touched', dmId, messageId: created.id, fromOther: false });
       dispatch({ type: 'read', dmId, messageId: created.id });
       dispatch({ type: 'messages', dmId, views: [await toView(created, known)], replace: false });
       const spawn = spawnOf(text);
@@ -950,6 +961,25 @@ export const dmUnread = (dm: DmChannel): boolean =>
 
 export function unreadDmCount(state: DmState): number {
   return Object.values(state.dms).filter(dmUnread).length;
+}
+
+/** Messages waiting in one conversation. At least one if it is unread at all. */
+export function dmWaiting(dm: DmChannel): number {
+  return dmUnread(dm) ? Math.max(1, dm.unreadCount ?? 0) : 0;
+}
+
+/** Unread conversations, newest first: the faces stacked under the DM button. */
+export function waitingDms(state: DmState): DmChannel[] {
+  return sortedDms(state).filter(dmUnread);
+}
+
+/** The pair conversation with this person, if there is one. */
+export function pairWith(state: DmState, selfId: string | null, userId: string): DmChannel | null {
+  return (
+    Object.values(state.dms).find(
+      (dm) => dm.kind === 'pair' && dm.members.some((member) => member.id === userId) && othersIn(dm, selfId).length === 1,
+    ) ?? null
+  );
 }
 
 /**

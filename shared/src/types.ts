@@ -444,6 +444,8 @@ export interface DmChannel {
   lastMessageId: Snowflake | null;
   /** How far the person asking has read. */
   lastReadMessageId: Snowflake | null;
+  /** Messages from other people after that point. Reactions and deleted ones do not count. */
+  unreadCount: number;
   createdAt: Timestamp;
 }
 

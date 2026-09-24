@@ -279,6 +279,24 @@ describe('group conversations', () => {
     assert.equal(after[0]!.keys[0]?.userId, dev.id);
   });
 
+  it('counts what is waiting, and reading clears it', async () => {
+    const { wes, alex, mara, dev } = people;
+    const unread = async (person: Person): Promise<number | undefined> =>
+      ((await call(person, 'GET', '/api/dms')).json().dms as DmChannel[]).find((dm) => dm.id === groupId)?.unreadCount;
+
+    // Wes sent one in the last test; Dev has not read it.
+    assert.equal(await unread(dev), 1);
+    const sent = await call(wes, 'POST', `/api/dms/${groupId}/messages`, sealedFor(wes, [alex, mara, dev]));
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.equal(await unread(dev), 2);
+    assert.equal(await unread(wes), 0, 'your own messages counted as waiting for you');
+
+    const newest = (sent.json().message as DmMessage).id;
+    const read = await call(dev, 'PUT', `/api/dms/${groupId}/read`, { messageId: newest });
+    assert.equal(read.statusCode, 200, read.body);
+    assert.equal(await unread(dev), 0);
+  });
+
   it('leaving takes someone out of everything sent after', async () => {
     const { wes, alex, mara, dev } = people;
     for (const person of Object.values(people)) person.inbox.length = 0;

@@ -409,6 +409,22 @@ select {
   font-weight: 600;
 }
 
+/* Someone waiting on you: their face under the DM button, round like a
+   person rather than square like a place. */
+.rail-face {
+  border-radius: 50%;
+  padding: 0;
+  font-size: 15px;
+}
+.rail-face .avatar {
+  width: 100%;
+  height: 100%;
+  font-size: 16px;
+}
+.rail-face.group {
+  border-radius: var(--radius-lg);
+}
+
 .rail-bell {
   color: var(--text-muted);
 }
@@ -1739,7 +1755,8 @@ select {
   background: var(--panel-3);
   color: var(--text);
 }
-.member.offline {
+/* Offline dims the person, not what they left you: the DM count stays bright. */
+.member.offline > :not(.member-dm) {
   opacity: 0.44;
 }
 
@@ -4208,6 +4225,22 @@ video.mirrored {
 }
 .channel .badge {
   margin-left: auto;
+}
+/* In the member list: messages from this person waiting in your DMs. */
+.member-dm {
+  margin-left: auto;
+  cursor: pointer;
+  border: 0;
+}
+.member-dm:hover {
+  filter: brightness(1.12);
+}
+.member-flags + .member-dm,
+.member-timeout + .member-dm {
+  margin-left: 6px;
+}
+.member-dm + .member-menu {
+  margin-left: 4px;
 }
 
 .message-text .link {

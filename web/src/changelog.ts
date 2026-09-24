@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-23-waiting',
+    date: '2026-09-23',
+    title: 'See who messaged you',
+    notes: [
+      'When someone DMs you, their picture shows up under the @ button on the left with how many messages are waiting. Click it to go straight to the conversation.',
+      'In a server, the member list shows the same count next to anyone who has messaged you. Click the number to open the conversation.',
+    ],
+  },
+  {
     id: '2026-09-23-calls',
     date: '2026-09-23',
     title: 'Calls like Discord, and it rings',

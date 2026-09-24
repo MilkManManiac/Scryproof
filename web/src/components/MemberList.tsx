@@ -14,8 +14,8 @@ import { ApiError, api } from '../lib/api';
 import { useLocalNames } from '../lib/local-names';
 import { nameOf } from '../lib/mentions';
 import { timeoutEndsAt } from '../lib/usePermissions';
-import { useDms } from '../state/dms';
-import { useStore } from '../state/store';
+import { dmWaiting, pairWith, useDms } from '../state/dms';
+import { badgeText, useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
 import { authorityFor } from './settings/authority';
@@ -62,7 +62,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
   }, [state.voiceStates, server.id]);
   const voiceChannelName = (channelId: string | null): string =>
     server.channels.find((channel) => channel.id === channelId)?.name ?? 'voice';
-  const { openWith } = useDms();
+  const { state: dmState, openWith, openDm } = useDms();
   const card = useProfileCard();
   const members = state.members[server.id];
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -155,6 +155,9 @@ export function MemberList({ server }: { server: ServerDetail }) {
             // it would succeed keeps the list from handing out dead choices.
             const moderatable = mayModerate && !self && authority.canActOnMember(member);
             const open = menu?.userId === member.userId ? menu : null;
+            // Unread messages from this person in your DMs with them.
+            const pair = self ? null : pairWith(dmState, state.user?.id ?? null, member.userId);
+            const waiting = pair ? dmWaiting(pair) : 0;
 
             return (
               <div key={member.userId} style={{ position: 'relative' }}>
@@ -212,6 +215,20 @@ export function MemberList({ server }: { server: ServerDetail }) {
                     <span className="member-timeout" title={`Timed out until ${until.toLocaleString()}`}>
                       &#9201;
                     </span>
+                  ) : null}
+                  {pair && waiting > 0 ? (
+                    <button
+                      type="button"
+                      className="badge member-dm"
+                      title={`${waiting} unread from ${nameOf(member)}. Open the conversation.`}
+                      onClick={(event) => {
+                        // The row opens the card; this opens the messages.
+                        event.stopPropagation();
+                        openDm(pair.id);
+                      }}
+                    >
+                      {badgeText(waiting)}
+                    </button>
                   ) : null}
                   {self ? null : (
                     <span className="member-menu">

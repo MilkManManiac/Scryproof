@@ -211,6 +211,26 @@ async function describeDms(rows: DmChannelRow[], forUserId: string): Promise<DmC
         .limit(1);
       lastMessageId = newest?.id ?? null;
     }
+    const lastReadMessageId = mine.find((member) => member.userId === forUserId)?.lastReadMessageId ?? null;
+    // How many messages are waiting, for the badges. Counting rows reads no
+    // text: the server only knows that sealed messages exist, which it already
+    // knows. Only asked for conversations that are unread at all.
+    let unreadCount = 0;
+    if (lastMessageId && (!lastReadMessageId || lastMessageId > lastReadMessageId)) {
+      const conditions = [
+        eq(dmMessages.dmId, row.id),
+        isNull(dmMessages.reactionTo),
+        isNull(dmMessages.deletedAt),
+        sql`${dmMessages.authorId} <> ${forUserId}`,
+      ];
+      if (lastReadMessageId) conditions.push(sql`${dmMessages.id} > ${lastReadMessageId}`);
+      if (silenced.length > 0) conditions.push(notInArray(dmMessages.authorId, silenced));
+      const [counted] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(dmMessages)
+        .where(and(...conditions));
+      unreadCount = counted?.count ?? 0;
+    }
     out.push({
       id: row.id,
       kind: row.kind,
@@ -220,7 +240,8 @@ async function describeDms(rows: DmChannelRow[], forUserId: string): Promise<DmC
         .filter((user): user is NonNullable<typeof user> => user !== undefined)
         .map((user) => serialize.publicUser(user)),
       lastMessageId,
-      lastReadMessageId: mine.find((member) => member.userId === forUserId)?.lastReadMessageId ?? null,
+      lastReadMessageId,
+      unreadCount,
       createdAt: row.createdAt.toISOString(),
     });
   }

@@ -2454,3 +2454,28 @@ typecheck and build clean.
 ![quality](shots/call-quality.png)
 ![ringing](shots/call-ringing.png)
 ![dm call](shots/call-dm.png)
+
+## Who messaged you: faces on the rail, counts in the member list (2026-09-23, not shipped)
+
+![Faces under the DM button, counts beside names](shots/unread-dms.png)
+
+Wes asked for Discord's version. Built:
+
+- **Rail:** every unread conversation (newest first, five at most) shows as
+  the person's picture under the @ button, with its message count. A group
+  shows its initials in a square. Click opens the conversation.
+- **Member list:** a count beside anyone whose pair DM with you is unread.
+  Clicking the count opens the DM; the rest of the row still opens the card.
+  Offline rows dim everything but the count.
+- **The count** is new: `DmChannel.unreadCount`, counted by the server in
+  `describeDms` (other people's messages after your read point; reactions,
+  deleted messages and people you blocked in a group do not count). Counting
+  rows reads no text, so non-negotiable 8 is untouched. The client adds one
+  per incoming message and zeroes it on reading to the newest.
+  Test: `group-dms.test.ts`, "counts what is waiting".
+- Known gap: a message deleted while unread stays counted until the list is
+  fetched again (next reload).
+- In headless shots the count never clears, because reading needs a focused
+  window. It clears in a real one.
+
+Changelog entry is in. Waiting on Wes to say ship.
