@@ -231,10 +231,6 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
       })
       .parse(request.body ?? {});
 
-    if (!(await canCreateServers(user.id))) {
-      throw forbidden('Only the host can create account invitations.');
-    }
-
     const ttl = EXPIRY_PRESETS[body.expiresIn];
     const code = inviteCode();
 

@@ -230,6 +230,37 @@ Still to do when he says go, in order:
    not deafened; recordings must live off Google Drive. A decision, then a
    build.
 
+## Next week: the massive audit (Wes, 2026-09-24, moved up from Session F)
+
+Alex spent an evening poking the live site and found four holes in a few
+hours: join any server by id, any account mints account invites, move a
+channel under another server's category, read any user's profile or avatar
+by id. All four are fixed and tested (`join-by-id.test.ts`,
+`route-authorization.test.ts`, merged from his `fix/hackings`). The class is
+always the same: **the route checks you are signed in but not that you belong
+to the thing you are touching.** Assume there are more.
+
+Do this first thing next week, before any feature:
+
+1. **Every route, one line each**: method, path, guard called, ids taken from
+   params/body, verdict. All 17 route files (about 137 routes) plus the five
+   gateway frame types. Verify by reading the guard, never the comment. Three
+   parallel passes were started on 2026-09-24 and cut off by Wes's usage
+   limit before reporting; start them again from scratch.
+2. Specifically: channel access on every message/pin/reaction/poll route (is
+   the URL's channelId cross-checked against the message's real channel);
+   DM and group-DM participant checks; attachments and downloads by id;
+   channel-keys by non-viewers; voice token for a channel you cannot see;
+   voice_signal sender taken from the socket, not the frame; gateway
+   subscriptions on connect; role hierarchy on every assign/edit/kick/ban;
+   events and trackers server scoping; emojis and sounds delete by id.
+3. Rate limits on everything unauthenticated and on invite accept.
+4. Then the rest of the Session F list below: the box, nginx, firewall,
+   backups, dependencies, and the desktop shell.
+
+Every hole found gets a test in `server/src/tests/` before the fix, so the
+suite is the record. Ship as one release when the pass is done.
+
 ## Session F: the last one, when everything else is wrapped up
 
 24. **The full review.** Wes, 2026-09-23: "an extremely thorough review of
