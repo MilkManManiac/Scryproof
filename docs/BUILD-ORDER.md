@@ -183,129 +183,39 @@ Wes to try screen share with his brother, then ship.
     asking for Discord (M3 done-when), and Wes saying it doesn't feel like
     a clone (M5 done-when).
 
-## Hearth on Scryproof: the plan for Monday 2026-09-28 (planned 2026-09-24, nothing built)
+## Hearth on Scryproof: BUILT 2026-09-24, not yet used with the group
 
-Wes, 2026-09-24: "work on a build plan/order for all this. I got my dnd on
-Monday so I'd like to possibly have it ready by then. Don't build yet."
+Wes, 2026-09-24: "just do what you can do", then "make sure this bot follows
+all the same rules as everything else… it has to be the right way." Rolls
+into chat and the day-by-day schedule were dropped at his word.
 
-**The shape.**
-- **The bot is an ordinary Scryproof account** called `hearth`, running
-  inside Hearth on Wes's PC. It needs no server changes.
-- **It never runs on the box**, because it holds members' voice keys
-  (non-negotiables 8 and 9).
-- **Hearth's Discord bot stays exactly as it is.** The new code sits beside
-  it, so Discord is the fallback on the night.
+What exists, all in the Hearth repo (`../Hearth`, commit "Scryproof voice
+bridge"), nothing changed on the Scryproof server:
 
-**What the research found (2026-09-24):**
-- **Players:** the group has never played a full night on Scryproof. Calls
-  are proven with three people at most. That is Monday's biggest risk, more
-  than the bot.
-- **Music:**
-  - Hearth already builds its mix in the renderer, at 48 kHz.
-  - A WebRTC client in the same renderer can take the `master` node
-    straight into a `MediaStreamDestination`, with no IPC or PCM chunks.
-  - Scryproof's soundboard already publishes that kind of track, through
-    the same encryption.
-- **Encryption code:**
-  - `web/src/lib/voice-crypto.ts` is pure WebCrypto with no imports, so it
-    can be copied as-is.
-  - `voice-key-provider.ts` needs only livekit-client.
-  - `voice-session.ts` (1529 lines) is too tied to the web app, so the bot
-    gets a lean session of its own.
-- **Login:**
-  - Send `POST /api/auth/login` with no Origin header and keep the cookie.
-  - The gateway socket takes a `Cookie` header and no Origin.
-  - The gateway lives in Hearth's main process (the `ws` package), because
-    a renderer socket cannot set the cookie.
-- **Approval:** a brand-new account is "first seen" on every member's
-  device, so nobody has to approve it. The bot must keep its identity key
-  forever, in Hearth's IndexedDB.
-- **Rolls:** `POST /api/channels/:id/messages` with plain text into a
-  plain (not encrypted) channel. Rate limit is 60 a minute.
-- **Chronicler:** its WAV writer, file naming (`<startMs>-<user>.wav`) and
-  manifest can be reused. The capture half is Discord-only and has to be
-  rewritten. `transcribe-session.py` reads the file names, so those must
-  stay the same.
+- Hearth signs in as an ordinary account and joins a voice channel as a
+  deafened member, publishing the master mix stereo at 128 kbps, E2EE with a
+  key made inside Hearth. It fetches nobody's audio and drops the keys
+  members send it. It never runs on the box.
+- The rule-by-rule audit against the non-negotiables is
+  `Hearth/SCRYPROOF-BRIDGE.md`. Read it before touching either side.
+- Proof: `node scripts/scryproof-bot-check.mjs` in Hearth, 16 checks against
+  local dev + local LiveKit, all passing 2026-09-24: encrypted join, a member
+  decodes the mix, wrong key decodes nothing while packets flow, leave and
+  rejoin re-keys, zero subscriptions in Hearth's room.
+- The two crypto files are byte-for-byte copies of `web/src/lib/voice-crypto.ts`
+  and `voice-key-provider.ts`. **If either changes here, Hearth's smoke suite
+  fails until it is copied again.** That is on purpose.
+- Shots: `docs/shots/hearth-bot-live.png`, `docs/shots/hearth-bot-signed-in.png`.
 
-**Build order.** Each step ends with something tested.
-
-1. **Thu night, Wes (no code):**
-   - Say ship for the three waiting commits.
-   - Tell me who is playing Monday and whether each person has a Scryproof
-     account and the desktop app.
-   - Make the `hearth` account on scryproof.com, with no 2FA and a role
-     with Connect and Speak, and a plain `#rolls` channel.
-2. **Fri: the bot joins a call and is heard (the big one).** All in Hearth,
-   all new files:
-   - `src/main/scryproof.ts`: login, holding the gateway socket
-     (heartbeat, reconnect), passing voice signals and membership to the
-     renderer over IPC, and fetching the LiveKit token.
-   - `src/renderer/scryproof/`:
-     - `voice-crypto.ts` and `voice-key-provider.ts`, copied from Scryproof
-       with a header naming the original. A check script fails if they
-       drift.
-     - A lean session of about 400 lines: announce, admit, wrap and rotate
-       keys, handled strictly in order like the web's `inOrder`.
-     - A LiveKit room with E2EE that publishes `master` as one track.
-       Stereo at 128k, no echo or noise processing, DTX off, so music is
-       not treated as speech.
-   - Password stored with Electron `safeStorage`, not plain text like the
-     Discord token.
-
-   **Done when:** against local dev and local LiveKit, a browser member
-   hears Hearth's music. A test like `test:voice` proves the frames decode
-   with the right key and not with a wrong one. The connection panel on
-   the member's side shows the bot.
-3. **Sat, morning: rolls and the panel.**
-   - Rolls go to Scryproof through the same `handleGameLog` fan-out.
-     Same rules as Discord: DM-only rolls stay private, and it is paid tier
-     only.
-   - A Scryproof section beside the Discord panel: sign in, pick server and
-     voice channel (remembered this time), Join, Leave, and a status line.
-   - Nothing in `discord.ts` changes.
-4. **Sat, afternoon: Wes on the real box, about 20 minutes.**
-   - Wes installs the Hearth build, signs the bot in, and joins a channel
-     from his own Scryproof.
-   - He plays a scene and a roll. He should hear the music and see the roll
-     in #rolls.
-   - We read the connection panel together (non-negotiable 7).
-5. **Sun: dry run with the group, 30 minutes, at least 4 people.**
-   - Voice, music and rolls, with everyone reading their panel once, and
-     someone leaving and rejoining mid-scene. Each leave or rejoin changes
-     the keys, so music must survive it.
-   - **Go or no-go that night.** No-go means Monday is on Discord as usual.
-     Nothing is lost.
-6. **Mon: play.** Discord stays open as the fallback. If Scryproof fails
-   mid-session, everyone moves over and Hearth's Discord bot still works.
-
-**After Monday, not for the 28th:**
-- **The Chronicler on Scryproof:**
-  - Take each member's decrypted track in the renderer.
-  - A simple loudness gate with an 800 ms tail cuts it into clips.
-  - Same WAV files, names and manifest as now.
-  - The bot's name reads "Hearth (recording)" while it records, and it
-    posts one line when it starts, so the call says someone is recording.
-    Neither needs a server change.
-  - Recordings already go to the campaign folder on Google Drive today, so
-    Wes should decide whether they stay there.
-  - About a day.
-- **Rolls into encrypted channels:** skip. That needs the full device path.
-
-**The cost on Monday if it goes ahead:** no Chronicler, so that session gets
-no recording or transcript, unless Wes records on Discord in parallel, which
-would mean two calls. Wes's call.
-
-**The fallback that needs no code, if step 2 stalls:**
-- Sign the `hearth` account into scryproof.com in a second browser profile
-  on Wes's PC. Pick a virtual audio cable as its microphone, set it to
-  always on, and turn noise suppression, echo cancellation and auto gain
-  off.
-- Route Hearth's output to the cable in Windows sound settings.
-- The cost:
-  - Mono at 48k.
-  - Wes has to turn on "listen to this device" to hear it himself.
-  - A driver install (VB-Cable) and Windows sound changes. Those are
-    system changes, so Wes makes them or says yes first.
+Still to do, in order:
+1. Wes makes the `hearth` account on scryproof.com (no 2FA; Connect and
+   Speak on the voice channel).
+2. Wes signs Hearth in and joins from his own Scryproof: hears the mix, reads
+   the connection numbers.
+3. A short run with the group before relying on it. Discord stays as the
+   fallback; Hearth refuses to be in both calls at once.
+4. Later, if wanted: the Chronicler on Scryproof (decrypts members' voice
+   inside Hearth; the campaign folder is on Google Drive; needs a decision).
 
 ## Session F: the last one, when everything else is wrapped up
 

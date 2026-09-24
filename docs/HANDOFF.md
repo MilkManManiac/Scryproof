@@ -2531,3 +2531,28 @@ the box, so it waits for Wes. BUILD-ORDER 18b.
   same way, but both people's devices must agree).
 
 Waiting on Wes to say ship, with the DM faces and the card from earlier.
+
+## Hearth plays into Scryproof (2026-09-24, built in the Hearth repo, nothing shipped here)
+
+Hearth (Wes's DM console, `../Hearth`) can now join a Scryproof voice channel
+as an ordinary encrypted member and play the master mix. No server change.
+The design and the audit against the non-negotiables are in
+`Hearth/SCRYPROOF-BRIDGE.md`; the summary and the to-do list are in
+`docs/BUILD-ORDER.md`, "Hearth on Scryproof".
+
+What matters on this side:
+
+- `web/src/lib/voice-crypto.ts` and `voice-key-provider.ts` are copied
+  byte-for-byte into Hearth. Hearth's smoke suite fails when they drift, so a
+  change here means copying again there.
+- The gateway and `/api/auth/login` already accept a client with no Origin
+  header and a cookie; that is how Hearth signs in. Nothing was loosened.
+- Hearth joins with `selfDeaf: true` and `autoSubscribe: false`, so what the
+  member list shows (deafened) is what is true (it cannot hear).
+
+Proven with `node scripts/scryproof-bot-check.mjs` (Hearth), 16 of 16 against
+local dev + local LiveKit, including the wrong-key sabotage from
+`voice-check.mjs`.
+
+![Hearth live in a Scryproof call](shots/hearth-bot-live.png)
+![Hearth signed in, picking a channel](shots/hearth-bot-signed-in.png)
