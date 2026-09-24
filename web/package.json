@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --import tsx --test \"src/tests/**/*.test.ts\""
+    "test": "node --experimental-test-module-mocks --import tsx --test \"src/tests/**/*.test.ts\""
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.24",
