@@ -26,6 +26,7 @@ export const CHANGELOG: readonly Release[] = [
     notes: [
       'When someone DMs you, their picture shows up under the @ button on the left with how many messages are waiting. Click it to go straight to the conversation.',
       'In a server, the member list shows the same count next to anyone who has messaged you. Click the number to open the conversation.',
+      'Clicking someone opens their card ready to type: just start writing and press Enter to send them a message.',
     ],
   },
   {

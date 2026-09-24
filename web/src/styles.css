@@ -1756,7 +1756,7 @@ select {
   color: var(--text);
 }
 /* Offline dims the person, not what they left you: the DM count stays bright. */
-.member.offline > :not(.member-dm) {
+.member.offline > :not(.member-dm):not(.member-menu) {
   opacity: 0.44;
 }
 

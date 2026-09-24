@@ -109,6 +109,7 @@ function ProfileCard({
   const { state, block, unblock } = useStore();
   const { openWith, send } = useDms();
   const box = useRef<HTMLDivElement>(null);
+  const say = useRef<HTMLInputElement>(null);
   const [spot, setSpot] = useState<{ top: number; left: number } | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -158,6 +159,13 @@ function ProfileCard({
         { width: window.innerWidth, height: window.innerHeight },
       ),
     );
+  }, [opened]);
+
+  // Open with the message box ready, so typing starts a message without a
+  // click, as in Discord. Not on a touch screen: there the focus would throw
+  // up the keyboard over the card before anyone has decided to write.
+  useEffect(() => {
+    if (window.matchMedia('(pointer: fine)').matches) say.current?.focus({ preventScroll: true });
   }, [opened]);
 
   useEffect(() => {
@@ -377,6 +385,7 @@ function ProfileCard({
             }}
           >
             <input
+              ref={say}
               type="text"
               className="profile-card-input"
               placeholder={`Message @${name}`}

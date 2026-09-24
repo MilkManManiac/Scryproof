@@ -2478,4 +2478,9 @@ Wes asked for Discord's version. Built:
 - In headless shots the count never clears, because reading needs a focused
   window. It clears in a real one.
 
+- **Profile card types on open** (Wes, same evening): the "Message @name"
+  box takes focus when the card opens, so typing starts a DM without a click.
+  Only with a mouse (`pointer: fine`); on a phone it would throw up the
+  keyboard. Shot typed into it without clicking and the text landed.
+
 Changelog entry is in. Waiting on Wes to say ship.
