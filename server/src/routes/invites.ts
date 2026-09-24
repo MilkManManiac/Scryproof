@@ -215,10 +215,15 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * An invite that creates an account rather than joining a server. This is
-   * how a new person gets onto a private instance at all.
+   * how a new person gets onto a private instance at all, so only the host
+   * (the same person who may make servers) hands them out. Until 2026-09-24
+   * any signed-in account could; Alex found it.
    */
   app.post('/api/instance-invites', async (request) => {
     const user = requireUser(request);
+    if (!(await canCreateServers(user.id))) {
+      throw forbidden('Only the host can invite new people to this instance.');
+    }
     const body = z
       .object({
         maxUses: z.number().int().min(1).max(100).nullable().optional(),

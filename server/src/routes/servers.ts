@@ -416,6 +416,14 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     return { entries: await audit.list(serverId) };
   });
 
+  /**
+   * Join by id is intentionally absent. The only way into a server is an
+   * invite (see routes/invites.ts), so a server is never enterable by
+   * guessing its id. A self-join route lived here until 2026-09-24; Alex
+   * found that any signed-in account could walk into any server with it.
+   * `server/src/tests/join-by-id.test.ts` keeps it gone.
+   */
+
   /** Used by the role editor to resolve ids to people in one request. */
   app.post('/api/users/lookup', async (request) => {
     const user = requireUser(request);
