@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   LIMITS,
+  MESSAGE_EXPIRY_CHOICES,
   Permission,
   decodeMask,
   slugifyChannelName,
@@ -28,6 +29,12 @@ import { useStore } from '../../state/store';
 import type { Authority } from './authority';
 
 const SLOWMODE_OPTIONS = [0, 5, 10, 30, 60, 300, 900] as const;
+
+export function expiryLabel(seconds: number): string {
+  if (seconds === 0) return 'Forever';
+  const days = seconds / 86_400;
+  return days === 1 ? '1 day' : `${days} days`;
+}
 
 function slowmodeLabel(seconds: number): string {
   if (seconds === 0) return 'Off';
@@ -117,6 +124,7 @@ function ChannelOverview({
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic ?? '');
   const [slowmode, setSlowmode] = useState(channel.slowmodeSeconds);
+  const [expiry, setExpiry] = useState(channel.expireAfterSeconds);
   const [categoryId, setCategoryId] = useState<string | null>(channel.categoryId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,8 +161,11 @@ function ChannelOverview({
     slug !== channel.name ||
     topic !== (channel.topic ?? '') ||
     slowmode !== channel.slowmodeSeconds ||
+    expiry !== channel.expireAfterSeconds ||
     categoryId !== channel.categoryId ||
     privacyDirty;
+  // Shortening the lifetime deletes what is already older than the new one.
+  const shortening = expiry !== 0 && (channel.expireAfterSeconds === 0 || expiry < channel.expireAfterSeconds);
 
   async function save() {
     const valid = validateChannelName(slug);
@@ -163,11 +174,18 @@ function ChannelOverview({
     setSaving(true);
     setError(null);
     try {
-      if (slug !== channel.name || topic !== (channel.topic ?? '') || slowmode !== channel.slowmodeSeconds || categoryId !== channel.categoryId) {
+      if (
+        slug !== channel.name ||
+        topic !== (channel.topic ?? '') ||
+        slowmode !== channel.slowmodeSeconds ||
+        expiry !== channel.expireAfterSeconds ||
+        categoryId !== channel.categoryId
+      ) {
         await api.channels.update(channel.id, {
           name: slug,
           topic: topic.trim() === '' ? null : topic.trim(),
           slowmodeSeconds: slowmode,
+          expireAfterSeconds: expiry,
           categoryId,
         });
       }
@@ -261,6 +279,34 @@ function ChannelOverview({
           <p className="field-note">
             The wait between messages, per person. Anyone with Manage messages is exempt.
           </p>
+        </div>
+      ) : null}
+
+      {channel.type === 'text' ? (
+        <div className="field">
+          <label>Messages last</label>
+          <div className="swatches">
+            {MESSAGE_EXPIRY_CHOICES.map((seconds) => (
+              <button
+                key={seconds}
+                type="button"
+                className={expiry === seconds ? 'button inline' : 'button secondary inline'}
+                disabled={!editable}
+                onClick={() => setExpiry(seconds)}
+              >
+                {expiryLabel(seconds)}
+              </button>
+            ))}
+          </div>
+          <p className="field-note">
+            Older messages are deleted from the server for good, files and all. Backups still hold them for up to a
+            month, and anyone could have copied them before then.
+          </p>
+          {expiry !== channel.expireAfterSeconds && shortening ? (
+            <p className="field-note warning">
+              Saving deletes every message here older than {expiryLabel(expiry)}, within ten minutes. That cannot be undone.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -378,6 +424,7 @@ function ChannelOverview({
               setName(channel.name);
               setTopic(channel.topic ?? '');
               setSlowmode(channel.slowmodeSeconds);
+              setExpiry(channel.expireAfterSeconds);
               setCategoryId(channel.categoryId);
             }}
           >

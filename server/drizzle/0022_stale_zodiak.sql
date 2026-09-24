@@ -1,0 +1,1 @@
+ALTER TABLE "channels" ADD COLUMN "expire_after_seconds" integer DEFAULT 0 NOT NULL;

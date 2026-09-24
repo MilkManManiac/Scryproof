@@ -56,6 +56,8 @@ export type ServerEvent =
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }
   | { t: 'message_delete'; d: { id: Snowflake; channelId: Snowflake } }
+  /** Messages past the channel's lifetime, gone for good. Removed, not shown as deleted. */
+  | { t: 'messages_expire'; d: { channelId: Snowflake; ids: Snowflake[] } }
   /** The full set for one message after any change. Whole, so a missed event cannot leave a wrong count behind. */
   | { t: 'reaction_update'; d: { messageId: Snowflake; channelId: Snowflake; reactions: Reaction[] } }
   /**

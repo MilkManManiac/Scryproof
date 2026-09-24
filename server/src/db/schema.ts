@@ -272,6 +272,12 @@ export const channels = pgTable(
     /** Seconds a member must wait between messages. 0 disables. */
     slowmodeSeconds: integer('slowmode_seconds').notNull().default(0),
     /**
+     * How long a message here lives, in seconds. 0 keeps them forever. Past
+     * it, `services/message-expiry.ts` deletes the row and its files outright:
+     * no tombstone, nothing left to read.
+     */
+    expireAfterSeconds: integer('expire_after_seconds').notNull().default(0),
+    /**
      * The newest message, deleted or not. Kept here so painting unread badges
      * for a whole sidebar is no extra query. No foreign key: it is a marker to
      * compare against, and it has to survive the message it names.

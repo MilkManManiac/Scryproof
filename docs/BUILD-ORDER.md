@@ -163,12 +163,18 @@ Wes to try screen share with his brother, then ship.
     (`infra/box/remote/40-firewall.sh`), but nobody has read a day of the
     blocked log. That log is the proof nothing on the box phones home
     (GAMEPLAN section 4). Read only; do it first.
+   DONE 2026-09-23 (HANDOFF, last section): no connection the box started
+   was ever blocked. But 80 and 443 out are open to anywhere, so the log
+   cannot see HTTPS.
+   18b. **Log new outbound 443/80 for a day** (`ufw allow log out`), then
+   match every destination to apt, Let's Encrypt or fwupd. Box change; ask.
 19. **Data export.** Any member downloads everything they posted as JSON;
     the owner exports the whole server (GAMEPLAN section 4, M8). Encrypted
     channels and DMs export as the member's device can read them, never
     through the server.
 20. **Per-channel message expiry.** "Messages here last 30 days"
     (GAMEPLAN 1b finding 4, M8). Deleting deletes the row and the file.
+   BUILT 2026-09-23, not shipped (HANDOFF, last section). Channels only.
 21. **Monthly restore test, automated.** The restore was proven once by
     hand. Make it run monthly and show pass/fail in the admin panel.
 22. **LiveKit key rotation** (quarterly) and **the monthly kernel reboot**
@@ -176,6 +182,30 @@ Wes to try screen share with his brother, then ship.
 23. **Wes and the group only:** a full D&D night on voice with nobody
     asking for Discord (M3 done-when), and Wes saying it doesn't feel like
     a clone (M5 done-when).
+
+## Hearth on Scryproof (Wes, 2026-09-23: "see what it would take")
+
+Researched, nothing built. Hearth's bot is not a command bot: it streams the
+DM's mix into one voice channel, posts rolls to a text channel, and records
+each speaker (the Chronicler). It all lives in `Hearth/src/main/discord.ts`.
+The shape that keeps the rules:
+
+- The bot is an ordinary Scryproof account (e.g. `hearth`, a role with
+  Connect and Speak). No bot or token feature on the server needed.
+- **It runs inside Hearth on Wes's PC, never on the box.** To play into an
+  E2EE call it takes part in the key exchange and receives every member's
+  voice key, which on the box would break non-negotiables 8 and 9.
+- Work: pull the voice key-agreement code out of `web/src/lib` so Hearth can
+  import it (medium); a Scryproof transport in Hearth next to the Discord one,
+  signing in and holding the gateway socket in main (medium); a LiveKit + E2EE
+  voice client in Hearth's renderer that publishes the master mix (large).
+  Rolls into a plain channel are one REST call (small); encrypted channels
+  would need the full device path (skip).
+- Recording: the Chronicler would save decrypted voice. Wes's campaign
+  folder is on Google Drive, so recordings must go to a folder that isn't
+  synced, and the call should say someone is recording.
+- If Hearth's saved keys are ever wiped, everyone's app holds the bot at
+  "needs your OK" until each person approves it. Correct, but friction.
 
 ## Session F: the last one, when everything else is wrapped up
 

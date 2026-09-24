@@ -111,6 +111,7 @@ export function channel(row: ChannelRow, isPrivate = false): Channel {
     topic: row.topic,
     position: row.position,
     slowmodeSeconds: row.slowmodeSeconds,
+    expireAfterSeconds: row.expireAfterSeconds,
     encrypted: row.encrypted,
     encryptedAt: iso(row.encryptedAt),
     private: isPrivate,

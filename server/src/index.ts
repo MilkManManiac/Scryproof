@@ -14,6 +14,7 @@ import { ensureStorageReady } from './services/storage.js';
 import { isLivekitConfigured } from './services/livekit.js';
 import { startUploadSweep } from './services/upload-sweep.js';
 import { startEventReminders } from './services/event-reminders.js';
+import { startMessageExpiry } from './services/message-expiry.js';
 
 async function main(): Promise<void> {
   await initDatabase();
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   const detachGateway = attachGateway(app.server);
   const stopUploadSweep = startUploadSweep();
   const stopEventReminders = startEventReminders();
+  const stopMessageExpiry = startMessageExpiry();
 
   logger.info(
     {
@@ -52,6 +54,7 @@ async function main(): Promise<void> {
 
     stopUploadSweep();
     stopEventReminders();
+    stopMessageExpiry();
     detachGateway();
     await app.close();
     await closeDatabase();

@@ -501,6 +501,29 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       };
     }
 
+    case 'messages_expire': {
+      // Gone for good, so gone from the screen too: no "deleted" line.
+      const gone = new Set(event.d.ids);
+      const existing = state.messages[event.d.channelId];
+      let next: State = existing
+        ? {
+            ...state,
+            messages: { ...state.messages, [event.d.channelId]: existing.filter((message) => !gone.has(message.id)) },
+          }
+        : state;
+      // The newest one going means they all went; see message-expiry.ts on the server.
+      for (const server of Object.values(next.servers)) {
+        const channel = server.channels.find((entry) => entry.id === event.d.channelId);
+        if (channel?.lastMessageId && gone.has(channel.lastMessageId)) {
+          next = upsertServer(next, {
+            ...server,
+            channels: server.channels.map((entry) => (entry.id === channel.id ? { ...entry, lastMessageId: null } : entry)),
+          });
+        }
+      }
+      return next;
+    }
+
     case 'reaction_update': {
       const existing = state.messages[event.d.channelId];
       if (!existing) return state;

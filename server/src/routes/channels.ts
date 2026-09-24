@@ -12,6 +12,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
+  MESSAGE_EXPIRY_CHOICES,
   Permission,
   decodeMask,
   encodeMask,
@@ -200,6 +201,11 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
         categoryId: z.string().nullable().optional(),
         position: z.number().int().min(0).max(10_000).optional(),
         slowmodeSeconds: z.number().int().min(0).max(21_600).optional(),
+        expireAfterSeconds: z
+          .number()
+          .int()
+          .refine((value) => (MESSAGE_EXPIRY_CHOICES as readonly number[]).includes(value), 'Not one of the choices.')
+          .optional(),
         /** Only ever true: see below. */
         encrypted: z.literal(true).optional(),
       })
@@ -233,6 +239,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
       ...(body.position !== undefined ? { position: body.position } : {}),
       ...(body.slowmodeSeconds !== undefined ? { slowmodeSeconds: body.slowmodeSeconds } : {}),
+      ...(body.expireAfterSeconds !== undefined ? { expireAfterSeconds: body.expireAfterSeconds } : {}),
       ...(encrypting ? { encrypted: true, encryptedAt: new Date() } : {}),
     };
     // Nothing to change (switching on a channel that already is): answer with it as it is.
@@ -249,7 +256,13 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       action: 'channel.update',
       targetType: 'channel',
       targetId: channelId,
-      changes: { name, topic: body.topic, categoryId: body.categoryId, ...(encrypting ? { encrypted: true } : {}) },
+      changes: {
+        name,
+        topic: body.topic,
+        categoryId: body.categoryId,
+        expireAfterSeconds: body.expireAfterSeconds,
+        ...(encrypting ? { encrypted: true } : {}),
+      },
     });
 
     const wasPrivate = await isPrivate(channelId, ctx.serverId);

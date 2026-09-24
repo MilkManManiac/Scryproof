@@ -2484,3 +2484,50 @@ Wes asked for Discord's version. Built:
   keyboard. Shot typed into it without clicking and the text landed.
 
 Changelog entry is in. Waiting on Wes to say ship.
+
+## Outbound firewall log read, and messages that expire (2026-09-23 late, expiry not shipped)
+
+**Item 18, the firewall log (read only, nothing changed on the box).** Two
+and a half days of kernel log (boot 2026-09-21 18:16 UTC to 2026-09-24 02:24):
+122 outbound packets blocked. **None was the box starting a connection**: not
+one SYN. Every one is the tail of a connection somebody else opened to us
+(source port 22, 80, 443 or 5349, flags ACK/FIN/PSH, i.e. late replies after
+the connection state was dropped, mostly to ssh and https scanners), plus
+IPv6 multicast (MLD) at boot. Nothing listening makes outbound TCP right now;
+the only UDP sockets are LiveKit and the DNS resolver.
+
+The catch, stated plainly: outbound 80 and 443 are allowed to anywhere (apt,
+certbot, the Node/npm installs need them). So this log proves nothing phones
+home over *other* ports, and says nothing about HTTPS. OS timers that use
+443: apt, certbot, fwupd-refresh, update-notifier-download. `motd-news` is
+already off (`ENABLED=0`); podman has no containers. To close it: add
+`ufw allow log out 443/tcp` (logs each new outbound connection) for a day,
+then match every destination to apt, Let's Encrypt or fwupd. That changes
+the box, so it waits for Wes. BUILD-ORDER 18b.
+
+**Item 20, per-channel message expiry.**
+
+![Messages last, in channel settings](shots/expiry-settings.png)
+![The notice under the box](shots/expiry-composer.png)
+
+- `channels.expire_after_seconds` (migration 0022), 0 = forever. Choices are
+  `MESSAGE_EXPIRY_CHOICES` in shared: forever, 1, 7, 30, 90 days. The PATCH
+  route refuses anything else; the change is audited.
+- `services/message-expiry.ts` runs every 10 minutes: deletes the row
+  outright (no tombstone), the attachment bytes first, then the row;
+  reactions, bookmarks and poll votes go by cascade. Pinned messages expire
+  too. Works the same on encrypted channels (it deletes ciphertext). If the
+  channel's newest message expires, `lastMessageId` goes to null so the
+  channel cannot sit unread with nothing in it.
+- Gateway `messages_expire` removes them from open screens, no "deleted" line.
+- A reply to an expired message loses its quote line and reads as a normal
+  message.
+- Settings warn in orange when a save will delete what is already older, and
+  say backups keep them up to a month (box keeps 7 nightlies, PC keeps 30).
+- Test: `message-expiry.test.ts` (3). `npm test` 244 + 292 pass, typecheck
+  clean.
+- Not done: DMs. They are E2EE and the item was per channel; a "disappearing
+  DMs" switch would be its own piece (the server can delete sealed rows the
+  same way, but both people's devices must agree).
+
+Waiting on Wes to say ship, with the DM faces and the card from earlier.

@@ -84,6 +84,9 @@ export interface ChannelOverwrite {
   deny: MaskString;
 }
 
+/** The lifetimes a channel can pick from. Zero is "keep forever". */
+export const MESSAGE_EXPIRY_CHOICES = [0, 86_400, 7 * 86_400, 30 * 86_400, 90 * 86_400] as const;
+
 export interface Channel {
   id: Snowflake;
   serverId: Snowflake;
@@ -94,6 +97,11 @@ export interface Channel {
   position: number;
   /** Minimum seconds between messages from one member. Zero means no limit. */
   slowmodeSeconds: number;
+  /**
+   * How long a message here lives before the server deletes it for good, in
+   * seconds. Zero keeps them forever. One of `MESSAGE_EXPIRY_CHOICES`.
+   */
+  expireAfterSeconds: number;
   /**
    * Whether message bodies in this channel are end-to-end encrypted. Voice is
    * always encrypted; this flag is about text, and drives Milestone 7.

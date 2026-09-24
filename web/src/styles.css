@@ -2045,6 +2045,10 @@ select {
   color: var(--text-dim);
 }
 
+.field-note.warning {
+  color: var(--warn);
+}
+
 .button {
   width: 100%;
   background: var(--accent);

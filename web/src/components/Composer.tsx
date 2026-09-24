@@ -29,6 +29,7 @@ import { jumpLimitNote } from './MessageList';
 import { ReactionPicker } from './ReactionPicker';
 import { Spawner } from './Spawner';
 import { RecordButton } from './VoiceNote';
+import { expiryLabel } from './settings/ChannelSettings';
 
 /** One row in the list under the box, for a person or for one of the server's emoji. */
 interface Offer {
@@ -678,6 +679,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
             channel.encrypted ? 'Commands: /tang-jump, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /shrug'
           ) : (
             <>
+              {channel.expireAfterSeconds > 0 ? `Messages here last ${expiryLabel(channel.expireAfterSeconds)}. ` : ''}
               {slowmode > 0 && mayPost ? `Slowmode: one message every ${slowmode}s. ` : ''}
               {text.length > LIMITS.message.max - 400
                 ? `${LIMITS.message.max - text.length} characters left`

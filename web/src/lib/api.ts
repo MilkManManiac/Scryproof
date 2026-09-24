@@ -193,7 +193,7 @@ export const api = {
       put<{ privacy: { private: boolean; roleIds: string[]; memberIds: string[] } }>(`/api/channels/${id}/privacy`, body),
     update: (
       id: string,
-      body: { name?: string; topic?: string | null; slowmodeSeconds?: number; categoryId?: string | null; encrypted?: true },
+      body: { name?: string; topic?: string | null; slowmodeSeconds?: number; expireAfterSeconds?: number; categoryId?: string | null; encrypted?: true },
     ) => patch<{ channel: Channel }>(`/api/channels/${id}`, body),
     remove: (id: string) => del<{ ok: true }>(`/api/channels/${id}`),
     permissions: (id: string) =>
