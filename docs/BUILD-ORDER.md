@@ -207,15 +207,28 @@ bridge"), nothing changed on the Scryproof server:
   fails until it is copied again.** That is on purpose.
 - Shots: `docs/shots/hearth-bot-live.png`, `docs/shots/hearth-bot-signed-in.png`.
 
-Still to do, in order:
-1. Wes makes the `hearth` account on scryproof.com (no 2FA; Connect and
-   Speak on the voice channel).
-2. Wes signs Hearth in and joins from his own Scryproof: hears the mix, reads
+**ON HOLD 2026-09-24.** Wes: "Eventually we will plan to have all the
+features/functions. Let's hold off on it now until I clear it with the
+players and see what they would prefer." The open question for the players:
+music-only into Scryproof means no recording (the Chronicler needs every
+person's audio, which on Scryproof means Hearth holding their keys). Nothing
+here moves until he brings back their answer. The desktop shortcut still runs
+the pre-bridge Hearth build on purpose.
+
+Still to do when he says go, in order:
+1. Wes makes the `hearth` account on scryproof.com: invite link, private
+   browser window, register `hearth`, join with the invite; then a role with
+   Connect and Speak on the voice channel; no 2FA.
+2. Pack a fresh Hearth build for his shortcut (`npm run pack` in Hearth).
+3. Wes signs Hearth in and joins from his own Scryproof: hears the mix, reads
    the connection numbers.
-3. A short run with the group before relying on it. Discord stays as the
+4. A short run with the group before relying on it. Discord stays as the
    fallback; Hearth refuses to be in both calls at once.
-4. Later, if wanted: the Chronicler on Scryproof (decrypts members' voice
-   inside Hearth; the campaign folder is on Google Drive; needs a decision).
+5. If the players want recording on Scryproof: the Chronicler on Scryproof.
+   Hearth holds every player's key for the session, decrypts each stream
+   separately (speaker identity survives), shows in the call as listening,
+   not deafened; recordings must live off Google Drive. A decision, then a
+   build.
 
 ## Session F: the last one, when everything else is wrapped up
 
