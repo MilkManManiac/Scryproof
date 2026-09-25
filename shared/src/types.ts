@@ -172,6 +172,8 @@ export interface Sound {
   serverId: Snowflake;
   /** What the tile says. 1 to 32 characters, not necessarily unique. */
   name: string;
+  /** How loud it plays, in percent (0 to 200), chosen by whoever added it. */
+  volume: number;
   bytes: number;
   createdBy: Snowflake;
   url: string;

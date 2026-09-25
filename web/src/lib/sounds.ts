@@ -2,14 +2,14 @@
  * The soundboard's clips, on this side: checking a file before it is
  * uploaded, and turning a clip into something the call can play.
  *
- * The server checks size and type and nothing more, because knowing how long
- * a clip is means decoding it. The browser decodes audio anyway, so the length
- * rule lives here. That makes it a courtesy rather than a control, which is
- * fine: the worst a longer clip does is play for longer, and the size cap on
- * the server bounds that.
+ * New sounds are cut to length and encoded as Ogg in `sound-cut.ts`, and the
+ * server reads an Ogg file's length from its headers. `prepareSound` is for a
+ * browser that cannot cut, which uploads a short file as it is: for WebM and
+ * MP3 the server cannot measure length, so there the check here is a courtesy
+ * and the size cap on the server is what bounds it.
  */
 
-import { LIMITS, SOUND_TYPES, isSoundType, type SoundType } from '@scryproof/shared';
+import { LIMITS, isSoundType, type SoundType } from '@scryproof/shared';
 
 import { audioContext } from './voice-audio';
 
@@ -19,9 +19,6 @@ import { audioContext } from './voice-audio';
  * and saves turning people away over rounding.
  */
 const LENGTH_SLACK_SECONDS = 0.05;
-
-/** What the file picker offers. `video/webm` is there because browsers label audio-only WebM files that way. */
-export const SOUND_ACCEPT = [...SOUND_TYPES, 'video/webm', '.webm', '.ogg', '.oga', '.opus', '.mp3'].join(',');
 
 const BY_EXTENSION: Record<string, SoundType> = {
   webm: 'audio/webm',
@@ -125,14 +122,20 @@ export function loadSound(url: string): Promise<AudioBuffer> {
 
 let preview: AudioBufferSourceNode | null = null;
 
-/** Play a clip on this device only, for the settings page. Starting another stops the last. */
-export async function previewSound(url: string): Promise<void> {
+/** A sound's own volume, percent, as a gain. */
+export const soundGain = (volume: number): number => Math.min(Math.max(volume, 0), 200) / 100;
+
+/** Play a clip on this device only, for the settings page, at its own volume. Starting another stops the last. */
+export async function previewSound(url: string, volume = 100): Promise<void> {
   const buffer = await loadSound(url);
   preview?.stop();
   const context = audioContext();
   const source = context.createBufferSource();
   source.buffer = buffer;
-  source.connect(context.destination);
+  const level = context.createGain();
+  level.gain.value = soundGain(volume);
+  source.connect(level);
+  level.connect(context.destination);
   source.onended = () => {
     if (preview === source) preview = null;
   };

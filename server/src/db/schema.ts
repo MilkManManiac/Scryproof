@@ -542,6 +542,8 @@ export const sounds = pgTable(
     storageKey: text('storage_key').notNull(),
     contentType: text('content_type').notNull(),
     bytes: integer('bytes').notNull(),
+    /** Percent, 0 to 200, set by whoever added it. */
+    volume: integer('volume').notNull().default(100),
     createdBy: text('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

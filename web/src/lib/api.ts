@@ -354,9 +354,10 @@ export const api = {
   sounds: {
     list: (serverId: string) => get<{ sounds: Sound[] }>(`/api/servers/${serverId}/sounds`),
     /** Name first, then the file, for the same reason as an emoji. */
-    async add(serverId: string, name: string, file: File): Promise<Sound> {
+    async add(serverId: string, name: string, file: File, volume = 100): Promise<Sound> {
       const form = new FormData();
       form.append('name', name);
+      form.append('volume', String(volume));
       form.append('file', file);
       const response = await fetch(`/api/servers/${serverId}/sounds`, {
         method: 'POST',
@@ -371,6 +372,9 @@ export const api = {
     },
     rename: (serverId: string, soundId: string, name: string) =>
       patch<{ sound: Sound }>(`/api/servers/${serverId}/sounds/${soundId}`, { name }),
+    /** The sound's own volume, percent, 0 to 200. */
+    setVolume: (serverId: string, soundId: string, volume: number) =>
+      patch<{ sound: Sound }>(`/api/servers/${serverId}/sounds/${soundId}`, { volume }),
     remove: (serverId: string, soundId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/sounds/${soundId}`),
   },

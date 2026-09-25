@@ -162,6 +162,13 @@
       "when": 1790216929188,
       "tag": "0022_stale_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790363518842,
+      "tag": "0023_furry_power_pack",
+      "breakpoints": true
     }
   ]
 }

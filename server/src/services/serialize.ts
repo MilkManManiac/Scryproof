@@ -145,6 +145,7 @@ export function sound(row: SoundRow): Sound {
     id: row.id,
     serverId: row.serverId,
     name: row.name,
+    volume: row.volume,
     bytes: row.bytes,
     createdBy: row.createdBy,
     url: `/api/sounds/${row.id}/${encodeURIComponent(row.name)}`,

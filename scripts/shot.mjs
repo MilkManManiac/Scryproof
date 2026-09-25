@@ -42,7 +42,13 @@ const signedOut = args.includes('--signed-out');
 const profile = mkdtempSync(join(tmpdir(), 'scryproof-shot-'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+// A voice call needs a microphone; FAKE_MEDIA=1 gives it a fake one, allowed without asking.
+const fakeMedia = process.env.FAKE_MEDIA === '1'
+  ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required']
+  : [];
+
 const browser = spawn(chrome, [
+  ...fakeMedia,
   '--headless=new', '--disable-gpu', '--no-first-run', '--mute-audio',
   `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
   `--window-size=${windowSize}`, 'about:blank',

@@ -2809,3 +2809,52 @@ by itself. "How Scryproof works" in the menu behind your name reopens it.
   `walkthrough-letting-in.png`, `walkthrough-corner.png`, `walkthrough-phone.png`.
 - To release: add a dated changelog entry, then `bash scripts/release.sh`.
   Web only; no desktop shell change.
+
+## Soundboard clipper and per-sound volume: built 2026-09-25, not released
+
+Wes: "Adding a sound should let you clip it so you can pick exactly what the
+sound sounds like. And there should be a button to kinda preview the sound so
+you can adjust the volume level before adding it. Basically they add the song
+and it sets the default volume for that sound. Then others can turn down all
+soundboard sounds if they want."
+
+- **Picking a file** (the board's Add sound tile, or Server settings > Sounds)
+  now takes any audio the browser plays, a whole song included (up to 50 MB and
+  10 minutes; `SOURCE_BYTES`/`SOURCE_SECONDS` in `web/src/lib/sound-cut.ts`).
+  The clipper (`web/src/components/SoundClipper.tsx`) shows the whole file as a
+  strip and a close-up 30 seconds around the clip; drag either edge or the
+  middle, click the strip to jump, arrow keys nudge (shift for a second at a
+  time). Play/Stop plays exactly the chosen part with a moving line, at the
+  volume on the slider (0 to 200%).
+- **Only the clip is uploaded.** It is resampled to 48 kHz, faded 8 ms at each
+  cut, encoded with WebCodecs `AudioEncoder` (Opus, 96 kb/s, about 180 KB for
+  15 s) and wrapped in Ogg by `muxOggOpus` in `shared/src/ogg.ts`. A browser
+  without `AudioEncoder` can still add a file that is already the whole clip
+  (`uploadAsIs`), and is told to use the desktop app or Chrome otherwise.
+- **The server now checks the length of Ogg uploads** by reading the last page's
+  position (`oggSeconds` in `shared/src/ogg.ts`, checksums verified, one stream
+  only, Opus or Vorbis), no decoding. Over 15 s is refused `sound_too_long`; an
+  unreadable Ogg is refused `not_a_sound`. WebM and MP3 are still bounded by the
+  1 MB cap only. The upload is read whole (at most 1 MB) before anything is stored.
+- **Per-sound volume.** Migration **0023** adds `sounds.volume` (integer percent,
+  default 100, so existing sounds are unchanged). Set by the uploader in the
+  clipper; a manager can change it later with the slider beside each sound in
+  Server settings > Sounds (`PATCH` takes `name` and/or `volume`, 0 to 200,
+  `invalid_sound_volume` otherwise). The player applies it before the clip goes
+  into the call (`playSound(url, volume)` in `voice-session.ts`), so everyone
+  hears the same level; each listener's own Soundboard volume then scales it.
+- Tests: `web/src/tests/sound-clip.test.ts` (selection rules, waveform peaks,
+  Ogg written and read back, tampering refused), `server/src/tests/sounds.test.ts`
+  (volume stored/defaulted/refused/changed, Ogg length refused, stored bytes
+  unchanged). End to end in real Chrome: `node scripts/sound-clip-check.mjs`
+  (cuts 12.5 s from a generated song, uploads at 140%, fetches it back
+  byte-identical, decodes to 12.50 s, a 20 s cut is refused). It found a real
+  bug on the way: Node's `Buffer.slice` is a view, so the checksum check zeroed
+  the stored file's checksums. Fixed; the server test now compares stored bytes.
+- `scripts/shot.mjs` takes `FAKE_MEDIA=1` for a fake microphone and autoplay, so
+  a call (and the soundboard in it) can be photographed.
+- Shots: `docs/shots/sound-clipper.png`, `sound-clipper-playing.png`,
+  `sound-clipper-board.png` (in a call, playing), `sound-clipper-phone.png`.
+- To release: needs a dated changelog entry; migration 0023 runs on deploy. Web
+  and server only, no desktop shell change. Anyone on the old web client while
+  others upgrade simply plays sounds at 100%.

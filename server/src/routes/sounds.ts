@@ -6,10 +6,15 @@
  * list and used for nothing but the Content-Type header, and the download is
  * served by this process so it can be permission-checked.
  *
- * The length of a clip is checked in the browser before upload, not here:
- * knowing how long a piece of audio is means decoding it, and this process is
- * not going to run an audio decoder on files from the internet. What it does
- * hold is the size and the type, which bound the same thing well enough.
+ * The browser cuts a clip to length and sends it as Ogg Opus. An Ogg file
+ * says how long it is in its page headers, so for Ogg the length is checked
+ * here too (`oggSeconds` in shared), without decoding any audio: this process
+ * is not going to run an audio decoder on files from the internet. WebM and
+ * MP3 cannot be measured that way, so for those the size cap is what holds.
+ *
+ * Each sound carries a volume, in percent, chosen by whoever added it. The
+ * player applies it before the clip goes into the call; each listener's own
+ * soundboard slider then turns it down for them.
  *
  * Adding, renaming and removing need MANAGE_SERVER, the same bit custom emoji
  * use. Seeing the list, or fetching a clip, needs only membership. Playing one
@@ -21,7 +26,9 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { LIMITS, Permission, isSoundType, validateSoundName } from '@scryproof/shared';
+import { Readable } from 'node:stream';
+
+import { LIMITS, Permission, isSoundType, oggSeconds, validateSoundName, validateSoundVolume } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { config } from '../config.js';
@@ -40,6 +47,9 @@ const EXTENSION: Record<string, string> = {
   'audio/ogg': '.ogg',
   'audio/mpeg': '.mp3',
 };
+
+/** Encoders pad the end of a clip to a whole frame; the browser allows the same slack (`lib/sounds.ts`). */
+const OGG_SLACK_SECONDS = 0.1;
 
 const tooBig = () =>
   badRequest(`A sound is limited to ${Math.round(LIMITS.soundBytes / 1024 / 1024)} MB.`, 'file_too_large');
@@ -95,26 +105,40 @@ export async function registerSoundRoutes(app: FastifyInstance): Promise<void> {
       throw refuse('A sound has to be a WebM, Ogg or MP3 file.', 'not_a_sound');
     }
 
-    // The name comes before the file in the multipart body, so the parser has
-    // already read it by the time the file arrives.
-    const field = file.fields.name;
-    const declared = field && !Array.isArray(field) && field.type === 'field' ? String(field.value) : '';
+    // The name and volume come before the file in the multipart body, so the
+    // parser has already read them by the time the file arrives.
+    const text = (key: string): string | null => {
+      const field = file.fields[key];
+      return field && !Array.isArray(field) && field.type === 'field' ? String(field.value) : null;
+    };
+    const declared = text('name') ?? '';
     const check = validateSoundName(declared);
     if (!check.ok) throw refuse(check.error, 'invalid_sound_name');
     const name = declared.trim();
 
+    const volumeText = text('volume');
+    const volume = volumeText === null ? LIMITS.soundVolume.default : Number(volumeText);
+    const volumeCheck = validateSoundVolume(volume);
+    if (!volumeCheck.ok) throw refuse(volumeCheck.error, 'invalid_sound_volume');
+
+    // At most a megabyte, so it is read whole: an Ogg file's length is in its
+    // last page, and nothing is stored until it has been checked.
+    const bytes = await file.toBuffer().catch(() => null);
+    if (!bytes || file.file.truncated || bytes.length > LIMITS.soundBytes) throw tooBig();
+    if (bytes.length === 0) throw badRequest('That file is empty.', 'empty_file');
+
+    if (file.mimetype === 'audio/ogg') {
+      const seconds = oggSeconds(bytes);
+      if (seconds === null) throw badRequest('That Ogg file could not be read as a sound.', 'not_a_sound');
+      if (seconds > LIMITS.soundSeconds + OGG_SLACK_SECONDS) {
+        throw badRequest(`A sound can be at most ${LIMITS.soundSeconds} seconds long.`, 'sound_too_long');
+      }
+    }
+
     // The key's extension is ours, from the checked type, not from whatever
     // the uploader's file happened to be called.
     const storageKey = buildStorageKey(`clip${EXTENSION[file.mimetype] ?? ''}`);
-    const stored = await saveStream(storageKey, file.file);
-    if (file.file.truncated || stored.size > LIMITS.soundBytes) {
-      await deleteObject(storageKey).catch(() => undefined);
-      throw tooBig();
-    }
-    if (stored.size === 0) {
-      await deleteObject(storageKey).catch(() => undefined);
-      throw badRequest('That file is empty.', 'empty_file');
-    }
+    const stored = await saveStream(storageKey, Readable.from([bytes]));
 
     const [created] = await db
       .insert(sounds)
@@ -125,6 +149,7 @@ export async function registerSoundRoutes(app: FastifyInstance): Promise<void> {
         storageKey,
         contentType: file.mimetype,
         bytes: stored.size,
+        volume,
         createdBy: user.id,
       })
       .returning();
@@ -152,13 +177,22 @@ export async function registerSoundRoutes(app: FastifyInstance): Promise<void> {
     const { serverId, soundId } = z
       .object({ serverId: z.string(), soundId: z.string() })
       .parse(request.params);
-    const body = z.object({ name: z.string() }).parse(request.body);
+    const body = z.object({ name: z.string().optional(), volume: z.unknown().optional() }).parse(request.body);
 
     await requireServerPermission(serverId, user.id, Permission.MANAGE_SERVER);
 
-    const check = validateSoundName(body.name);
-    if (!check.ok) throw badRequest(check.error, 'invalid_sound_name');
-    const name = body.name.trim();
+    const change: { name?: string; volume?: number } = {};
+    if (body.name !== undefined) {
+      const check = validateSoundName(body.name);
+      if (!check.ok) throw badRequest(check.error, 'invalid_sound_name');
+      change.name = body.name.trim();
+    }
+    if (body.volume !== undefined) {
+      const check = validateSoundVolume(body.volume);
+      if (!check.ok) throw badRequest(check.error, 'invalid_sound_volume');
+      change.volume = body.volume as number;
+    }
+    if (change.name === undefined && change.volume === undefined) throw badRequest('Nothing to change.', 'no_change');
 
     const db = getDb();
     const [existing] = await db
@@ -168,7 +202,7 @@ export async function registerSoundRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!existing) throw notFound('No such sound.', 'unknown_sound');
 
-    const [updated] = await db.update(sounds).set({ name }).where(eq(sounds.id, soundId)).returning();
+    const [updated] = await db.update(sounds).set(change).where(eq(sounds.id, soundId)).returning();
     if (!updated) throw notFound('No such sound.', 'unknown_sound');
 
     await audit.record({
@@ -177,7 +211,10 @@ export async function registerSoundRoutes(app: FastifyInstance): Promise<void> {
       action: 'sound.update',
       targetType: 'sound',
       targetId: soundId,
-      changes: { name: { from: existing.name, to: updated.name } },
+      changes: {
+        ...(change.name !== undefined ? { name: { from: existing.name, to: updated.name } } : {}),
+        ...(change.volume !== undefined ? { volume: { from: existing.volume, to: updated.volume } } : {}),
+      },
     });
 
     announce(serverId);

@@ -1,0 +1,1 @@
+ALTER TABLE "sounds" ADD COLUMN "volume" integer DEFAULT 100 NOT NULL;

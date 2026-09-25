@@ -46,11 +46,16 @@ export const LIMITS = {
   soundsPerServer: 24,
   soundBytes: 1024 * 1024,
   /**
-   * A soundboard clip is a sting, not a song: 15 seconds (Wes, 2026-09-25). The browser measures the length
-   * before upload; the server cannot without decoding audio, so it holds the
-   * line on size and type instead.
+   * A soundboard clip is a sting, not a song: 15 seconds (Wes, 2026-09-25). The browser cuts a clip to this
+   * before upload. The server reads an Ogg file's length from its page headers (`ogg.ts`) and refuses a
+   * longer one; for WebM and MP3, which it cannot measure without decoding, it holds the line on size.
    */
   soundSeconds: 15,
+  /**
+   * How loud a sound plays, in percent, set by whoever added it (Wes, 2026-09-25: "it sets the default
+   * volume for that sound"). Everyone's own soundboard slider then turns it down for them.
+   */
+  soundVolume: { min: 0, max: 200, default: 100 },
   /**
    * Everyone in a group conversation, the person asking included. Every
    * message is locked once per device of everyone in it, in the sender's
@@ -371,6 +376,14 @@ export function validateSoundName(value: string): Validation {
   if (trimmed.length < LIMITS.soundName.min) return fail('A sound needs a name.');
   if (trimmed.length > LIMITS.soundName.max) return fail(`A sound name is at most ${LIMITS.soundName.max} characters.`);
   if (/\p{Cc}/u.test(trimmed)) return fail('A sound name cannot contain control characters.');
+  return ok;
+}
+
+export function validateSoundVolume(value: unknown): Validation {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return fail('A sound volume is a whole number.');
+  if (value < LIMITS.soundVolume.min || value > LIMITS.soundVolume.max) {
+    return fail(`A sound volume is from ${LIMITS.soundVolume.min} to ${LIMITS.soundVolume.max} percent.`);
+  }
   return ok;
 }
 

@@ -43,7 +43,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
-import { loadSound } from './sounds';
+import { loadSound, soundGain } from './sounds';
 import { HOLD_MS, MicGate, OutputMix, audioContext, sounds, withHold } from './voice-audio';
 import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
@@ -590,8 +590,12 @@ export class VoiceSession {
    * Play one clip into the call, and on this device. A second click cuts off
    * the first rather than stacking on it, so one person cannot build a wall
    * of sound. When nothing was played, says why in words.
+   *
+   * `volume` is the sound's own, in percent, set by whoever added it. It is
+   * applied here, before the clip goes into the call, so everyone hears it at
+   * that level; each listener's soundboard slider then turns it down for them.
    */
-  async playSound(url: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  async playSound(url: string, volume = 100): Promise<{ ok: true } | { ok: false; reason: string }> {
     const muted = { ok: false as const, reason: 'A moderator has muted you, and that includes the soundboard.' };
     const board = this.board;
     if (!board) return { ok: false, reason: 'The soundboard is not ready in this call.' };
@@ -608,12 +612,17 @@ export class VoiceSession {
     if (this.serverMuted) return muted;
 
     board.playing?.stop();
-    const source = audioContext().createBufferSource();
+    const context = audioContext();
+    const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(board.destination);
-    source.connect(board.local);
+    const level = context.createGain();
+    level.gain.value = soundGain(volume);
+    source.connect(level);
+    level.connect(board.destination);
+    level.connect(board.local);
     source.onended = () => {
       source.disconnect();
+      level.disconnect();
       if (board.playing === source) board.playing = null;
     };
     board.playing = source;
