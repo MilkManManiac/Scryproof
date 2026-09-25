@@ -928,7 +928,12 @@ function MessageRow({
                 ? toPlainLine(parent.content, members)
                 : message.ciphertext
                   ? 'Encrypted message'
-                  : 'Sent a file'}
+                  : // In a channel this device knows is encrypted, a quote it
+                    // has not read itself is left out rather than taken from
+                    // the server, so an empty one says nothing about files.
+                    channelMemory().isEncrypted(message.channelId)
+                    ? 'Earlier message'
+                    : 'Sent a file'}
           </span>
         </button>
       ) : null}
