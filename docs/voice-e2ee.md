@@ -165,6 +165,21 @@ rotation still finds its key just after.
 Twenty digits, in four groups of five, derived from the user ids and identity
 key fingerprints of everyone in the call, sorted.
 
+Two details matter for what the number promises.
+
+Each device builds *its own* entry in that list from its own identity key,
+never from what the relay said about it. A server that announces a key of its
+own under this device's user and device id — so that both sides of the call
+compute the same digits while the server holds every media key — is refused,
+and its announcement never replaces the real device in the call. This was a
+real hole (hostile-server review, 2026-09-24, finding 1) and the promise above
+depended on it.
+
+Reading the code aloud also confirms the keys DMs and encrypted channels use:
+voice, DMs and channels share one identity key and one pin table. A
+first-contact man-in-the-middle in DMs would show up here as a mismatch, since
+that is the only verification ceremony the app has.
+
 It uses PBKDF2-SHA256 at 600,000 iterations, which is doing real work. Twenty
 digits is about sixty-six bits, but an attacker does not have to match them by
 luck — they can generate identity keys until one produces the digits the

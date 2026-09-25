@@ -405,6 +405,53 @@ describe('a server that lies', () => {
     const wes = await makeDevice('wes');
     assert.equal(await verifyAnnouncement(CALL, { ...wes.announcement, userId: 'alex' }), false);
   });
+
+  test('an announcement claiming this device, with another key, is refused', async () => {
+    // The relay's most direct move on the verification code: sign an
+    // announcement with a key of its own, but under this device's own user and
+    // device id, so it would land in this device's own slot.
+    const wes = await makeDevice('wes');
+    const impostor = await makeDevice('wes');
+    await wes.call.admit([wes.announcement]);
+
+    const result = await wes.call.admit([impostor.announcement]);
+
+    assert.equal(result.rejected.length, 1);
+    assert.deepEqual(
+      wes.call.members.map((member) => member.fingerprint),
+      [wes.call.identity.fingerprint],
+    );
+  });
+
+  test('an impostor in this device’s own seat cannot change the number read aloud', async () => {
+    const wes = await makeDevice('wes');
+    const alex = await makeDevice('alex');
+    const impostor = await makeDevice('wes');
+    await wes.call.admit([wes.announcement, alex.announcement]);
+    const honest = await wes.call.verificationCode();
+
+    await wes.call.admit([impostor.announcement]);
+
+    assert.equal(await wes.call.verificationCode(), honest);
+  });
+
+  test('two devices of one person give the same code in any order', async () => {
+    // One person can be in a call on two devices, so the members list can hold
+    // two entries with the same user id. The relay picks the order it hands
+    // them to each screen; the code must not depend on that choice.
+    const asAliceHeardIt = await verificationCode(CALL, [
+      { userId: 'wes', fingerprint: 'aaaa' },
+      { userId: 'alex', fingerprint: 'bbbb' },
+      { userId: 'alex', fingerprint: 'cccc' },
+    ]);
+    const asBobHeardIt = await verificationCode(CALL, [
+      { userId: 'alex', fingerprint: 'cccc' },
+      { userId: 'wes', fingerprint: 'aaaa' },
+      { userId: 'alex', fingerprint: 'bbbb' },
+    ]);
+
+    assert.equal(asAliceHeardIt, asBobHeardIt);
+  });
 });
 
 describe('rotation', () => {
