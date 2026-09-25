@@ -2701,6 +2701,10 @@ Reviewed `review/crypto-red-tests` against `upstream/main` at `2cf3edf`,
 including the original hostile-server findings. The feature branch is ready
 for Wes's review. Main and the live site were not changed.
 
+For the maintainer's Claude agent: read
+[`reviews/2026-09-25-maintainer-agent-handoff.md`](reviews/2026-09-25-maintainer-agent-handoff.md)
+for the complete finding map, rationale, residual limits and review targets.
+
 The final review found and fixed these gaps:
 
 - Forged channel messages could still display images or recordings, and a
