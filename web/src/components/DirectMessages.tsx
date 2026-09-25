@@ -13,7 +13,8 @@ import { LIMITS } from '@scryproof/shared';
 
 import { api, ApiError } from '../lib/api';
 import type { AssessedDevice, DmFileRef } from '../lib/dm-crypto';
-import { isTrusted, openFile, sealFile } from '../lib/dm-crypto';
+import { isTrusted, openFile, recipientsFor, sealFile, timeLooksMoved } from '../lib/dm-crypto';
+import { safetyNumber } from '../lib/safety-number';
 import { dmDrafts } from '../lib/drafts';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { BottomPin } from '../lib/stick-to-bottom';
@@ -27,6 +28,7 @@ import { DmPeoplePicker } from './DmPeoplePicker';
 import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
+import { Modal } from './Modal';
 import { PlayLine, Rich, jumpLimitNote } from './MessageList';
 import { commandOffers, commandQueryAt, expandTextCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
@@ -180,6 +182,7 @@ export function DmPane() {
   const selfId = app.user?.id ?? null;
   /** Per conversation: the message the next thing sent will answer. */
   const [replying, setReplying] = useState<Record<string, string | null>>({});
+  const [checkingKeys, setCheckingKeys] = useState(false);
 
   if (!dm) {
     return (
@@ -217,10 +220,18 @@ export function DmPane() {
           End-to-end encrypted
         </div>
         <DmCallButton dm={dm} />
+        <button
+          type="button"
+          className="link-button"
+          title="Your number and theirs, to read out loud. Comparing them is what proves nobody is in the middle."
+          onClick={() => setCheckingKeys(true)}
+        >
+          Check keys
+        </button>
         <DmPeople dm={dm} selfId={selfId} />
       </header>
       <DmCallStage dm={dm} />
-      <DeviceWarnings dm={dm} selfId={selfId} />
+      <DeviceWarnings dm={dm} selfId={selfId} onCheckKeys={() => setCheckingKeys(true)} />
       <LockedNotice dmId={dm.id} />
       <DmMessages dm={dm} selfId={selfId} onReply={(id) => setReplying((current) => ({ ...current, [dm.id]: id }))} />
       {blocked && other ? (
@@ -246,6 +257,7 @@ export function DmPane() {
           onCancelReply={() => setReplying((current) => ({ ...current, [dm.id]: null }))}
         />
       )}
+      {checkingKeys ? <DmKeys dm={dm} selfId={selfId} onClose={() => setCheckingKeys(false)} /> : null}
     </>
   );
 }
@@ -401,7 +413,15 @@ function DmPeople({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
 /** Four groups of four: short enough to read down a phone line. */
 const spaced = (fingerprint: string): string => (fingerprint.slice(0, 16).match(/.{4}/g) ?? []).join(' ');
 
-function DeviceWarnings({ dm, selfId }: { dm: DmChannel; selfId: string | null }) {
+function DeviceWarnings({
+  dm,
+  selfId,
+  onCheckKeys,
+}: {
+  dm: DmChannel;
+  selfId: string | null;
+  onCheckKeys: () => void;
+}) {
   const { state, acceptDevice } = useDms();
   const known = state.devices[dm.id];
   const waiting = (known ?? []).filter((entry) => !isTrusted(entry.verdict) && entry.verdict !== 'invalid');
@@ -409,10 +429,25 @@ function DeviceWarnings({ dm, selfId }: { dm: DmChannel; selfId: string | null }
   const absent = known
     ? dm.members.filter((member) => member.id !== selfId && !known.some((entry) => entry.device.userId === member.id))
     : [];
-  if (waiting.length === 0 && absent.length === 0) return null;
+  // The server also holds the device list, and a device of somebody who is not
+  // in this conversation is what handing our key to a stranger looks like. It
+  // is left out of the lock (`recipientsFor`), and said here so it is visible.
+  const outsiders = known
+    ? recipientsFor(known, new Set(dm.members.map((member) => member.id))).outsiders
+    : [];
+  if (waiting.length === 0 && absent.length === 0 && outsiders.length === 0) return null;
 
   return (
     <div className="dm-warnings">
+      {outsiders.map((entry) => (
+        <div className="dm-warning" key={`${entry.device.userId}:${entry.device.deviceId}`}>
+          <div>
+            <strong>The server lists a device for somebody who is not in this conversation.</strong> Nothing written
+            here is locked to it: what you send goes to the people in this conversation and nobody else. A device list
+            and a member list that disagree is worth knowing about.
+          </div>
+        </div>
+      ))}
       {absent.map((member) => (
         <div className="dm-warning" key={member.id}>
           <div>
@@ -430,6 +465,7 @@ function DeviceWarnings({ dm, selfId }: { dm: DmChannel; selfId: string | null }
             person={person ?? null}
             mine={entry.device.userId === selfId}
             onAccept={() => void acceptDevice(dm.id, entry)}
+            onCheckKeys={onCheckKeys}
           />
         );
       })}
@@ -442,11 +478,18 @@ export function DeviceWarning({
   person,
   mine,
   onAccept,
+  onCheckKeys,
 }: {
   entry: AssessedDevice;
   person: PublicUser | null;
   mine: boolean;
   onAccept: () => void;
+  /**
+   * Where the numbers two people compare out loud live, where the screen has
+   * somewhere to send them. Absent elsewhere (the channel lock panel), and the
+   * wording drops the offer rather than pointing at nothing.
+   */
+  onCheckKeys?: () => void;
 }) {
   const who = mine ? 'You' : (person?.displayName ?? 'Someone');
   const changed = entry.verdict === 'changed';
@@ -462,8 +505,13 @@ export function DeviceWarning({
           ? 'That happens when a browser is wiped. It is also what somebody in the middle would look like.'
           : 'A new browser or a new phone looks like this. So would somebody pretending.'}{' '}
         Until you accept it, that device gets no copy of what you send here.
-        {mine ? ' If this was not you, change your password.' : ' If you can, ask them.'}
-        <span className="dm-fingerprint" title="The key this device presented. It can be compared out loud.">
+        {mine ? ' If this was not you, change your password.' : ' If you can, ask them.'}{' '}
+        {onCheckKeys
+          ? mine
+            ? 'Check keys shows the numbers to compare out loud, this device among them.'
+            : 'Their number for this device, to compare out loud, is under Check keys.'
+          : 'The long hex line is the key this device presented.'}
+        <span className="dm-fingerprint" title="The key this device presented, in short. Read numbers out loud from Check keys, not this.">
           {spaced(entry.fingerprint)}
         </span>
       </div>
@@ -471,6 +519,121 @@ export function DeviceWarning({
         Accept
       </button>
     </div>
+  );
+}
+
+/**
+ * One device's safety number, worked out when it is first asked for and kept.
+ *
+ * Twenty digits stand for one identity key, so the number changes only when the
+ * key does. Deriving one is deliberately slow (about half a second, see
+ * `safety-number.ts`), so nothing is derived until a screen shows it, and then
+ * only once per key for as long as the tab lives.
+ */
+const safetyNumbers = new Map<string, Promise<string>>();
+
+function safetyNumberOf(userId: string, fingerprint: string): Promise<string> {
+  const key = `${userId}:${fingerprint}`;
+  const already = safetyNumbers.get(key);
+  if (already) return already;
+  const made = safetyNumber(userId, fingerprint);
+  made.catch(() => safetyNumbers.delete(key));
+  safetyNumbers.set(key, made);
+  return made;
+}
+
+function SafetyNumber({ userId, fingerprint }: { userId: string; fingerprint: string }) {
+  const [digits, setDigits] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void safetyNumberOf(userId, fingerprint).then(
+      (value) => {
+        if (live) setDigits(value);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [userId, fingerprint]);
+
+  return (
+    <span className="dm-fingerprint" title="Twenty digits standing for this device's key. Compare them over a call or in person, never through this server.">
+      {digits ?? 'working it out…'}
+    </span>
+  );
+}
+
+/**
+ * "Check keys": the numbers two people read to each other.
+ *
+ * This is the check the DM warning asks for. Saying your number and hearing
+ * theirs, over something the server does not carry, is what proves the keys
+ * either side holds are the ones the other is using: a server that swapped one
+ * cannot show the same number on both screens. Nothing here is sent anywhere.
+ */
+function DmKeys({ dm, selfId, onClose }: { dm: DmChannel; selfId: string | null; onClose: () => void }) {
+  const { state } = useDms();
+  const known = state.devices[dm.id] ?? [];
+  const me = state.me;
+  const others = dm.members.filter((member) => member.id !== selfId);
+  const label = (entry: AssessedDevice): string => (isTrusted(entry.verdict) ? 'trusted here' : 'not accepted yet');
+
+  return (
+    <Modal
+      title="Check keys"
+      onClose={onClose}
+      footer={
+        <button type="button" className="button secondary inline" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="recovery-text">
+        <p>
+          Each device has its own number. Yours is on your screen here, and theirs next to their devices. Read one out
+          over a call or in person: if the numbers match, the server is not standing in the middle of this
+          conversation. If they do not, stop and find out why. The app cannot do this check for you, and neither can
+          the server: that is what makes it worth doing.
+        </p>
+        <p>
+          <strong>Your number</strong>, for this device:
+        </p>
+        {me ? (
+          <div className="dm-people-row">
+            <span className="dm-people-name">
+              <SafetyNumber userId={me.userId} fingerprint={me.fingerprint} />
+            </span>
+          </div>
+        ) : (
+          <p className="field-note">This device has no keys yet.</p>
+        )}
+        {others.map((member) => {
+          // A device that failed its signature check is left out: it is not a
+          // device whose key anyone could read a number from.
+          const devices = known.filter(
+            (entry) => entry.device.userId === member.id && entry.verdict !== 'invalid',
+          );
+          return (
+            <div key={member.id}>
+              <p>
+                <strong>{nameFor(member.id, member.displayName)}</strong>
+                {devices.length === 0 ? ' has no devices listed here.' : ''}
+              </p>
+              {devices.map((entry) => (
+                <div className="dm-people-row" key={entry.device.deviceId}>
+                  <span className="dm-people-name">
+                    <SafetyNumber userId={entry.device.userId} fingerprint={entry.fingerprint} />
+                  </span>
+                  <span className="dm-people-note">{label(entry)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
@@ -502,7 +665,14 @@ function DmMessages({
 }) {
   const { state, loadOlder, markRead, remove, edit, react } = useDms();
   const { state: app } = useStore();
-  const views = state.messages[dm.id] ?? [];
+  // A message whose sealed bytes are the ones an earlier message already used
+  // is a repeat the server put here: it is not drawn. Says which in the state,
+  // where every sealed row for this conversation is known.
+  const hidden = useMemo(() => new Set(state.replayed[dm.id] ?? []), [state.replayed, dm.id]);
+  const views = useMemo(
+    () => (state.messages[dm.id] ?? []).filter((view) => !hidden.has(view.id)),
+    [state.messages, dm.id, hidden],
+  );
   // In a group, somebody you blocked collapses as they would in a channel, and
   // their reactions do not count. In a pair the block has already closed the
   // conversation, and what was said before it stays as it was.
@@ -809,6 +979,10 @@ function DmRow({
   /** One blocked message shown on purpose. It hides again on reload. */
   const [shown, setShown] = useState(false);
   const readable = !view.deleted && view.problem === null && view.text !== null;
+  // The sender's own time for this message disagrees with the time the server
+  // gave it. The server can move its own stamp; it cannot move the one inside
+  // the seal, so both are shown rather than trusting either.
+  const writtenMoved = timeLooksMoved(view.sealedAt, view.createdAt);
   const nameOf = (userId: string): string =>
     userId === selfId ? 'You' : nameFor(userId, members.find((member) => member.id === userId)?.displayName ?? 'Someone');
 
@@ -888,7 +1062,8 @@ function DmRow({
         {(view.text && !(isVoiceLabel(view.text) && view.files.some((file) => isVoiceFile(file.name)))) ||
         view.editedAt ||
         view.unverified ||
-        view.unproven ? (
+        view.unproven ||
+        writtenMoved ? (
           <div className="message-text">
             {/* The same parts as a channel message. There is nobody to name here
                 and no server emoji, so those come out as the text typed. */}
@@ -898,6 +1073,14 @@ function DmRow({
               <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
             )}
             {view.editedAt ? <span className="message-edited">edited</span> : null}
+            {writtenMoved && view.sealedAt !== null ? (
+              <span
+                className="message-edited"
+                title="The sender's own clock said this when the words were sealed, which is not when the server says it arrived. The time inside the seal is the one the server cannot change."
+              >
+                written {timeFormat.format(view.sealedAt)}
+              </span>
+            ) : null}
             {view.unverified ? (
               <span className="dm-unverified" title="It opened, but it came from a device you have not accepted. See the warning above.">
                 unaccepted device
@@ -906,7 +1089,7 @@ function DmRow({
             {view.unproven ? (
               <span
                 className="dm-unverified"
-                title="Sent before group messages were tied to their sender. It opened, but anyone else in this group could have written it in their name."
+                title="This message's format does not prove which member sent it. It opened, but anyone else in this group could have written it in their name."
               >
                 sender not proven
               </span>

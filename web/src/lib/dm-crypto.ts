@@ -271,6 +271,58 @@ export async function assessDevices(
   return out;
 }
 
+/**
+ * Who gets a copy of a message key: the trusted devices of the people in the
+ * conversation, this person's own other devices among them.
+ *
+ * A device whose owner is not a member gets nothing, however trusted it is and
+ * however long it has been on the server's list. That is the whole point: the
+ * server both stores the device list and decides who is in the conversation,
+ * and today it hands a device of somebody outside the conversation a copy of
+ * every message. The ones it left out are answered separately so the
+ * conversation can say so out loud: a device listed for a non-member is
+ * exactly what that attack looks like from here.
+ *
+ * What this does not stop: a server that lies about the member list too. Then
+ * the stranger appears in the conversation as a member, which everyone can
+ * see, and the fix is a person reading that list rather than code.
+ */
+export function recipientsFor(
+  known: AssessedDevice[],
+  memberIds: ReadonlySet<string>,
+): { recipients: DeviceKey[]; outsiders: AssessedDevice[] } {
+  const recipients: DeviceKey[] = [];
+  const outsiders: AssessedDevice[] = [];
+  for (const entry of known) {
+    // A device whose signature does not hold is not a device at all; it is
+    // never offered for acceptance either, so it is not reported here.
+    if (entry.verdict === 'invalid') continue;
+    if (!memberIds.has(entry.device.userId)) {
+      outsiders.push(entry);
+    } else if (isTrusted(entry.verdict)) {
+      recipients.push(entry.device);
+    }
+  }
+  return { recipients, outsiders };
+}
+
+/**
+ * The device a row says it came from, when nothing needs accepting first.
+ *
+ * Messages from a device nobody here has accepted are still drawn, with a mark
+ * and the warning above the conversation. A reaction is not drawn at all: a
+ * thumbs-up from a device that might not be the person's is not their
+ * thumbs-up, and counting it puts words in their mouth.
+ */
+export function believedDevice(
+  known: AssessedDevice[],
+  userId: string,
+  deviceId: string,
+): AssessedDevice | null {
+  const entry = known.find((other) => other.device.userId === userId && other.device.deviceId === deviceId);
+  return entry && isTrusted(entry.verdict) ? entry : null;
+}
+
 /* ------------------------------------------------------------------ *
  * Sealing and opening.
  * ------------------------------------------------------------------ */
@@ -279,10 +331,18 @@ export async function assessDevices(
  * What is inside a sealed message. Everything a person would call content is
  * in here, including which message a reply answers and which emoji a reaction
  * is: the server is told only that a row is a reaction, and to what.
+ *
+ * `at` is the sender's own clock at the moment they wrote it, in milliseconds
+ * since the epoch. The seal binds the conversation, the author and the device
+ * but no time, so a server could show an old message as new; the sender's own
+ * stamp is the one time it cannot change. It is optional because the version
+ * never changed: an older client reads a body and takes the fields it knows,
+ * ignoring anything else (see `parseBody`), so a message from a newer one
+ * carries the time and still opens on the old one.
  */
 export type DmBody =
-  | { v: 1; kind?: undefined; text: string; replyTo?: string; files?: DmFileRef[] }
-  | { v: 1; kind: 'reaction'; target: string; emoji: string };
+  | { v: 1; kind?: undefined; text: string; replyTo?: string; files?: DmFileRef[]; at?: number }
+  | { v: 1; kind: 'reaction'; target: string; emoji: string; at?: number };
 
 /**
  * A file, as the message that carries it describes it. The server holds the
@@ -318,13 +378,20 @@ function parseBody(raw: unknown): DmBody | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const body = raw as Record<string, unknown>;
   if (body.v !== 1) return null;
+  // The sender's clock, or nothing. A time that is not a number is dropped
+  // rather than refused: the rest of the body is still theirs, and a message
+  // from a future client should not stop opening here.
+  const at = typeof body.at === 'number' && Number.isFinite(body.at) ? body.at : null;
   if (body.kind === 'reaction') {
     if (typeof body.target !== 'string' || typeof body.emoji !== 'string') return null;
     if (body.emoji.length === 0 || body.emoji.length > 32) return null;
-    return { v: 1, kind: 'reaction', target: body.target, emoji: body.emoji };
+    const reaction: DmBody = { v: 1, kind: 'reaction', target: body.target, emoji: body.emoji };
+    if (at !== null) reaction.at = at;
+    return reaction;
   }
   if (body.kind !== undefined || typeof body.text !== 'string') return null;
   const out: DmBody = { v: 1, text: body.text };
+  if (at !== null) out.at = at;
   if (typeof body.replyTo === 'string') out.replyTo = body.replyTo;
   if (body.files !== undefined) {
     const files = parseFiles(body.files);
@@ -332,6 +399,57 @@ function parseBody(raw: unknown): DmBody | null {
     if (files.length > 0) out.files = files;
   }
   return out;
+}
+
+/** As much of a stored message as the two rules below need. Both are null on a message that was deleted or never had a body. */
+export interface SealedRow {
+  id: string;
+  iv: string | null;
+  ciphertext: string | null;
+}
+
+/**
+ * The ids of messages that repeat sealed bytes an earlier message in the same
+ * conversation already used: the same body again, or the same one-time IV
+ * again.
+ *
+ * The seal binds the conversation, the author and the device but no time and
+ * no order, so a server can serve an old message again under a new id, or put
+ * "no" before "yes". It cannot change the sealed bytes without leaving
+ * something that does not open, so the bytes are what catches a repeat. Ids
+ * sort by time, so the earliest copy of a repeat is the one with the smallest
+ * id, and only that one is drawn.
+ */
+export function replayedIds(rows: SealedRow[]): string[] {
+  const firstIv = new Map<string, string>();
+  const firstBody = new Map<string, string>();
+  const replayed: string[] = [];
+  for (const row of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
+    // A row with no sealed bytes is a message that never opened, and there is
+    // nothing for it to be a repeat of.
+    if (!row.iv || !row.ciphertext) continue;
+    if (firstIv.has(row.iv) || firstBody.has(row.ciphertext)) {
+      replayed.push(row.id);
+      continue;
+    }
+    firstIv.set(row.iv, row.id);
+    firstBody.set(row.ciphertext, row.id);
+  }
+  return replayed;
+}
+
+/** Past this, the sender's clock and the server's timestamp are worth telling apart. */
+export const CLOCK_SLACK_MS = 5 * 60_000;
+
+/**
+ * Whether a message's own time is far enough from the time the server gave it
+ * that the reader should be told. `sealedAt` is the sender's clock from inside
+ * the seal, null on messages sealed before it existed.
+ */
+export function timeLooksMoved(sealedAt: number | null, createdAt: string): boolean {
+  if (sealedAt === null) return false;
+  const stamped = Date.parse(createdAt);
+  return Number.isFinite(stamped) && Math.abs(sealedAt - stamped) > CLOCK_SLACK_MS;
 }
 
 /* ------------------------------------------------------------------ *
