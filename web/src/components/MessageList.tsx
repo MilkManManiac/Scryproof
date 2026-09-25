@@ -1036,7 +1036,7 @@ function MessageRow({
             {message.sealed === 'unverified' ? (
               <span
                 className="message-edited sealed-unverified"
-                title="Signed by a device of theirs that you have not accepted yet. Open the lock at the top of the channel to check it."
+                title="Signed by a device of theirs that you have not let in yet. Open the lock at the top of the channel to check it."
               >
                 unverified device
               </span>

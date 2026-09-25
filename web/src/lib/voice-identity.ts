@@ -286,6 +286,17 @@ export class IndexedDbAcceptedStore implements AcceptanceStore {
 }
 
 /**
+ * A person on this device said yes to this exact key somewhere else, in a
+ * conversation's device warning or a call's. That is the same decision as
+ * "Let in" on a channel's lock panel, so channels count it too. Best effort:
+ * if it is not stored, the device still shows as waiting in each channel and
+ * one click there does the same.
+ */
+export function letInEverywhere(userId: string, deviceId: string, fingerprint: string): Promise<void> {
+  return new IndexedDbAcceptedStore().set(userId, deviceId, fingerprint).catch(() => undefined);
+}
+
+/**
  * The channel memory in IndexedDB: one small record per channel, keyed by
  * channel id. Read all at once at sign-in, and merged rather than overwritten
  * on the way back in, so a copy that is older than what is held can never

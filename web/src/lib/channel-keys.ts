@@ -61,7 +61,7 @@ export class KeyWait extends Error {
  */
 const WAIT_MESSAGE: Record<KeyWait['reason'], string> = {
   'no-key': "Waiting for someone who has this channel's key to come online and hand it to this device.",
-  'untrusted-maker': "This channel's key was made by a device you have not accepted yet. Open the lock at the top of the channel to see whose.",
+  'untrusted-maker': "This channel's key was made by a device you have not let in yet. Open the lock at the top of the channel to see whose.",
   'rolled-back': 'The server says this channel moved back to an older key. This device will not send under a key it has already left behind.',
   downgraded:
     'This channel was end-to-end encrypted on this device, and that cannot be turned off. The server now says it is not encrypted, so this device will not send here. Tell whoever runs the server.',

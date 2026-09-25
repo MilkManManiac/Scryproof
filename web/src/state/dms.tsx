@@ -56,6 +56,7 @@ import { play as playCharacter } from '../lib/stage';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
 import {
   IndexedDbIdentityStore,
+  letInEverywhere,
   loadDeviceIdentity,
   loadDmKeypair,
   loadRecoveryKey,
@@ -919,6 +920,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     async (dmId: string, entry: AssessedDevice) => {
       if (entry.verdict === 'invalid') return;
       await acceptIdentityChange(pins.current, entry.device.userId, entry.device.deviceId, entry.fingerprint);
+      await letInEverywhere(entry.device.userId, entry.device.deviceId, entry.fingerprint);
       const known = await refreshDevices(dmId);
       // What that device already sent was opened and marked unverified. Open it
       // again so the mark goes.

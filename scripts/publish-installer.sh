@@ -95,5 +95,6 @@ echo
 echo "Installer $(basename "$built")"
 echo "  installer  SHA-256: $built_sum"
 echo "  update key SHA-256: $key_sum"
-echo "Paste both into the GitHub release notes (or a message you send by hand), and tell people to check"
-echo "the installer against them before running it. On the box is not enough: the box is what hands it out."
+echo "Paste both into the GitHub release notes (or a message you send by hand). Members check the installer"
+echo "hash before running it; the update key hash is for anyone building the app themselves. On the box is"
+echo "not enough: the box is what hands it out."

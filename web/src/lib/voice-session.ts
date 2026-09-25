@@ -56,7 +56,7 @@ import {
   type PinVerdict,
   type WrappedKey,
 } from './voice-crypto';
-import { IndexedDbIdentityStore, loadDeviceIdentity } from './voice-identity';
+import { IndexedDbIdentityStore, letInEverywhere, loadDeviceIdentity } from './voice-identity';
 import { ScryproofKeyProvider, voiceSupport } from './voice-key-provider';
 
 /** LiveKit keeps a ring of this many keys per participant, addressed by index. */
@@ -1131,7 +1131,9 @@ export class VoiceSession {
     return this.inOrder(async () => {
       const call = this.call;
       if (!call) return;
-      if (!(await call.approve(userId, deviceId))) return;
+      const approved = await call.approve(userId, deviceId);
+      if (!approved) return;
+      await letInEverywhere(userId, deviceId, approved.fingerprint);
       await this.sendKeys(call);
       await this.publish(call);
     });

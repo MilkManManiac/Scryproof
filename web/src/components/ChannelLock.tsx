@@ -151,7 +151,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
             const holding = (view.holders ?? []).some(
               (holder) => holder.device.deviceId === entry.device.deviceId && holder.device.userId === entry.device.userId,
             );
-            const who = entry.device.userId === selfId ? 'You' : nameFor(entry.device.userId);
+            const who = entry.device.userId === selfId ? 'Your other device' : nameFor(entry.device.userId);
             return (
               <div className="dm-warning" key={`${entry.device.userId}:${entry.device.deviceId}`}>
                 <div>

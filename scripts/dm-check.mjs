@@ -303,6 +303,20 @@ const wesLaptop = new Device('wes-laptop', 'wes', 9344);
 const mara = new Device('mara', 'mara', 9345);
 const everyone = [wes, alex, alexPhone, wesLaptop, mara];
 
+/** The devices this browser has let in for channels, as `userId:deviceId`, read from its own database. */
+const acceptedKeys = (device) =>
+  device.evaluate(`new Promise((resolve) => {
+    const open = indexedDB.open('scryproof');
+    open.onerror = () => resolve(null);
+    open.onsuccess = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains('accepted-identities')) { db.close(); resolve(null); return; }
+      const keys = db.transaction('accepted-identities', 'readonly').objectStore('accepted-identities').getAllKeys();
+      keys.onerror = () => { db.close(); resolve(null); };
+      keys.onsuccess = () => { db.close(); resolve(keys.result); };
+    };
+  })`).then((keys) => keys ?? []);
+
 try {
   await Promise.all([wes.open(), alex.open()]);
   await Promise.all([wes.signIn(), alex.signIn()]);
@@ -354,8 +368,15 @@ try {
   check('the unaccepted device was given no copy of it', !(await alexPhone.screenText()).includes(SECOND));
 
   /* 6 */
+  const alexId = await alex.evaluate(`fetch('/api/auth/me', { credentials: 'include' }).then((r) => r.json()).then((b) => b.user.id)`);
+  const acceptedBefore = await acceptedKeys(wes);
   await wes.click('.dm-warning button', 'Accept');
   check('the warning goes once accepted', Boolean(await wes.until(`document.querySelector('.dm-warning') === null`)));
+  {
+    // Accepting here is the same yes as "Let in" on a channel's lock panel.
+    const added = (await acceptedKeys(wes)).filter((key) => !acceptedBefore.includes(key));
+    check("and Wes's channels count that device as let in too", added.length === 1 && added[0].startsWith(`${alexId}:`), JSON.stringify(added));
+  }
   await wes.say(THIRD);
   check('the accepted device reads the next message', Boolean(await alexPhone.sees(THIRD)));
   check('and so does the first one', Boolean(await alex.sees(THIRD)));
