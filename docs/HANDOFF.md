@@ -1204,6 +1204,27 @@ done; the old list here was about getting onto the box.
 7. **UI pass** (waiting on Wes's screenshots; read the-wall.md first).
 8. Electron fuses, and updating the shell itself (client updates are done, see above). Then search, custom
    emoji, soundboard, phone, group DMs, safety number.
+9. **Trey's E2EE hardening, PR #1 (`review/crypto-red-tests`).** Reviewed
+   2026-09-25: not merged. Tests pass on Windows (252/348/47), no rule broken,
+   but three things go back to Trey first: (a) `sendKey` treats a key as
+   "mine" by the server-supplied ids, so a server can pose as this device and
+   get messages sent under its key (also true on main); (b) live plaintext
+   with a back-dated `createdAt` passes `checksPlaintext`; (c) a newcomer who
+   has accepted nobody can make an epoch only it can open and freeze the
+   channel (new with the PR, not yet reproduced). Smaller: DM "written" tag
+   needs a date, replay comments overstate, backslash in `isApiUrl`, PEM
+   line endings for the key hash, voice approval awaits IndexedDB. Wes's open
+   call: approving a device in a call also admits it to every channel (lean:
+   keep, say so on the button). At rollout: everyone updates the same night,
+   because mixed versions show mismatched call codes. Wes will decide when to
+   send Trey the list.
+10. **Mac and Linux desktop builds.** Wes, 2026-09-25: it should work on all
+   three; members use Mac and Linux. Research and plan later, after PR #1
+   lands. Known work: electron-builder targets (AppImage, dmg), the updater
+   only knows the Windows installer, uiohook push-to-talk fails on Wayland and
+   needs the Mac accessibility prompt, system-audio screen share on Mac is
+   unknown, and Apple notarization costs a yearly developer fee (Wes's call).
+   Linux first; Trey can test it.
 
 **Later, and flagged: Cloudflare R2 for file storage** (suggested by Wes's
 friend, 2026-09-21). As asked it breaks non-negotiable 1: channel attachments

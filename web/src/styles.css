@@ -5665,7 +5665,9 @@ kbd {
    left edge of the window. */
 .spawner.soundboard {
   left: 0;
-  right: auto;
+  right: 0;
+  /* As wide as the sidebar, which clips anything wider. */
+  width: auto;
 }
 .soundboard-tile {
   padding: 10px 4px 8px;
@@ -5686,6 +5688,33 @@ kbd {
 .soundboard-tile:hover .soundboard-mark {
   background: var(--accent);
   color: var(--on-accent);
+}
+.soundboard-add .soundboard-mark {
+  background: none;
+  border: 1px dashed var(--line-strong);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.soundboard-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 4px 2px;
+  border-top: 1px solid var(--line);
+}
+.soundboard-new input {
+  flex: 1 1 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.soundboard-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .soundboard-error {
   margin: 0 4px 6px;
