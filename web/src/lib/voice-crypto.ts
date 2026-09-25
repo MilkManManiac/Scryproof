@@ -521,7 +521,20 @@ export async function verificationCode(
   members: { userId: string; fingerprint: string }[],
 ): Promise<string> {
   // Sorted, so every participant derives the same number from the same set.
-  const ordered = [...members].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  // One person can be in a call on two devices, and the relay chooses the
+  // order it hands their announcements to each screen; the fingerprint breaks
+  // that tie so honest screens agree even then.
+  const ordered = [...members].sort((a, b) =>
+    a.userId < b.userId
+      ? -1
+      : a.userId > b.userId
+        ? 1
+        : a.fingerprint < b.fingerprint
+          ? -1
+          : a.fingerprint > b.fingerprint
+            ? 1
+            : 0,
+  );
   const material = concatLabelled(
     CODE_CONTEXT,
     ...ordered.flatMap((member) => [member.userId, member.fingerprint]),
@@ -587,6 +600,12 @@ export class VoiceCall {
   private readonly participants = new Map<string, Participant>();
   /** Signed correctly, but waiting for a person to say they expected this. */
   private readonly held = new Map<string, Participant>();
+  /**
+   * Seats a person approved during this call, by the fingerprint they said yes
+   * to. The approval counts from the click; the pin is written behind it, and
+   * a re-announcement that lands before the write does is not held again.
+   */
+  private readonly approvedHere = new Map<string, string>();
   private readonly receivedKeys = new Map<string, Uint8Array>();
 
   private currentEpoch = 0;
@@ -641,13 +660,22 @@ export class VoiceCall {
       }
 
       const fingerprint = await fingerprintOf(fromBase64(announcement.identityKey));
+      const selfSeat =
+        announcement.userId === this.userId && announcement.deviceId === this.identity.deviceId;
+      // A relay claiming to be this device but carrying a different key is the
+      // server trying to write itself into our own slot of the verification
+      // code. It must never replace the key we put there ourselves.
+      if (selfSeat && fingerprint !== this.identity.fingerprint) {
+        rejected.push(announcement);
+        continue;
+      }
+      const seat = VoiceCall.seat(announcement.userId, announcement.deviceId);
       const verdict =
-        announcement.userId === this.userId && announcement.deviceId === this.identity.deviceId
-          ? 'known' // our own device, not something to warn about
+        selfSeat || this.approvedHere.get(seat) === fingerprint
+          ? 'known' // our own device, or one a person here just said yes to
           : await pinIdentity(this.pins, announcement.userId, announcement.deviceId, fingerprint);
 
       const participant: Participant = { announcement, fingerprint, verdict, signed: true };
-      const seat = VoiceCall.seat(announcement.userId, announcement.deviceId);
       if (verdict !== 'known') flagged.push(participant);
 
       // A changed key or an unexpected device gets no key from us and has none
@@ -674,16 +702,24 @@ export class VoiceCall {
   /**
    * Somebody looked at the warning and said yes. The new key is pinned and the
    * device becomes an ordinary participant. The caller then sends it a key.
+   *
+   * The yes counts in this call at once. The pin is written afterwards and not
+   * waited on: a slow or broken local database must not keep someone out of a
+   * call they were just let into. `onUnsaved` hears if the write fails, in
+   * which case the next call asks again.
    */
-  async approve(userId: string, deviceId: string): Promise<Participant | null> {
+  async approve(userId: string, deviceId: string, onUnsaved?: (problem: unknown) => void): Promise<Participant | null> {
     const seat = VoiceCall.seat(userId, deviceId);
     const participant = this.held.get(seat);
     if (!participant) return null;
 
-    await acceptIdentityChange(this.pins, userId, deviceId, participant.fingerprint);
+    this.approvedHere.set(seat, participant.fingerprint);
     this.held.delete(seat);
     const approved: Participant = { ...participant, verdict: 'known' };
     this.participants.set(seat, approved);
+    void acceptIdentityChange(this.pins, userId, deviceId, participant.fingerprint).catch((problem: unknown) =>
+      onUnsaved?.(problem),
+    );
     return approved;
   }
 
@@ -804,12 +840,24 @@ export class VoiceCall {
 
   /** The number to read aloud. Derived from who is in the call, not from the epoch. */
   verificationCode(): Promise<string> {
-    return verificationCode(
-      this.callId,
-      this.members.map((member) => ({
-        userId: member.announcement.userId,
-        fingerprint: member.fingerprint,
-      })),
-    );
+    // Our own entry comes straight from this device's identity, never from the
+    // participants map. The map can only be filled by announcements the relay
+    // chose to send, so reading it back would let the server control what our
+    // own key looks like in the number everyone compares.
+    return verificationCode(this.callId, [
+      ...this.members
+        .filter(
+          (member) =>
+            !(
+              member.announcement.userId === this.userId &&
+              member.announcement.deviceId === this.identity.deviceId
+            ),
+        )
+        .map((member) => ({
+          userId: member.announcement.userId,
+          fingerprint: member.fingerprint,
+        })),
+      { userId: this.userId, fingerprint: this.identity.fingerprint },
+    ]);
   }
 }

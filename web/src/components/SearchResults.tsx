@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { Message, ServerDetail } from '@scryproof/shared';
 
 import { api } from '../lib/api';
+import { channelKeysFor } from '../lib/channel-keys';
 import { useLocalNames } from '../lib/local-names';
 import { nameOf, toPlainLine } from '../lib/mentions';
 import { useStore } from '../state/store';
@@ -43,6 +44,14 @@ export function SearchResults({
   onClose: () => void;
 }) {
   const { state, jumpToMessage } = useStore();
+
+  // Hits get the same check as a channel's own history. In a channel this
+  // device knows is encrypted, readable text dated after the switch was made up
+  // by the server, and comes back with no content, marked as such.
+  const checked = (messages: Message[]): Promise<Message[]> => {
+    const me = state.user?.id;
+    return me ? channelKeysFor(me).open(messages) : Promise.resolve(messages);
+  };
   useLocalNames();
   const members = state.members[server.id] ?? [];
   const words = query.trim().split(/\s+/).filter(Boolean);
@@ -61,7 +70,8 @@ export function SearchResults({
     setLoading(true);
     api.messages
       .search(server.id, query)
-      .then(({ messages }) => {
+      .then(({ messages }) => checked(messages))
+      .then((messages) => {
         if (cancelled) return;
         setResults(messages);
         setMore(messages.length === PAGE_SIZE);
@@ -83,7 +93,8 @@ export function SearchResults({
     setLoadingMore(true);
     api.messages
       .search(server.id, query, last.id)
-      .then(({ messages }) => {
+      .then(({ messages }) => checked(messages))
+      .then((messages) => {
         setResults((current) => [...current, ...messages]);
         setMore(messages.length === PAGE_SIZE);
       })
@@ -133,11 +144,13 @@ export function SearchResults({
                   without quoting them. There is nothing to reveal in a list. */}
               {state.blocks.has(result.authorId)
                 ? 'Blocked message.'
-                : result.content
-                  ? highlight(toPlainLine(result.content, members), words)
-                  : result.attachments.length > 0
-                    ? `${result.attachments.length} file(s)`
-                    : 'A locked message'}
+                : result.sealed === 'forged'
+                  ? 'Not shown: it was not sealed and signed by the person it names.'
+                  : result.content
+                    ? highlight(toPlainLine(result.content, members), words)
+                    : result.attachments.length > 0
+                      ? `${result.attachments.length} file(s)`
+                      : 'A locked message'}
             </span>
           </button>
         ))}

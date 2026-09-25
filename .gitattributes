@@ -15,3 +15,6 @@ infra/box/remote/* text eol=lf
 *.patch text eol=lf
 .env.example text eol=lf
 web/public/desktop-update/client.bin binary
+# The update key is hashed as text for the fingerprint printed off-box, so
+# it has to be the same bytes on every checkout.
+*.pem   text eol=lf

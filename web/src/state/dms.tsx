@@ -35,12 +35,15 @@ import {
   type DmOpener,
   type OpenResult,
   assessDevices,
+  believedDevice,
   createDmKeypair,
   describeDevice,
   describeDmKeypair,
   endorse,
   isTrusted,
   openMessage,
+  recipientsFor,
+  replayedIds,
   rewrapKey,
   sealMessage,
 } from '../lib/dm-crypto';
@@ -53,6 +56,7 @@ import { play as playCharacter } from '../lib/stage';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
 import {
   IndexedDbIdentityStore,
+  letInEverywhere,
   loadDeviceIdentity,
   loadDmKeypair,
   loadRecoveryKey,
@@ -85,6 +89,12 @@ export interface DmView {
   unproven?: boolean;
   /** The message this one answers. Read from inside the sealed body. */
   replyTo: string | null;
+  /**
+   * When the sender's own clock said they wrote it, from inside the seal.
+   * Null on messages sealed before that time was carried, which is a fact
+   * about the message and not a problem with it.
+   */
+  sealedAt: number | null;
   files: DmFileRef[];
   editedAt: string | null;
 }
@@ -112,6 +122,18 @@ interface DmState {
   /** Per conversation: every device of everyone in it, and what we make of each. */
   devices: Record<string, AssessedDevice[]>;
   /**
+   * Per conversation: messages not drawn because another message this tab
+   * holds carried the same sealed bytes. Only repeats of something this tab
+   * has also been handed; a server that never sends the original gets its
+   * repeat drawn. `replayedIds`.
+   */
+  replayed: Record<string, string[]>;
+  /**
+   * This device, for the safety-number screen: the number shown for "you" is
+   * this device's identity, so it is known without asking the server anything.
+   */
+  me: { userId: string; deviceId: string; fingerprint: string } | null;
+  /**
    * Whether this person has a recovery phrase, and whether its words have been
    * typed into this device. Null until the server has been asked.
    */
@@ -128,6 +150,8 @@ const initialState: DmState = {
   reactions: {},
   loaded: {},
   devices: {},
+  replayed: {},
+  me: null,
   recovery: null,
 };
 
@@ -135,12 +159,14 @@ type Action =
   | { type: 'ready' }
   | { type: 'recovery'; exists: boolean; held: boolean }
   | { type: 'setup-failed'; message: string }
+  | { type: 'me'; userId: string; deviceId: string; fingerprint: string }
   | { type: 'dms'; dms: DmChannel[] }
   | { type: 'dm'; dm: DmChannel }
   | { type: 'left'; dmId: string }
   | { type: 'show'; dmId: string | null }
   | { type: 'hide' }
   | { type: 'devices'; dmId: string; devices: AssessedDevice[] }
+  | { type: 'replayed'; dmId: string; ids: string[] }
   | { type: 'messages'; dmId: string; views: DmView[]; replace: boolean }
   | { type: 'reactions'; dmId: string; reactions: DmReactionView[] }
   | { type: 'reaction-removed'; dmId: string; id: string }
@@ -162,6 +188,11 @@ function reducer(state: DmState, action: Action): DmState {
       return { ...state, recovery: { exists: action.exists, held: action.held } };
     case 'setup-failed':
       return { ...state, ready: false, setupError: action.message };
+    case 'me':
+      return {
+        ...state,
+        me: { userId: action.userId, deviceId: action.deviceId, fingerprint: action.fingerprint },
+      };
     case 'dms':
       return { ...state, dms: Object.fromEntries(action.dms.map((dm) => [dm.id, dm])) };
     case 'dm':
@@ -175,6 +206,7 @@ function reducer(state: DmState, action: Action): DmState {
         reactions: without(state.reactions, action.dmId),
         loaded: without(state.loaded, action.dmId),
         devices: without(state.devices, action.dmId),
+        replayed: without(state.replayed, action.dmId),
         openId: state.openId === action.dmId ? null : state.openId,
       };
     }
@@ -184,6 +216,8 @@ function reducer(state: DmState, action: Action): DmState {
       return { ...state, active: false };
     case 'devices':
       return { ...state, devices: { ...state.devices, [action.dmId]: action.devices } };
+    case 'replayed':
+      return { ...state, replayed: { ...state.replayed, [action.dmId]: action.ids } };
     case 'messages': {
       const existing = action.replace ? [] : (state.messages[action.dmId] ?? []);
       const byId = new Map([...existing, ...action.views].map((view) => [view.id, view]));
@@ -256,6 +290,8 @@ function reducer(state: DmState, action: Action): DmState {
 
 interface DmValue {
   state: DmState;
+  /** Recheck the server's device list when opening the safety-number panel. */
+  refreshDevices: (dmId: string) => Promise<AssessedDevice[]>;
   /** Show the DM screens, on the conversation last open. */
   showDms: () => void;
   /** Back to servers. */
@@ -331,6 +367,12 @@ export function DmProvider({ children }: { children: ReactNode }) {
           held && stored ? { userId: selfId, identity: { deviceId: stored.deviceId }, dm: { privateKey: stored.privateKey } } : null;
         setRecoveryOpener(recovery.current);
         dispatch({ type: 'recovery', exists: Boolean(published), held });
+        dispatch({
+          type: 'me',
+          userId: selfId,
+          deviceId: mine.identity.deviceId,
+          fingerprint: mine.identity.fingerprint,
+        });
         dispatch({ type: 'dms', dms });
         dispatch({ type: 'ready' });
       } catch (problem) {
@@ -403,6 +445,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       createdAt: message.createdAt,
       deleted: message.deleted,
       replyTo: null,
+      sealedAt: null as number | null,
       files: [],
       editedAt: message.deleted ? null : message.editedAt,
     };
@@ -424,6 +467,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
       ...base,
       text: opened.body.text,
       replyTo: opened.body.replyTo ?? null,
+      sealedAt: opened.body.at ?? null,
       files: opened.body.files ?? [],
       problem: null,
       unverified: !isTrusted(sender.verdict),
@@ -442,14 +486,17 @@ export function DmProvider({ children }: { children: ReactNode }) {
    * nothing to show for it. The sealed body names its own target, and that has
    * to agree with the row the server filed it under, or a server could move
    * somebody's thumbs-up onto a different message.
+   *
+   * A reaction from a device nobody here has accepted is dropped too, unlike a
+   * message from one: a message is shown with a mark, but a thumbs-up counted
+   * as somebody's is words in their mouth, so it waits until someone says the
+   * device is theirs.
    */
   const toReaction = useCallback(async (message: DmMessage, known: AssessedDevice[]): Promise<DmReactionView | null> => {
     const self = device.current;
     if (!self || !message.reactionTo || !message.iv || !message.ciphertext) return null;
-    const sender = known.find(
-      (entry) => entry.device.userId === message.authorId && entry.device.deviceId === message.senderDeviceId,
-    );
-    if (!sender || sender.verdict === 'invalid') return null;
+    const sender = believedDevice(known, message.authorId, message.senderDeviceId);
+    if (!sender) return null;
     const opened = await open({ ...message, iv: message.iv, ciphertext: message.ciphertext }, sender, known);
     if (!opened.ok || opened.body.kind !== 'reaction' || opened.body.target !== message.reactionTo) return null;
     return { id: message.id, targetId: message.reactionTo, authorId: message.authorId, emoji: opened.body.emoji };
@@ -463,10 +510,22 @@ export function DmProvider({ children }: { children: ReactNode }) {
     [toReaction],
   );
 
+  /**
+   * Keep the sealed rows this tab has been handed, and work out again which
+   * of them repeat one another. Every message this tab is given goes through
+   * here, so this is the one place that sees all of it. "All of it" is only
+   * what arrived since the tab loaded: nothing here survives a reload.
+   */
   const remember = (messages: DmMessage[]): void => {
+    const touched = new Set<string>();
     for (const message of messages) {
       const map = (sealed.current[message.dmId] ??= new Map());
       map.set(message.id, message);
+      touched.add(message.dmId);
+    }
+    for (const dmId of touched) {
+      const rows = [...(sealed.current[dmId]?.values() ?? [])];
+      dispatch({ type: 'replayed', dmId, ids: replayedIds(rows) });
     }
   };
 
@@ -724,7 +783,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'left', dmId });
   }, []);
 
-  /** Lock a body for every accepted device in the conversation. */
+  /** Lock a body for every accepted device of the people in this conversation. */
   const seal = useCallback(
     async (dmId: string, body: DmBody) => {
       const self = device.current;
@@ -734,10 +793,20 @@ export function DmProvider({ children }: { children: ReactNode }) {
       // should be noticed now, not after a reload. In a group that includes
       // whoever was added a moment ago.
       const known = await refreshDevices(dmId);
-      const recipients = known.filter((entry) => isTrusted(entry.verdict)).map((entry) => entry.device);
       const dm = stateRef.current.dms[dmId];
-      const others = dm?.members.filter((member) => member.id !== self.userId) ?? [];
-      if (dm?.kind === 'group') {
+      // Fail closed. The member list is what says who may read this, and it
+      // comes from the conversation; with no conversation there is no member
+      // list, and the device list the server just handed over is not one. A
+      // message locked to whatever that list says would go to whoever the
+      // server chose, which is the attack this whole file is against.
+      if (!dm || dm.members.length === 0) {
+        throw new Error(
+          'This conversation is still loading, so there is no way to tell who can read what you send. Try again in a moment.',
+        );
+      }
+      const { recipients } = recipientsFor(known, new Set(dm.members.map((member) => member.id)));
+      const others = dm.members.filter((member) => member.id !== self.userId);
+      if (dm.kind === 'group') {
         // One person without a key, or with only devices waiting to be
         // accepted, must not silence everyone else. They are named in the
         // warnings above the conversation, and get no copy until that is
@@ -769,7 +838,10 @@ export function DmProvider({ children }: { children: ReactNode }) {
 
   const send = useCallback(
     async (dmId: string, text: string, replyTo?: string | null, files?: DmFileRef[]) => {
-      const body: DmBody = { v: 1, text: houseRules(text) };
+      // This device's clock, inside the seal. The server's own timestamp for
+      // the row is a claim it can change; this one it cannot, so the screen
+      // can say when the words were actually written.
+      const body: DmBody = { v: 1, text: houseRules(text), at: Date.now() };
       if (replyTo) body.replyTo = replyTo;
       if (files && files.length > 0) body.files = files;
       const { known, message } = await seal(dmId, body);
@@ -790,6 +862,9 @@ export function DmProvider({ children }: { children: ReactNode }) {
       if (!current || current.text === null) return;
       // Everything but the words is carried over: what it answered, what it came with.
       const body: DmBody = { v: 1, text: houseRules(text) };
+      // The message's own time stands: it is the same message, only reworded,
+      // and a fresh time here would read as the server having moved it.
+      if (current.sealedAt !== null) body.at = current.sealedAt;
       if (current.replyTo) body.replyTo = current.replyTo;
       if (current.files.length > 0) body.files = current.files;
       const { known, message } = await seal(dmId, body);
@@ -849,6 +924,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
     async (dmId: string, entry: AssessedDevice) => {
       if (entry.verdict === 'invalid') return;
       await acceptIdentityChange(pins.current, entry.device.userId, entry.device.deviceId, entry.fingerprint);
+      await letInEverywhere(entry.device.userId, entry.device.deviceId, entry.fingerprint);
       const known = await refreshDevices(dmId);
       // What that device already sent was opened and marked unverified. Open it
       // again so the mark goes.
@@ -937,11 +1013,11 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DmValue>(
     () => ({
       state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
-      markRead, acceptDevice, createRecovery, restoreRecovery,
+      markRead, acceptDevice, createRecovery, restoreRecovery, refreshDevices,
     }),
     [
       state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
-      markRead, acceptDevice, createRecovery, restoreRecovery,
+      markRead, acceptDevice, createRecovery, restoreRecovery, refreshDevices,
     ],
   );
 

@@ -16,6 +16,9 @@
  * GAMEPLAN.md section 1b, finding 1.
  */
 
+import type { AcceptanceStore } from './acceptance';
+import { type ChannelMemoryStore, type Remembered, mergeRemembered } from './channel-memory';
+import { DEVICE_ACCEPTED, emit } from './signals';
 import {
   type DeviceIdentity,
   type IdentityStore,
@@ -23,12 +26,23 @@ import {
 } from './voice-crypto';
 
 const DB_NAME = 'scryproof';
-/** 2 added the DM key store, 3 the recovery key. Every store is created here, so any version can upgrade. */
-const DB_VERSION = 3;
+/**
+ * 2 added the DM key store, 3 the recovery key, 4 the accepted store and the
+ * channel memory. Every store is created here, so any version can upgrade.
+ */
+const DB_VERSION = 4;
 const IDENTITY_STORE = 'device-identity';
 const PINS_STORE = 'identity-pins';
 const DM_KEY_STORE = 'dm-key';
 const RECOVERY_STORE = 'dm-recovery';
+/**
+ * The devices a person on this device has let in. Separate from the pins,
+ * which are "seen before": a device pinned on first sight was never accepted
+ * by anybody, and keys follow acceptance only. See `acceptance.ts`.
+ */
+const ACCEPTED_STORE = 'accepted-identities';
+/** `channel-memory.ts`: which channels this device has seen encrypted. */
+const CHANNEL_MEMORY_STORE = 'channel-memory';
 
 interface StoredIdentity {
   deviceId: string;
@@ -39,16 +53,82 @@ interface StoredIdentity {
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (upgrade) => {
       const db = request.result;
+      const fresh = !db.objectStoreNames.contains(ACCEPTED_STORE);
       if (!db.objectStoreNames.contains(IDENTITY_STORE)) db.createObjectStore(IDENTITY_STORE);
       if (!db.objectStoreNames.contains(PINS_STORE)) db.createObjectStore(PINS_STORE);
       if (!db.objectStoreNames.contains(DM_KEY_STORE)) db.createObjectStore(DM_KEY_STORE);
       if (!db.objectStoreNames.contains(RECOVERY_STORE)) db.createObjectStore(RECOVERY_STORE);
+      if (fresh) db.createObjectStore(ACCEPTED_STORE);
+      if (!db.objectStoreNames.contains(CHANNEL_MEMORY_STORE)) db.createObjectStore(CHANNEL_MEMORY_STORE);
+      // The one time this upgrade happens, everything already pinned carries
+      // over as accepted, so channels keep working on the day this ships for
+      // every device this one had already met. A pin was made on first sight,
+      // so that includes any device the server listed before the update: the
+      // lock panel's safety numbers are how a person checks. From then on,
+      // only an acceptance writes here.
+      const upgradeTransaction = request.transaction;
+      if (fresh && upgrade.oldVersion >= 1 && upgradeTransaction) {
+        carryOverPins(upgradeTransaction, upgrade.oldVersion);
+      }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => {
+      // Another tab is holding the old version open and the upgrade is waiting
+      // for it. Say so rather than appear to hang; that tab closes its own
+      // connection when it sees the version change (`onversionchange` below).
+      console.warn('Scryproof is updating its local database. Close other tabs of the app if this takes a while.');
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      // A newer version is opened somewhere else (another tab, after an
+      // update): let go of this connection so that upgrade can go through.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     request.onerror = () => reject(request.error ?? new Error('IndexedDB refused to open.'));
   });
+}
+
+/**
+ * Which pins are copied into the accepted store, as the pure part of the
+ * upgrade above (`carriedOverPins` is exported for its test). A database made
+ * before the pin store existed has nothing to carry, and neither has a fresh
+ * one: from the first install on, a device is let in one at a time.
+ */
+export function carriedOverPins(
+  fromVersion: number,
+  pins: readonly { key: string; fingerprint: string }[],
+): { key: string; fingerprint: string }[] {
+  if (fromVersion < 1) return [];
+  return pins.filter((pin) => pin.key.includes(':') && typeof pin.fingerprint === 'string' && pin.fingerprint.length > 0);
+}
+
+function carryOverPins(transaction: IDBTransaction, fromVersion: number): void {
+  const pins = transaction.objectStore(PINS_STORE);
+  const accepted = transaction.objectStore(ACCEPTED_STORE);
+  const heldKeys = pins.getAllKeys();
+  const heldValues = pins.getAll();
+  let keys: IDBValidKey[] | null = null;
+  let values: string[] | null = null;
+  // Both reads finish inside the upgrade transaction, and the copy is written
+  // from the second one's own task: an upgrade transaction commits as soon as
+  // it is left idle, so nothing here may wait around before writing.
+  const copy = (): void => {
+    const allKeys = keys;
+    const allValues = values;
+    if (allKeys === null || allValues === null) return;
+    const held = allKeys.map((key, index) => ({ key: String(key), fingerprint: allValues[index] ?? '' }));
+    for (const pin of carriedOverPins(fromVersion, held)) accepted.put(pin.fingerprint, pin.key);
+  };
+  heldKeys.onsuccess = () => {
+    keys = heldKeys.result;
+    copy();
+  };
+  heldValues.onsuccess = () => {
+    values = heldValues.result;
+    copy();
+  };
 }
 
 function run<T>(request: IDBRequest<T>): Promise<T> {
@@ -65,7 +145,15 @@ async function withStore<T>(
 ): Promise<T> {
   const db = await open();
   try {
-    return await work(db.transaction(name, mode).objectStore(name));
+    const transaction = db.transaction(name, mode);
+    const committed = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed.'));
+    });
+    // A successful put request can still be followed by a failed commit.
+    const [result] = await Promise.all([work(transaction.objectStore(name)), committed]);
+    return result;
   } finally {
     db.close();
   }
@@ -182,5 +270,83 @@ export class IndexedDbIdentityStore implements IdentityStore {
       run<IDBValidKey[]>(store.getAllKeys(IDBKeyRange.bound(prefix, `${prefix}￿`))),
     );
     return keys.map((key) => String(key).slice(prefix.length));
+  }
+}
+
+/**
+ * The devices a person on this device has let in.
+ *
+ * Same shape as the pins, and deliberately a separate store: a pin means
+ * "seen before", which happens on its own the first time a device is listed,
+ * and acceptance means somebody here said yes. Keys only ever follow the
+ * second. `acceptance.ts` decides which is which.
+ */
+export class IndexedDbAcceptedStore implements AcceptanceStore {
+  async get(userId: string, deviceId: string): Promise<string | null> {
+    const value = await withStore(ACCEPTED_STORE, 'readonly', (store) =>
+      run<string | undefined>(store.get(`${userId}:${deviceId}`)),
+    );
+    return value ?? null;
+  }
+
+  async set(userId: string, deviceId: string, fingerprint: string): Promise<void> {
+    await withStore(ACCEPTED_STORE, 'readwrite', (store) =>
+      run(store.put(fingerprint, `${userId}:${deviceId}`)),
+    );
+  }
+}
+
+/**
+ * A person on this device said yes to this exact key somewhere else, in a
+ * conversation's device warning or a call's. That is the same decision as
+ * "Let in" on a channel's lock panel, so channels count it too. Best effort:
+ * if it is not stored, the device still shows as waiting in each channel and
+ * one click there does the same.
+ */
+export function letInEverywhere(
+  userId: string,
+  deviceId: string,
+  fingerprint: string,
+  onUnsaved?: (problem: unknown) => void,
+): Promise<void> {
+  return new IndexedDbAcceptedStore()
+    .set(userId, deviceId, fingerprint)
+    .then(() => emit(DEVICE_ACCEPTED))
+    .catch((problem: unknown) => onUnsaved?.(problem));
+}
+
+/**
+ * The channel memory in IndexedDB: one small record per channel, keyed by
+ * channel id. Read all at once at sign-in, and merged rather than overwritten
+ * on the way back in, so a copy that is older than what is held can never
+ * turn encryption off or move an epoch back.
+ */
+export class IndexedDbChannelMemory implements ChannelMemoryStore {
+  async all(): Promise<Record<string, Remembered>> {
+    const db = await open();
+    try {
+      const store = db.transaction(CHANNEL_MEMORY_STORE, 'readonly').objectStore(CHANNEL_MEMORY_STORE);
+      // Both reads are asked for before either answer is waited on: a
+      // transaction finishes as soon as nothing is outstanding.
+      const [keys, values] = await Promise.all([
+        run<IDBValidKey[]>(store.getAllKeys()),
+        run<Remembered[]>(store.getAll()),
+      ]);
+      const entries: [string, Remembered][] = [];
+      keys.forEach((key, index) => {
+        const entry = values[index];
+        if (entry) entries.push([String(key), entry]);
+      });
+      return Object.fromEntries(entries);
+    } finally {
+      db.close();
+    }
+  }
+
+  async remember(channelId: string, entry: Remembered): Promise<void> {
+    await withStore(CHANNEL_MEMORY_STORE, 'readwrite', async (store) => {
+      const held = await run<Remembered | undefined>(store.get(channelId));
+      await run(store.put(mergeRemembered(held, entry), channelId));
+    });
   }
 }

@@ -405,6 +405,53 @@ describe('a server that lies', () => {
     const wes = await makeDevice('wes');
     assert.equal(await verifyAnnouncement(CALL, { ...wes.announcement, userId: 'alex' }), false);
   });
+
+  test('an announcement claiming this device, with another key, is refused', async () => {
+    // The relay's most direct move on the verification code: sign an
+    // announcement with a key of its own, but under this device's own user and
+    // device id, so it would land in this device's own slot.
+    const wes = await makeDevice('wes');
+    const impostor = await makeDevice('wes');
+    await wes.call.admit([wes.announcement]);
+
+    const result = await wes.call.admit([impostor.announcement]);
+
+    assert.equal(result.rejected.length, 1);
+    assert.deepEqual(
+      wes.call.members.map((member) => member.fingerprint),
+      [wes.call.identity.fingerprint],
+    );
+  });
+
+  test('an impostor in this device’s own seat cannot change the number read aloud', async () => {
+    const wes = await makeDevice('wes');
+    const alex = await makeDevice('alex');
+    const impostor = await makeDevice('wes');
+    await wes.call.admit([wes.announcement, alex.announcement]);
+    const honest = await wes.call.verificationCode();
+
+    await wes.call.admit([impostor.announcement]);
+
+    assert.equal(await wes.call.verificationCode(), honest);
+  });
+
+  test('two devices of one person give the same code in any order', async () => {
+    // One person can be in a call on two devices, so the members list can hold
+    // two entries with the same user id. The relay picks the order it hands
+    // them to each screen; the code must not depend on that choice.
+    const asAliceHeardIt = await verificationCode(CALL, [
+      { userId: 'wes', fingerprint: 'aaaa' },
+      { userId: 'alex', fingerprint: 'bbbb' },
+      { userId: 'alex', fingerprint: 'cccc' },
+    ]);
+    const asBobHeardIt = await verificationCode(CALL, [
+      { userId: 'alex', fingerprint: 'cccc' },
+      { userId: 'wes', fingerprint: 'aaaa' },
+      { userId: 'alex', fingerprint: 'bbbb' },
+    ]);
+
+    assert.equal(asAliceHeardIt, asBobHeardIt);
+  });
 });
 
 describe('rotation', () => {
@@ -572,6 +619,35 @@ describe('a device nobody expected', () => {
     // Next call, the same phone is simply known.
     const again = await wes.admit([strangerAnnouncement]);
     assert.deepEqual(again.flagged, []);
+  });
+
+  test('approving counts at once, even when the local database cannot save it', async () => {
+    const pins = new MemoryIdentityStore();
+    await pinIdentity(pins, 'alex', 'alex-laptop', 'the-key-wes-remembers');
+    const identity = await createDeviceIdentity('wes-device');
+    const callKeys = await createCallKeypair();
+    const wes = new VoiceCall({ callId: CALL, userId: 'wes', identity, callKeys, pins });
+    const strangerIdentity = await createDeviceIdentity('alex-new-phone');
+    const strangerAnnouncement = await announce(CALL, 'alex', strangerIdentity, await createCallKeypair());
+    await wes.admit([await announce(CALL, 'wes', identity, callKeys), strangerAnnouncement]);
+
+    // From here on every write hangs or fails, as a stuck IndexedDB would.
+    let release: (reason: unknown) => void = () => undefined;
+    pins.set = () => new Promise<void>((_, reject) => (release = reject));
+    let unsaved: unknown = null;
+
+    const approved = await wes.approve('alex', 'alex-new-phone', (problem) => (unsaved = problem));
+    assert.equal(approved?.verdict, 'known');
+    assert.equal(wes.awaitingConsent.length, 0);
+    wes.rotate(1);
+    assert.equal((await wes.distribute()).length, 1, 'the key goes out without waiting for the write');
+
+    // A re-announcement before the write lands is not held a second time.
+    assert.deepEqual((await wes.admit([strangerAnnouncement])).flagged, []);
+
+    release(new Error('quota'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(unsaved instanceof Error, 'a failed write is reported');
   });
 
   test('approving something that is not waiting does nothing', async () => {

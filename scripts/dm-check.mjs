@@ -303,6 +303,20 @@ const wesLaptop = new Device('wes-laptop', 'wes', 9344);
 const mara = new Device('mara', 'mara', 9345);
 const everyone = [wes, alex, alexPhone, wesLaptop, mara];
 
+/** The devices this browser has let in for channels, as `userId:deviceId`, read from its own database. */
+const acceptedKeys = (device) =>
+  device.evaluate(`new Promise((resolve) => {
+    const open = indexedDB.open('scryproof');
+    open.onerror = () => resolve(null);
+    open.onsuccess = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains('accepted-identities')) { db.close(); resolve(null); return; }
+      const keys = db.transaction('accepted-identities', 'readonly').objectStore('accepted-identities').getAllKeys();
+      keys.onerror = () => { db.close(); resolve(null); };
+      keys.onsuccess = () => { db.close(); resolve(keys.result); };
+    };
+  })`).then((keys) => keys ?? []);
+
 try {
   await Promise.all([wes.open(), alex.open()]);
   await Promise.all([wes.signIn(), alex.signIn()]);
@@ -354,8 +368,15 @@ try {
   check('the unaccepted device was given no copy of it', !(await alexPhone.screenText()).includes(SECOND));
 
   /* 6 */
+  const alexId = await alex.evaluate(`fetch('/api/auth/me', { credentials: 'include' }).then((r) => r.json()).then((b) => b.user.id)`);
+  const acceptedBefore = await acceptedKeys(wes);
   await wes.click('.dm-warning button', 'Accept');
   check('the warning goes once accepted', Boolean(await wes.until(`document.querySelector('.dm-warning') === null`)));
+  {
+    // Accepting here is the same yes as "Let in" on a channel's lock panel.
+    const added = (await acceptedKeys(wes)).filter((key) => !acceptedBefore.includes(key));
+    check("and Wes's channels count that device as let in too", added.length === 1 && added[0].startsWith(`${alexId}:`), JSON.stringify(added));
+  }
   await wes.say(THIRD);
   check('the accepted device reads the next message', Boolean(await alexPhone.sees(THIRD)));
   check('and so does the first one', Boolean(await alex.sees(THIRD)));
@@ -549,6 +570,13 @@ try {
     await wesLaptop.until(`document.querySelector('.dm-row') !== null`);
     await wesLaptop.click('.dm-row', 'Alex');
     check('on a new laptop the history is locked', Boolean(await wesLaptop.until(`document.querySelector('.main')?.innerText.includes('Locked.')`)));
+    await wes.click('.main-header button', 'Check keys');
+    check('Check keys includes your other devices, each with a safety number', Boolean(await wes.until(`(() => {
+      const section = Array.from(document.querySelectorAll('.modal strong')).find((el) => el.textContent === 'Your other devices')?.parentElement?.parentElement;
+      const rows = Array.from(section?.querySelectorAll('.dm-people-row') ?? []);
+      return rows.length >= 2 && rows.every((row) => row.textContent.includes('Device ') && /^\\d{5}( \\d{5}){3}$/.test(row.querySelector('.dm-fingerprint')?.textContent ?? ''));
+    })()`)));
+    await wes.click('.modal button', 'Close');
     check('and it says the phrase opens it', Boolean(await wesLaptop.until(`Array.from(document.querySelectorAll('.dm-warning')).some((el) => el.textContent.includes('recovery phrase'))`)));
 
     await wesLaptop.click('.dm-warning .button', 'Enter recovery phrase');

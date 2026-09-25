@@ -450,6 +450,14 @@ async function main() {
     [w3, a3, m3].map((s) => JSON.stringify(s.people.map((p) => p.state))).join('  '));
   check('all three see the same code, and it is not the two-person code',
     w3.code === a3.code && a3.code === m3.code && w3.code !== w.code, `${w3.code} (was ${w.code})`);
+  {
+    // The code box names whose keys the digits cover, from the call's own key
+    // list: a server that adds a listener of its own shows up here by name.
+    await mara.clickButton('Verify');
+    const covers = await mara.until(`document.querySelector('.voice-code-covers')?.textContent ?? ''`, 10_000);
+    check('the code box names exactly who the code covers', covers === 'Covers: you, Wes, Alex.' || covers === 'Covers: you, Alex, Wes.', String(covers));
+    await mara.clickButton('Hide code');
+  }
   const [fromWes, fromAlex] = await Promise.all([mara.listenTo(wes.userId), mara.listenTo(alex.userId)]);
   check('the newcomer decodes both of the others', fromWes.energy > 0.001 && fromAlex.energy > 0.001,
     `wes +${fromWes.energy.toFixed(4)}, alex +${fromAlex.energy.toFixed(4)}`);

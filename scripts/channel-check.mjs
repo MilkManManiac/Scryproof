@@ -4,7 +4,10 @@
  * with a lying server; this covers keys made and kept by real browsers, and
  * the screens.
  *
- *   1. Wes makes an encrypted channel. Wes, Alex and Mara open it; it says so
+ *   1. Wes makes an encrypted channel. Wes, Alex and Mara open it; it says so.
+ *      Each lets the other two in from the lock panel, one click per device:
+ *      a key goes only to devices someone on the sending device has let in,
+ *      so on a fresh database nobody gets one until then
  *   2. Wes writes. All three read exactly that; the server holds no text
  *   3. Alex replies to it, mentioning Wes. Wes sees the reply, its quote, and a ping
  *   4. Wes edits his message. The others see the edit, the server still no text
@@ -13,10 +16,11 @@
  *   5. Wes removes Mara from the server. The next message moves the channel to
  *      a new key, locked for Wes and Alex only
  *   6. Alex signs in on a second device. It shows the history as locked, and
- *      its owner's panel says why
- *   7. Wes accepts it from the lock panel. The history opens there, all of it,
+ *      Wes's panel shows it waiting to be let in
+ *   7. Wes lets it in from the lock panel. The history opens there, all of it,
  *      including what came before the new key
- *   8. the new device can send once it believes the device that made the key
+ *   8. the new device refuses to send under a key made by a device it has not
+ *      let in, and sends once it lets that device in
  *   9. /roll is refused here with a reason, and nothing is sent
  *  10. Wes switches a plain channel with a message in it to encrypted. The old
  *      message stays, a line marks the switch, and what follows is sealed
@@ -56,6 +60,32 @@ const everyone = [wes, alex, mara, alexPhone];
 const rawMessages = (device, channelId) =>
   device.evaluate(`fetch('/api/channels/${channelId}/messages', { credentials: 'include' }).then((r) => r.text())`);
 
+/**
+ * Open the lock panel and let in every device waiting there, one click each,
+ * as a member does after comparing numbers. The names must be waiting first,
+ * so a panel that lists nobody cannot pass for one that let everyone in.
+ */
+const letIn = async (device, names) => {
+  await device.click('.channel-lock-button');
+  const listed = await device.until(`(() => {
+    const rows = Array.from(document.querySelectorAll('.modal .dm-warning')).map((el) => el.textContent);
+    return ${JSON.stringify(names)}.every((name) => rows.some((row) => row.startsWith(name))) ? rows.length : 0;
+  })()`);
+  if (!listed) {
+    await device.click('.modal button', 'Done');
+    return false;
+  }
+  for (let row = 0; row < listed; row += 1) {
+    const before = await device.evaluate(`document.querySelectorAll('.modal .dm-warning').length`);
+    if (before === 0) break;
+    await device.click('.modal .dm-warning button', 'Let in');
+    await device.until(`document.querySelectorAll('.modal .dm-warning').length < ${before}`);
+  }
+  const cleared = await device.until(`document.querySelectorAll('.modal .dm-warning').length === 0`);
+  await device.click('.modal button', 'Done');
+  return Boolean(cleared);
+};
+
 const openChannel = async (device) => {
   const found = await device.until(`Array.from(document.querySelectorAll('.channel')).some((el) => el.textContent.includes(${JSON.stringify(NAME)}))`);
   if (!found) return false;
@@ -80,6 +110,9 @@ try {
   }
   check('the header says it is encrypted', Boolean(await wes.until(`document.querySelector('.channel-lock-button') !== null`)));
   check('and so does the start of the channel', Boolean(await wes.until(`document.querySelector('.channel-intro')?.textContent.includes('end-to-end encrypted')`)));
+  check('Wes lets Alex and Mara in, one click each', await letIn(wes, ['Alex', 'Mara']));
+  check('Alex lets Wes and Mara in', await letIn(alex, ['Wes', 'Mara']));
+  check('Mara lets Wes and Alex in', await letIn(mara, ['Wes', 'Alex']));
 
   /* 2 */
   await wes.say(SECRET);
@@ -176,16 +209,25 @@ try {
   /* 7 */
   await wes.click('.channel-lock-button');
   check(
-    "Wes's lock panel says Alex signed in somewhere new",
-    Boolean(await wes.until(`document.querySelector('.dm-warning')?.textContent.includes('signed in somewhere new')`)),
+    "Wes's lock panel shows Alex's new device waiting to be let in",
+    Boolean(await wes.until(`Array.from(document.querySelectorAll('.modal .dm-warning')).some((el) => el.textContent.startsWith('Alex wants to read here'))`)),
   );
   check(
     'and lists who holds the key, without Mara',
     Boolean(await wes.until(`(() => { const t = document.querySelector('.lock-holders')?.textContent ?? ''; return t.includes('Alex') && t.includes('(you)') && !t.includes('Mara'); })()`)),
   );
+  check('accepted holders still show their safety numbers for comparison', Boolean(await wes.until(`(() => {
+    const rows = Array.from(document.querySelectorAll('.lock-holders li'));
+    return rows.length >= 2 && rows.every((row) => Array.from(row.querySelectorAll('.dm-fingerprint')).some((el) => /^\\d{5}( \\d{5}){3}$/.test(el.textContent)));
+  })()`)));
   await wes.shot('docs/shots/channel-lock-panel.png');
-  await wes.click('.dm-warning button', 'Accept');
-  check('the warning goes once accepted', Boolean(await wes.until(`document.querySelector('.dm-warning') === null`)));
+  await wes.click('.modal .dm-warning button', 'Let in');
+  check('the row goes once it is let in', Boolean(await wes.until(`document.querySelector('.modal .dm-warning') === null`)));
+  check('both accepted Alex devices have labeled safety numbers', Boolean(await wes.until(`(() => {
+    const row = Array.from(document.querySelectorAll('.lock-holders li')).find((el) => el.textContent.startsWith('Alex'));
+    const numbers = Array.from(row?.querySelectorAll('.dm-fingerprint') ?? []);
+    return numbers.length === 2 && (row.textContent.match(/Device /g) ?? []).length === 2 && numbers.every((el) => /^\\d{5}( \\d{5}){3}$/.test(el.textContent));
+  })()`)));
   await wes.click('.modal button', 'Done');
   check('the new device reads the history from before it existed', Boolean(await alexPhone.sees(EDITED, 30_000)));
   check('including what came before the new key, and after', Boolean(await alexPhone.sees(REPLY)) && Boolean(await alexPhone.sees(AFTER)));
@@ -193,19 +235,16 @@ try {
   /* 8 */
   await alexPhone.say(FROM_PHONE);
   {
-    const refused = await alexPhone.until(`document.querySelector('.composer .error')?.textContent.includes('not accepted')`, 8000);
-    if (refused) {
-      check('the new device will not send under a key made by a device it has not accepted', true);
-      await alexPhone.click('.channel-lock-button');
-      await alexPhone.until(`document.querySelector('.dm-warning') !== null`);
-      check('its panel offers its owner the device that made it', await alexPhone.click('.dm-warning button', 'Accept'));
-      await alexPhone.until(`document.querySelector('.dm-warning') === null`);
-      await alexPhone.click('.modal button', 'Done');
-      // The refused message went back into the box, as it should. Send that.
-      check('the refused message went back into the box', await alexPhone.evaluate(`document.querySelector('.composer-input').value === ${JSON.stringify(FROM_PHONE)}`));
-      await alexPhone.evaluate(`document.querySelector('.composer-input').focus()`);
-      await alexPhone.pressEnter();
-    }
+    // The key in use was made by Alex's laptop, which nobody on the phone has
+    // let in. Always refused now: the maker has to be let in, not just seen.
+    const refused = await alexPhone.until(`document.querySelector('.composer .error')?.textContent.includes('not let in')`, 8000);
+    check('the new device will not send under a key made by a device it has not let in', Boolean(refused));
+    // Wes as well as the laptop: both hold the key, and both are waiting here.
+    check('its panel offers its owner the devices that hold it', await letIn(alexPhone, ['Your other device', 'Wes']));
+    // The refused message went back into the box, as it should. Send that.
+    check('the refused message went back into the box', await alexPhone.evaluate(`document.querySelector('.composer-input').value === ${JSON.stringify(FROM_PHONE)}`));
+    await alexPhone.evaluate(`document.querySelector('.composer-input').focus()`);
+    await alexPhone.pressEnter();
     check('once it does, it sends, and Wes reads it', Boolean(await wes.sees(FROM_PHONE)));
     check('once', !(await wes.screenText()).includes(FROM_PHONE + FROM_PHONE));
   }

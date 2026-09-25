@@ -22,6 +22,7 @@ import {
 } from 'react';
 
 import type {
+  Channel,
   Emoji,
   Member,
   Message,
@@ -43,9 +44,10 @@ import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
-import { channelKeysFor } from '../lib/channel-keys';
+import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { VoiceSession, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
+import { DEVICE_ACCEPTED, on } from '../lib/signals';
 
 export interface State {
   connection: ConnectionStatus;
@@ -135,6 +137,8 @@ type Action =
     }
   | { type: 'members-loaded'; serverId: string; members: Member[] }
   | { type: 'server-refreshed'; server: ServerDetail }
+  /** The channel memory has been read for this sign-in; see `lib/channel-memory.ts`. */
+  | { type: 'memory-loaded' }
   | { type: 'emojis-loaded'; serverId: string; emojis: Emoji[] }
   | { type: 'sounds-loaded'; serverId: string; sounds: Sound[] }
   | { type: 'voice-states-refreshed'; serverId: string; voiceStates: VoiceState[] }
@@ -225,6 +229,39 @@ function upsertServer(state: State, server: ServerDetail): State {
   };
 }
 
+/**
+ * Every channel passes through here on its way into the store, so what this
+ * device has already seen is applied to what the server now says.
+ *
+ * A channel this device has seen encrypted stays encrypted here. Encryption
+ * cannot be turned off — the honest server only ever turns it on, and stores
+ * no readable text in an encrypted channel — so a channel that comes back
+ * saying otherwise is either a mistake or a server trying to get plaintext out
+ * of the next message. Either way it is kept encrypted, the claim is noted so
+ * the channel can say what happened, and nothing readable is sent. This is the
+ * one place it can be done: it is where the server's word first arrives.
+ * `lib/channel-memory.ts`.
+ *
+ * Called from the reducer, which React may run twice in development; every
+ * write it makes is idempotent (an earlier start stays earlier, a higher epoch
+ * stays higher), so a repeat costs one no-op.
+ */
+function rememberedChannel(channel: Channel): Channel {
+  const memory = channelMemory();
+  if (channel.encrypted) {
+    void memory.remember({ id: channel.id, encryptedAt: channel.encryptedAt });
+    return channel;
+  }
+  const since = memory.since(channel.id);
+  if (since === undefined) return channel;
+  memory.noteDowngrade(channel.id);
+  return { ...channel, encrypted: true, encryptedAt: channel.encryptedAt ?? since };
+}
+
+function withRemembrance(server: ServerDetail): ServerDetail {
+  return { ...server, channels: server.channels.map(rememberedChannel) };
+}
+
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'connection':
@@ -309,7 +346,20 @@ function reducer(state: State, action: Action): State {
       return { ...state, members: { ...state.members, [action.serverId]: action.members } };
 
     case 'server-refreshed':
-      return upsertServer(state, action.server);
+      return upsertServer(state, withRemembrance(action.server));
+
+    /**
+     * The channel memory finished loading, which happens just after sign-in.
+     * Every channel is put through it again: ones fetched before the read
+     * finished are the ones this can still change.
+     */
+    case 'memory-loaded':
+      return {
+        ...state,
+        servers: Object.fromEntries(
+          Object.entries(state.servers).map(([id, server]) => [id, withRemembrance(server)]),
+        ),
+      };
 
     // The emoji arrive with the server and are replaced wholesale when they
     // change, for the same reason roles are reordered in one event: the answer
@@ -391,7 +441,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
   switch (event.t) {
     case 'ready': {
       const servers: Record<string, ServerDetail> = {};
-      for (const server of event.d.servers) servers[server.id] = server;
+      for (const server of event.d.servers) servers[server.id] = withRemembrance(server);
 
       const presences: Record<string, PresenceStatus> = {};
       for (const presence of event.d.presences) presences[presence.userId] = presence.status;
@@ -621,12 +671,12 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     }
 
     case 'server_create':
-      return upsertServer(state, event.d);
+      return upsertServer(state, withRemembrance(event.d));
 
     case 'server_update': {
       const existing = state.servers[event.d.id];
       if (!existing) return state;
-      return { ...state, servers: { ...state.servers, [event.d.id]: { ...existing, ...event.d } } };
+      return { ...state, servers: { ...state.servers, [event.d.id]: withRemembrance({ ...existing, ...event.d }) } };
     }
 
     case 'server_delete': {
@@ -652,7 +702,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       const server = state.servers[event.d.serverId];
       if (!server) return state;
       if (server.channels.some((channel) => channel.id === event.d.id)) return state;
-      return upsertServer(state, { ...server, channels: [...server.channels, event.d] });
+      return upsertServer(state, { ...server, channels: [...server.channels, rememberedChannel(event.d)] });
     }
 
     case 'channel_update': {
@@ -662,8 +712,8 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       return upsertServer(state, {
         ...server,
         channels: known
-          ? server.channels.map((channel) => (channel.id === event.d.id ? event.d : channel))
-          : [...server.channels, event.d],
+          ? server.channels.map((channel) => (channel.id === event.d.id ? rememberedChannel(event.d) : channel))
+          : [...server.channels, rememberedChannel(event.d)],
       });
     }
 
@@ -936,6 +986,20 @@ export function StoreProvider({
   }
 
   useEffect(() => {
+    if (!state.bootstrapped || !state.user) return;
+    // Which channels this device has seen encrypted, read once per sign-in.
+    // The store holds channels as they arrive either way; this is what puts
+    // them through it afterwards, for anything that landed before the read
+    // finished. A read that fails is tried again on the next sign-in
+    // (`channelMemory` drops the failed attempt), and everything that sends
+    // asks for the same thing itself before it sends.
+    void channelMemory()
+      .load()
+      .then(() => dispatch({ type: 'memory-loaded' }))
+      .catch(() => undefined);
+  }, [state.bootstrapped, state.user]);
+
+  useEffect(() => {
     const handleEvent = (event: ServerEvent): void => {
       dispatch({ type: 'gateway', event });
       for (const listener of eventListeners.current) listener(event);
@@ -1134,9 +1198,22 @@ export function StoreProvider({
       const me = selfId.current;
       if (!me) return event;
       const keys = channelKeysFor(me);
-      if ((event.t === 'message_create' || event.t === 'message_update') && event.d.ciphertext) {
-        const [opened] = await keys.open([event.d]);
-        return { ...event, d: opened ?? event.d };
+      if (event.t === 'message_create' || event.t === 'message_update') {
+        // Sealed messages by their ciphertext; plain ones in a channel this
+        // device has seen encrypted too, because there the honest server
+        // stores no plaintext at all, and one that arrives was made up.
+        // `channelMemory().isEncrypted` is a lookup in memory, so this costs
+        // nothing for the channels that are plain as far as this device knows.
+        // It waits for the memory's first read, or a made-up message arriving
+        // just after sign-in would be drawn before the channel is known.
+        await channelMemory().load().catch(() => undefined);
+        if (event.d.ciphertext || channelMemory().isEncrypted(event.d.channelId)) {
+          // Live: a plain message arriving now was written now, whatever date
+          // the server put on it.
+          const [opened] = await keys.open([event.d], { live: true });
+          return { ...event, d: opened ?? event.d };
+        }
+        return event;
       }
       if (event.t === 'spawn_replay' && event.d.content === null) {
         return { ...event, d: { ...event.d, content: keys.textOf(event.d.messageId) } };
@@ -1264,10 +1341,33 @@ export function StoreProvider({
   const messagesRef = useRef(state.messages);
   messagesRef.current = state.messages;
 
-  /** Sealed messages in a page are opened before the page reaches the store. */
+  useEffect(() => on(DEVICE_ACCEPTED, () => {
+    const me = selfId.current;
+    if (!me) return;
+    const keys = channelKeysFor(me);
+    void keys.refreshAccepted().then(async () => {
+      const waiting = Object.values(messagesRef.current).flat().filter((message) => message.sealed === 'unverified');
+      for (const message of await keys.open(waiting)) {
+        if (selfId.current === me) dispatch({ type: 'gateway', event: { t: 'message_update', d: message } });
+      }
+    }).catch(() => undefined);
+  }), []);
+
+  /**
+   * Sealed messages in a page are opened before the page reaches the store,
+   * and plain ones in a channel this device has seen encrypted are checked:
+   * there is no readable history there to believe. `lib/channel-keys.ts`.
+   */
   const openSealed = useCallback(async (messages: Message[]): Promise<Message[]> => {
     const me = selfId.current ?? state.user?.id ?? null;
-    if (!me || !messages.some((message) => message.ciphertext)) return messages;
+    if (!me) return messages;
+    // The first history page after sign-in must not be judged before the
+    // memory has been read, for the same reason as a live message.
+    await channelMemory().load().catch(() => undefined);
+    const worthOpening = messages.some(
+      (message) => message.ciphertext || channelMemory().isEncrypted(message.channelId),
+    );
+    if (!worthOpening) return messages;
     return channelKeysFor(me).open(messages);
   }, [state.user?.id]);
 
@@ -1389,6 +1489,9 @@ export function StoreProvider({
       await api.auth.logout();
     } finally {
       gatewayRef.current?.close();
+      // What this device has seen of channels is per browser, but the view is
+      // one account's; it is read again on the next sign-in.
+      channelMemory().forget();
       dispatch({ type: 'signed-out' });
       onSignedOut();
     }

@@ -56,7 +56,7 @@ import {
   type PinVerdict,
   type WrappedKey,
 } from './voice-crypto';
-import { IndexedDbIdentityStore, loadDeviceIdentity } from './voice-identity';
+import { IndexedDbIdentityStore, letInEverywhere, loadDeviceIdentity } from './voice-identity';
 import { ScryproofKeyProvider, voiceSupport } from './voice-key-provider';
 
 /** LiveKit keeps a ring of this many keys per participant, addressed by index. */
@@ -1131,7 +1131,13 @@ export class VoiceSession {
     return this.inOrder(async () => {
       const call = this.call;
       if (!call) return;
-      if (!(await call.approve(userId, deviceId))) return;
+      // The yes lets them in now. Remembering it, for later calls and for
+      // channels, is written behind it and never holds up the key.
+      const unsaved = (problem: unknown) =>
+        console.warn('Scryproof let that device into this call, but could not save the approval on this device. It will ask again next time.', problem);
+      const approved = await call.approve(userId, deviceId, unsaved);
+      if (!approved) return;
+      void letInEverywhere(userId, deviceId, approved.fingerprint, unsaved);
       await this.sendKeys(call);
       await this.publish(call);
     });

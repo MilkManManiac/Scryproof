@@ -2857,6 +2857,11 @@ video.mirrored {
   max-width: 620px;
 }
 
+.voice-code-covers {
+  margin-top: 6px;
+  color: var(--text);
+}
+
 /* --------------------------------------------------------------- utility */
 
 .empty {
@@ -4681,6 +4686,12 @@ kbd {
 .dm-warning > div {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* The row's text takes the room; its button keeps its label on one line. */
+.dm-warning > button {
+  flex: none;
+  white-space: nowrap;
 }
 
 .dm-fingerprint {
