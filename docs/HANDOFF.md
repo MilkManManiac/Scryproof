@@ -2783,3 +2783,31 @@ For Wes: merge when ready, deploy the web client, then build and sign desktop
 or migration. The existing limits remain: trust on first use in DMs, membership
 lists supplied by the server, and browser code supplied by the server. Windows
 installer operation and production TURN were not tested in this review.
+
+## "How Scryproof works" walkthrough: built 2026-09-25, not released
+
+Wes, mid-release of 0.5.3: "Maybe we have like a 1 time 'How the app works'
+tutorial at the beginning... in laymens terms... The importance of each
+relative item." Eight cards, each pointing at the real part of the screen when
+it is on screen (a lit hole in a dimmed page), otherwise centred: welcome,
+servers, channels, in a call (the RTT/Jitter/Loss/TURN row and Verify),
+what the server can't read (and what it can: who, when, reactions, channel
+names), letting a device in, DMs and the recovery phrase, your corner (settings,
+menu, the update bar). No sound; Skip, Escape, or Done, and it never comes back
+by itself. "How Scryproof works" in the menu behind your name reopens it.
+
+- Shows by itself only on a device that has never seen Scryproof (both
+  `scryproof.walkthrough.v1` and `scryproof.whats-new.v1` empty on first
+  load). People already here when it ships do not get it pushed at them; the
+  changelog entry at release time should tell them it is in the menu. Flip
+  `markOnFirstSight` if Wes wants everyone to get it once.
+- Waits for any open dialog (an invite link's Join) to close before showing.
+- Not built on `Modal`, so the check scripts' `.modal` selectors never hit it.
+  `scripts/shot.mjs` marks it done unless `--walkthrough` is passed.
+- Files: `web/src/lib/walkthrough.ts`, `web/src/components/Walkthrough.tsx`,
+  `WalkthroughGate` in `App.tsx`, menu item in `UserPanel.tsx`, `main.tsx`,
+  styles under `.walkthrough-*`. Test: `web/src/tests/walkthrough.test.ts`.
+- Shots: `docs/shots/walkthrough-1.png`, `walkthrough-servers.png`,
+  `walkthrough-letting-in.png`, `walkthrough-corner.png`, `walkthrough-phone.png`.
+- To release: add a dated changelog entry, then `bash scripts/release.sh`.
+  Web only; no desktop shell change.

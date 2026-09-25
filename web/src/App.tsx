@@ -7,7 +7,7 @@
  * rather than leaving it open against a session that no longer exists.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Permission } from '@scryproof/shared';
 import type { SelfUser } from '@scryproof/shared';
 
@@ -17,6 +17,7 @@ import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate } fr
 import { useShortcuts } from './lib/shortcuts';
 import { OPEN_DOCK, on } from './lib/signals';
 import { usePhone } from './lib/usePhone';
+import { subscribeWalkthrough, walkthroughDue, walkthroughOpened } from './lib/walkthrough';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
 import { AuthScreen } from './screens/AuthScreen';
@@ -42,6 +43,7 @@ import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
+import { Walkthrough } from './components/Walkthrough';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
@@ -141,6 +143,30 @@ function UpdateBanner({ inVoice }: { inVoice: boolean }) {
       )}
     </div>
   );
+}
+
+/**
+ * The walkthrough, opened from the menu, or by itself once for someone new.
+ * By itself it waits its turn: an invite link opens a dialog on first sign-in
+ * too, and two things talking at once is how both get closed unread.
+ */
+function WalkthroughGate() {
+  const opened = useSyncExternalStore(subscribeWalkthrough, walkthroughOpened);
+  const due = useSyncExternalStore(subscribeWalkthrough, walkthroughDue);
+  const [clear, setClear] = useState(false);
+  useEffect(() => {
+    if (!due || clear) return;
+    const look = () => {
+      if (!document.querySelector('.modal-backdrop')) setClear(true);
+    };
+    const timer = window.setInterval(look, 1000);
+    const first = window.setTimeout(look, 800);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(first);
+    };
+  }, [due, clear]);
+  return opened || (due && clear) ? <Walkthrough /> : null;
 }
 
 function Shell() {
@@ -401,6 +427,7 @@ function Shell() {
         {overlay === 'switcher' ? <QuickSwitcher onClose={() => setOverlay(null)} /> : null}
         {overlay === 'pins' && channel ? <PinnedMessages channelId={channel.id} onClose={() => setOverlay(null)} /> : null}
       {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
+      <WalkthroughGate />
       </div>
 
       {channelSettings && server && channel ? (

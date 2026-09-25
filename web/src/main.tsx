@@ -17,11 +17,14 @@ import './lib/interface-scale';
 import { Ambient } from './components/Ambient';
 import { captureInviteFromLocation } from './lib/invite-link';
 import { registerServiceWorker } from './lib/install';
+import { noteWalkthroughFirstSight } from './lib/walkthrough';
 import { noteFirstVisit } from './lib/whats-new';
 import './styles.css';
 
 // Makes the site installable on a phone. It caches nothing; see sw.js.
 registerServiceWorker();
+// Before noteFirstVisit, which makes everyone look like they have been here before.
+noteWalkthroughFirstSight();
 noteFirstVisit();
 
 // An invite link (`/invite/CODE`) lands here before anything else runs. Stash

@@ -100,6 +100,9 @@ try {
     // Themes dialog stores it, so the next load is already in that theme.
     const themeId = flag('theme', null);
     if (themeId) await run(`localStorage.setItem('scryproof.theme.v1', ${JSON.stringify(themeId)}) || true`);
+    // A fresh profile is someone new, so the walkthrough would sit over every
+    // picture. --walkthrough leaves it to show, for photographing it.
+    if (!args.includes('--walkthrough')) await run(`localStorage.setItem('scryproof.walkthrough.v1', 'done') || true`);
     // e.g. --store scryproof.whats-new.v1=old: any other per-device value the
     // page reads on load, set before the load. Repeatable.
     for (const pair of flags('store')) {

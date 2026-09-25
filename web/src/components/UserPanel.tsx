@@ -12,6 +12,7 @@ import type { PresenceStatus } from '@scryproof/shared';
 
 import { buildLabel, isDesktop } from '../lib/desktop';
 import { canInstall, install, subscribeInstall } from '../lib/install';
+import { openWalkthrough } from '../lib/walkthrough';
 import { hasUnread, subscribeUnread } from '../lib/whats-new';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
@@ -251,6 +252,17 @@ export function UserPanel() {
               What&apos;s new
               {news ? <i className="news-dot" aria-hidden="true" /> : null}
             </span>
+          </button>
+          <button
+            type="button"
+            className="channel"
+            title="A short tour of the app, in plain words"
+            onClick={() => {
+              setMenuOpen(false);
+              openWalkthrough();
+            }}
+          >
+            <span className="channel-name">How Scryproof works</span>
           </button>
           {installable ? (
             <button
