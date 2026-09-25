@@ -31,10 +31,30 @@ and once for each of the sender's own other devices. The server stores the
 locked text and the locked keys. It can see who wrote to whom and when. It
 cannot see what.
 
+Who gets a copy is decided from the conversation's member list, which the
+client holds, not from the device list the server hands over: a device of
+somebody who is not in the conversation gets nothing, however long the server
+has been listing it and even if this device already trusted it. When the two
+lists disagree the conversation says so. **This does not stop a server that
+lies about the member list as well**: it can put somebody in the conversation,
+and their devices then get copies like anybody else's. What it cannot do is
+stay invisible while doing it, because the person appears in the conversation
+and in its member list.
+
 Honest limit of this first version: the device keys are long-lived, so someone
 who stole a device's private key later could open old messages they had also
 copied from the server. Closing that (keys that roll forward with every
 message) is what M7's MLS work does, and this design does not block it.
+
+Time and order are the other soft spot. The seal binds the conversation, the
+author and the device, but no clock of its own, so a server could serve an old
+message again as if it were new, or put "no" before "yes". What is done about
+it: every message now carries the sender's clock inside the seal, so a message
+whose sealed time disagrees with the time the server stamps on it is drawn with
+the time it was written, and the same sealed bytes served a second time are
+drawn once, at the earliest copy. A server can still withhold a message, drop
+one, or serve a conversation's messages in an order it chose; none of that can
+be seen from here.
 
 ## Stages, each one ends with something Wes can use
 
@@ -50,8 +70,14 @@ message) is what M7's MLS work does, and this design does not block it.
    `web/src/lib/dm-recovery.ts` and HANDOFF.* A new device says plainly that older DMs are
    locked, and why. Then key backup: a recovery phrase Wes keeps, which unlocks
    history on a new device. The phrase never reaches the server.
-4. **The safety number.** A short code both people can compare, and the
-   warning when someone's key changes. Reuses the voice code.
+4. **The safety number.** *Built 2026-09-24.* "Check keys" in a conversation
+   shows your own number (this device's identity, twenty digits) and the number
+   of every device the server lists for the other people, with whether this
+   device trusts each one. Reading yours out over a call or in person and
+   hearing theirs match proves that the keys both sides hold are the ones the
+   other is really using, so the server is not in the middle. It proves nothing
+   about a device nobody compared, and nothing about what the words mean. The
+   warning when someone's key changes points here.
 5. **Group DMs**, up to ten people, same locking, one locked key per device in
    the group.
 
