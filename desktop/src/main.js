@@ -34,6 +34,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 import { armContextMenu } from './context-menu.js';
+import { APP_ORIGIN, hardenApiHeaders, isApiUrl } from './forward-core.js';
 import {
   installerFileName,
   isNewerVersion,
@@ -52,7 +53,6 @@ const SERVER = new URL(app.isPackaged ? 'https://scryproof.com' : (process.env.S
 /** Development only: where a local LiveKit listens, so the page is allowed to reach it. */
 const DEV_MEDIA = app.isPackaged ? '' : (process.env.SCRYPROOF_DEV_MEDIA ?? '');
 
-const APP_ORIGIN = 'app://scryproof';
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
 
@@ -192,10 +192,32 @@ function forward(request, url) {
   });
 }
 
+/**
+ * The server's answer to a forwarded call, made safe to hand to a page that
+ * lives on the same origin as the keys.
+ *
+ * The two headers (see `forward-core.js`) say that if that answer is ever
+ * rendered as a document, it is a dead one: no script, no reach into this
+ * origin. The response is rebuilt rather than edited because a fetched
+ * response's headers cannot be changed in place. A JSON body is untouched by
+ * either header; `sandbox` only takes effect on a document.
+ *
+ * A redirect (any 3xx) is refused outright when it points at another `/api/`
+ * URL. The page follows a redirect itself, so that is the one way a server
+ * could land a document of its choosing inside this origin; the server does
+ * not redirect an API call, so a lookup that is told to is answered with a 404.
+ */
+async function answerApi(request, url) {
+  const reply = await forward(request, url);
+  const where = reply.status >= 300 && reply.status < 400 ? reply.headers.get('location') : null;
+  if (where && isApiUrl(where, url.href)) return new Response('Not found', { status: 404, headers: hardenApiHeaders() });
+  return new Response(reply.body, { status: reply.status, statusText: reply.statusText, headers: hardenApiHeaders(reply.headers) });
+}
+
 function handle(request) {
   const url = new URL(request.url);
   if (url.host !== 'scryproof') return new Response('Not found', { status: 404 });
-  if (url.pathname.startsWith('/api/')) return forward(request, url);
+  if (url.pathname.startsWith('/api/')) return answerApi(request, url);
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Not allowed', { status: 405 });
   return serveClient(url.pathname);
 }
@@ -548,6 +570,20 @@ const outside = (target) => {
   } catch { /* not an address */ }
 };
 
+/**
+ * Where the window may go, for a navigation and for a redirect that leads to
+ * one. Its own pages, and never an `/api/` one: that URL is the server's
+ * answer, and a document rendered from it would be server-chosen code in the
+ * origin that holds the keys. Anything else is not a page at all, so if it is
+ * a web address it opens in the real browser instead.
+ */
+function allowGo(event, url) {
+  if (isApiUrl(url)) return event.preventDefault();
+  if (url.startsWith(`${APP_ORIGIN}/`)) return;
+  event.preventDefault();
+  outside(url);
+}
+
 let win = null;
 let tray = null;
 /** Closing the window leaves the app in the tray, so a call or a pop-up survives it. Quit is in the tray menu. */
@@ -631,16 +667,18 @@ function createWindow(visible = true) {
   });
 
   // The window shows this app and nothing else. A link in a message opens in
-  // the real browser, and only if it is a web address.
+  // the real browser, and only if it is a web address. An `/api/` URL is
+  // refused as a destination no matter how the window got there — typed,
+  // clicked, or handed a redirect — because that URL is the server's answer,
+  // and a document there would be the server's code in the origin that holds
+  // the keys. A redirect onto it is an ordinary navigation, so it is checked
+  // the same way.
   win.webContents.setWindowOpenHandler(({ url }) => {
     outside(url);
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith(`${APP_ORIGIN}/`)) return;
-    event.preventDefault();
-    outside(url);
-  });
+  win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
+  win.webContents.on('will-redirect', (event, url) => allowGo(event, url));
   win.webContents.on('will-attach-webview', (event) => event.preventDefault());
   armContextMenu(win.webContents, outside);
   win.on('close', (event) => {

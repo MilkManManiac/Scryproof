@@ -33,6 +33,16 @@ manifest="$root/desktop/release/installer.json"
 read -r signed_version signed_sum < <(node -e 'const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log(m.version, m.sha256)' "$manifest")
 built_version=$(basename "$built" .exe); built_version=${built_version#Scryproof-Setup-}
 built_sum=$(sha256sum "$built" | cut -d' ' -f1)
+
+# The fingerprint of the key every installed app checks updates against: the
+# public half the installer carries (desktop/src/update-key.pub.pem, read by
+# main.js and update-core.js). Not a secret; printed below with the installer's
+# hash so both can be published off the box (finding 6 of the 2026-09-24
+# hostile review: the installer is served by the box and is not code-signed).
+key="$root/desktop/src/update-key.pub.pem"
+[ -f "$key" ] || { echo "No desktop/src/update-key.pub.pem: the update key fingerprint cannot be printed." >&2; exit 1; }
+key_sum=$(sha256sum "$key" | cut -d' ' -f1)
+
 if [ "$signed_version" != "$built_version" ] || [ "$signed_sum" != "$built_sum" ]; then
   echo "installer.json is for $signed_version (${signed_sum:0:16}), not $(basename "$built") (${built_sum:0:16}). Sign it again: cd desktop && npm run sign-installer" >&2
   exit 1
@@ -77,3 +87,13 @@ else
   echo "The box serves an installer.json that is not the one just signed ($served_json, not $local_json)." >&2
   exit 1
 fi
+
+# Publish these two where the box cannot change them, so that a member can tell
+# the installer the box serves apart from one someone swapped in. Neither is a
+# secret. In the GitHub release notes, or in a message sent by hand.
+echo
+echo "Installer $(basename "$built")"
+echo "  installer  SHA-256: $built_sum"
+echo "  update key SHA-256: $key_sum"
+echo "Paste both into the GitHub release notes (or a message you send by hand), and tell people to check"
+echo "the installer against them before running it. On the box is not enough: the box is what hands it out."
