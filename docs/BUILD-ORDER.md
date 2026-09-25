@@ -240,6 +240,15 @@ by id. All four are fixed and tested (`join-by-id.test.ts`,
 always the same: **the route checks you are signed in but not that you belong
 to the thing you are touching.** Assume there are more.
 
+**Also coming: Trey's PR.** Trey (Discord, 2026-09-24 20:35): "my first PR to
+scry is fixing some security holes in the encryption regime we found, will be
+up shortly. fixed the only holes multiple models could find." Not on GitHub as
+of 2026-09-25 03:50 (no PR, no branch). When it lands, review it like Alex's
+`fix/hackings`: read every change against non-negotiables 2 and 8 and
+`docs/voice-e2ee.md`, run the full suite plus `test:voice`, `test:dm` and
+`test:channels`, and fold it into the audit release. Crypto changes get a
+failing test first, same as route holes.
+
 Do this first thing next week, before any feature:
 
 1. **Every route, one line each**: method, path, guard called, ids taken from
