@@ -2,7 +2,9 @@
 
 Written 2026-09-23, before the code; stage 1 built the same day. The code is the authority once it exists:
 `web/src/lib/channel-crypto.ts` (the part the server never sees) and
-`server/src/routes/channel-keys.ts` (the part that stores what it cannot open).
+`server/src/routes/channel-keys.ts` (the part that stores what it cannot open). On the client the working
+half is `web/src/lib/channel-keys.ts`, with `web/src/lib/acceptance.ts` (who a person here has let in) and
+`web/src/lib/channel-memory.ts` (what this device remembers about a channel, whatever the server says) beside it.
 
 ## What it is
 
@@ -52,11 +54,79 @@ every epoch, so they can read history, which is what Read message history
 means everywhere else in the app. Until someone who has the keys is online,
 the newcomer sees "waiting for the key" and not text.
 
-**Who gets a key.** A device hands keys only to devices it believes: the same
-pinning DMs use, where a person's first devices are remembered and a new one
-has to be accepted (or vouched for by their recovery phrase). You only send
-in a key made by a device you believe. So a server that invents a device for
-Wes gets nothing, and one that invents a key gets no messages locked with it.
+**Who gets a key.** Two questions, asked separately, and both have to be yes
+before a byte of key material leaves a device.
+
+*Seen before.* The pin store every part of the app shares: the first time a
+person's devices are listed they are remembered, and a key that changes later
+is a warning. This is worth keeping, and it is not a permission — a server
+that invents a device gets it pinned on first sight, and from then on it looks
+like anybody else.
+
+*Accepted here.* A second store holds the devices a **person on this device**
+let in. A device is accepted if it is this device itself; if its fingerprint
+is in that store; or if it carries a vouch from another device of the same
+person that is itself accepted (vouches chain, the way a recovery phrase
+vouches for the next laptop). Nothing automatic writes to it: not first sight,
+not being listed by the server, not a pin from a DM or a call.
+
+Keys follow acceptance only. A device hands a copy of an epoch key only to
+devices somebody here has accepted; a new epoch is locked only for accepted
+devices; a message reads as **verified** only from an accepted device
+(otherwise it opens and says "unverified device"); and this device will not
+*send* under a key that was made by a device nobody here has accepted, even
+its owner's own. That last one is the one that matters most: without it a
+server could make the channel's current key itself, hand everyone a copy, and
+read every message sent under it.
+
+Reading a channel under a key made by a device you have not accepted stays
+allowed — the messages each say where they came from, and the lock panel lets
+you fix it in one click.
+
+**Someone new arrives.** They ask; anyone online who holds the keys clicks
+"Let in" in the channel's lock panel, and they get every epoch. Each person's
+own device accepts the newcomer separately, so until Bob accepts Carol,
+Carol's messages in Bob's client read "unverified device" — signed, readable,
+and marked. In the panel each waiting device shows that device's **safety
+number** (the same twenty digits voice uses, over one device), and the panel
+shows this device's own, so two people can compare out loud over something the
+server does not carry. Each side's number is worked out from its own real key
+and the key it was handed for the other, so a server holding the middle cannot
+make the two agree.
+
+**What this device does not take the server's word for.** Three things, all of
+them one-way, all of them kept in IndexedDB so they survive a restart
+(`lib/channel-memory.ts`), and none of them needing a server change:
+
+- **Encryption cannot be turned off.** Once this device has seen a channel
+  encrypted, it stays encrypted here, whatever a `channel_update` says
+  afterwards. The honest server only ever turns it on and refuses readable
+  text in an encrypted channel, so a channel that comes back plain was either
+  a mistake or a server after the next message. The store keeps it encrypted,
+  the channel shows a line saying the server has denied it, and nothing
+  readable is sent: the composer refuses, and so do file uploads and message
+  edits, with the memory itself — not a rendered flag — as the check.
+- **Plaintext in an encrypted channel is forged.** The server stores no
+  readable message in an encrypted channel, so a plain one dated at or after
+  the moment encryption started is something the server made up, whatever name
+  is on it; it is shown as "not sealed and signed by the person it names" and
+  never as text. Messages from before the switch are the channel's real,
+  readable history and show as they always did.
+- **Epochs only move forward.** A device remembers the highest epoch it has
+  sent under, per channel. A server that says the channel is on an older key
+  again — after a removal, say — gets a refusal instead of messages under a
+  key the removed member still holds.
+
+**Opened messages are remembered by everything the signature covers**:
+channel, epoch, author, sender device, reply target, mentions, nonce,
+ciphertext and signature. Not the signature alone, or a server could re-send
+one of your signed messages with somebody else's name on it and this client
+would print the cached words under the new author, still marked verified.
+
+**The one-time carry-over.** The upgrade that adds these stores copies
+everything already pinned into the accepted store, so on the day this ships
+every device someone had already met in a DM or a call keeps working in the
+channels they share. From then on a pin on its own is never acceptance again.
 
 ## What an encrypted channel cannot do
 
@@ -80,16 +150,41 @@ Said in the channel itself, not only here:
 
 - Same as DMs: long-lived device keys, so no forward secrecy inside an epoch.
   A stolen device plus a copy of the database opens that epoch's messages.
-- The server decides who can read a channel (non-negotiable 3), so a hostile
-  server could add a person. That person would be visible in the channel's
-  "who holds the key" list, and their device would still need to be believed.
-  First meeting a person trusts their first devices; same as DMs.
+- **Removal cannot be enforced against a lying server.** This is the big one,
+  and it is stated here rather than hidden: nothing in this design is signed
+  about *who is in the channel*. The server decides membership
+  (non-negotiable 3), so a hostile server can keep a removed member listed as
+  a reader, and every client that still accepts that member's devices will
+  keep handing keys to a device the member still has. The same server can keep
+  a key rotating on a schedule that never comes. The server can also invent a
+  person and add them to the reader list — they get nothing, because nobody
+  here has accepted their device, but the member list will show them. What
+  this change does is make that *visible* rather than prevent it: the lock
+  panel lists the devices this device has accepted and flags a holder the
+  server reports that nobody here let in. Enforcing removal needs signed
+  membership — an MLS-class change, milestone 7.
+- The lock panel's "who holds the current key" list is what the **server**
+  says, and proves nothing on its own; `holders()` returns each of those
+  devices with whether this device accepted it, and the panel says which. What
+  this device can vouch for is its own accepted list.
+- First meeting a person still trusts their first devices *for reading*: a
+  device nobody has accepted can be listed, and messages from it open and are
+  marked unverified. It gets no key and writes nothing verified until somebody
+  clicks "Let in".
 - The browser client comes from the server (GAMEPLAN 1b, finding 2). The
   desktop app does not.
 - The signature covers the channel, the key, the author, the reply and the
   mentions, but not the message id, which the server assigns. So the server
   can show one of your signed messages twice, or move it within the same
-  channel. It cannot change a word of it or put it in another channel.
+  channel. It cannot change a word of it or put it in another channel. What
+  this client will not do is serve you a *cached* opened message under a new
+  author: the cache is keyed on the whole signed frame.
+- The channel memory is per browser profile, not per account, like the
+  identity key and the pin store beside it (see the low item in the review
+  about one identity per browser).
+- A device that was accepted once keeps getting keys while the server keeps it
+  listed, and while the people in the channel keep accepting it. Keeping the
+  accepted list small is what the lock panel is for.
 - A person's new device must be accepted before it gets a key, and a device
   will not send under a key made by a device it has not accepted, even its
   owner's own. One click each in the lock panel; a recovery phrase skips both.
@@ -107,3 +202,12 @@ Said in the channel itself, not only here:
    encryption", confirmed twice, one way, needs Manage channels. Sets
    `channels.encryptedAt`; the timeline draws the line there. Old plain
    messages stay readable; an edit to one seals it and clears the readable copy.
+4. **Fixes for the hostile-server review** (2026-09-24, findings 2 to 5 on the
+   channel side). BUILT 2026-09-24: acceptance separate from pinning, the
+   channel memory (no downgrade, forged plaintext, forward-only epochs), a lock
+   panel that shows accepted devices and safety numbers, and the opened-message
+   cache keyed on the whole signed frame. The red tests in
+   `web/src/tests/review-channel-keys.test.ts` are the record of what was
+   broken; `docs/reviews/2026-09-24-e2ee-hostile-review.md` says what is left,
+   and the limits above say the largest of them out loud: a lying server can
+   refill either list, and only signed membership would stop it.
