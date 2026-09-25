@@ -46,11 +46,11 @@ export const LIMITS = {
   soundsPerServer: 24,
   soundBytes: 1024 * 1024,
   /**
-   * A soundboard clip is a sting, not a song. The browser measures the length
+   * A soundboard clip is a sting, not a song: 15 seconds (Wes, 2026-09-25). The browser measures the length
    * before upload; the server cannot without decoding audio, so it holds the
    * line on size and type instead.
    */
-  soundSeconds: 5,
+  soundSeconds: 15,
   /**
    * Everyone in a group conversation, the person asking included. Every
    * message is locked once per device of everyone in it, in the sender's

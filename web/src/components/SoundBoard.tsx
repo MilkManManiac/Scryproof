@@ -6,19 +6,23 @@
  * faces. Playing goes through the call session, which puts the clip on its own
  * encrypted track; nothing here touches media or keys.
  *
+ * The slider at the top is how loud everyone's soundboard is for you, down
+ * to off: Discord's soundboard volume (Wes, 2026-09-25).
+ *
  * Someone who can manage the server can add a sound from here too, without
  * leaving the call for Server settings (Wes, 2026-09-25). The last tile picks
  * a file; a name box and Add take its place until it is sent. The same checks
  * as the Sounds page run first, and the server checks again and decides.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LIMITS, Permission, validateSoundName } from '@scryproof/shared';
 import type { ServerDetail } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { SOUND_ACCEPT, SoundFileError, prepareSound } from '../lib/sounds';
 import { canOnServer } from '../lib/usePermissions';
+import { voicePrefs } from '../lib/voice-prefs';
 import { useStore } from '../state/store';
 import { VoiceGlyph } from './glyphs';
 
@@ -31,6 +35,7 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [adding, setAdding] = useState(false);
+  const loudness = useSyncExternalStore(voicePrefs.subscribe, () => voicePrefs.get().soundboardVolume);
 
   useEffect(() => {
     const onDown = (event: MouseEvent) => {
@@ -89,11 +94,32 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
   return (
     <div className="spawner soundboard" ref={box} role="dialog" aria-label="Play a sound into the call">
       <div className="spawner-title">Play into the call</div>
+      {/* What this device hears of every soundboard, Discord's slider. Same setting as Voice settings. */}
+      <label
+        className="soundboard-volume"
+        title="How loud soundboard sounds are for you. All the way down turns them off."
+      >
+        <span>Volume</span>
+        <input
+          type="range"
+          className="voice-range"
+          min={0}
+          max={100}
+          step={5}
+          value={Math.round(loudness * 100)}
+          onChange={(event) =>
+            voicePrefs.set({
+              soundboardVolume: Number(event.target.value) / 100,
+            })
+          }
+          aria-label="Volume of soundboard sounds"
+        />
+        <span className="soundboard-volume-number">{loudness === 0 ? 'Off' : `${Math.round(loudness * 100)}%`}</span>
+      </label>
       {error ? <div className="soundboard-error">{error}</div> : null}
       {list.length === 0 && !manages ? (
         <p className="soundboard-empty">
-          {server.name} has no sounds yet. Someone who can manage the server adds them in Server
-          settings, under Sounds.
+          {server.name} has no sounds yet. Someone who can manage the server adds them in Server settings, under Sounds.
         </p>
       ) : (
         <div className="spawner-grid">

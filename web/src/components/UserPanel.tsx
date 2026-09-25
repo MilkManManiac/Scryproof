@@ -23,7 +23,7 @@ import { ProfileSettings } from './ProfileSettings';
 import { SoundBoard } from './SoundBoard';
 import { ThemePicker } from './ThemePicker';
 import { VoiceSettings } from './VoiceSettings';
-import { WhatsNew } from './WhatsNew';
+import { NewsCard, WhatsNew } from './WhatsNew';
 import { AccountSettings } from './settings/AccountSettings';
 import { BlockedPeople } from './settings/BlockedPeople';
 
@@ -72,6 +72,8 @@ export function UserPanel() {
           : 'Disconnected';
 
   return (
+    <>
+    {news && !newsOpen ? <NewsCard onOpen={() => setNewsOpen(true)} /> : null}
     <div className="user-panel" style={{ position: 'relative' }}>
       <button
         type="button"
@@ -91,7 +93,6 @@ export function UserPanel() {
       >
         <div className="user-panel-name">
           {user.displayName}
-          {news ? <i className="news-dot" aria-label="Something new" /> : null}
         </div>
         <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
       </button>
@@ -273,5 +274,6 @@ export function UserPanel() {
         </div>
       ) : null}
     </div>
+    </>
   );
 }

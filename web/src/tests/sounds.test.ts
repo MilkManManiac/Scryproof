@@ -56,8 +56,8 @@ describe('soundLengthProblem', () => {
   it('refuses a clip that is really longer, and says how long it was', () => {
     const problem = soundLengthProblem(LIMITS.soundSeconds + 0.5);
     assert.ok(problem);
-    assert.match(problem, /at most 5 seconds/);
-    assert.match(problem, /5\.5/);
+    assert.ok(problem.includes(`at most ${LIMITS.soundSeconds} seconds`));
+    assert.ok(problem.includes(`${LIMITS.soundSeconds}.5`));
   });
 
   it('refuses a clip with no length at all', () => {

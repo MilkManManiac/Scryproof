@@ -304,6 +304,26 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
           </span>
         </div>
 
+        <div className="toggle-row">
+          <span>
+            Soundboard volume
+            <span className="field-note">Every soundboard sound you hear, yours too. All the way down turns them off.</span>
+          </span>
+          <span className="voice-volume">
+            <input
+              type="range"
+              className="voice-range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(prefs.soundboardVolume * 100)}
+              onChange={(event) => voicePrefs.set({ soundboardVolume: Number(event.target.value) / 100 })}
+              aria-label="Volume of soundboard sounds"
+            />
+            <span className="voice-volume-number">{prefs.soundboardVolume === 0 ? 'Off' : `${Math.round(prefs.soundboardVolume * 100)}%`}</span>
+          </span>
+        </div>
+
         <label className="toggle-row">
           <span>
             Join and leave sounds

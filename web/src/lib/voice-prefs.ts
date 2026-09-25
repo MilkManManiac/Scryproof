@@ -47,6 +47,11 @@ export interface VoicePrefs {
   outputVolume: number;
   /** Per person, 0 to 2, by user id. Missing means 1. */
   volumes: Record<string, number>;
+  /**
+   * 0 to 1. Every soundboard clip you hear, yours included, on top of the
+   * person's own volume. 0 is off: nobody's soundboard reaches you.
+   */
+  soundboardVolume: number;
   sounds: boolean;
   receiveQuality: ReceiveQuality;
   voiceEffect: VoiceEffect;
@@ -68,6 +73,7 @@ const DEFAULTS: VoicePrefs = {
   pushKey: 'Backquote',
   outputVolume: 1,
   volumes: {},
+  soundboardVolume: 1,
   sounds: true,
   receiveQuality: 'auto',
   voiceEffect: 'none',

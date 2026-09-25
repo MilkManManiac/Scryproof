@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-25-soundboard',
+    date: '2026-09-25',
+    title: 'Soundboard: your volume, longer clips',
+    notes: [
+      'The soundboard has its own volume now, at the top of the board and in Voice settings. Turn it all the way down and nobody\'s sounds reach you.',
+      'Sounds can be up to 15 seconds long.',
+      'If you can manage a server, add a sound straight from the board: the last tile is "Add sound".',
+      'Encryption got stricter against a server that lies. A fake message the server slips into an encrypted channel shows as fake, and a channel key only ever goes to devices someone here let in. The desktop app has an update for this; install it when it asks.',
+      'This card is new too. It shows up here after each update until you open it or close it.',
+    ],
+  },
+  {
     id: '2026-09-24-expiry',
     date: '2026-09-24',
     title: 'Messages that do not last',

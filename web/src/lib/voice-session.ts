@@ -230,8 +230,12 @@ const mixKey = (userId: string, source: Track.Source): string =>
       ? boardSound(userId)
       : userId;
 /** The saved volume for one entry in the mix: the screen's own, or the person's. */
-const savedVolume = (prefs: VoicePrefs, userId: string, source: Track.Source): number =>
-  (source === Track.Source.ScreenShareAudio ? prefs.volumes[screenSound(userId)] : prefs.volumes[userId]) ?? 1;
+const savedVolume = (prefs: VoicePrefs, userId: string, source: Track.Source): number => {
+  if (source === Track.Source.ScreenShareAudio) return prefs.volumes[screenSound(userId)] ?? 1;
+  const volume = prefs.volumes[userId] ?? 1;
+  // The soundboard arrives under the "unknown" source (see TrackSubscribed).
+  return source === Track.Source.Unknown ? volume * prefs.soundboardVolume : volume;
+};
 
 /**
  * The soundboard's outgoing side. Clips are played into `destination`, whose
@@ -571,9 +575,10 @@ export class VoiceSession {
     board.track.stop();
   }
 
-  /** What you hear of your own clips follows your output volume, and deafen. */
+  /** What you hear of your own clips follows your output and soundboard volumes, and deafen. */
   private tuneSoundboard(): void {
-    if (this.board) this.board.local.gain.value = this.deafened ? 0 : voicePrefs.get().outputVolume;
+    const prefs = voicePrefs.get();
+    if (this.board) this.board.local.gain.value = this.deafened ? 0 : prefs.outputVolume * prefs.soundboardVolume;
   }
 
   setServerMuted(muted: boolean): void {
@@ -976,7 +981,7 @@ export class VoiceSession {
       const volume = now.volumes[person.identity] ?? 1;
       this.mix?.setVolumeFor(person.identity, volume);
       this.mix?.setVolumeFor(screenSound(person.identity), now.volumes[screenSound(person.identity)] ?? 1);
-      this.mix?.setVolumeFor(boardSound(person.identity), volume);
+      this.mix?.setVolumeFor(boardSound(person.identity), volume * now.soundboardVolume);
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
 

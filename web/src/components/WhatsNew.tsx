@@ -1,11 +1,15 @@
 /**
  * What changed, newest first. Opening it counts as reading it: the dot on
  * your name goes away and stays away until the next release.
+ *
+ * `NewsCard` is the way in that people actually see (Wes, 2026-09-25: "people
+ * don't even know it exists"). A card above your name with the newest title,
+ * until you open it or close it. Still no pop-up and no sound.
  */
 
 import { useEffect } from 'react';
 
-import { CHANGELOG } from '../changelog';
+import { CHANGELOG, LATEST_RELEASE } from '../changelog';
 import { markRead } from '../lib/whats-new';
 import { Rich } from './MessageList';
 import { Modal } from './Modal';
@@ -49,5 +53,21 @@ export function WhatsNew({ onClose }: { onClose: () => void }) {
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** Above your name after an update you have not read: its title, and a way in. */
+export function NewsCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="news-card">
+      <button type="button" className="news-card-open" onClick={onOpen}>
+        <span className="news-card-kicker">New in Scryproof</span>
+        <span className="news-card-title">{LATEST_RELEASE.title}</span>
+        <span className="news-card-more">See what changed</span>
+      </button>
+      <button type="button" className="news-card-close" title="Hide until the next update" aria-label="Hide" onClick={() => markRead()}>
+        &#10005;
+      </button>
+    </div>
   );
 }

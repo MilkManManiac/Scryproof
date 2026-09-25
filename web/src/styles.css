@@ -2925,6 +2925,64 @@ video.mirrored {
 }
 
 /* Something new since you were last here. A dot, not a number, not a sound. */
+.news-card {
+  flex: 0 0 auto;
+  position: relative;
+  margin: 0 8px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 4%, transparent));
+  box-shadow: var(--hi);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.news-card-open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 30px 9px 11px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.news-card-kicker {
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.news-card-title {
+  font-size: 14px;
+  font-weight: 620;
+}
+.news-card-more {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.news-card-open:hover .news-card-more {
+  color: var(--text);
+  text-decoration: underline;
+}
+.news-card-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.news-card-close:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
 .news-dot {
   display: inline-block;
   width: 7px;
@@ -5627,6 +5685,44 @@ kbd {
   border-radius: var(--radius-lg);
   box-shadow: var(--hi), var(--shadow-2);
   animation: arrive var(--t-arrive) var(--ease);
+}
+.soundboard-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.soundboard-volume .voice-range {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.soundboard-volume-number {
+  width: 34px;
+  text-align: right;
+}
+.spawner-title {
+  flex: none;
+  white-space: nowrap;
+}
+.soundboard-volume {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.soundboard-volume .voice-range {
+  width: 90px;
+  min-width: 50px;
+  flex: 0 1 auto;
 }
 .spawner-title {
   padding: 2px 4px 6px;
