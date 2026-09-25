@@ -18,7 +18,7 @@ import { Permission, emojiNameFrom, houseRules, splitContent } from '@scryproof/
 import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
-import { channelKeysFor } from '../lib/channel-keys';
+import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -87,6 +87,9 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
 
   const canReadHistory = can(mask, Permission.READ_MESSAGE_HISTORY);
   const selfId = state.user?.id;
+  // The server has said this channel is no longer encrypted. The store keeps it
+  // encrypted anyway, and this says why the label stays. `lib/channel-memory.ts`.
+  const deniedEncryption = channelMemory().downgraded(channel.id);
 
   useEffect(() => {
     if (!loaded && canReadHistory) void loadMessages(channel.id).catch(() => undefined);
@@ -323,6 +326,15 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
           >
             Mark read
           </button>
+        </div>
+      ) : null}
+
+      {/* Above the list, not in it: this is a standing fact about the channel,
+          not something to scroll past. */}
+      {deniedEncryption ? (
+        <div className="sealed-line" role="note">
+          The server says this channel is no longer encrypted. Encryption cannot be turned off, so this device keeps
+          encrypting and ignores that. Tell whoever runs the server.
         </div>
       ) : null}
 
@@ -757,7 +769,10 @@ function sealedProblem(status: Message['sealed']): string {
     case 'no-key':
       return "Locked. This device doesn't have the key for this message yet.";
     case 'forged':
-      return "Not shown: its signature doesn't match the person it says it's from.";
+      // Two ways in: a seal whose signature does not hold, and an unsealed
+      // message in a channel the server cannot read and so cannot have real
+      // words from. Neither is shown.
+      return 'Not shown: nothing here was sealed and signed by the person it names.';
     case undefined:
       return 'Encrypted message.';
     default:
@@ -868,7 +883,7 @@ function MessageRow({
     }
     setEditProblem(null);
     try {
-      if ((message.ciphertext || encrypted) && selfId) {
+      if ((message.ciphertext || encrypted || channelMemory().isEncrypted(message.channelId)) && selfId) {
         const parentAuthor = message.replyTo?.authorId ?? null;
         await channelKeysFor(selfId).edit(message.id, {
           channelId: message.channelId,
@@ -998,7 +1013,7 @@ function MessageRow({
               </>
             ) : spawn ? (
               <PlayLine character={spawn} again={() => api.messages.replay(message.id)} />
-            ) : message.ciphertext && message.content === null ? (
+            ) : message.content === null && (message.ciphertext || message.sealed === 'forged') ? (
               <div className="message-text deleted sealed-problem">{sealedProblem(message.sealed)}</div>
             ) : message.content &&
               // A voice message's body only names it for search and previews;

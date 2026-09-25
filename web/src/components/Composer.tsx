@@ -22,7 +22,7 @@ import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { voiceLabel } from '../lib/voice-note';
 import { sealChannelFile } from '../lib/channel-crypto';
-import { KeyWait, channelKeysFor } from '../lib/channel-keys';
+import { KeyWait, channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
 import { jumpLimitNote } from './MessageList';
@@ -236,8 +236,31 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     element.style.height = `${Math.min(element.scrollHeight, 340)}px`;
   }
 
+  /**
+   * The moment before anything goes up readable.
+   *
+   * `channel.encrypted` comes from the store, which keeps a channel this device
+   * has seen encrypted encrypted whatever the server says; this asks the memory
+   * itself so the answer does not depend on a render having happened, and it
+   * waits for the memory to have loaded so "not encrypted" is never just "not
+   * read yet". Nothing is sent when it refuses.
+   */
+  async function refusePlaintext(): Promise<void> {
+    if (await channelMemory().refusesPlaintext(channel.id)) throw new KeyWait('downgraded');
+  }
+
   async function send(override?: string) {
     const typed = override ?? text.trim();
+    // Before anything is cleared or sent. A channel this device has seen
+    // encrypted never goes back to plaintext, whatever the server says.
+    if (!channel.encrypted) {
+      try {
+        await refusePlaintext();
+      } catch (problem) {
+        setError(problem instanceof KeyWait ? problem.message : 'Message did not send.');
+        return;
+      }
+    }
     if (!override && isInitCommand(typed) && !channel.encrypted) {
       await startInitiative();
       return;
@@ -338,6 +361,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     setUploading(true);
     setError(null);
     try {
+      if (!channel.encrypted) await refusePlaintext();
       for (const file of Array.from(files)) {
         // Images are re-encoded here, before anything leaves the machine, so
         // the GPS coordinates in a phone photo are never sent. If that fails
@@ -348,6 +372,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       }
     } catch (problem) {
       if (problem instanceof ScrubError) setError(problem.message);
+      else if (problem instanceof KeyWait) setError(problem.message);
       else setError(problem instanceof ApiError ? problem.message : 'Upload failed.');
     } finally {
       setUploading(false);
@@ -396,6 +421,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
           files: [{ id: attachment.id, name: file.name, type: file.type, size: file.size, key, iv }],
         });
       } else {
+        await refusePlaintext();
         const attachment = await api.upload(channel.id, file);
         await api.messages.send(channel.id, {
           content: voiceLabel(seconds),
