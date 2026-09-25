@@ -41,11 +41,26 @@ export function earlierSince(left: string | null, right: string | null): string 
   if (left === null || right === null) return null;
   const a = Date.parse(left);
   const b = Date.parse(right);
-  // A moment that cannot be read is treated as the earliest: hiding a little
-  // history is better than showing something the server made up.
+  // A moment that cannot be read gives way to one that can. `remember` never
+  // stores one (see `claimedSince`), so this only tidies up after the fact.
   if (Number.isNaN(a)) return Number.isNaN(b) ? null : right;
   if (Number.isNaN(b)) return left;
   return a <= b ? left : right;
+}
+
+/**
+ * What this device takes as the moment a channel turned encrypted: the
+ * server's claim, but never later than now, because a channel seen encrypted
+ * now was encrypted by now. A claim from the future would otherwise pass every
+ * made-up plaintext message as history from before the switch. Anything that
+ * is not a readable time, including a missing one, counts as "from the
+ * beginning": that hides history rather than showing something made up.
+ */
+export function claimedSince(encryptedAt: unknown, now: number = Date.now()): string | null {
+  if (typeof encryptedAt !== 'string') return null;
+  const at = Date.parse(encryptedAt);
+  if (Number.isNaN(at)) return null;
+  return at > now ? new Date(now).toISOString() : encryptedAt;
 }
 
 /** The rules above, as one function: earlier start, higher epoch, nothing else. */
@@ -132,7 +147,7 @@ export class ChannelMemory {
    */
   remember(channel: { id: string; encryptedAt: string | null }): Promise<void> {
     const held = this.view.get(channel.id);
-    const next = mergeRemembered(held, { since: channel.encryptedAt, highestEpoch: 0 });
+    const next = mergeRemembered(held, { since: claimedSince(channel.encryptedAt), highestEpoch: 0 });
     if (held && held.since === next.since) return Promise.resolve();
     this.view.set(channel.id, next);
     return this.store.remember(channel.id, next).catch(() => undefined);

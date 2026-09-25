@@ -2600,3 +2600,97 @@ that warning and let Windows itself reject a changed installer at the signature
 check. That is Wes's call on cost. Comparing the hash costs nothing, and is the
 part that has to happen first.
 
+## The hostile-server fixes, 2026-09-24 (branch `review/crypto-red-tests`, not deployed)
+
+`docs/reviews/2026-09-24-e2ee-hostile-review.md` found eight ways a server that
+lies could read or fake encrypted things. This branch fixes all eight in the
+code. Nothing is deployed: the box still runs `main`. Wes decides when this
+ships.
+
+**What members will notice**
+
+- **Encrypted channels: "Let in".** A channel key now goes only to devices
+  someone on the sending device has let in, not to every device the server
+  lists. The lock panel (padlock at the top of the channel) shows who is
+  waiting, each with a 20-digit safety number, and a **Let in** button. A new
+  browser or phone waits until someone lets it in. Until then it sees
+  "Locked." for new messages. People who used encrypted channels before the
+  update keep the devices they had already seen: those carry over once, on
+  first load. A device you let in counts in every channel, and accepting a
+  device in a DM or approving one in a call counts too.
+  ![The lock panel](shots/channel-lock-panel.png)
+- **Compare numbers once.** Out loud, over something the server does not carry
+  (in person, a phone call), read your number from the lock panel or a DM's
+  "Check keys" button and check it against what the other person sees for your
+  device. Matching numbers prove nobody is in the middle. This is the only
+  check that catches a server that planted a device before this update, since
+  such a device would have carried over.
+- **A channel stays encrypted.** Once a device has seen a channel encrypted, a
+  server claiming otherwise gets a note in the channel and is ignored.
+  Unsealed messages dated after encryption started show as "Not shown:
+  nothing here was sealed and signed by the person it names." The same check
+  covers reply quotes, search results and saved messages. The device also
+  refuses to go back to an older channel key.
+- **DMs.** A message is sealed only for members of the conversation, and the
+  conversation warns if the server lists a device for someone who is not in
+  it. Reactions from devices this device does not trust are not counted. A
+  message the server replays while the conversation is open is shown once. If
+  the time a message was written differs from the time the server claims by
+  more than five minutes, the message says when it was written.
+- **Voice.** A server can no longer seat a fake copy of you in a call, and the
+  verification code everyone compares is computed over your real key. Under
+  the digits, the code box now names whose keys they cover ("Covers: you,
+  Alex, Mara."), and says to check that list is who is really in the call.
+- **Desktop app.** Server answers the app fetches for itself can no longer run
+  script or steer the app window. This needs a new signed desktop build.
+
+**What Wes needs to do**
+
+1. Review, then merge and deploy when ready. The web client changes ship with
+   an ordinary web deploy. Nothing on the server changed.
+2. Build and sign a new desktop release for the Electron fixes, then publish
+   the installer hash off the box (see the section above).
+3. Decide on Windows code signing (a yearly certificate). This is optional,
+   and the hash check is free.
+4. Tell members about "Let in" and comparing numbers before the update lands,
+   so a locked message from a new phone isn't a surprise.
+
+**What this does not fix**
+
+- **Removing someone.** When the server reports a removal, the next message
+  moves to a new key the removed person does not get. A server that hides the
+  removal can keep them on the list. Stopping that needs a membership list
+  signed by the people in it (MLS, milestone 7). The lock panel says this.
+- **Memory is per browser.** A new browser, or one whose site data was
+  cleared, starts with no memory of which channels were encrypted or which
+  devices were let in. If the browser's storage cannot be read at all, the
+  device cannot use its own keys either, so encrypted channels and DMs are
+  locked on it. Plain channels still work, and it refuses plaintext only in
+  channels it has seen encrypted since the page loaded.
+- **DMs still trust on first sight.** A person's first device is believed
+  when first seen, as before, and only a safety-number comparison proves it.
+  A server can still withhold or reorder DMs.
+- **Who is in a call.** The server decides who is listed in a call. It can
+  add a participant nobody has met before, with a key of its own, and that
+  participant gets the call's key like anyone else. Everyone's verification
+  digits still match, because everyone's list includes it. It shows by name in
+  the code box's "Covers:" line, which is read from the call's own key list
+  rather than the server's picture of the room, so a hidden listener is named
+  there too. The defense is people reading that line. Signed membership would
+  fix this along with removals.
+- **Plaintext from before encryption was turned on** is shown as the server
+  stored it, and is only as trustworthy as the server: it could have written
+  or backdated any of it. A server can also make encryption look like it
+  started earlier than it did, which hides real old messages behind "not
+  shown". It cannot make encryption look like it started later.
+
+**Verification.** Root gate: server 252/252, web 344/344 (including every red
+test from the review), typecheck and build clean. Desktop: 44/45; the
+push-to-talk test needs `uiohook-napi`, which is missing on the dev machine and
+was failing before these changes. Browser checks on fresh databases: channels
+56/56, DMs 94/94, voice 57/57. The channel check now has members let each other
+in, which is the new behavior; the voice check reads the code box's "Covers:"
+line. Every new test was watched failing with its fix removed. The Electron
+changes are covered by unit tests but were not run inside Electron. The voice
+"approve" path, and the store's wait for the channel memory before judging the
+first messages after sign-in, have no automated check.

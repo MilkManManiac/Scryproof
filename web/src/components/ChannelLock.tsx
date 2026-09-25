@@ -134,7 +134,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
         has no key. Not encrypted: who posted and when, which message a reply points at, reactions, who was
         mentioned, and the channel&rsquo;s name and topic.
         {channel.encryptedAt
-          ? ` Encryption was turned on ${new Date(channel.encryptedAt).toLocaleDateString()}: messages from before then are not encrypted, and the server can read them.`
+          ? ` Encryption was turned on ${new Date(channel.encryptedAt).toLocaleDateString()}: messages from before then are not encrypted, and the server could read, change or add to them.`
           : ''}
       </p>
 
@@ -214,7 +214,8 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
             ))}
         </ul>
         <p className="field-note">
-          A key goes only to devices a person here has let in. When the server reports that someone lost access, the
+          A key goes only to devices a person here has let in, and letting a device in counts for every channel you
+          share with it. When the server reports that someone lost access, the
           next message moves the channel to a new key they do not get. A server that hides a removal can keep them on
           the list; nothing on this device can catch that yet. Key {view?.epoch ?? '…'}.
         </p>

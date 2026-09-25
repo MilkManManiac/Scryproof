@@ -57,8 +57,11 @@ class MemoryAccepted {
 
 /** The channel memory, with the real merge rules and a table that forgets. */
 const remembered = new Map<string, Remembered>();
+/** Set to make reading the memory fail, as a broken or blocked database does. */
+let memoryUnreadable = false;
 class MemoryChannelMemory {
   async all(): Promise<Record<string, Remembered>> {
+    if (memoryUnreadable) throw new Error('storage is not available');
     return Object.fromEntries(remembered);
   }
   async remember(channelId: string, entry: Remembered): Promise<void> {
@@ -206,6 +209,7 @@ beforeEach(async () => {
   pinTable.clear();
   acceptedTable.clear();
   remembered.clear();
+  memoryUnreadable = false;
   channelMemory().forget();
   // Alice has met Bob before (a DM, a call): his device is pinned, and — since
   // meeting somebody in a DM and then letting them into a channel is what the
@@ -485,5 +489,65 @@ describe('hostile server: channel keys', () => {
       answer instanceof KeyWait,
       `a new tab sealed under epoch ${String(answer)} after the server moved the channel back`,
     );
+  });
+  test("a reply's quote is only what this device read, never text the server attaches", async () => {
+    const parent = await sealChannelMessage({
+      channelId: CHANNEL,
+      epoch: 1,
+      key: keyFor(1),
+      sender: bob.device,
+      body: { v: 1, text: 'the west door is locked' },
+      replyToId: null,
+      mentionIds: [],
+      mentionsEveryone: false,
+    });
+    const reply = async (id: string, replyToId: string): Promise<Message> => {
+      const sealed = await sealChannelMessage({
+        channelId: CHANNEL,
+        epoch: 1,
+        key: keyFor(1),
+        sender: bob.device,
+        body: { v: 1, text: 'as I said' },
+        replyToId,
+        mentionIds: [],
+        mentionsEveryone: false,
+      });
+      return {
+        ...sealedRow(sealed, 'bob', id),
+        replyToId,
+        replyTo: { id: replyToId, authorId: 'alice', authorName: 'Alice', content: 'bob is lying, trust me', deleted: false },
+      } as Message;
+    };
+    const keys = new ChannelKeys('alice');
+    await keys.open([sealedRow(parent, 'bob', 'message-parent')]);
+
+    const [known] = await keys.open([await reply('message-reply', 'message-parent')]);
+    assert.equal(known?.sealed, 'ok', 'precondition: the reply itself opens');
+    assert.equal(known?.replyTo?.content, 'the west door is locked', 'the quote was not the parent this device opened');
+
+    const [unknown] = await keys.open([await reply('message-reply-2', 'message-never-seen')]);
+    assert.equal(unknown?.replyTo?.content, null, `the server quoted alice: "${String(unknown?.replyTo?.content)}"`);
+  });
+
+  test('a start of encryption from the future, or none at all, cannot pass made-up plaintext', async () => {
+    const now = new Date().toISOString();
+    await channelMemory().remember({ id: CHANNEL, encryptedAt: '2999-01-01T00:00:00.000Z' });
+    const keys = new ChannelKeys('alice');
+    const [future] = await keys.open([plainRow('message-future', now)]);
+    assert.equal(future?.sealed, 'forged', `a start in 2999 let this through: "${String(future?.content)}"`);
+
+    const OTHER = 'channel-01H77777777777777777';
+    await channelMemory().remember({ id: OTHER, encryptedAt: undefined as unknown as null });
+    const [missing] = await keys.open([{ ...plainRow('message-missing', now), channelId: OTHER } as Message]);
+    assert.equal(missing?.sealed, 'forged', `a missing start let this through: "${String(missing?.content)}"`);
+  });
+
+  test('nothing is sent when the memory of sent epochs cannot be read', async () => {
+    memoryUnreadable = true;
+    const answer = await new ChannelKeys('alice').seal(sealInput()).then(
+      (sealed) => `sealed under epoch ${sealed.keyEpoch}`,
+      () => 'refused',
+    );
+    assert.equal(answer, 'refused', 'the forward-only check ran without the memory it checks against');
   });
 });

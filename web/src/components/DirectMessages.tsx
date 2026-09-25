@@ -443,8 +443,8 @@ function DeviceWarnings({
         <div className="dm-warning" key={`${entry.device.userId}:${entry.device.deviceId}`}>
           <div>
             <strong>The server lists a device for somebody who is not in this conversation.</strong> Nothing written
-            here is locked to it: what you send goes to the people in this conversation and nobody else. A device list
-            and a member list that disagree is worth knowing about.
+            here is locked to it: what you send goes only to the people the conversation lists as members. Both lists
+            come from the server, and when they disagree it is worth knowing about.
           </div>
         </div>
       ))}

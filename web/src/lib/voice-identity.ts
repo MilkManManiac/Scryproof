@@ -62,9 +62,11 @@ function open(): Promise<IDBDatabase> {
       if (fresh) db.createObjectStore(ACCEPTED_STORE);
       if (!db.objectStoreNames.contains(CHANNEL_MEMORY_STORE)) db.createObjectStore(CHANNEL_MEMORY_STORE);
       // The one time this upgrade happens, everything already pinned carries
-      // over as accepted. Everyone this device had ever met is somebody a
-      // person here dealt with before, and channels must keep working for them
-      // on the day this ships. From then on, only an acceptance writes here.
+      // over as accepted, so channels keep working on the day this ships for
+      // every device this one had already met. A pin was made on first sight,
+      // so that includes any device the server listed before the update: the
+      // lock panel's safety numbers are how a person checks. From then on,
+      // only an acceptance writes here.
       const upgradeTransaction = request.transaction;
       if (fresh && upgrade.oldVersion >= 1 && upgradeTransaction) {
         carryOverPins(upgradeTransaction, upgrade.oldVersion);

@@ -110,8 +110,13 @@ them one-way, all of them kept in IndexedDB so they survive a restart
   readable message in an encrypted channel, so a plain one dated at or after
   the moment encryption started is something the server made up, whatever name
   is on it; it is shown as "not sealed and signed by the person it names" and
-  never as text. Messages from before the switch are the channel's real,
-  readable history and show as they always did.
+  never as text. Messages dated before the switch show as they always did,
+  and are only as trustworthy as the server: it stored them readable, and it
+  could have written or backdated any of them. The moment of the switch is
+  the server's claim too, taken at most as late as the moment this device
+  first saw the channel encrypted, and a missing or unreadable one counts as
+  "from the beginning". A server can make that moment earlier and hide real
+  old messages behind "not shown"; it cannot make it later.
 - **Epochs only move forward.** A device remembers the highest epoch it has
   sent under, per channel. A server that says the channel is on an older key
   again — after a removal, say — gets a refusal instead of messages under a
@@ -126,7 +131,14 @@ would print the cached words under the new author, still marked verified.
 **The one-time carry-over.** The upgrade that adds these stores copies
 everything already pinned into the accepted store, so on the day this ships
 every device someone had already met in a DM or a call keeps working in the
-channels they share. From then on a pin on its own is never acceptance again.
+channels they share. A pin was made on first sight, so the carry-over also
+includes any device the server listed before the update; comparing safety
+numbers is how that gets caught. From then on a pin on its own is never
+acceptance again.
+
+**Quotes and search.** A reply's quote shows only text this device opened or
+checked itself, never text the server attaches to the reply. Search hits and
+saved messages go through the same check as the channel.
 
 ## What an encrypted channel cannot do
 

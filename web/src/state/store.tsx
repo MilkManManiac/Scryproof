@@ -1203,6 +1203,9 @@ export function StoreProvider({
         // stores no plaintext at all, and one that arrives was made up.
         // `channelMemory().isEncrypted` is a lookup in memory, so this costs
         // nothing for the channels that are plain as far as this device knows.
+        // It waits for the memory's first read, or a made-up message arriving
+        // just after sign-in would be drawn before the channel is known.
+        await channelMemory().load().catch(() => undefined);
         if (event.d.ciphertext || channelMemory().isEncrypted(event.d.channelId)) {
           const [opened] = await keys.open([event.d]);
           return { ...event, d: opened ?? event.d };
@@ -1343,6 +1346,9 @@ export function StoreProvider({
   const openSealed = useCallback(async (messages: Message[]): Promise<Message[]> => {
     const me = selfId.current ?? state.user?.id ?? null;
     if (!me) return messages;
+    // The first history page after sign-in must not be judged before the
+    // memory has been read, for the same reason as a live message.
+    await channelMemory().load().catch(() => undefined);
     const worthOpening = messages.some(
       (message) => message.ciphertext || channelMemory().isEncrypted(message.channelId),
     );

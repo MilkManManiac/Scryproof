@@ -645,6 +645,23 @@ export function ConnectionPanel() {
   const waiting = voice.people.filter((person) => person.state === 'waiting');
   const secured = voice.people.filter((person) => person.state === 'secured');
 
+  // Everyone whose key the code is worked out over: this device, and every
+  // device in the call's own key list (secured or still waiting; the held ones
+  // get no keys and are not in it). Named here from that list, not from the
+  // server's picture of the room, because a server can also listen unseen.
+  const nameOf = useNames();
+  const devices = new Map<string, number>();
+  for (const person of voice.people) {
+    if (person.state !== 'held') devices.set(person.userId, (devices.get(person.userId) ?? 0) + 1);
+  }
+  const covered = [
+    'you',
+    ...[...devices].map(([userId, count]) => {
+      if (userId === state.user?.id) return count > 1 ? `${count} other devices of yours` : 'your other device';
+      return count > 1 ? `${nameOf(userId)} (${count} devices)` : nameOf(userId);
+    }),
+  ];
+
   let tone: 'good' | 'warn' | 'bad' = 'good';
   let headline = 'Encrypted';
   if (voice.phase === 'failed') {
@@ -696,9 +713,11 @@ export function ConnectionPanel() {
           <div className="voice-code-digits">{voice.code ?? 'Working it out…'}</div>
           <p>
             Read this aloud. If everyone in the call sees the same twenty digits, nobody is in the
-            middle, including this server. It changes whenever someone joins or leaves. You only
-            need to do it once per group.
+            middle of the people named below, including this server. The server decides who gets
+            named, so check that it is exactly who is really in the call, every call. The digits
+            change whenever someone joins or leaves; comparing them once per group is enough.
           </p>
+          <p className="voice-code-covers">Covers: {covered.join(', ')}.</p>
         </div>
       ) : null}
 

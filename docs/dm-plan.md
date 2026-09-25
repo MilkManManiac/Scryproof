@@ -51,10 +51,12 @@ author and the device, but no clock of its own, so a server could serve an old
 message again as if it were new, or put "no" before "yes". What is done about
 it: every message now carries the sender's clock inside the seal, so a message
 whose sealed time disagrees with the time the server stamps on it is drawn with
-the time it was written, and the same sealed bytes served a second time are
-drawn once, at the earliest copy. A server can still withhold a message, drop
-one, or serve a conversation's messages in an order it chose; none of that can
-be seen from here.
+the time it was written, and the same sealed bytes served a second time
+while the conversation is open are drawn once, at the earliest copy. After a
+reload the comparison starts again, and messages from before this change carry
+no sealed time at all. A server can still withhold a message, drop one, or
+serve a conversation's messages in an order it chose; none of that can be seen
+from here.
 
 ## Stages, each one ends with something Wes can use
 

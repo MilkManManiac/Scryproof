@@ -175,10 +175,20 @@ and its announcement never replaces the real device in the call. This was a
 real hole (hostile-server review, 2026-09-24, finding 1) and the promise above
 depended on it.
 
+What the code does not prove is who is in the call. The list of participants
+comes from the server, and a device nobody in the call has met before is let
+in without a prompt, the same as anyone's first appearance. A server can add
+such a participant with a key of its own; it then gets the call's media key,
+and everyone's digits still match, because everyone's list includes it. It
+shows as one more person in the call. So the promise is: matching digits mean
+nobody is in the middle of the people listed, and people should still
+check that the list is who is really there. The panel says so.
+
 Reading the code aloud also confirms the keys DMs and encrypted channels use:
 voice, DMs and channels share one identity key and one pin table. A
-first-contact man-in-the-middle in DMs would show up here as a mismatch, since
-that is the only verification ceremony the app has.
+first-contact man-in-the-middle in DMs would show up here as a mismatch, as it
+would when comparing the safety numbers in a DM's "Check keys" or a channel's
+lock panel.
 
 It uses PBKDF2-SHA256 at 600,000 iterations, which is doing real work. Twenty
 digits is about sixty-six bits, but an attacker does not have to match them by

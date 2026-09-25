@@ -129,7 +129,7 @@ function frameOf(message: Message): string {
   ].join('\u0000');
 }
 
-/** Whether a message is at or after a moment. An unreadable moment counts as before it. */
+/** Whether a message is at or after a moment. An unreadable moment counts as at or after it: shown as made up. */
 function atOrAfter(createdAt: string, since: string): boolean {
   const at = Date.parse(createdAt);
   const from = Date.parse(since);
@@ -150,6 +150,12 @@ export class ChannelKeys {
    * that never said it.
    */
   private readonly opened = new Map<string, { frame: string; text: string | null; files: ChannelFileRef[]; status: SealStatus }>();
+
+  /**
+   * Readable messages that passed `checksPlaintext` as history from before the
+   * switch, by id: with `opened`, the only text a reply's quote may show.
+   */
+  private readonly plainBefore = new Map<string, string>();
 
   /** When this device last asked for a channel's keys. */
   private readonly asked = new Map<string, number>();
@@ -291,7 +297,9 @@ export class ChannelKeys {
     const self = await this.device();
     // The forward-only check below reads the stored memory, so wait for it: a
     // fresh tab has not read the database yet, and an unread memory says 0.
-    await this.memory.load().catch(() => undefined);
+    // If it cannot be read, nothing is sent: this device's own keys live in
+    // the same database, so a device in that state could not send here anyway.
+    await this.memory.load();
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const state = await this.state(channelId, attempt > 0);
       // Forward only. A server that says the channel is on an older key again
@@ -411,13 +419,15 @@ export class ChannelKeys {
       this.asked.set(channelId, Date.now());
       void api.channelKeys.request(channelId).catch(() => undefined);
     }
-    // A reply's preview is read from the parent, which the server could not
-    // read either. Filled in from whatever this device has opened.
+    // A reply's quote is read from the parent, which the server could not read
+    // either. It is only ever what this device opened, or plaintext that passed
+    // as history from before the switch: text the server attaches to the reply
+    // itself is ignored, or it could quote anyone saying anything.
     return opened.map((message) => {
       const parent = message.replyTo;
-      if (!parent || parent.deleted || parent.content !== null) return message;
-      const text = this.textOf(parent.id);
-      return text === null ? message : { ...message, replyTo: { ...parent, content: text.slice(0, 140) } };
+      if (!parent || parent.deleted) return message;
+      const text = this.textOf(parent.id) ?? this.plainBefore.get(parent.id) ?? null;
+      return { ...message, replyTo: { ...parent, content: text === null ? null : text.slice(0, 140) } };
     });
   }
 
@@ -497,8 +507,10 @@ export class ChannelKeys {
     // message through: the gate that matters is the one before sending.
     await this.memory.load().catch(() => undefined);
     const since = this.memory.since(message.channelId);
-    if (since === undefined) return message;
-    if (since === null || atOrAfter(message.createdAt, since)) return { ...message, content: null, sealed: 'forged' };
+    if (since !== undefined && (since === null || atOrAfter(message.createdAt, since))) {
+      return { ...message, content: null, sealed: 'forged' };
+    }
+    if (message.content !== null) this.plainBefore.set(message.id, message.content);
     return message;
   }
 

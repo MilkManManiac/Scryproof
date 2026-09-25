@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { type ChannelMemoryStore, type Remembered, ChannelMemory, earlierSince, mergeRemembered } from '../lib/channel-memory';
+import { type ChannelMemoryStore, type Remembered, ChannelMemory, claimedSince, earlierSince, mergeRemembered } from '../lib/channel-memory';
 
 class MemoryStore implements ChannelMemoryStore {
   readonly held = new Map<string, Remembered>();
@@ -28,9 +28,23 @@ describe('the early moment wins', () => {
     assert.equal(earlierSince('2026-09-23T12:00:00.000Z', '2026-09-24T12:00:00.000Z'), '2026-09-23T12:00:00.000Z');
   });
 
-  test('a moment that cannot be read counts as the earliest', () => {
+  test('a moment that cannot be read gives way to one that can', () => {
     assert.equal(earlierSince('not a time', '2026-09-24T12:00:00.000Z'), '2026-09-24T12:00:00.000Z');
     assert.equal(earlierSince('2026-09-24T12:00:00.000Z', 'not a time'), '2026-09-24T12:00:00.000Z');
+  });
+});
+
+describe('what the server says about when encryption started', () => {
+  const NOW = Date.parse('2026-09-24T12:00:00.000Z');
+  test('a past moment is kept, and one from the future is brought back to now', () => {
+    assert.equal(claimedSince('2026-09-01T00:00:00.000Z', NOW), '2026-09-01T00:00:00.000Z');
+    assert.equal(claimedSince('2999-01-01T00:00:00.000Z', NOW), '2026-09-24T12:00:00.000Z');
+  });
+  test('a missing, unreadable or wrongly typed moment means from the beginning', () => {
+    assert.equal(claimedSince(null, NOW), null);
+    assert.equal(claimedSince(undefined, NOW), null);
+    assert.equal(claimedSince('not a time', NOW), null);
+    assert.equal(claimedSince(1790000000000, NOW), null);
   });
 });
 
