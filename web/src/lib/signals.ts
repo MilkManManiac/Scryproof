@@ -34,3 +34,9 @@ export const EDIT_LAST = 'edit-last';
 
 /** On a phone: slide the servers and channels in. A header asks; the shell answers. */
 export const OPEN_DOCK = 'open-dock';
+
+/** A person accepted a device in a DM, a call, or an encrypted channel. */
+export const DEVICE_ACCEPTED = 'device-accepted';
+
+/** Local encryption state could not be saved, or a retry recovered. */
+export const CHANNEL_MEMORY_CHANGED = 'channel-memory-changed';

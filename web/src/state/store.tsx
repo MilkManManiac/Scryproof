@@ -47,6 +47,7 @@ import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { VoiceSession, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
+import { DEVICE_ACCEPTED, on } from '../lib/signals';
 
 export interface State {
   connection: ConnectionStatus;
@@ -1337,6 +1338,18 @@ export function StoreProvider({
   // it was when the callback was made.
   const messagesRef = useRef(state.messages);
   messagesRef.current = state.messages;
+
+  useEffect(() => on(DEVICE_ACCEPTED, () => {
+    const me = selfId.current;
+    if (!me) return;
+    const keys = channelKeysFor(me);
+    void keys.refreshAccepted().then(async () => {
+      const waiting = Object.values(messagesRef.current).flat().filter((message) => message.sealed === 'unverified');
+      for (const message of await keys.open(waiting)) {
+        if (selfId.current === me) dispatch({ type: 'gateway', event: { t: 'message_update', d: message } });
+      }
+    }).catch(() => undefined);
+  }), []);
 
   /**
    * Sealed messages in a page are opened before the page reaches the store,

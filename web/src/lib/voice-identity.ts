@@ -18,6 +18,7 @@
 
 import type { AcceptanceStore } from './acceptance';
 import { type ChannelMemoryStore, type Remembered, mergeRemembered } from './channel-memory';
+import { DEVICE_ACCEPTED, emit } from './signals';
 import {
   type DeviceIdentity,
   type IdentityStore,
@@ -144,7 +145,15 @@ async function withStore<T>(
 ): Promise<T> {
   const db = await open();
   try {
-    return await work(db.transaction(name, mode).objectStore(name));
+    const transaction = db.transaction(name, mode);
+    const committed = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed.'));
+    });
+    // A successful put request can still be followed by a failed commit.
+    const [result] = await Promise.all([work(transaction.objectStore(name)), committed]);
+    return result;
   } finally {
     db.close();
   }
@@ -295,7 +304,7 @@ export class IndexedDbAcceptedStore implements AcceptanceStore {
  * one click there does the same.
  */
 export function letInEverywhere(userId: string, deviceId: string, fingerprint: string): Promise<void> {
-  return new IndexedDbAcceptedStore().set(userId, deviceId, fingerprint).catch(() => undefined);
+  return new IndexedDbAcceptedStore().set(userId, deviceId, fingerprint).then(() => emit(DEVICE_ACCEPTED)).catch(() => undefined);
 }
 
 /**

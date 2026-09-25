@@ -55,7 +55,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
   const [view, setView] = useState<Holders | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [mine, setMine] = useState<{ userId: string; fingerprint: string } | null>(null);
-  /** Safety numbers, by fingerprint: working one out takes about half a second. */
+  /** Safety numbers bind both the person and their device fingerprint. */
   const numbers = useRef(new Map<string, string>());
   const [shown, setShown] = useState<Record<string, string>>({});
 
@@ -65,6 +65,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
       const keys = channelKeysFor(selfId);
       setView(await keys.holders(channel.id));
       setMine(await keys.self());
+      setProblem(null);
     } catch {
       setProblem('Could not ask the server who holds the key.');
     }
@@ -83,20 +84,21 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
         .filter((entry) => !entry.accepted)
         .map((entry) => ({ userId: entry.device.userId, fingerprint: entry.fingerprint })),
       ...(view?.holders ?? [])
-        .filter((entry) => !entry.accepted)
+        .filter((entry) => !isRecoveryDevice(entry.device.deviceId))
         .map((entry) => ({ userId: entry.device.userId, fingerprint: entry.fingerprint })),
     ];
     let stopped = false;
     void (async () => {
       for (const entry of held) {
         if (!entry.fingerprint) continue;
-        let number = numbers.current.get(entry.fingerprint);
+        const key = `${entry.userId}:${entry.fingerprint}`;
+        let number = numbers.current.get(key);
         if (!number) {
           number = await safetyNumber(entry.userId, entry.fingerprint);
-          numbers.current.set(entry.fingerprint, number);
+          numbers.current.set(key, number);
         }
         if (stopped) return;
-        setShown((known) => ({ ...known, [entry.fingerprint]: number }));
+        setShown((known) => ({ ...known, [key]: number }));
       }
     })();
     return () => {
@@ -116,8 +118,8 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
     people.set(entry.device.userId, [...(people.get(entry.device.userId) ?? []), entry]);
   }
 
-  const numberFor = (fingerprint: string): string =>
-    fingerprint ? (shown[fingerprint] ?? 'working it out…') : 'no key';
+  const numberFor = (userId: string, fingerprint: string): string =>
+    fingerprint ? (shown[`${userId}:${fingerprint}`] ?? 'working it out…') : 'no key';
 
   return (
     <Modal
@@ -164,7 +166,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
                     : 'A new browser or a new phone looks like this. So would somebody pretending.'}{' '}
                   Until it is let in, it gets no key from this device. Device {entry.device.deviceId.slice(0, 8)}.
                   <span className="dm-fingerprint" title="This device's safety number, from its identity key.">
-                    {numberFor(entry.fingerprint)}
+                    {numberFor(entry.device.userId, entry.fingerprint)}
                   </span>
                 </div>
                 <button
@@ -172,7 +174,9 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
                   className="button secondary inline"
                   onClick={() => {
                     if (!selfId) return;
-                    void channelKeysFor(selfId).accept(channel.id, entry).then(load);
+                    void channelKeysFor(selfId).accept(channel.id, entry).then(load).catch(() => {
+                      setProblem('Could not save this device’s acceptance. Check browser storage and try again.');
+                    });
                   }}
                 >
                   Let in
@@ -190,7 +194,7 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
             Read this out loud, over something the server does not carry, so the other person can check it against
             their screen. If they see something else for this device, someone is in the middle.
           </p>
-          <span className="dm-fingerprint">{numberFor(mine.fingerprint)}</span>
+          <span className="dm-fingerprint">{numberFor(mine.userId, mine.fingerprint)}</span>
         </div>
       ) : null}
 
@@ -205,7 +209,15 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
             .sort(([a], [b]) => nameFor(a).localeCompare(nameFor(b)))
             .map(([userId, devices]) => (
               <li key={userId}>
-                <span>{userId === selfId ? `${nameFor(userId)} (you)` : nameFor(userId)}</span>
+                <div>
+                  <span>{userId === selfId ? `${nameFor(userId)} (you)` : nameFor(userId)}</span>
+                  {devices.map((entry) => (
+                    <div key={entry.device.deviceId}>
+                      <span className="lock-devices">Device {entry.device.deviceId.slice(0, 8)}</span>
+                      <span className="dm-fingerprint">{numberFor(userId, entry.fingerprint)}</span>
+                    </div>
+                  ))}
+                </div>
                 <span className="lock-devices">
                   {devices.length} device{devices.length === 1 ? '' : 's'}
                   {devices.every((entry) => entry.accepted) ? '' : ' — not let in here'}

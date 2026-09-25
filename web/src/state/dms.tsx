@@ -289,6 +289,8 @@ function reducer(state: DmState, action: Action): DmState {
 
 interface DmValue {
   state: DmState;
+  /** Recheck the server's device list when opening the safety-number panel. */
+  refreshDevices: (dmId: string) => Promise<AssessedDevice[]>;
   /** Show the DM screens, on the conversation last open. */
   showDms: () => void;
   /** Back to servers. */
@@ -1009,11 +1011,11 @@ export function DmProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DmValue>(
     () => ({
       state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
-      markRead, acceptDevice, createRecovery, restoreRecovery,
+      markRead, acceptDevice, createRecovery, restoreRecovery, refreshDevices,
     }),
     [
       state, showDms, hideDms, openDm, openWith, createGroup, addMember, leave, send, edit, react, remove, loadOlder,
-      markRead, acceptDevice, createRecovery, restoreRecovery,
+      markRead, acceptDevice, createRecovery, restoreRecovery, refreshDevices,
     ],
   );
 

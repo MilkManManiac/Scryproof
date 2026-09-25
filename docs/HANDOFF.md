@@ -2694,3 +2694,63 @@ line. Every new test was watched failing with its fix removed. The Electron
 changes are covered by unit tests but were not run inside Electron. The voice
 "approve" path, and the store's wait for the channel memory before judging the
 first messages after sign-in, have no automated check.
+
+## Ship review, 2026-09-25 (feature branch only; not deployed)
+
+Reviewed `review/crypto-red-tests` against `upstream/main` at `2cf3edf`,
+including the original hostile-server findings. The feature branch is ready
+for Wes's review. Main and the live site were not changed.
+
+The final review found and fixed these gaps:
+
+- Forged channel messages could still display images or recordings, and a
+  server could append an unsigned attachment to a valid signed message.
+  Forged rows now expose no files; sealed rows retain only encrypted file IDs
+  named by the authenticated body, including when reopening cached messages.
+- Channel-memory writes could fail silently. Encrypted sends now wait for
+  transaction commit and stop on failure; retries persist even the same epoch.
+  A failure while merely observing a channel shows a warning to keep the
+  window open and repair storage before reloading. An observation that was
+  never saved cannot protect a later session.
+- Accepting a device in a DM or call left active channels using stale
+  acceptance results. Local acceptance now refreshes those results and
+  reopens messages marked unverified.
+- Accepted channel holders had no visible safety numbers. Every holder's
+  device now has its ID and number, including devices carried over from the
+  old pin store. The number cache binds both the person and fingerprint.
+- The DM key panel omitted your own additional devices and could show a stale
+  list. It now includes those devices and refreshes the list on opening.
+- The desktop shell version is **0.5.3**, with matching lockfile metadata, so
+  a newly built signed installer can update existing 0.5.2 installations.
+
+![Channel holders and their safety numbers](shots/channel-lock-panel.png)
+
+Verification on Node 26.10.0, npm 11.19.1, Chromium 153.0.8010.52 and Electron
+44.4.3 on Linux:
+
+| Check | Result |
+| --- | --- |
+| Root unit suites | Server 252/252; web 348/348 |
+| Typecheck and production build | Pass; existing bundle-size warning remains |
+| Desktop unit suite under Xvfb | 47/47 |
+| Browser channel suite, fresh local database | 58/58 |
+| Browser DM suite, fresh local database | 95/95 |
+| Browser voice/video/screen-share suite | 57/57, including wrong-key controls |
+| Real Electron smoke suite | Pass, including uploads, native PTT and signed updates |
+| Hostile API response in real Electron | Headers enforced; API navigation refused; HTML script did not execute |
+| Real IndexedDB commit failure | Aborting after put success rejects the write; retry commits |
+
+The Electron smoke used an isolated copy and a throwaway signing key; Wes's
+release key was neither needed nor changed. The attachment and persistence
+regressions were observed failing before their fixes; disabling acceptance
+refresh reproduced the stale verification status. The new DM browser check
+caught the stale device-list bug before its fix. The first voice run was
+invalidated by development reloads; the stable rerun passed all 57 checks.
+The channel panel screenshot was inspected. The storage warning's state was
+unit tested and reviewed; disk-full UI behavior was not injected in a browser.
+
+For Wes: merge when ready, deploy the web client, then build and sign desktop
+**0.5.3** and publish its installer hash off the box. There is no server change
+or migration. The existing limits remain: trust on first use in DMs, membership
+lists supplied by the server, and browser code supplied by the server. Windows
+installer operation and production TURN were not tested in this review.

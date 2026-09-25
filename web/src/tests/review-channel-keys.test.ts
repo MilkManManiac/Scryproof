@@ -463,6 +463,57 @@ describe('hostile server: channel keys', () => {
     assert.equal(older?.sealed, 'forged');
   });
 
+  test('forged plaintext carries no image, recording, or claimed opened file into the UI', async () => {
+    await channelMemory().remember({ id: CHANNEL, encryptedAt: null });
+    const row = plainRow('forged-file', '2026-09-24T13:00:00.000Z');
+    row.attachments = [{ id: 'injected', filename: 'voice.webm', contentType: 'audio/webm', size: 12, width: null, height: null, url: '/api/files/injected' }];
+    row.sealedFiles = [{ id: 'injected', name: 'map.png', type: 'image/png', size: 12, key: 'fake', iv: 'fake' }];
+    const [opened] = await new ChannelKeys('alice').open([row]);
+    assert.equal(opened?.sealed, 'forged');
+    assert.deepEqual(opened?.attachments, []);
+    assert.deepEqual(opened?.sealedFiles, []);
+  });
+
+  test('acceptance elsewhere refreshes an open channel without a server event', async () => {
+    acceptedTable.delete(`bob:${bob.device.identity.deviceId}`);
+    server.state = {
+      current: 1,
+      epochs: [await describeEpoch({ channelId: CHANNEL, epoch: 1, key: keyFor(1), maker: bob.device })],
+      keys: [await aliceHolds(1)], holders: [],
+    };
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key: keyFor(1), sender: bob.device,
+      body: { v: 1, text: 'Bob wrote this' }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+    });
+    const keys = new ChannelKeys('alice');
+    const row = sealedRow(sealed, 'bob', 'accepted-elsewhere');
+    assert.equal((await keys.open([row]))[0]?.sealed, 'unverified');
+    await assert.rejects(keys.seal(sealInput()), (error: unknown) => error instanceof KeyWait);
+    // The same acceptance store is written by a DM or voice approval.
+    await new MemoryAccepted().set('bob', bob.device.identity.deviceId, bob.device.identity.fingerprint);
+    await keys.refreshAccepted();
+    assert.equal((await keys.open([row]))[0]?.sealed, 'ok');
+    assert.equal((await keys.seal(sealInput())).keyEpoch, 1);
+  });
+
+  test('a valid signed message never renders files appended by the server, including on cache hits', async () => {
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key: keyFor(1), sender: bob.device,
+      body: { v: 1, text: 'signed words' }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+    });
+    const row = sealedRow(sealed, 'bob', 'signed-with-injection');
+    row.attachments = [{ id: 'injected', filename: 'map.png', contentType: 'image/png', size: 12, width: null, height: null, url: '/api/files/injected' }];
+    row.sealedFiles = [{ id: 'injected', name: 'map.png', type: 'image/png', size: 12, key: 'fake', iv: 'fake' }];
+    const keys = new ChannelKeys('alice');
+    for (let read = 0; read < 2; read += 1) {
+      const [opened] = await keys.open([row]);
+      assert.equal(opened?.content, 'signed words');
+      assert.equal(opened?.sealed, 'ok');
+      assert.deepEqual(opened?.attachments, []);
+      assert.deepEqual(opened?.sealedFiles, []);
+    }
+  });
+
   test('the epoch alice sent under is remembered past the object that sent it', async () => {
     server.state = {
       current: 2,

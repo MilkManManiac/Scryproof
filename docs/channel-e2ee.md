@@ -87,7 +87,7 @@ you fix it in one click.
 "Let in" in the channel's lock panel, and they get every epoch. Each person's
 own device accepts the newcomer separately, so until Bob accepts Carol,
 Carol's messages in Bob's client read "unverified device" — signed, readable,
-and marked. In the panel each waiting device shows that device's **safety
+and marked. In the panel each waiting device and each current holder shows that device's **safety
 number** (the same twenty digits voice uses, over one device), and the panel
 shows this device's own, so two people can compare out loud over something the
 server does not carry. Each side's number is worked out from its own real key
@@ -121,6 +121,18 @@ them one-way, all of them kept in IndexedDB so they survive a restart
   sent under, per channel. A server that says the channel is on an older key
   again — after a removal, say — gets a refusal instead of messages under a
   key the removed member still holds.
+
+Every encrypted send waits for the encryption state and epoch to commit to
+IndexedDB. A failed write blocks the send and is retried, even at the same
+epoch. If merely observing an encrypted channel fails to save its state, the
+channel shows a warning to keep the window open and repair browser storage
+before reloading. Until a write succeeds, that observation exists only in
+this window and cannot protect a later session.
+
+Files follow the same authentication rule as text: a forged plaintext row
+shows no attachments. A sealed message shows only encrypted attachment IDs
+named inside its authenticated body, with names and types from that body.
+The server cannot append an ordinary image or recording to a signed message.
 
 **Opened messages are remembered by everything the signature covers**:
 channel, epoch, author, sender device, reply target, mentions, nonce,

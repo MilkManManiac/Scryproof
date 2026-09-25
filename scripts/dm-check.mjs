@@ -570,6 +570,13 @@ try {
     await wesLaptop.until(`document.querySelector('.dm-row') !== null`);
     await wesLaptop.click('.dm-row', 'Alex');
     check('on a new laptop the history is locked', Boolean(await wesLaptop.until(`document.querySelector('.main')?.innerText.includes('Locked.')`)));
+    await wes.click('.main-header button', 'Check keys');
+    check('Check keys includes your other devices, each with a safety number', Boolean(await wes.until(`(() => {
+      const section = Array.from(document.querySelectorAll('.modal strong')).find((el) => el.textContent === 'Your other devices')?.parentElement?.parentElement;
+      const rows = Array.from(section?.querySelectorAll('.dm-people-row') ?? []);
+      return rows.length >= 2 && rows.every((row) => row.textContent.includes('Device ') && /^\\d{5}( \\d{5}){3}$/.test(row.querySelector('.dm-fingerprint')?.textContent ?? ''));
+    })()`)));
+    await wes.click('.modal button', 'Close');
     check('and it says the phrase opens it', Boolean(await wesLaptop.until(`Array.from(document.querySelectorAll('.dm-warning')).some((el) => el.textContent.includes('recovery phrase'))`)));
 
     await wesLaptop.click('.dm-warning .button', 'Enter recovery phrase');

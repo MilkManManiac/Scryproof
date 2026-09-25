@@ -30,6 +30,7 @@ import {
 } from './channel-crypto';
 import { type AssessedDevice, type DmDevice, assessDevices } from './dm-crypto';
 import { deviceFor, recoveryOpenerFor } from './this-device';
+import { DEVICE_ACCEPTED, emit } from './signals';
 import { acceptIdentityChange } from './voice-crypto';
 import { IndexedDbAcceptedStore, IndexedDbChannelMemory, IndexedDbIdentityStore } from './voice-identity';
 
@@ -101,10 +102,14 @@ export function channelMemory(): ChannelMemory {
  * other message shows nothing, not somebody else's upload.
  */
 function withFiles(message: Message, files: readonly ChannelFileRef[]): Message {
-  if (files.length === 0) return message;
   const held = new Set(message.attachments.filter((attachment) => attachment.sealed).map((attachment) => attachment.id));
   const kept = files.filter((file) => held.has(file.id));
-  return kept.length > 0 ? { ...message, sealedFiles: kept } : message;
+  const signedIds = new Set(kept.map((file) => file.id));
+  return {
+    ...message,
+    attachments: message.attachments.filter((attachment) => attachment.sealed && signedIds.has(attachment.id)),
+    sealedFiles: kept,
+  };
 }
 
 /**
@@ -447,7 +452,7 @@ export class ChannelKeys {
       return this.checksPlaintext(message);
     }
     const { nonce, signature, senderDeviceId, keyEpoch } = message;
-    if (!nonce || !signature || !senderDeviceId || keyEpoch === null) return { ...message, content: null, sealed: 'failed' };
+    if (!nonce || !signature || !senderDeviceId || keyEpoch === null) return withFiles({ ...message, content: null, sealed: 'failed' }, []);
 
     const frame = frameOf(message);
     const cached = this.opened.get(message.id);
@@ -508,7 +513,7 @@ export class ChannelKeys {
     await this.memory.load().catch(() => undefined);
     const since = this.memory.since(message.channelId);
     if (since !== undefined && (since === null || atOrAfter(message.createdAt, since))) {
-      return { ...message, content: null, sealed: 'forged' };
+      return { ...message, content: null, sealed: 'forged', attachments: [], sealedFiles: [] };
     }
     if (message.content !== null) this.plainBefore.set(message.id, message.content);
     return message;
@@ -613,6 +618,16 @@ export class ChannelKeys {
     return { epoch: state.current, holders, waiting };
   }
 
+  /** Apply a local acceptance decision to every channel already open here. */
+  async refreshAccepted(): Promise<void> {
+    const self = await this.self();
+    for (const entry of this.entries.values()) {
+      const devices = await admit(this.accepted, self, [...entry.devices.values()]);
+      entry.devices = new Map(devices.map((device) => [at(device.device.userId, device.device.deviceId), device]));
+    }
+    for (const [id, entry] of this.opened) if (entry.status === 'unverified') this.opened.delete(id);
+  }
+
   /** Let a device in from now on, then give it what this device can. */
   async accept(channelId: string, assessed: AssessedDevice): Promise<void> {
     if (assessed.verdict === 'invalid') return;
@@ -620,6 +635,7 @@ export class ChannelKeys {
     // Two memories: the pin catches this device's key changing later; this one
     // is what keys are allowed to follow. A pin made on its own is not a yes.
     await this.accepted.set(assessed.device.userId, assessed.device.deviceId, assessed.fingerprint);
+    emit(DEVICE_ACCEPTED);
     await this.refreshDevices(channelId);
     // Messages from it were marked unverified; they are opened again.
     for (const [id, entry] of this.opened) if (entry.status === 'unverified') this.opened.delete(id);

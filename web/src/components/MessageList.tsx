@@ -22,7 +22,7 @@ import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
-import { EDIT_LAST, on } from '../lib/signals';
+import { CHANNEL_MEMORY_CHANGED, EDIT_LAST, on } from '../lib/signals';
 import { BottomPin } from '../lib/stick-to-bottom';
 import { unreadLine } from '../lib/unread-line';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
@@ -90,6 +90,12 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
   // The server has said this channel is no longer encrypted. The store keeps it
   // encrypted anyway, and this says why the label stays. `lib/channel-memory.ts`.
   const deniedEncryption = channelMemory().downgraded(channel.id);
+  const [memoryUnsaved, setMemoryUnsaved] = useState(() => channelMemory().persistenceFailed(channel.id));
+  useEffect(() => {
+    const refresh = () => setMemoryUnsaved(channelMemory().persistenceFailed(channel.id));
+    refresh();
+    return on(CHANNEL_MEMORY_CHANGED, refresh);
+  }, [channel.id]);
 
   useEffect(() => {
     if (!loaded && canReadHistory) void loadMessages(channel.id).catch(() => undefined);
@@ -335,6 +341,12 @@ export function MessageList({ channel, mask }: { channel: Channel; mask: bigint 
         <div className="sealed-line" role="note">
           The server says this channel is no longer encrypted. Encryption cannot be turned off, so this device keeps
           encrypting and ignores that. Tell whoever runs the server.
+        </div>
+      ) : null}
+      {memoryUnsaved ? (
+        <div className="sealed-line" role="alert">
+          This device could not save this channel’s encryption state. Keep this window open and free some browser
+          storage before reloading. Sending is blocked until the state can be saved.
         </div>
       ) : null}
 

@@ -17,6 +17,8 @@
  * says why the server is not believed about any of it.
  */
 
+import { CHANNEL_MEMORY_CHANGED, emit } from './signals';
+
 /** One channel's entry: when it turned encrypted, and how far its keys have moved. */
 export interface Remembered {
   /**
@@ -78,6 +80,7 @@ export class ChannelMemory {
   private readonly denied = new Set<string>();
   private loading: Promise<void> | null = null;
   private loaded = false;
+  private readonly unsaved = new Set<string>();
 
   constructor(private readonly store: ChannelMemoryStore) {}
 
@@ -109,6 +112,7 @@ export class ChannelMemory {
   forget(): void {
     this.view.clear();
     this.denied.clear();
+    this.unsaved.clear();
     this.loaded = false;
     this.loading = null;
   }
@@ -148,9 +152,9 @@ export class ChannelMemory {
   remember(channel: { id: string; encryptedAt: string | null }): Promise<void> {
     const held = this.view.get(channel.id);
     const next = mergeRemembered(held, { since: claimedSince(channel.encryptedAt), highestEpoch: 0 });
-    if (held && held.since === next.since) return Promise.resolve();
+    if (held && held.since === next.since && !this.unsaved.has(channel.id)) return Promise.resolve();
     this.view.set(channel.id, next);
-    return this.store.remember(channel.id, next).catch(() => undefined);
+    return this.persist(channel.id, next).catch(() => undefined);
   }
 
   /**
@@ -165,9 +169,29 @@ export class ChannelMemory {
     // real start replaces this when the channel itself is remembered.
     const since = held ? held.since : new Date().toISOString();
     const next = mergeRemembered(held, { since, highestEpoch: epoch });
-    if (held && held.highestEpoch === next.highestEpoch) return Promise.resolve();
     this.view.set(channelId, next);
-    return this.store.remember(channelId, next).catch(() => undefined);
+    // Every send waits for a durable write, including a retry at the same
+    // epoch. Updating RAM alone would lose the rollback guard after a reload.
+    return this.persist(channelId, next).catch(() => {
+      throw new Error('This device could not save its encryption state. Nothing was sent. Free some storage and try again.');
+    });
+  }
+
+  persistenceFailed(channelId: string): boolean {
+    return this.unsaved.has(channelId);
+  }
+
+  private async persist(channelId: string, entry: Remembered): Promise<void> {
+    try {
+      await this.store.remember(channelId, entry);
+      if (this.unsaved.delete(channelId)) emit(CHANNEL_MEMORY_CHANGED);
+    } catch (problem) {
+      if (!this.unsaved.has(channelId)) {
+        this.unsaved.add(channelId);
+        emit(CHANNEL_MEMORY_CHANGED);
+      }
+      throw problem;
+    }
   }
 
   /** The server says a channel this device has seen encrypted is not encrypted any more. */

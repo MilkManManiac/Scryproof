@@ -543,24 +543,25 @@ function safetyNumberOf(userId: string, fingerprint: string): Promise<string> {
 }
 
 function SafetyNumber({ userId, fingerprint }: { userId: string; fingerprint: string }) {
-  const [digits, setDigits] = useState<string | null>(null);
+  const [digits, setDigits] = useState<{ key: string; value: string } | null>(null);
+  const key = `${userId}:${fingerprint}`;
 
   useEffect(() => {
     let live = true;
     void safetyNumberOf(userId, fingerprint).then(
       (value) => {
-        if (live) setDigits(value);
+        if (live) setDigits({ key, value });
       },
       () => undefined,
     );
     return () => {
       live = false;
     };
-  }, [userId, fingerprint]);
+  }, [userId, fingerprint, key]);
 
   return (
     <span className="dm-fingerprint" title="Twenty digits standing for this device's key. Compare them over a call or in person, never through this server.">
-      {digits ?? 'working it out…'}
+      {digits?.key === key ? digits.value : 'working it out…'}
     </span>
   );
 }
@@ -574,10 +575,18 @@ function SafetyNumber({ userId, fingerprint }: { userId: string; fingerprint: st
  * cannot show the same number on both screens. Nothing here is sent anywhere.
  */
 function DmKeys({ dm, selfId, onClose }: { dm: DmChannel; selfId: string | null; onClose: () => void }) {
-  const { state } = useDms();
+  const { state, refreshDevices } = useDms();
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setProblem(null);
+    void refreshDevices(dm.id).catch(() => {
+      if (active) setProblem('Could not refresh the device list. Close this panel and try again before comparing numbers.');
+    });
+    return () => { active = false; };
+  }, [dm.id, refreshDevices]);
   const known = state.devices[dm.id] ?? [];
   const me = state.me;
-  const others = dm.members.filter((member) => member.id !== selfId);
   const label = (entry: AssessedDevice): string => (isTrusted(entry.verdict) ? 'trusted here' : 'not accepted yet');
 
   return (
@@ -591,6 +600,7 @@ function DmKeys({ dm, selfId, onClose }: { dm: DmChannel; selfId: string | null;
       }
     >
       <div className="recovery-text">
+        {problem ? <p className="error" role="alert">{problem}</p> : null}
         <p>
           Each device has its own number. Yours is on your screen here, and theirs next to their devices. Read one out
           over a call or in person: if the numbers match, the server is not standing in the middle of this
@@ -609,21 +619,24 @@ function DmKeys({ dm, selfId, onClose }: { dm: DmChannel; selfId: string | null;
         ) : (
           <p className="field-note">This device has no keys yet.</p>
         )}
-        {others.map((member) => {
+        {dm.members.map((member) => {
           // A device that failed its signature check is left out: it is not a
           // device whose key anyone could read a number from.
           const devices = known.filter(
-            (entry) => entry.device.userId === member.id && entry.verdict !== 'invalid',
+            (entry) => entry.device.userId === member.id && entry.verdict !== 'invalid' &&
+              !(member.id === selfId && entry.device.deviceId === me?.deviceId),
           );
+          if (member.id === selfId && devices.length === 0) return null;
           return (
             <div key={member.id}>
               <p>
-                <strong>{nameFor(member.id, member.displayName)}</strong>
+                <strong>{member.id === selfId ? 'Your other devices' : nameFor(member.id, member.displayName)}</strong>
                 {devices.length === 0 ? ' has no devices listed here.' : ''}
               </p>
               {devices.map((entry) => (
                 <div className="dm-people-row" key={entry.device.deviceId}>
                   <span className="dm-people-name">
+                    <span className="dm-people-note">Device {entry.device.deviceId.slice(0, 8)}</span>
                     <SafetyNumber userId={entry.device.userId} fingerprint={entry.fingerprint} />
                   </span>
                   <span className="dm-people-note">{label(entry)}</span>

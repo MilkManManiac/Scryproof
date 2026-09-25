@@ -136,6 +136,26 @@ describe('channel memory', () => {
     assert.equal(memory.isEncrypted(CHANNEL), true, 'the memory was not read again after being dropped');
   });
 
+  test('an epoch write failure blocks sending and retries the same epoch before a reload', async () => {
+    const store = new MemoryStore();
+    let failing = true;
+    const memory = new ChannelMemory({
+      all: () => store.all(),
+      remember: (id, entry) => failing ? Promise.reject(new Error('disk full')) : store.remember(id, entry),
+    });
+    await memory.remember({ id: CHANNEL, encryptedAt: null });
+    assert.equal(memory.persistenceFailed(CHANNEL), true);
+    await assert.rejects(memory.raise(CHANNEL, 2));
+    await assert.rejects(memory.raise(CHANNEL, 2));
+    failing = false;
+    await memory.raise(CHANNEL, 2);
+    assert.equal(memory.persistenceFailed(CHANNEL), false);
+    const reloaded = new ChannelMemory(store);
+    await reloaded.load();
+    assert.equal(reloaded.since(CHANNEL), null);
+    assert.equal(reloaded.highestEpoch(CHANNEL), 2);
+  });
+
   test('a channel the server says is no longer encrypted is remembered as denied', async () => {
     const memory = new ChannelMemory(new MemoryStore());
     await memory.remember({ id: CHANNEL, encryptedAt: null });

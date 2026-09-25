@@ -216,9 +216,18 @@ try {
     'and lists who holds the key, without Mara',
     Boolean(await wes.until(`(() => { const t = document.querySelector('.lock-holders')?.textContent ?? ''; return t.includes('Alex') && t.includes('(you)') && !t.includes('Mara'); })()`)),
   );
+  check('accepted holders still show their safety numbers for comparison', Boolean(await wes.until(`(() => {
+    const rows = Array.from(document.querySelectorAll('.lock-holders li'));
+    return rows.length >= 2 && rows.every((row) => Array.from(row.querySelectorAll('.dm-fingerprint')).some((el) => /^\\d{5}( \\d{5}){3}$/.test(el.textContent)));
+  })()`)));
   await wes.shot('docs/shots/channel-lock-panel.png');
   await wes.click('.modal .dm-warning button', 'Let in');
   check('the row goes once it is let in', Boolean(await wes.until(`document.querySelector('.modal .dm-warning') === null`)));
+  check('both accepted Alex devices have labeled safety numbers', Boolean(await wes.until(`(() => {
+    const row = Array.from(document.querySelectorAll('.lock-holders li')).find((el) => el.textContent.startsWith('Alex'));
+    const numbers = Array.from(row?.querySelectorAll('.dm-fingerprint') ?? []);
+    return numbers.length === 2 && (row.textContent.match(/Device /g) ?? []).length === 2 && numbers.every((el) => /^\\d{5}( \\d{5}){3}$/.test(el.textContent));
+  })()`)));
   await wes.click('.modal button', 'Done');
   check('the new device reads the history from before it existed', Boolean(await alexPhone.sees(EDITED, 30_000)));
   check('including what came before the new key, and after', Boolean(await alexPhone.sees(REPLY)) && Boolean(await alexPhone.sees(AFTER)));
