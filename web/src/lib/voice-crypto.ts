@@ -521,7 +521,20 @@ export async function verificationCode(
   members: { userId: string; fingerprint: string }[],
 ): Promise<string> {
   // Sorted, so every participant derives the same number from the same set.
-  const ordered = [...members].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  // One person can be in a call on two devices, and the relay chooses the
+  // order it hands their announcements to each screen; the fingerprint breaks
+  // that tie so honest screens agree even then.
+  const ordered = [...members].sort((a, b) =>
+    a.userId < b.userId
+      ? -1
+      : a.userId > b.userId
+        ? 1
+        : a.fingerprint < b.fingerprint
+          ? -1
+          : a.fingerprint > b.fingerprint
+            ? 1
+            : 0,
+  );
   const material = concatLabelled(
     CODE_CONTEXT,
     ...ordered.flatMap((member) => [member.userId, member.fingerprint]),
@@ -641,10 +654,18 @@ export class VoiceCall {
       }
 
       const fingerprint = await fingerprintOf(fromBase64(announcement.identityKey));
-      const verdict =
-        announcement.userId === this.userId && announcement.deviceId === this.identity.deviceId
-          ? 'known' // our own device, not something to warn about
-          : await pinIdentity(this.pins, announcement.userId, announcement.deviceId, fingerprint);
+      const selfSeat =
+        announcement.userId === this.userId && announcement.deviceId === this.identity.deviceId;
+      // A relay claiming to be this device but carrying a different key is the
+      // server trying to write itself into our own slot of the verification
+      // code. It must never replace the key we put there ourselves.
+      if (selfSeat && fingerprint !== this.identity.fingerprint) {
+        rejected.push(announcement);
+        continue;
+      }
+      const verdict = selfSeat
+        ? 'known' // our own device, not something to warn about
+        : await pinIdentity(this.pins, announcement.userId, announcement.deviceId, fingerprint);
 
       const participant: Participant = { announcement, fingerprint, verdict, signed: true };
       const seat = VoiceCall.seat(announcement.userId, announcement.deviceId);
@@ -804,12 +825,24 @@ export class VoiceCall {
 
   /** The number to read aloud. Derived from who is in the call, not from the epoch. */
   verificationCode(): Promise<string> {
-    return verificationCode(
-      this.callId,
-      this.members.map((member) => ({
-        userId: member.announcement.userId,
-        fingerprint: member.fingerprint,
-      })),
-    );
+    // Our own entry comes straight from this device's identity, never from the
+    // participants map. The map can only be filled by announcements the relay
+    // chose to send, so reading it back would let the server control what our
+    // own key looks like in the number everyone compares.
+    return verificationCode(this.callId, [
+      ...this.members
+        .filter(
+          (member) =>
+            !(
+              member.announcement.userId === this.userId &&
+              member.announcement.deviceId === this.identity.deviceId
+            ),
+        )
+        .map((member) => ({
+          userId: member.announcement.userId,
+          fingerprint: member.fingerprint,
+        })),
+      { userId: this.userId, fingerprint: this.identity.fingerprint },
+    ]);
   }
 }

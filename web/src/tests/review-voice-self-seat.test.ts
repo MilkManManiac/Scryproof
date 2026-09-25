@@ -10,8 +10,11 @@
  * therefore hand each device the same pair of impostor keys, and the two codes
  * match while it holds every media key.
  *
- * Expected to FAIL until `admit` refuses an announcement for this device's own
- * seat whose key is not this device's key.
+ * This was fixed on 2026-09-24: `admit` now refuses an announcement for this
+ * device's own seat whose key is not this device's key, and
+ * `VoiceCall.verificationCode` builds its own entry from its own identity
+ * rather than reading it back from the map. The assertions below are the
+ * review's, unchanged.
  */
 
 import assert from 'node:assert/strict';
