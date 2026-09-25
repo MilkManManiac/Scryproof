@@ -1205,19 +1205,23 @@ done; the old list here was about getting onto the box.
 8. Electron fuses, and updating the shell itself (client updates are done, see above). Then search, custom
    emoji, soundboard, phone, group DMs, safety number.
 9. **Trey's E2EE hardening, PR #1 (`review/crypto-red-tests`).** Reviewed
-   2026-09-25: not merged. Tests pass on Windows (252/348/47), no rule broken,
-   but three things go back to Trey first: (a) `sendKey` treats a key as
-   "mine" by the server-supplied ids, so a server can pose as this device and
-   get messages sent under its key (also true on main); (b) live plaintext
-   with a back-dated `createdAt` passes `checksPlaintext`; (c) a newcomer who
-   has accepted nobody can make an epoch only it can open and freeze the
-   channel (new with the PR, not yet reproduced). Smaller: DM "written" tag
-   needs a date, replay comments overstate, backslash in `isApiUrl`, PEM
-   line endings for the key hash, voice approval awaits IndexedDB. Wes's open
-   call: approving a device in a call also admits it to every channel (lean:
-   keep, say so on the button). At rollout: everyone updates the same night,
-   because mixed versions show mismatched call codes. Wes will decide when to
-   send Trey the list.
+   2026-09-25: merged to main with the review fixes on top (Wes: "you fix and
+   then we can push all at once"; commit efa1697, Trey's commits intact).
+   Fixed: (a) this device is never taken from the server's list, and a
+   listing under its id with another key is unreadable, so "made by me" no
+   longer skips acceptance; (b) live plaintext, or plaintext after a sealed
+   message, is forged in a channel seen encrypted; (c) a device that has let
+   nobody else in waits (`KeyWait('nobody-else')`) instead of making a key
+   only it can open. Attack tests for all three in
+   `review-channel-keys.test.ts`, red on the PR as it was. Smaller ones fixed
+   too: DM "written" date, replay comments, `isApiUrl` backslash (was real:
+   Chromium reads `\` as `/` on `app:`), `*.pem eol=lf`, voice "Let in" no
+   longer waits on IndexedDB (the DM approval in `dms.tsx` still does; harmless).
+   Tests 252/353/48. Still open: Wes's call on approving in a call = every
+   channel (lean: keep, say so on the button); build and test the 0.5.3
+   installer ourselves before members get it; everyone updates the same night,
+   because mixed versions show mismatched call codes. Tell Trey his PR went
+   in with changes on top (Wes sends it).
 10. **Mac and Linux desktop builds.** Wes, 2026-09-25: it should work on all
    three; members use Mac and Linux. Research and plan later, after PR #1
    lands. Known work: electron-builder targets (AppImage, dmg), the updater
