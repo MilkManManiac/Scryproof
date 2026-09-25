@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-25-clipper',
+    date: '2026-09-25',
+    title: 'Cut any song into a sound',
+    notes: [
+      'Adding a sound now takes any song or audio file. Drag the orange box over the part you want, up to 15 seconds, and only that part is uploaded.',
+      'Press Play to hear exactly your pick, and set its volume before you add it. That becomes the volume everyone hears it at; each person can still turn all sounds down for themselves.',
+      'There is a short tour of how Scryproof works. It shows once, and you can open it again any time from the menu under your name: "How Scryproof works".',
+    ],
+  },
+  {
     id: '2026-09-25-soundboard',
     date: '2026-09-25',
     title: 'Soundboard: your volume, longer clips',
