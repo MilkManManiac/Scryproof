@@ -303,8 +303,16 @@ export class IndexedDbAcceptedStore implements AcceptanceStore {
  * if it is not stored, the device still shows as waiting in each channel and
  * one click there does the same.
  */
-export function letInEverywhere(userId: string, deviceId: string, fingerprint: string): Promise<void> {
-  return new IndexedDbAcceptedStore().set(userId, deviceId, fingerprint).then(() => emit(DEVICE_ACCEPTED)).catch(() => undefined);
+export function letInEverywhere(
+  userId: string,
+  deviceId: string,
+  fingerprint: string,
+  onUnsaved?: (problem: unknown) => void,
+): Promise<void> {
+  return new IndexedDbAcceptedStore()
+    .set(userId, deviceId, fingerprint)
+    .then(() => emit(DEVICE_ACCEPTED))
+    .catch((problem: unknown) => onUnsaved?.(problem));
 }
 
 /**

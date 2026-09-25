@@ -413,12 +413,19 @@ export interface SealedRow {
  * conversation already used: the same body again, or the same one-time IV
  * again.
  *
- * The seal binds the conversation, the author and the device but no time and
- * no order, so a server can serve an old message again under a new id, or put
- * "no" before "yes". It cannot change the sealed bytes without leaving
- * something that does not open, so the bytes are what catches a repeat. Ids
- * sort by time, so the earliest copy of a repeat is the one with the smallest
- * id, and only that one is drawn.
+ * The seal binds the conversation, the author and the device but no order,
+ * so a server can serve an old message again under a new id, or put "no"
+ * before "yes". It cannot change the sealed bytes without leaving something
+ * that does not open, so matching bytes are how a repeat is recognised.
+ *
+ * What this catches is narrow: a repeat whose original is also in `rows`,
+ * which is only what this tab has been handed for this conversation since it
+ * loaded. It does not catch a repeat whose original the server leaves out,
+ * never sends, or sends to a tab that has since reloaded; to a device that
+ * never saw the first copy, the repeat is simply a message. Nor does it put
+ * messages in order: ids come from the server, so "the earliest copy" is the
+ * server's say. The signed time inside the seal (`timeLooksMoved`) is what
+ * shows a reader a message that is older than where it sits.
  */
 export function replayedIds(rows: SealedRow[]): string[] {
   const firstIv = new Map<string, string>();

@@ -10,7 +10,8 @@
  * writes to it, and neither does anything else automatic.
  *
  * A device is accepted when any of these holds:
- *  - it is this device (same person, same device id, same fingerprint);
+ *  - it is this device (same person, same device id, same fingerprint). The
+ *    same id with any other fingerprint is never accepted, by anything;
  *  - its fingerprint is in the accepted store for that person and device;
  *  - it carries a valid vouch from a device of the same person that is itself
  *    accepted. Vouching chains, so the pass repeats until nothing changes. A
@@ -65,6 +66,13 @@ export async function admit(
 ): Promise<AdmittedDevice[]> {
   const out: AdmittedDevice[] = [];
   for (const entry of assessed) {
+    // A listing under this device's own name with some other key is the
+    // server speaking for this device. Nobody could ever rightly accept it, so
+    // it is marked unreadable: never given a key, never offered in "Let in".
+    if (entry.device.userId === self.userId && entry.device.deviceId === self.deviceId && entry.fingerprint !== self.fingerprint) {
+      out.push({ ...entry, verdict: 'invalid', accepted: false });
+      continue;
+    }
     out.push({ ...entry, accepted: await letIn(store, self, entry) });
   }
 

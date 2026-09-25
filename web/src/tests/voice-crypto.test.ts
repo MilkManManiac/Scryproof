@@ -621,6 +621,35 @@ describe('a device nobody expected', () => {
     assert.deepEqual(again.flagged, []);
   });
 
+  test('approving counts at once, even when the local database cannot save it', async () => {
+    const pins = new MemoryIdentityStore();
+    await pinIdentity(pins, 'alex', 'alex-laptop', 'the-key-wes-remembers');
+    const identity = await createDeviceIdentity('wes-device');
+    const callKeys = await createCallKeypair();
+    const wes = new VoiceCall({ callId: CALL, userId: 'wes', identity, callKeys, pins });
+    const strangerIdentity = await createDeviceIdentity('alex-new-phone');
+    const strangerAnnouncement = await announce(CALL, 'alex', strangerIdentity, await createCallKeypair());
+    await wes.admit([await announce(CALL, 'wes', identity, callKeys), strangerAnnouncement]);
+
+    // From here on every write hangs or fails, as a stuck IndexedDB would.
+    let release: (reason: unknown) => void = () => undefined;
+    pins.set = () => new Promise<void>((_, reject) => (release = reject));
+    let unsaved: unknown = null;
+
+    const approved = await wes.approve('alex', 'alex-new-phone', (problem) => (unsaved = problem));
+    assert.equal(approved?.verdict, 'known');
+    assert.equal(wes.awaitingConsent.length, 0);
+    wes.rotate(1);
+    assert.equal((await wes.distribute()).length, 1, 'the key goes out without waiting for the write');
+
+    // A re-announcement before the write lands is not held a second time.
+    assert.deepEqual((await wes.admit([strangerAnnouncement])).flagged, []);
+
+    release(new Error('quota'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(unsaved instanceof Error, 'a failed write is reported');
+  });
+
   test('approving something that is not waiting does nothing', async () => {
     const { wes } = await scene();
     assert.equal(await wes.approve('alex', 'never-announced'), null);

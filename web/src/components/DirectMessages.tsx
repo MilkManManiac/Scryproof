@@ -43,6 +43,18 @@ import { isVoiceFile, isVoiceLabel, voiceLabel } from '../lib/voice-note';
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+/**
+ * The sender's own time, when it disagrees with the server's. Always with the
+ * date and year: a message served again months later would otherwise read as
+ * written today.
+ */
+const writtenFormat = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
 
 /** Messages from one person within this long draw as one block. */
 const GROUP_WINDOW_MS = 7 * 60_000;
@@ -678,9 +690,9 @@ function DmMessages({
 }) {
   const { state, loadOlder, markRead, remove, edit, react } = useDms();
   const { state: app } = useStore();
-  // A message whose sealed bytes are the ones an earlier message already used
-  // is a repeat the server put here: it is not drawn. Says which in the state,
-  // where every sealed row for this conversation is known.
+  // A message whose sealed bytes another message here already used is a
+  // repeat the server put here: it is not drawn. The state says which, from
+  // the sealed rows this tab holds for this conversation.
   const hidden = useMemo(() => new Set(state.replayed[dm.id] ?? []), [state.replayed, dm.id]);
   const views = useMemo(
     () => (state.messages[dm.id] ?? []).filter((view) => !hidden.has(view.id)),
@@ -1091,7 +1103,7 @@ function DmRow({
                 className="message-edited"
                 title="The sender's own clock said this when the words were sealed, which is not when the server says it arrived. The time inside the seal is the one the server cannot change."
               >
-                written {timeFormat.format(view.sealedAt)}
+                written {writtenFormat.format(view.sealedAt)}
               </span>
             ) : null}
             {view.unverified ? (

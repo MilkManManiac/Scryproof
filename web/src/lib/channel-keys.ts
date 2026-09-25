@@ -28,7 +28,7 @@ import {
   sealChannelMessage,
   takeOver,
 } from './channel-crypto';
-import { type AssessedDevice, type DmDevice, assessDevices } from './dm-crypto';
+import { type AssessedDevice, type DmDevice, assessDevices, describeDevice } from './dm-crypto';
 import { deviceFor, recoveryOpenerFor } from './this-device';
 import { DEVICE_ACCEPTED, emit } from './signals';
 import { acceptIdentityChange } from './voice-crypto';
@@ -48,7 +48,7 @@ export type SealStatus = 'ok' | 'unverified' | 'no-key' | 'forged' | 'failed';
 /** Why this device cannot send, in terms the composer can say. */
 export class KeyWait extends Error {
   constructor(
-    readonly reason: 'no-key' | 'untrusted-maker' | 'rolled-back' | 'downgraded',
+    readonly reason: 'no-key' | 'untrusted-maker' | 'nobody-else' | 'rolled-back' | 'downgraded',
     /** For 'untrusted-maker': the device whose key the channel is on, for accepting. */
     readonly device?: AssessedDevice,
   ) {
@@ -63,6 +63,8 @@ export class KeyWait extends Error {
 const WAIT_MESSAGE: Record<KeyWait['reason'], string> = {
   'no-key': "Waiting for someone who has this channel's key to come online and hand it to this device.",
   'untrusted-maker': "This channel's key was made by a device you have not let in yet. Open the lock at the top of the channel to see whose.",
+  'nobody-else':
+    "This channel needs a new key, and you have not let in anyone else's device yet, so only you could read it. Open the lock at the top of the channel and let someone in, or wait for someone who has.",
   'rolled-back': 'The server says this channel moved back to an older key. This device will not send under a key it has already left behind.',
   downgraded:
     'This channel was end-to-end encrypted on this device, and that cannot be turned off. The server now says it is not encrypted, so this device will not send here. Tell whoever runs the server.',
@@ -162,6 +164,12 @@ export class ChannelKeys {
    */
   private readonly plainBefore = new Map<string, string>();
 
+  /**
+   * The lowest id of a sealed message seen in each channel. A plain message
+   * after it is not history from before the switch (`checksPlaintext`).
+   */
+  private readonly firstSealed = new Map<string, string>();
+
   /** When this device last asked for a channel's keys. */
   private readonly asked = new Map<string, number>();
 
@@ -237,6 +245,16 @@ export class ChannelKeys {
         next.set(at(userId, assessed.device.deviceId), assessed);
       }
     }
+    // This device is never taken from the server's list. A server that lists
+    // it with another key would otherwise get keys "made by this device"
+    // believed, and sent under without anyone saying yes.
+    const self = await this.device();
+    next.set(at(this.userId, self.identity.deviceId), {
+      device: await describeDevice(self),
+      fingerprint: self.identity.fingerprint,
+      verdict: 'known',
+      accepted: true,
+    });
     entry.devices = next;
     entry.readers = new Set(readers);
     entry.devicesLoaded = true;
@@ -327,9 +345,12 @@ export class ChannelKeys {
         void api.channelKeys.request(channelId).catch(() => undefined);
         throw new KeyWait('no-key');
       }
-      const mine = record.creatorId === self.userId && record.creatorDeviceId === self.identity.deviceId;
-      const maker = mine ? null : await this.deviceAt(channelId, record.creatorId, record.creatorDeviceId);
-      if (!mine && (!maker || !maker.accepted)) throw new KeyWait('untrusted-maker', maker ?? undefined);
+      // No shortcut for "made by this device": the name on the record is the
+      // server's to write. This device's own entry is its real key
+      // (`loadDevices`), so a key it really made passes here, and one the
+      // server made under its name does not.
+      const maker = await this.deviceAt(channelId, record.creatorId, record.creatorDeviceId);
+      if (!maker || !maker.accepted) throw new KeyWait('untrusted-maker', maker && maker.verdict !== 'invalid' ? maker : undefined);
       await this.memory.raise(channelId, state.current);
       return { epoch: state.current, key };
     }
@@ -348,6 +369,17 @@ export class ChannelKeys {
       .map((assessed) => assessed.device);
     if (!recipients.some((device) => device.userId === self.userId && device.deviceId === self.identity.deviceId)) {
       throw new Error('This device is not on the list of devices that can read this channel.');
+    }
+    // A key only this person's devices could open, in a channel where other
+    // people have devices, would lock them all out: nobody else can make the
+    // key for this epoch once it exists, and this device hands it only to
+    // devices someone here let in. A newcomer who has let nobody in waits for
+    // somebody who has, or lets someone in first.
+    const others = [...entry.devices.values()].filter(
+      (assessed) => entry.readers.has(assessed.device.userId) && assessed.device.userId !== self.userId && assessed.verdict !== 'invalid',
+    );
+    if (others.length > 0 && !recipients.some((device) => device.userId !== self.userId)) {
+      throw new KeyWait('nobody-else');
     }
     const keys = await Promise.all(recipients.map((to) => handOver({ channelId, epoch, key, from: self, to })));
     await api.channelKeys.makeEpoch(channelId, {
@@ -414,8 +446,13 @@ export class ChannelKeys {
    * messages pass through untouched. Never throws: a message that will not
    * open is a message with a status, not an error.
    */
-  async open(messages: Message[]): Promise<Message[]> {
-    const opened = await Promise.all(messages.map((message) => this.openOne(message)));
+  async open(messages: Message[], options: { live?: boolean } = {}): Promise<Message[]> {
+    for (const message of messages) {
+      if (!message.ciphertext) continue;
+      const first = this.firstSealed.get(message.channelId);
+      if (first === undefined || message.id < first) this.firstSealed.set(message.channelId, message.id);
+    }
+    const opened = await Promise.all(messages.map((message) => this.openOne(message, options.live === true)));
     // Locked messages on screen: ask whoever is online and has the key to hand
     // it over. Once a minute per channel is plenty; the server limits it too.
     for (const channelId of new Set(opened.filter((message) => message.sealed === 'no-key').map((message) => message.channelId))) {
@@ -445,11 +482,11 @@ export class ChannelKeys {
     }
   }
 
-  private async openOne(message: Message): Promise<Message> {
+  private async openOne(message: Message, live: boolean): Promise<Message> {
     if (message.deleted) return message;
 
     if (!message.ciphertext) {
-      return this.checksPlaintext(message);
+      return this.checksPlaintext(message, live);
     }
     const { nonce, signature, senderDeviceId, keyEpoch } = message;
     if (!nonce || !signature || !senderDeviceId || keyEpoch === null) return withFiles({ ...message, content: null, sealed: 'failed' }, []);
@@ -506,13 +543,32 @@ export class ChannelKeys {
    * arrives is something the server made up, whatever name is on it: it is
    * shown as forged rather than as text. Plain messages from before the switch
    * are the channel's real history and pass straight through.
+   *
+   * The date on a message is the server's to write, so the date alone is not
+   * enough. Two more things give a made-up one away:
+   *  - it arrived live. Nothing plain is written in an encrypted channel, so
+   *    a new plain message is made up whatever date it carries. The one
+   *    exception is an update to plain history this tab already read, with
+   *    the same words (a pin, say);
+   *  - it sits after a sealed message. Message ids are the server's too, but
+   *    they set the order on screen, and a plain message placed among sealed
+   *    ones is not from before the switch.
+   * What is left is a server inventing a message deep in the readable past,
+   * which it could always do: that history was never sealed.
    */
-  private async checksPlaintext(message: Message): Promise<Message> {
+  private async checksPlaintext(message: Message, live: boolean): Promise<Message> {
     // Rendering must not wait on the database, so a load that fails lets the
     // message through: the gate that matters is the one before sending.
     await this.memory.load().catch(() => undefined);
     const since = this.memory.since(message.channelId);
-    if (since !== undefined && (since === null || atOrAfter(message.createdAt, since))) {
+    const first = this.firstSealed.get(message.channelId);
+    const madeUp =
+      since !== undefined &&
+      (since === null ||
+        atOrAfter(message.createdAt, since) ||
+        (live && this.plainBefore.get(message.id) !== message.content) ||
+        (first !== undefined && message.id > first));
+    if (madeUp) {
       return { ...message, content: null, sealed: 'forged', attachments: [], sealedFiles: [] };
     }
     if (message.content !== null) this.plainBefore.set(message.id, message.content);

@@ -41,6 +41,7 @@ built_sum=$(sha256sum "$built" | cut -d' ' -f1)
 # hostile review: the installer is served by the box and is not code-signed).
 key="$root/desktop/src/update-key.pub.pem"
 [ -f "$key" ] || { echo "No desktop/src/update-key.pub.pem: the update key fingerprint cannot be printed." >&2; exit 1; }
+# Hashed as it sits on disk: .gitattributes keeps *.pem LF, so every checkout gives the same sum.
 key_sum=$(sha256sum "$key" | cut -d' ' -f1)
 
 if [ "$signed_version" != "$built_version" ] || [ "$signed_sum" != "$built_sum" ]; then

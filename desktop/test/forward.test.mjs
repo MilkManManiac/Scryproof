@@ -83,6 +83,22 @@ describe('a URL the app forwards to the server', () => {
     }
   });
 
+  test('includes a spelling with backslashes, which Chromium reads as slashes here', () => {
+    for (const url of [
+      'app://scryproof\\api\\messages',
+      'app://scryproof/api\\messages',
+      'app:\\\\scryproof/api/messages',
+      '\\api\\messages',
+      'app://scryproof/x\\..\\api/messages',
+      'app://scryproof/x/..%5capi/messages', // encoded backslash: refused, not guessed at
+      'app://scryproof/api%2fmessages', // encoded slash: the same
+      'app://scryproof/api%2Fmessages',
+    ]) {
+      assert.equal(isApiUrl(url), true, url);
+    }
+    assert.equal(isApiUrl('..\\api\\messages', 'app://scryproof/x/y'), true);
+  });
+
   test('is judged against the URL that asked, as a redirect would be', () => {
     assert.equal(isApiUrl('bar', 'app://scryproof/api/messages'), true);
     assert.equal(isApiUrl('../api/messages', 'app://scryproof/api/x'), true);

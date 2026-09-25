@@ -57,13 +57,22 @@ const APP_HOST = new URL(APP_ORIGIN).host.toLowerCase();
  * `..` and its percent-encoded form (`%2e%2e`) while parsing, and lowercases
  * the scheme and host, so anything that normalises to `/api/` arrives here
  * already looking like `/api/`.
+ *
+ * Backslashes are the exception. `main.js` registers `app:` as a standard
+ * scheme, so Chromium reads `\` as `/` in it, the way it does for `https:`;
+ * Node's parser treats `app:` as an unknown scheme and keeps the `\`. So they
+ * are turned into slashes first, as Chromium would. And on this origin a path
+ * that holds an encoded slash or backslash (`%2f`, `%5c`) counts as an
+ * API URL: no page of ours is named like that, and a server could read one as
+ * a path under `/api/`, so it is refused rather than guessed at.
  */
 export function isApiUrl(raw, base = `${APP_ORIGIN}/`) {
   let url;
   try {
-    url = new URL(raw, base);
+    url = new URL(String(raw).replaceAll('\\', '/'), base);
   } catch {
     return false;
   }
-  return url.protocol === 'app:' && url.host.toLowerCase() === APP_HOST && url.pathname.startsWith('/api/');
+  if (url.protocol !== 'app:' || url.host.toLowerCase() !== APP_HOST) return false;
+  return url.pathname.startsWith('/api/') || /%2f|%5c/i.test(url.pathname);
 }

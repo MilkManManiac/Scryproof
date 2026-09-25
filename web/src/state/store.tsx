@@ -1208,7 +1208,9 @@ export function StoreProvider({
         // just after sign-in would be drawn before the channel is known.
         await channelMemory().load().catch(() => undefined);
         if (event.d.ciphertext || channelMemory().isEncrypted(event.d.channelId)) {
-          const [opened] = await keys.open([event.d]);
+          // Live: a plain message arriving now was written now, whatever date
+          // the server put on it.
+          const [opened] = await keys.open([event.d], { live: true });
           return { ...event, d: opened ?? event.d };
         }
         return event;

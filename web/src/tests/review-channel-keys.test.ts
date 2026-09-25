@@ -76,6 +76,7 @@ const server = {
   readers: [] as string[],
   wanted: [] as ChannelKeyWant[],
   received: [] as { epoch: number; userId: string; deviceId: string; iv: string; key: string }[],
+  made: [] as unknown[],
 };
 
 let self: DmDevice;
@@ -115,6 +116,10 @@ mock.module('../lib/api', {
           return { added: body.keys.length };
         },
         request: async () => undefined,
+        makeEpoch: async (_channelId: string, body: unknown) => {
+          server.made.push(body);
+          return {};
+        },
       },
     },
   },
@@ -226,6 +231,7 @@ beforeEach(async () => {
   server.readers = ['alice', 'bob', 'mallory'];
   server.wanted = [];
   server.received = [];
+  server.made = [];
 });
 
 /* -------------------------------- the tests -------------------------------- */
@@ -600,5 +606,106 @@ describe('hostile server: channel keys', () => {
       () => 'refused',
     );
     assert.equal(answer, 'refused', 'the forward-only check ran without the memory it checks against');
+  });
+
+  test('a key the server made under alice\'s own device id, with another key, is never sent under', async () => {
+    // The server lists "alice's device" twice over: same user, same device id,
+    // Mallory's keys. It says that device made epoch 2 and locked a copy of it
+    // for the real alice. Before the fix, "made by me" skipped acceptance.
+    const deviceId = alice.device.identity.deviceId;
+    const impostor: DmDevice = { userId: 'alice', identity: { ...mallory.device.identity, deviceId }, dm: mallory.device.dm };
+    const impostorListed = await describeDevice(impostor);
+    const copy = await handOver({ channelId: CHANNEL, epoch: 2, key: keyFor(2), from: impostor, to: alice.published });
+    server.state = {
+      current: 2,
+      epochs: [await describeEpoch({ channelId: CHANNEL, epoch: 2, key: keyFor(2), maker: impostor })],
+      keys: [{ epoch: 2, ...copy, wrapperId: 'alice', wrapperDeviceId: deviceId }],
+      holders: [{ userId: 'alice', deviceId }],
+    };
+    server.devices = [impostorListed, bob.published];
+
+    const keys = new ChannelKeys('alice');
+    const answer = await keys.seal(sealInput()).then((sealed) => `sealed under epoch ${sealed.keyEpoch}`, (problem: unknown) => problem);
+    assert.ok(answer instanceof KeyWait, `alice sent under a key the server made in her name (${String(answer)})`);
+
+    const { waiting } = await keys.holders(CHANNEL);
+    assert.equal(
+      waiting.find((entry) => entry.device.userId === 'alice' && entry.device.deviceId === deviceId),
+      undefined,
+      'alice was offered her own device, with the server\'s key, in "Let in"',
+    );
+
+    // And a copy handed out by this device never goes to the impostor.
+    server.wanted = [{ epoch: 1, userId: 'alice', deviceId }];
+    server.state = {
+      current: 1,
+      epochs: [await describeEpoch({ channelId: CHANNEL, epoch: 1, key: keyFor(1), maker: alice.device })],
+      keys: [await aliceHolds(1)],
+      holders: [],
+    };
+    keys.keysChanged(CHANNEL, false);
+    await keys.handOut(CHANNEL);
+    assert.equal(server.received.length, 0, 'a key was locked for the impostor listed under alice\'s own device');
+  });
+
+  test('a plain message arriving live in an encrypted channel is forged, whatever date it carries', async () => {
+    await channelMemory().remember({ id: CHANNEL, encryptedAt: '2026-09-24T12:00:00.000Z' });
+    const keys = new ChannelKeys('alice');
+    const [live] = await keys.open([plainRow('message-live', '2020-01-01T00:00:00.000Z')], { live: true });
+    assert.equal(live?.sealed, 'forged', `a back-dated live message was drawn: "${String(live?.content)}"`);
+
+    // Real history read earlier may still be updated live (a pin), with the same words.
+    const old = plainRow('message-old', '2026-09-24T11:00:00.000Z');
+    assert.equal((await keys.open([old]))[0]?.sealed, undefined, 'precondition: history from before the switch reads');
+    assert.equal((await keys.open([{ ...old, pinnedAt: '2026-09-25T00:00:00.000Z' } as Message], { live: true }))[0]?.sealed, undefined);
+    const [changed] = await keys.open([{ ...old, content: 'actually, the east door' } as Message], { live: true });
+    assert.equal(changed?.sealed, 'forged', 'history from before the switch was rewritten live');
+  });
+
+  test('a back-dated plain message placed among sealed ones is forged', async () => {
+    await channelMemory().remember({ id: CHANNEL, encryptedAt: '2026-09-24T12:00:00.000Z' });
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key: keyFor(1), sender: bob.device,
+      body: { v: 1, text: 'sealed words' }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+    });
+    const page = [
+      plainRow('message-1', '2026-09-24T11:00:00.000Z'),
+      sealedRow(sealed, 'bob', 'message-2'),
+      plainRow('message-3', '2026-09-24T11:30:00.000Z'),
+    ];
+    const [before, , after] = await new ChannelKeys('alice').open(page);
+    assert.equal(before?.sealed, undefined, 'real history before the first sealed message should read');
+    assert.equal(after?.sealed, 'forged', `a plain message after a sealed one was drawn: "${String(after?.content)}"`);
+  });
+
+  test('a newcomer who has let nobody in waits instead of making a key only they can open', async () => {
+    acceptedTable.clear();
+    server.state = {
+      current: 2,
+      epochs: [await describeEpoch({ channelId: CHANNEL, epoch: 1, key: keyFor(1), maker: bob.device })],
+      keys: [],
+      holders: [{ userId: 'bob', deviceId: bob.device.identity.deviceId }],
+    };
+    server.devices = [alice.published, bob.published];
+    server.readers = ['alice', 'bob'];
+
+    const answer = await new ChannelKeys('alice').seal(sealInput()).then(() => 'made the key', (problem: unknown) => problem);
+    assert.ok(answer instanceof KeyWait && answer.reason === 'nobody-else', `expected to wait, got ${String(answer)}`);
+    assert.equal(server.made.length, 0, 'a key only alice could open was made');
+
+    // Once she has let bob in, she makes it, locked for him too.
+    acceptedTable.set(`bob:${bob.device.identity.deviceId}`, bob.device.identity.fingerprint);
+    const sealed = await new ChannelKeys('alice').seal(sealInput());
+    assert.equal(sealed.keyEpoch, 2);
+    assert.equal(server.made.length, 1);
+
+    // Alone in a channel, there is nobody to wait for.
+    server.made = [];
+    server.devices = [alice.published];
+    server.readers = ['alice'];
+    acceptedTable.clear();
+    channelMemory().forget();
+    remembered.clear();
+    assert.equal((await new ChannelKeys('alice').seal(sealInput())).keyEpoch, 2);
   });
 });

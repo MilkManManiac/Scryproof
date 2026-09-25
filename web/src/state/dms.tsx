@@ -122,9 +122,10 @@ interface DmState {
   /** Per conversation: every device of everyone in it, and what we make of each. */
   devices: Record<string, AssessedDevice[]>;
   /**
-   * Per conversation: messages not drawn because a message before them carried
-   * the same sealed bytes. A server can hand an old message a new id and time;
-   * it cannot make the bytes different, so the repeat is what catches it.
+   * Per conversation: messages not drawn because another message this tab
+   * holds carried the same sealed bytes. Only repeats of something this tab
+   * has also been handed; a server that never sends the original gets its
+   * repeat drawn. `replayedIds`.
    */
   replayed: Record<string, string[]>;
   /**
@@ -510,9 +511,10 @@ export function DmProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Keep the sealed rows this device has seen, and work out again which of
-   * them repeat what came before. Every message this device is given goes
-   * through here, so this is the one place that sees a whole conversation.
+   * Keep the sealed rows this tab has been handed, and work out again which
+   * of them repeat one another. Every message this tab is given goes through
+   * here, so this is the one place that sees all of it. "All of it" is only
+   * what arrived since the tab loaded: nothing here survives a reload.
    */
   const remember = (messages: DmMessage[]): void => {
     const touched = new Set<string>();
