@@ -2556,3 +2556,47 @@ local dev + local LiveKit, including the wrong-key sabotage from
 
 ![Hearth live in a Scryproof call](shots/hearth-bot-live.png)
 ![Hearth signed in, picking a channel](shots/hearth-bot-signed-in.png)
+
+
+## The first install checks out, 2026-09-24 (finding 6 of the hostile-server review)
+
+Signed updates keep the server out of the code members run *after* an install.
+The install itself does not: the installer is served by the box
+(`/download/Scryproof-Setup.exe`) and is not Windows code-signed, so a lying
+server can hand a new member — or anyone reinstalling — a modified one. That
+installer carries its own update key, so every later "signed" update would be
+the attacker's too. One modified file at the start undoes all the signing after
+it.
+
+The cheap fix is a hash published where the box cannot reach it.
+`scripts/publish-installer.sh` prints these at the end of a successful publish:
+
+    Installer Scryproof-Setup-0.5.2.exe
+      installer  SHA-256: <the installer's sha256>
+      update key SHA-256: <the sha256 of desktop/src/update-key.pub.pem>
+
+Paste both into the GitHub release notes, or into a message sent by hand. Not
+just in a message that goes through the box, and not only in the release folder
+on the PC: the box is what hands the installer out, so a value the box serves
+proves nothing. Neither number is a secret — `update-key.pub.pem` is the public
+half of the update key.
+
+**Before running an installer**, check it against what Wes published, on
+Windows:
+
+    Get-ChildItem "$env:USERPROFILE\Downloads\Scryproof-Setup-*.exe" | Get-FileHash -Algorithm SHA256
+
+That prints the hash of the file that is actually on disk. Compare it,
+character for character, with the published one. A different hash means delete
+it and do not run it. The update key's hash is for whoever builds releases
+(Wes, Alex): it pins which public key the installers are built with, so a key
+swapped in the repo shows up as a changed number. Members cannot easily read it
+out of an installer; the installer's own hash is the check they can do, and it
+covers the key inside.
+
+Why not just code signing: Windows SmartScreen warns about an unsigned
+installer already, and a certificate (OV or EV, money every year) would remove
+that warning and let Windows itself reject a changed installer at the signature
+check. That is Wes's call on cost. Comparing the hash costs nothing, and is the
+part that has to happen first.
+
