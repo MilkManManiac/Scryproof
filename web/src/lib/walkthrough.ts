@@ -6,20 +6,17 @@
  * its own, whether they finished it or skipped it. The menu behind your name
  * opens it any time. No sound, nothing that comes back.
  *
- * "New" means this device has never seen Scryproof: the What's new store is
- * empty too. People who were already here when this shipped are told about it
- * in the changelog instead of having it put in front of them.
+ * Everyone gets it once, members who were here before it shipped included
+ * (Wes, 2026-09-25: people were not finding What's new on their own).
  */
 
 const STORAGE_KEY = 'scryproof.walkthrough.v1';
-const WHATS_NEW_KEY = 'scryproof.whats-new.v1';
 
 export type WalkthroughMark = 'due' | 'done';
 
 /** Pure, for the test: what to write on first sight of the app, if anything. */
-export function markOnFirstSight(walkthrough: string | null, whatsNew: string | null): WalkthroughMark | null {
-  if (walkthrough !== null) return null;
-  return whatsNew === null ? 'due' : 'done';
+export function markOnFirstSight(walkthrough: string | null): WalkthroughMark | null {
+  return walkthrough === null ? 'due' : null;
 }
 
 function read(key: string): string | null {
@@ -38,12 +35,8 @@ function write(value: WalkthroughMark): void {
   }
 }
 
-/**
- * Runs before `noteFirstVisit` in `main.tsx`, which fills the What's new
- * store and would make everyone look like they had been here before.
- */
 export function noteWalkthroughFirstSight(): void {
-  const mark = markOnFirstSight(read(STORAGE_KEY), read(WHATS_NEW_KEY));
+  const mark = markOnFirstSight(read(STORAGE_KEY));
   if (mark) write(mark);
 }
 

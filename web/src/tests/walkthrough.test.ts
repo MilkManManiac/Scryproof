@@ -8,19 +8,13 @@ import { describe, it } from 'node:test';
 import { markOnFirstSight, placeCard } from '../lib/walkthrough';
 
 describe('the walkthrough, by itself', () => {
-  it('is due only on a device that has never seen Scryproof', () => {
-    assert.equal(markOnFirstSight(null, null), 'due', 'someone new');
-    assert.equal(
-      markOnFirstSight(null, '2026-09-25-soundboard'),
-      'done',
-      'here before it shipped: told in the changelog',
-    );
+  it('is due once for everyone, members from before it shipped included', () => {
+    assert.equal(markOnFirstSight(null), 'due');
   });
 
   it('never changes its mind once written', () => {
-    assert.equal(markOnFirstSight('due', null), null);
-    assert.equal(markOnFirstSight('done', null), null);
-    assert.equal(markOnFirstSight('done', 'x'), null);
+    assert.equal(markOnFirstSight('due'), null);
+    assert.equal(markOnFirstSight('done'), null);
   });
 });
 

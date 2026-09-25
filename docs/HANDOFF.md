@@ -2796,11 +2796,9 @@ names), letting a device in, DMs and the recovery phrase, your corner (settings,
 menu, the update bar). No sound; Skip, Escape, or Done, and it never comes back
 by itself. "How Scryproof works" in the menu behind your name reopens it.
 
-- Shows by itself only on a device that has never seen Scryproof (both
-  `scryproof.walkthrough.v1` and `scryproof.whats-new.v1` empty on first
-  load). People already here when it ships do not get it pushed at them; the
-  changelog entry at release time should tell them it is in the menu. Flip
-  `markOnFirstSight` if Wes wants everyone to get it once.
+- Shows by itself once to everyone, members from before it shipped included
+  (Wes chose this 2026-09-25: "Yea i'm cool with that"). Once per device and
+  browser, keyed on `scryproof.walkthrough.v1`.
 - Waits for any open dialog (an invite link's Join) to close before showing.
 - Not built on `Modal`, so the check scripts' `.modal` selectors never hit it.
   `scripts/shot.mjs` marks it done unless `--walkthrough` is passed.
