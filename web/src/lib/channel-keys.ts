@@ -167,16 +167,6 @@ export class ChannelKeys {
   }
 
   /**
-   * The send-time gate, for the paths that would put something up readable.
-   * Waits for the memory to have loaded, so it cannot answer "not encrypted"
-   * just because this tab has not read the database yet.
-   */
-  async refusesPlaintext(channelId: string): Promise<boolean> {
-    await this.memory.load();
-    return this.memory.isEncrypted(channelId);
-  }
-
-  /**
    * What this device makes of one person's devices: the pin verdicts, and which
    * of them a person here let in. `acceptance.ts`.
    */
@@ -299,6 +289,9 @@ export class ChannelKeys {
    */
   private async sendKey(channelId: string): Promise<{ epoch: number; key: Uint8Array }> {
     const self = await this.device();
+    // The forward-only check below reads the stored memory, so wait for it: a
+    // fresh tab has not read the database yet, and an unread memory says 0.
+    await this.memory.load().catch(() => undefined);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const state = await this.state(channelId, attempt > 0);
       // Forward only. A server that says the channel is on an older key again

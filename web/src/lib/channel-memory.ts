@@ -108,6 +108,19 @@ export class ChannelMemory {
     return this.view.has(channelId);
   }
 
+  /**
+   * Whether this device must refuse to put anything up readable in a channel.
+   * Waits for the stored memory so "not encrypted" is never just "not read
+   * yet". If the database cannot be read at all, the answer falls back to what
+   * this tab has seen: every channel the server sends is remembered as it
+   * arrives, so the only thing lost is what an earlier session saw, which a
+   * device without working storage never kept anyway.
+   */
+  async refusesPlaintext(channelId: string): Promise<boolean> {
+    await this.load().catch(() => undefined);
+    return this.isEncrypted(channelId);
+  }
+
   highestEpoch(channelId: string): number {
     return this.view.get(channelId)?.highestEpoch ?? 0;
   }
@@ -131,7 +144,12 @@ export class ChannelMemory {
    */
   raise(channelId: string, epoch: number): Promise<void> {
     const held = this.view.get(channelId);
-    const next = mergeRemembered(held, { since: held?.since ?? null, highestEpoch: epoch });
+    // A channel this device has not recorded yet is known to be encrypted from
+    // now, not from the beginning: null would mark every plaintext message in
+    // its history as forged, and "earliest wins" would keep it that way. The
+    // real start replaces this when the channel itself is remembered.
+    const since = held ? held.since : new Date().toISOString();
+    const next = mergeRemembered(held, { since, highestEpoch: epoch });
     if (held && held.highestEpoch === next.highestEpoch) return Promise.resolve();
     this.view.set(channelId, next);
     return this.store.remember(channelId, next).catch(() => undefined);

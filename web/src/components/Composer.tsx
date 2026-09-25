@@ -22,7 +22,7 @@ import { EDIT_LAST, emit } from '../lib/signals';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { voiceLabel } from '../lib/voice-note';
 import { sealChannelFile } from '../lib/channel-crypto';
-import { KeyWait, channelKeysFor } from '../lib/channel-keys';
+import { KeyWait, channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { useStore } from '../state/store';
 import { MarkupTools } from './MarkupTools';
 import { jumpLimitNote } from './MessageList';
@@ -246,8 +246,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
    * read yet". Nothing is sent when it refuses.
    */
   async function refusePlaintext(): Promise<void> {
-    const keys = channelKeysFor(state.user?.id ?? '');
-    if (await keys.refusesPlaintext(channel.id)) throw new KeyWait('downgraded');
+    if (await channelMemory().refusesPlaintext(channel.id)) throw new KeyWait('downgraded');
   }
 
   async function send(override?: string) {

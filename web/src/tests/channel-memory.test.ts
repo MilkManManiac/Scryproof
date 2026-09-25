@@ -64,6 +64,20 @@ describe('channel memory', () => {
     assert.equal(memory.highestEpoch(OTHER), 0, 'a channel nothing was sent in starts at nothing');
   });
 
+  test('sending in a channel not yet recorded does not erase its readable past', async () => {
+    const memory = new ChannelMemory(new MemoryStore());
+    const before = Date.now();
+    await memory.raise(CHANNEL, 1);
+    const since = memory.since(CHANNEL);
+    assert.equal(typeof since, 'string', 'an unrecorded channel was taken as encrypted from the beginning');
+    assert.ok(Date.parse(since as string) >= before, 'the assumed start is earlier than the send that raised it');
+
+    // The channel's real start arrives afterwards and replaces the guess.
+    await memory.remember({ id: CHANNEL, encryptedAt: '2026-09-01T00:00:00.000Z' });
+    assert.equal(memory.since(CHANNEL), '2026-09-01T00:00:00.000Z');
+    assert.equal(memory.highestEpoch(CHANNEL), 1);
+  });
+
   test('a copy that is older than what is held cannot turn anything back', () => {
     const late: Remembered = { since: '2026-09-24T12:00:00.000Z', highestEpoch: 5 };
     const early: Remembered = { since: '2026-09-23T12:00:00.000Z', highestEpoch: 2 };
@@ -78,6 +92,24 @@ describe('channel memory', () => {
     await memory.load();
     assert.equal(memory.since(CHANNEL), null, 'loading the store undid what this session had already seen');
     assert.equal(memory.highestEpoch(CHANNEL), 7);
+  });
+
+  test('the plaintext gate waits for the database, and a broken one falls back to this tab', async () => {
+    const store = new MemoryStore();
+    store.held.set(CHANNEL, { since: null, highestEpoch: 0 });
+    const reloaded = new ChannelMemory(store);
+    assert.equal(reloaded.isEncrypted(CHANNEL), false, 'precondition: nothing read yet');
+    assert.equal(await reloaded.refusesPlaintext(CHANNEL), true, 'a stored encrypted channel was open to plaintext before the load');
+    assert.equal(await reloaded.refusesPlaintext(OTHER), false);
+
+    const broken: ChannelMemoryStore = {
+      all: () => Promise.reject(new Error('storage is not available')),
+      remember: () => Promise.reject(new Error('storage is not available')),
+    };
+    const unstored = new ChannelMemory(broken);
+    await unstored.remember({ id: CHANNEL, encryptedAt: null });
+    assert.equal(await unstored.refusesPlaintext(CHANNEL), true, 'a channel seen encrypted in this tab was let go');
+    assert.equal(await unstored.refusesPlaintext(OTHER), false, 'a broken database stopped every plain channel');
   });
 
   test('forgetting clears the view but not the database', async () => {

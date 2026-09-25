@@ -472,8 +472,12 @@ describe('hostile server: channel keys', () => {
     const first = new ChannelKeys('alice');
     assert.equal((await first.seal(sealInput())).keyEpoch, 2, 'precondition: alice sends under epoch 2');
 
-    // A page reload: a fresh object that has never sent anything, and the
-    // server back on the older key.
+    // A page reload: the tab's memory is gone and only the database remains,
+    // a fresh object has never sent anything, and the server is back on the
+    // older key.
+    assert.equal(remembered.get(CHANNEL)?.highestEpoch, 2, 'precondition: epoch 2 reached the database');
+    channelMemory().forget();
+    assert.equal(channelMemory().highestEpoch(CHANNEL), 0, 'precondition: the tab no longer holds epoch 2');
     server.state = { ...server.state, current: 1 };
     const second = new ChannelKeys('alice');
     const answer = await second.seal(sealInput()).then((sealed) => sealed.keyEpoch, (problem: unknown) => problem);

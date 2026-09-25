@@ -214,8 +214,9 @@ function LockPanel({ channel, onClose }: { channel: Channel; onClose: () => void
             ))}
         </ul>
         <p className="field-note">
-          A key goes only to devices a person here has let in. When someone loses access, the next message moves the
-          channel to a new key they do not get. Key {view?.epoch ?? '…'}.
+          A key goes only to devices a person here has let in. When the server reports that someone lost access, the
+          next message moves the channel to a new key they do not get. A server that hides a removal can keep them on
+          the list; nothing on this device can catch that yet. Key {view?.epoch ?? '…'}.
         </p>
       </div>
     </Modal>
