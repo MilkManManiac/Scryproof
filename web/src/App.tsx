@@ -15,7 +15,9 @@ import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
 import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
-import { OPEN_DOCK, on } from './lib/signals';
+import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
+import { useBackButton } from './lib/back';
+import { useDrawerSwipe } from './lib/swipe';
 import { usePhone } from './lib/usePhone';
 import { subscribeWalkthrough, walkthroughDue, walkthroughOpened } from './lib/walkthrough';
 import type { Shortcuts } from './lib/shortcuts';
@@ -187,6 +189,11 @@ function Shell() {
   const phone = usePhone();
   const [dock, setDock] = useState<'left' | 'right' | null>(null);
   useEffect(() => on(OPEN_DOCK, () => setDock('left')), []);
+  useEffect(() => on(LAYER_OPENED, () => setDock(null)), []);
+  // Back closes an open drawer instead of leaving the app; a swipe opens and
+  // closes them (lib/back.ts, lib/swipe.ts).
+  useBackButton(phone && dock !== null, () => setDock(null));
+  useDrawerSwipe(phone, dock, setDock, Boolean(server && !dms.active));
   useEffect(() => setDock(null), [state.selectedServerId, state.selectedChannelId, dms.openId]);
   // Except @ with no conversation open: that leaves the list of them showing,
   // since an empty page is not where anyone tapping @ was going.
@@ -408,10 +415,12 @@ function Shell() {
                 <h2>{server ? 'No channel selected' : 'Nothing here yet'}</h2>
                 <p>
                   {server
-                    ? 'Pick a channel on the left.'
+                    ? phone
+                      ? 'Tap the menu at the top left and pick a channel.'
+                      : 'Pick a channel on the left.'
                     : state.canCreateServers
-                      ? 'Create a server with the + on the far left, or join one with an invite code.'
-                      : 'Join a server with an invite code: the arrow on the far left.'}
+                      ? `Create a server with the + ${phone ? 'in the menu at the top left' : 'on the far left'}, or join one with an invite code.`
+                      : `Join a server with an invite code: the arrow ${phone ? 'in the menu at the top left' : 'on the far left'}.`}
                 </p>
               </div>
             </div>

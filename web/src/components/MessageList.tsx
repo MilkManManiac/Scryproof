@@ -557,7 +557,7 @@ function Spoiler({
       className="spoiler"
       role="button"
       tabIndex={0}
-      aria-label="Spoiler, click to show"
+      aria-label="Spoiler, press to show"
       onClick={reveal}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {

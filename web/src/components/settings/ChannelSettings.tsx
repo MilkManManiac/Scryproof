@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LIMITS,
   MESSAGE_EXPIRY_CHOICES,
@@ -27,6 +28,7 @@ import { PUBLIC, PrivacyPicker } from './PrivacyPicker';
 import type { PrivacyChoice } from './PrivacyPicker';
 import { useStore } from '../../state/store';
 import type { Authority } from './authority';
+import { useLayer } from '../../lib/back';
 
 const SLOWMODE_OPTIONS = [0, 5, 10, 30, 60, 300, 900] as const;
 
@@ -57,7 +59,11 @@ export function ChannelSettings({
 }) {
   const [tab, setTab] = useState<'overview' | 'permissions'>('overview');
 
-  return (
+  useLayer(onClose);
+
+  // On the page itself: opened from a phone's drawer, it otherwise lived
+  // inside the drawer and slid away with it.
+  return createPortal(
     <div className="settings-backdrop" role="presentation">
       <div className="settings" role="dialog" aria-modal="true" aria-label={`#${channel.name}`}>
         <nav className="settings-nav">
@@ -103,7 +109,8 @@ export function ChannelSettings({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

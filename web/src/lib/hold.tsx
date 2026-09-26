@@ -10,6 +10,8 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode, type TouchEvent } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useBackButton } from './back';
+
 const HOLD_MS = 450;
 /** A thumb that moves further than this is scrolling, not holding. */
 const SLOP = 10;
@@ -94,6 +96,7 @@ export function useHold(id: string, enabled: boolean) {
  * the box a fixed sheet is placed inside.
  */
 export function HoldSheet({ children }: { children: ReactNode }) {
+  useBackButton(true, releaseHold);
   return createPortal(
     <>
       <button type="button" className="hold-backdrop" aria-label="Close" onClick={releaseHold} />

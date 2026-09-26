@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { LIMITS, Permission, toNames, decodeMask } from '@scryproof/shared';
 import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@scryproof/shared';
 
@@ -29,6 +30,7 @@ import { RolesPane } from './RolesPane';
 import { SoundsPane } from './SoundsPane';
 import { authorityFor } from './authority';
 import type { Authority } from './authority';
+import { useLayer } from '../../lib/back';
 
 type Section =
   | 'overview'
@@ -84,7 +86,11 @@ export function ServerSettings({
     { id: 'audit', label: 'Audit log', visible: authority.can(Permission.VIEW_AUDIT_LOG) },
   ];
 
-  return (
+  useLayer(onClose);
+
+  // On the page itself: opened from a phone's drawer, it otherwise lived
+  // inside the drawer and slid away with it.
+  return createPortal(
     <div className="settings-backdrop" role="presentation">
       <div className="settings" role="dialog" aria-modal="true" aria-label={`${server.name} settings`}>
         <nav className="settings-nav">
@@ -132,7 +138,8 @@ export function ServerSettings({
           {section === 'audit' ? <AuditPane server={server} members={members} /> : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

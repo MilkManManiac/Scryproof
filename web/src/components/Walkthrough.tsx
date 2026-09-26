@@ -43,7 +43,7 @@ export const STEPS: readonly Step[] = [
     body: (
       <>
         <p>
-          The column on the far left is your servers. A server is one group of people with its own channels. Click one
+          The column on the far left is your servers. A server is one group of people with its own channels. Pick one
           to go in.
         </p>
         <p>
@@ -62,8 +62,8 @@ export const STEPS: readonly Step[] = [
           Channels with a <b>#</b> are for typing. Channels with a <b>♫</b> are voice rooms.
         </p>
         <p>
-          Clicking a voice room puts you straight into the call, with nothing to confirm, so be ready to be heard when
-          you click.
+          Opening a voice room puts you straight into the call, with nothing to confirm, so be ready to be heard when
+          you do.
         </p>
       </>
     ),

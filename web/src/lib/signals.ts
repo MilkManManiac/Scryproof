@@ -35,6 +35,9 @@ export const EDIT_LAST = 'edit-last';
 /** On a phone: slide the servers and channels in. A header asks; the shell answers. */
 export const OPEN_DOCK = 'open-dock';
 
+/** A dialog or a settings page opened. On a phone the shell puts the drawers away under it. */
+export const LAYER_OPENED = 'layer-opened';
+
 /** A person accepted a device in a DM, a call, or an encrypted channel. */
 export const DEVICE_ACCEPTED = 'device-accepted';
 

@@ -58,6 +58,8 @@ const DEVICES = [
  *   { server: name }      open that server (through the drawer)
  *   { type: text }        type into whatever has focus
  *   { hold: css }         press and hold the last visible match with a finger
+ *   { swipe: [x0, y0, x1, y1] }  drag a finger, in fractions of the screen
+ *   { back: true }        the phone's back button (history.back)
  *   { focus: css }        focus an element
  *   { eval: js }          anything else
  *   { wait: ms }
@@ -99,6 +101,14 @@ const SCREENS = [
   { name: 'plan-event', steps: [{ label: 'Servers and channels' }, { label: 'Plan an event' }] },
   { name: 'attach-menu', steps: [{ label: 'Attach a file' }] },
   { name: 'walkthrough', walkthrough: true, steps: [] },
+  { name: 'swipe-open-servers', steps: [{ swipe: [0.3, 0.5, 0.85, 0.52] }] },
+  { name: 'swipe-open-members', steps: [{ swipe: [0.8, 0.5, 0.2, 0.52] }] },
+  { name: 'swipe-close-servers', steps: [{ label: 'Servers and channels' }, { swipe: [0.8, 0.5, 0.1, 0.5] }] },
+  { name: 'back-closes-drawer', steps: [{ label: 'Servers and channels' }, { back: true }] },
+  { name: 'dialog-from-drawer', steps: [{ label: 'Servers and channels' }, { label: 'Invite someone' }] },
+  { name: 'back-closes-dialog', steps: [{ label: 'Servers and channels' }, { label: 'Invite someone' }, { back: true }] },
+  { name: 'back-closes-settings', steps: [{ label: 'Servers and channels' }, { label: 'Server settings' }, { back: true }] },
+  { name: 'back-closes-hold', steps: [{ hold: '.messages .message .message-text' }, { back: true }] },
   { name: 'voice-call', media: true, steps: [{ channel: 'General', voice: true }, { wait: 2500 }] },
   { name: 'voice-soundboard', media: true, steps: [{ channel: 'General', voice: true }, { wait: 2500 }, { label: 'Soundboard' }] },
 ];
@@ -158,7 +168,12 @@ const HELPERS = `
 
 async function step(action) {
   if (action.wait) return sleep(action.wait);
-  if (action.eval) { await run(action.eval); return sleep(600); }
+  if (action.eval) {
+    const value = await run(action.eval);
+    // A string back is something to read: printed beside the screen's line.
+    if (typeof value === 'string') console.log(`    ${value}`);
+    return sleep(600);
+  }
   if (action.tap) {
     const hit = await run(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(action.tap)})].find(__visible); if (!el) return false; el.click(); return true; })()`);
     if (!hit) throw new Error(`nothing visible matches ${action.tap}`);
@@ -182,6 +197,22 @@ async function step(action) {
     await sleep(700);
     await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     return sleep(500);
+  }
+  if (action.swipe) {
+    const [x0, y0, x1, y1] = action.swipe;
+    const size = await run('({ w: innerWidth, h: innerHeight })');
+    const at = (t) => [{ x: size.w * (x0 + (x1 - x0) * t), y: size.h * (y0 + (y1 - y0) * t) }];
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+    for (let i = 1; i <= 12; i += 1) {
+      await sleep(16);
+      await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(i / 12) });
+    }
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    return sleep(700);
+  }
+  if (action.back) {
+    await run('history.back() || true');
+    return sleep(700);
   }
   if (action.focus) {
     const hit = await run(`(() => { const el = document.querySelector(${JSON.stringify(action.focus)}); if (!el) return false; el.focus(); return true; })()`);

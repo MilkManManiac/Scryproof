@@ -4,6 +4,9 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+
+import { useLayer } from '../lib/back';
 
 export function Modal({
   title,
@@ -22,6 +25,7 @@ export function Modal({
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  useLayer(() => close.current());
 
   // Once, on opening. Callers pass `onClose` as a fresh arrow on every render,
   // and the call panel re-renders about once a second with its connection
@@ -39,7 +43,9 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  return (
+  // On the page itself, not wherever it was opened: a dialog opened from a
+  // phone's drawer otherwise lived inside the drawer and slid away with it.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
       <div
         className={className ? `modal ${className}` : 'modal'}
@@ -53,6 +59,7 @@ export function Modal({
         <div className="modal-body">{children}</div>
         <div className="modal-footer">{footer}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

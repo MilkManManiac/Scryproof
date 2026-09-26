@@ -13,6 +13,7 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Permission } from '@scryproof/shared';
 import type { Category, Member, ServerDetail } from '@scryproof/shared';
 
@@ -20,6 +21,7 @@ import { ApiError, api } from '../../lib/api';
 import { groupsForCategory } from '../../lib/permissionMeta';
 import { OverwritePane } from './OverwritePane';
 import type { Authority } from './authority';
+import { useLayer } from '../../lib/back';
 
 export function CategorySettings({
   category,
@@ -39,7 +41,11 @@ export function CategorySettings({
     (channel) => channel.categoryId === category.id,
   ).length;
 
-  return (
+  useLayer(onClose);
+
+  // On the page itself: opened from a phone's drawer, it otherwise lived
+  // inside the drawer and slid away with it.
+  return createPortal(
     <div className="settings-backdrop" role="presentation">
       <div className="settings" role="dialog" aria-modal="true" aria-label={category.name}>
         <nav className="settings-nav">
@@ -102,7 +108,8 @@ export function CategorySettings({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
