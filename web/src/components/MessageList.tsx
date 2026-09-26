@@ -19,6 +19,7 @@ import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@sc
 
 import { ApiError, api } from '../lib/api';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
+import { guide, guideTopicOf } from '../lib/guide';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
@@ -495,6 +496,13 @@ function ContentPartView({
         target="_blank"
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
+        onClick={(event) => {
+          // A guide link to this very site opens the guide here, not in a new tab.
+          const topic = guideTopicOf(part.href, window.location.origin);
+          if (!topic) return;
+          event.preventDefault();
+          guide.open(topic);
+        }}
       >
         {part.text}
       </a>

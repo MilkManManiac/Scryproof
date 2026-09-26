@@ -21,6 +21,7 @@ import type { PresenceStatus } from '@scryproof/shared';
 import { buildLabel, isDesktop } from '../lib/desktop';
 import { canInstall, install, subscribeInstall } from '../lib/install';
 import { voicePrefs } from '../lib/voice-prefs';
+import { guide } from '../lib/guide';
 import { openWalkthrough } from '../lib/walkthrough';
 import { hasUnread, subscribeUnread } from '../lib/whats-new';
 import { useStore } from '../state/store';
@@ -243,6 +244,15 @@ export function UserPanel() {
               }}
             >
               How Scryproof works
+            </MenuItem>
+            <MenuItem
+              title="How notifications work, turning them on for your phone, and what every setting does"
+              onClick={() => {
+                setMenu(null);
+                guide.open('basics');
+              }}
+            >
+              Guide
             </MenuItem>
             {installable ? (
               <MenuItem

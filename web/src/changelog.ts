@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-guide',
+    date: '2026-09-26',
+    title: 'A guide to how it all works',
+    notes: [
+      'Click your name, then Guide: how Scryproof works, how notifications work, turning them on for your phone, and what every setting does.',
+      'Notifications, at the top, links straight to it.',
+      'On a phone, press and hold a channel or a server to mute it. Before, only a right-click could.',
+    ],
+  },
+  {
     id: '2026-09-26-push',
     date: '2026-09-26',
     title: 'Your phone tells you when someone wants you',

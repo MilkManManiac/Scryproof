@@ -11,6 +11,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { usePressHold } from '../lib/hold';
 import { notifyPrefs } from '../lib/notify';
 import { dmWaiting, othersIn, titleOf, unreadDmCount, useDms, waitingDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
@@ -45,6 +46,7 @@ export function ServerRail() {
   const [busy, setBusy] = useState(false);
   // Which server's right-click menu (mute/unmute) is open, if any.
   const [serverMenu, setServerMenu] = useState<string | null>(null);
+  const hold = usePressHold();
   const notifyState = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
 
   function close() {
@@ -159,6 +161,7 @@ export function ServerRail() {
                 event.preventDefault();
                 setServerMenu(id);
               }}
+              {...hold(() => setServerMenu(id))}
             >
               {tile(server.name)}
               {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}

@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { guide } from '../lib/guide';
 import { notices } from '../lib/notices';
 import { disablePush, enablePush, preparePush, pushAvailability, pushConfigured, pushState } from '../lib/push';
 import { notifyPrefs, play } from '../lib/notify';
@@ -50,6 +51,21 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         </button>
       }
     >
+      <p className="field-note">
+        What each of these does, and how to set up your phone:{' '}
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            onClose();
+            guide.open('notifications');
+          }}
+        >
+          the Guide
+        </button>
+        .
+      </p>
+
       <label className="toggle-row">
         <span>
           When someone says your name

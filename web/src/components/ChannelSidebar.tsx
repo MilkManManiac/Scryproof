@@ -13,6 +13,7 @@ import type { ServerDetail } from '@scryproof/shared';
 import { ApiError, api } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';
 import { channelDrafts, isShortDraft } from '../lib/drafts';
+import { usePressHold } from '../lib/hold';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { notifyPrefs } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
@@ -46,6 +47,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   // Which channel's right-click menu (mute/unmute) is open, if any.
   const [channelMenu, setChannelMenu] = useState<string | null>(null);
+  const hold = usePressHold();
   /** The channel whose right-click menu is asking "really delete?". */
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -228,6 +230,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                             event.preventDefault();
                             setChannelMenu(channel.id);
                           }}
+                          {...hold(() => setChannelMenu(channel.id))}
                         >
                           <span className="channel-sigil">
                             {channel.type === 'voice' ? '♫' : '#'}

@@ -91,6 +91,55 @@ export function useHold(id: string, enabled: boolean) {
 }
 
 /**
+ * Press and hold anything that has a right-click menu (a channel, a server),
+ * for a phone. Android turns a long press into a right-click by itself; an
+ * iPhone does not, so without this a phone could not mute anything. Lifting
+ * the thumb after the hold does not also tap the thing: a held voice channel
+ * opens its menu, it does not join the call.
+ *
+ * One per list, not one per row: `{...hold(() => openMenu(id))}` on each row.
+ * Only one thumb holds at a time, so they share the timer.
+ */
+export function usePressHold() {
+  const timer = useRef<number | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const fired = useRef(false);
+
+  const cancel = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    start.current = null;
+  };
+  useEffect(() => cancel, []);
+
+  return (onHold: () => void) => ({
+    onTouchStart(event: TouchEvent) {
+      fired.current = false;
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0]!;
+      start.current = { x: touch.clientX, y: touch.clientY };
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        fired.current = true;
+        onHold();
+        navigator.vibrate?.(12);
+      }, HOLD_MS);
+    },
+    onTouchMove(event: TouchEvent) {
+      const touch = event.touches[0];
+      if (!start.current || !touch) return;
+      if (Math.hypot(touch.clientX - start.current.x, touch.clientY - start.current.y) > SLOP) cancel();
+    },
+    onTouchEnd(event: TouchEvent) {
+      cancel();
+      if (fired.current) event.preventDefault();
+    },
+    onTouchCancel: cancel,
+  });
+}
+
+/**
  * The held message's buttons, along the bottom of the screen over a dimmed
  * page. In a portal, because a theme's frosted panels would otherwise become
  * the box a fixed sheet is placed inside.
