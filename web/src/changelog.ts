@@ -31,6 +31,7 @@ export const CHANGELOG: readonly Release[] = [
       'The message box gives your words the whole width, with the buttons in a row underneath. iPhones no longer zoom in when you tap a text box.',
       'Settings, calls and search fit on a phone: nothing runs off the edge, the hang-up button always fits, and search results actually show up.',
       'Bigger buttons everywhere a thumb goes.',
+      'Fixed: iPhones were told they "cannot encrypt media frames" and could not join calls. They can, and still fully encrypted.',
     ],
   },
   {

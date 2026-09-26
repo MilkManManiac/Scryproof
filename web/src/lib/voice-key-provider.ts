@@ -88,11 +88,24 @@ export function voiceSupport(userAgent = navigator.userAgent): { ok: boolean; re
         'Encryption is never switched off to get around it. Use Chrome, Edge or the desktop app.',
     };
   }
-  if (typeof RTCRtpSender === 'undefined' || !('createEncodedStreams' in RTCRtpSender.prototype)) {
+  if (!canEncryptFrames()) {
     return {
       ok: false,
       reason: 'This browser cannot encrypt media frames, so it cannot join an encrypted call.',
     };
   }
   return { ok: true };
+}
+
+/**
+ * Two ways a browser lets LiveKit reach each frame, and LiveKit uses either:
+ * Chromium's `createEncodedStreams`, and the standard `RTCRtpScriptTransform`,
+ * which is Safari's (every iPhone browser is Safari underneath). Checking for
+ * only the first turned every iPhone away from calls with this very message
+ * (a friend's phone, 2026-09-26). Firefox has the second too, and is turned
+ * away above for its own reason.
+ */
+function canEncryptFrames(): boolean {
+  if (typeof RTCRtpSender === 'undefined') return false;
+  return 'createEncodedStreams' in RTCRtpSender.prototype || typeof RTCRtpScriptTransform !== 'undefined';
 }
