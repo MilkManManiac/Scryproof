@@ -10,6 +10,11 @@ Discord (screenshots 2026-09-22 22:16), Wes's own asks, and the gaps the
 security page in that channel admits to. Facts about the code were
 checked against main at `229709b`.
 
+**IMPORTANT, added 2026-09-26: phone notifications (push and the number
+on the app icon).** Wes: "Note it as important." Plan and the rule it lives
+under: `docs/briefs/push.md`. Phones get no alerts at all today once the
+app is off screen.
+
 Rules that do not move: no deploy without Wes saying ship; agents follow
 `docs/briefs/README.md` (own worktree, no dev server or smoke tests, no
 push, no HANDOFF edits); one migration per branch and renumber on merge
