@@ -3156,3 +3156,36 @@ staff to his horns; new: leaves falling from the oak. Web tests 408.
 
 ![Loaf v2, the new painting](shots/theme-loaf2.png)
 ![The scene alone](shots/theme-loaf2-scene.png)
+
+## 2026-09-26 evening: the phone pass (committed, NOT deployed)
+
+Wes: "Layout issues are the main problems right now. Also when I'm on my app
+I can't see the other servers I'm in." Then: "lets get to building and
+getting it done." Plan and findings: `docs/briefs/phone-fixes.md`.
+
+**The tool.** `node scripts/phone-tour.mjs` photographs ~45 screens on four
+phone sizes with real touch input (hold, swipe, back) and measures overflow,
+small targets and iOS focus zoom; `python scripts/phone-sheet.py` lays each
+screen out across the four phones in `.shots/phone-tour/sheets/`. `--only a,b`
+and `--device galaxy` for quick runs. Needs the API and the web dev server up.
+
+**What changed (3 commits, d302bb4, e4b02c1, 1dd2d7f):**
+- The servers bug: DMs with nothing open had no ☰, so @ on a phone was a dead
+  end. It has one now, and @ leaves the drawer open on the conversation list.
+- Press and hold a message (channel or DM) for a sheet: React, Reply, Edit,
+  Pin, Save, Copy text, Delete. `lib/hold.tsx`.
+- Message box: words full width, buttons in a row under them.
+- 16px text boxes on phones (no Safari zoom), safe-area padding, 100dvh.
+- Settings pages: tab strip across the top on a phone, page full width.
+- Voice: call buttons shrink to fit, readout wraps, soundboard is a sheet.
+- Search: whole header on a phone, and results actually open (they went into
+  a drawer nothing opened).
+- 44px targets in the header, drawers and lists.
+- Swipe the drawers (`lib/swipe.ts`), back closes the top layer
+  (`lib/back.ts`, one history step for everything open), dialogs and
+  settings render in portals and put the drawer away.
+
+**Not checked:** a real phone. Everything above is Chrome pretending to be
+one. The on-screen keyboard pushing the message box, pull-to-refresh, and
+Safari's own engine (WebKit is installed under `.tools/webkit`, not yet
+wired into the tour) are the next things to look at on a real device.

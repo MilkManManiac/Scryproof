@@ -16,6 +16,12 @@ Decisions already made that frame this: no Apple developer fee, so the PWA *is*
 the iPhone app for good; Android may later get a Capacitor build of this same
 code. Every fix here lands on both.
 
+**Status, 2026-09-26 evening: all 13 built and committed (d302bb4, e4b02c1,
+1dd2d7f), not deployed.** Two things turned up while building that the first
+tour missed: search results on a phone went into a drawer nothing opened, so
+a search showed nothing; and a dialog opened from the drawer lived inside the
+drawer. Both fixed. See docs/HANDOFF.md for the summary.
+
 ## P0: dead ends and broken basics
 
 1. **Direct messages is a trap.** The empty DM screen has no ☰ button
@@ -69,6 +75,14 @@ code. Every fix here lands on both.
     leaving the app.
 12. Dialogs opened from the drawer leave the drawer open behind them.
 13. Words written for a mouse: "click", "on the left", "hover".
+
+## Found in the final tour, not fixed
+
+- **New-device warnings stack.** A DM shows one full "You signed in somewhere
+  new" card per unaccepted device, about 180px each on a phone. The tour signs
+  in fresh every screen, so the seed account has dozens and the conversation
+  is buried; for a real person two or three already fill the screen. Fix: one
+  card, "3 new devices", that opens the list.
 
 ## Not covered yet
 
