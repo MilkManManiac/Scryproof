@@ -199,8 +199,23 @@ export async function effectChain(context: BaseAudioContext, input: AudioNode, e
 
 /* ------------------------ the microphone, for LiveKit ----------------------- */
 
+/** The noise model and the voice changer together: what `MicProcessor` runs, in that order. */
+export interface MicChoice {
+  /** Run the noise model first (`noise-model.ts`). */
+  suppress: boolean;
+  effect: VoiceEffect;
+}
+
+/** Whether a microphone needs a processor at all. Without one it is sent as the browser hands it over. */
+export function needsProcessor(choice: MicChoice): boolean {
+  return choice.suppress || choice.effect !== 'none';
+}
+
 /**
- * Sits between the microphone and LiveKit, as a LiveKit track processor.
+ * Sits between the microphone and LiveKit, as a LiveKit track processor:
+ * microphone, then the noise model, then the voice changer, then out to be
+ * encrypted. So the changer never has to work on a keyboard, and nothing
+ * anyone hears was ever the raw room.
  *
  * LiveKit sends `processedTrack` in place of the microphone and keeps it
  * there when the microphone is restarted (a new device, or a track the
@@ -210,37 +225,47 @@ export async function effectChain(context: BaseAudioContext, input: AudioNode, e
  * sender, not the track.
  *
  * The output track stays the same one for this processor's whole life,
- * whatever the microphone or the effect does: changing between effects
- * rebuilds only the chain in the middle, and nobody else sees a thing.
+ * whatever the microphone, the model or the effect does: a change rebuilds
+ * only the middle, and nobody else sees a thing.
  */
-export class VoiceEffectProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcessorOptions> {
-  readonly name = 'scryproof-voice-effect';
+export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcessorOptions> {
+  readonly name = 'scryproof-microphone';
   processedTrack?: MediaStreamTrack;
 
-  /** The raw microphone, before the effect. The gate listens to this one. */
+  /** The raw microphone, before anything. The gate listens to this one. */
   microphone: MediaStreamTrack | null = null;
 
+  /** Whether the noise model really is running; false after asking for it where it could not start. */
+  suppressing = false;
+
   private readonly inlet: GainNode;
+  /** Where the cleaned voice comes out, whether or not the model is in front of it. */
+  private readonly cleaned: GainNode;
   private readonly outlet: MediaStreamAudioDestinationNode;
   private source: MediaStreamAudioSourceNode | null = null;
+  private suppressor: { input: AudioNode; output: AudioNode; close(): void } | null = null;
   private chain: EffectChain | null = null;
-  /** Bumped on every change of effect, so a slow worklet load cannot land after a newer choice. */
-  private version = 0;
+  private chainEffect: VoiceEffect | null = null;
+  /** What the front was last built for; null before the first build. */
+  private suppressWanted: boolean | null = null;
+  private work: Promise<void> = Promise.resolve();
+  private closed = false;
 
   /**
    * `context` is the app's own, not the one LiveKit offers in `init`: the
-   * worklet is loaded per context, and the settings preview has already
-   * loaded it into this one.
+   * worklets are loaded per context, and the settings preview has already
+   * loaded them into this one. It runs at 48 kHz, which the model needs.
    */
   constructor(
-    private current: VoiceEffect,
+    private current: MicChoice,
     private readonly context: AudioContext,
   ) {
     this.inlet = context.createGain();
+    this.cleaned = context.createGain();
     this.outlet = context.createMediaStreamDestination();
   }
 
-  get effect(): VoiceEffect {
+  get choice(): MicChoice {
     return this.current;
   }
 
@@ -254,22 +279,26 @@ export class VoiceEffectProcessor implements TrackProcessor<Track.Kind.Audio, Au
     this.listenTo(options.track);
   }
 
-  /** Change the effect in place. The published track does not change. */
-  async setEffect(effect: VoiceEffect): Promise<void> {
-    if (effect === this.current) return;
-    this.current = effect;
-    await this.build(effect);
+  /** Change the model or the effect in place. The published track does not change. */
+  async set(choice: MicChoice): Promise<void> {
+    if (choice.suppress === this.current.suppress && choice.effect === this.current.effect) return;
+    this.current = choice;
+    await this.build(choice);
   }
 
   async destroy(): Promise<void> {
-    this.version += 1;
+    this.closed = true;
     this.processedTrack?.stop();
     this.chain?.close();
     this.chain = null;
+    if (this.suppressor) this.inlet.disconnect(this.suppressor.input);
+    this.suppressor?.close();
+    this.suppressor = null;
     this.source?.disconnect();
     this.source = null;
     this.microphone = null;
     this.inlet.disconnect();
+    this.cleaned.disconnect();
   }
 
   private listenTo(track: MediaStreamTrack): void {
@@ -279,17 +308,64 @@ export class VoiceEffectProcessor implements TrackProcessor<Track.Kind.Audio, Au
     this.source.connect(this.inlet);
   }
 
-  private async build(effect: VoiceEffect): Promise<void> {
-    const version = (this.version += 1);
-    const chain = await effectChain(this.context, this.inlet, effect);
-    if (version !== this.version) {
+  /**
+   * Changes run one after another, each finishing before the next starts, so
+   * a slow model load cannot land after a newer choice or leave the
+   * microphone hooked to nothing. A failure reaches the caller of that change
+   * and does not stop the ones after it.
+   */
+  private build(choice: MicChoice): Promise<void> {
+    const run = this.work.then(() => this.apply(choice));
+    this.work = run.catch(() => undefined);
+    return run;
+  }
+
+  private async apply(choice: MicChoice): Promise<void> {
+    if (this.closed) return;
+
+    if (this.suppressWanted !== choice.suppress) {
+      // A model that will not start leaves the voice as the browser gave it,
+      // which beats silence; the caller turns the browser's own suppression
+      // on when `suppressing` comes back false.
+      let suppressor: MicProcessor['suppressor'] = null;
+      if (choice.suppress) {
+        suppressor = await import('./noise-model').then((model) => model.openSuppressor(this.context)).catch(() => null);
+      }
+      if (this.closed) {
+        suppressor?.close();
+        return;
+      }
+      // The new path is joined before the old one goes: a moment of both
+      // rather than a moment of nothing. Joining a pair twice is harmless.
+      const old = this.suppressor;
+      if (suppressor) {
+        this.inlet.connect(suppressor.input);
+        suppressor.output.connect(this.cleaned);
+      } else {
+        this.inlet.connect(this.cleaned);
+      }
+      if (old) {
+        this.inlet.disconnect(old.input);
+        old.close();
+      } else if (suppressor) {
+        this.inlet.disconnect(this.cleaned);
+      }
+      this.suppressor = suppressor;
+      this.suppressing = suppressor !== null;
+      this.suppressWanted = choice.suppress;
+    }
+
+    // The changer hangs off `cleaned`, which never changes, so a new model
+    // in front does not need a new changer behind.
+    if (this.chain && this.chainEffect === choice.effect) return;
+    const chain = await effectChain(this.context, this.cleaned, choice.effect);
+    if (this.closed) {
       chain.close();
       return;
     }
-    // The new chain is connected before the old one goes, so the switch is
-    // a moment of both rather than a moment of nothing.
     chain.output.connect(this.outlet);
     this.chain?.close();
     this.chain = chain;
+    this.chainEffect = choice.effect;
   }
 }

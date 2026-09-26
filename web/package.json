@@ -12,6 +12,7 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.24",
     "@noble/curves": "2.4.0",
+    "@sapphi-red/web-noise-suppressor": "0.4.0",
     "@scryproof/shared": "*",
     "@scure/bip39": "2.4.0",
     "livekit-client": "^2.15.7",

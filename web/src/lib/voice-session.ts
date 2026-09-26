@@ -45,8 +45,8 @@ import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { loadSound, soundGain } from './sounds';
 import { HOLD_MS, MicGate, OutputMix, audioContext, sounds, withHold } from './voice-audio';
-import { VoiceEffectProcessor, isVoiceEffect } from './voice-effects';
-import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, voicePrefs, type VoicePrefs } from './voice-prefs';
+import { MicProcessor, isVoiceEffect, needsProcessor, type MicChoice } from './voice-effects';
+import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, usesModel, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -802,11 +802,12 @@ export class VoiceSession {
     this.gate?.close();
     this.gate = null;
     const track = this.micTrack();
-    // With a voice changer on, what is sent is the changer's output and the
-    // gate flips that; it listens to the raw microphone underneath.
+    // With the noise model or a voice changer on, what is sent is their
+    // output and the gate flips that; it listens to the raw microphone
+    // underneath.
     const sent = track?.mediaStreamTrack;
     const processor = track?.getProcessor();
-    const heard = processor instanceof VoiceEffectProcessor && processor.microphone ? processor.microphone : sent;
+    const heard = processor instanceof MicProcessor && processor.microphone ? processor.microphone : sent;
     if (!track || !sent || !heard) {
       this.update({ transmitting: false });
       return;
@@ -824,22 +825,23 @@ export class VoiceSession {
     this.update({ transmitting: this.gate.open });
   }
 
-  /* ----------------------------- voice changers ---------------------------- */
+  /* ------------------- the noise model and voice changers ------------------- */
 
-  private chosenEffect() {
-    const effect = voicePrefs.get().voiceEffect;
-    return isVoiceEffect(effect) ? effect : 'none';
+  private micChoice(): MicChoice {
+    const prefs = voicePrefs.get();
+    return { suppress: usesModel(prefs), effect: isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none' };
   }
 
   /**
-   * Opens the microphone and publishes it. With a voice changer chosen, the
-   * changer goes on before the track is published rather than after, so not
-   * one frame of the unchanged voice is sent. It is still the microphone as
-   * far as LiveKit and everyone else can tell: same source, same one track.
+   * Opens the microphone and publishes it. With the noise model or a voice
+   * changer chosen, they go on before the track is published rather than
+   * after, so not one frame of the raw room or the unchanged voice is sent.
+   * It is still the microphone as far as LiveKit and everyone else can tell:
+   * same source, same one track.
    */
   private async publishMicrophone(room: Room): Promise<void> {
-    const effect = this.chosenEffect();
-    if (effect === 'none') {
+    const choice = this.micChoice();
+    if (!needsProcessor(choice)) {
       await room.localParticipant.setMicrophoneEnabled(true);
       return;
     }
@@ -847,7 +849,7 @@ export class VoiceSession {
     if (!track || track.kind !== Track.Kind.Audio) throw new Error('The microphone could not be opened.');
     const microphone = track as LocalAudioTrack;
     const context = audioContext();
-    const processor = new VoiceEffectProcessor(effect, context);
+    const processor = new MicProcessor(choice, context);
     try {
       microphone.setAudioContext(context);
       await microphone.setProcessor(processor);
@@ -858,6 +860,7 @@ export class VoiceSession {
       // chain and says so in words when it cannot.
       await processor.destroy();
     }
+    await this.fallBackIfModelFailed(microphone);
     try {
       await room.localParticipant.publishTrack(microphone, { source: Track.Source.Microphone });
     } catch (problem) {
@@ -867,34 +870,49 @@ export class VoiceSession {
     }
   }
 
-  private applyVoiceEffect(): Promise<void> {
-    this.effectWork = this.effectWork.then(() => this.switchVoiceEffect()).catch(() => undefined);
+  /**
+   * The browser's suppression was left off because the model was going to
+   * do the job. If the model did not start, the browser's goes back on, so
+   * Strong never quietly means none.
+   */
+  private async fallBackIfModelFailed(track: LocalAudioTrack): Promise<void> {
+    const prefs = voicePrefs.get();
+    if (!usesModel(prefs)) return;
+    const processor = track.getProcessor();
+    if (processor instanceof MicProcessor && processor.suppressing) return;
+    await track.restartTrack({ ...captureOptions(prefs), noiseSuppression: true }).catch(() => undefined);
+  }
+
+  private applyMicChoice(): Promise<void> {
+    this.effectWork = this.effectWork.then(() => this.switchMicChoice()).catch(() => undefined);
     return this.effectWork;
   }
 
   /**
-   * A change of voice mid-call. Between one changer and another only the
-   * chain inside the processor is rebuilt; on or off swaps the track on the
-   * existing sender. Either way it is the same publication with the same
-   * encryption, and nobody sees the call change.
+   * A change of model or voice mid-call. With a processor already in front
+   * only its middle is rebuilt; putting one in or taking it out swaps the
+   * track on the existing sender. Either way it is the same publication with
+   * the same encryption, and nobody sees the call change.
    */
-  private async switchVoiceEffect(): Promise<void> {
+  private async switchMicChoice(): Promise<void> {
     const track = this.micTrack();
     if (!track) return;
-    const effect = this.chosenEffect();
+    const choice = this.micChoice();
     const processor = track.getProcessor();
-    const current = processor instanceof VoiceEffectProcessor ? processor : null;
+    const current = processor instanceof MicProcessor ? processor : null;
 
-    if (current && effect !== 'none') return current.setEffect(effect);
-    if (!current && effect === 'none') return;
-    if (current) {
+    if (current && needsProcessor(choice)) {
+      await current.set(choice);
+    } else if (current) {
       await track.stopProcessor();
-    } else {
+      this.rebuildGate();
+    } else if (needsProcessor(choice)) {
       const context = audioContext();
       track.setAudioContext(context);
-      await track.setProcessor(new VoiceEffectProcessor(effect, context));
+      await track.setProcessor(new MicProcessor(choice, context));
+      this.rebuildGate();
     }
-    this.rebuildGate();
+    await this.fallBackIfModelFailed(track);
   }
 
   /**
@@ -996,14 +1014,14 @@ export class VoiceSession {
 
     const captureChanged =
       now.inputDeviceId !== before.inputDeviceId ||
-      now.noiseSuppression !== before.noiseSuppression ||
+      now.noiseMode !== before.noiseMode ||
       now.echoCancellation !== before.echoCancellation ||
       now.autoGain !== before.autoGain;
     if (captureChanged) {
       await this.micTrack()?.restartTrack(captureOptions(now)).catch(() => undefined);
       this.rebuildGate();
     }
-    if (now.voiceEffect !== before.voiceEffect) await this.applyVoiceEffect();
+    if (now.voiceEffect !== before.voiceEffect || now.noiseMode !== before.noiseMode) await this.applyMicChoice();
 
     if ((now.shareHeight !== before.shareHeight || now.shareFps !== before.shareFps) && this.snapshot.sharing) {
       await this.retuneShare(now);

@@ -2858,3 +2858,75 @@ soundboard sounds if they want."
 - To release: needs a dated changelog entry; migration 0023 runs on deploy. Web
   and server only, no desktop shell change. Anyone on the old web client while
   others upgrade simply plays sounds at 100%.
+
+## Strong noise suppression and the dropdown fix: built 2026-09-25, not released
+
+![Noise suppression in the voice settings](shots/noise-suppression.png)
+
+**Why.** A friend's microphone ("seth mic goes nutty when he hits his mic")
+made a metallic ring every time it was touched. Wes recorded it with OBS
+(`Videos\2026-09-25 20-33-20.mkv`, 21 s). The spectrogram shows a thump and
+then about two seconds of low tones (around 60 to 80 Hz and 233 Hz) beating
+ten times a second. That is steady enough to sound metallic and sudden
+enough that the browser's suppression, which only learns steady sounds,
+never catches it. Likely a boom arm or stand ringing; that is inference.
+
+**What.** Voice settings has Strong / Standard / Off under Noise
+suppression, default Strong. Strong is RNNoise (`@sapphi-red/web-noise-suppressor`
+0.4.0, MIT; 0.4.1 is newer than the npm install cooldown allows) running in
+an AudioWorklet on the sender's device, before the voice changer and before
+encryption. Its two files are served from our own server. Standard is the
+browser's. The two are never both on. "Hear it" plays you back through the
+same chain.
+- `web/src/lib/noise-model.ts`: loads the model, loaded with `import()` only
+  when Strong is chosen.
+- `MicProcessor` (was `VoiceEffectProcessor`) in `voice-effects.ts`:
+  microphone, then model, then changer. Changes are queued one at a time.
+- The app's audio context now runs at 48 kHz, which the model needs.
+- Models are pooled, not destroyed: the package's worklet listens for
+  "destroy" on a port it never starts, so a destroyed one would keep running.
+
+**The policy change.** WebAssembly needs `'wasm-unsafe-eval'` in
+`script-src`. It allows compiling WebAssembly and nothing else; eval of
+JavaScript stays blocked. Added to the nginx template (both places) and to
+the desktop shell's policy. **Deploying this needs
+`bonesdeploy site runtime --yes`** as well as the normal ship, or the site
+keeps the old policy and everyone silently gets Standard. The desktop app
+runs the client under the shell's own policy, so **Strong starts working in
+the app only with shell 0.5.4**; until then it falls back to Standard and
+the settings say so.
+
+**Proven.** `npm run test:noise` (after a web build) runs the model in real
+Chromium under the policy from the nginx template, and checks that under
+the old policy it refuses to start. With clips from Wes's recording
+(`node scripts/noise-check.mjs <dir of .f32 clips>`): the ring after the
+knock drops about 50 dB from a quarter second in; speech changes by 0.3 dB;
+the thump itself (the first quarter second) gets through. Synthetic white
+noise is treated unevenly (1 to 20 dB between runs), so the no-clips mode
+only checks that the model ran. `npm run test:voice`: 57/57 with Strong as
+the default. Web tests pass.
+
+**Dropdown fix.** "In call, gear, voice settings, open a dropdown, it kicks
+you back to the top." `Modal` re-ran its focus-the-first-field effect
+whenever `onClose` changed, and every caller passes a fresh arrow while the
+call panel re-renders about once a second. Now it runs once. Proven in a
+real call: a focused dropdown lost focus and scrolled from 1252 to 181
+within 4 s on the old code, and kept both on the new.
+
+**Not done / not proven.** Nobody has heard Strong on a real call yet. The
+first quarter second of a knock still gets through; Discord's Krisp is
+better at that. Also in the recording: from 7 s to 11.5 s someone's audio
+is cut off hard at 1.6 kHz, which sounds muffled; Strong cut most of that
+section too, which suggests it was mostly noise, the "sometimes static /
+feedback" in the channel. Unconfirmed.
+
+**Left alone.** Uncommitted mute work from an earlier session (mute and
+deafen tones, "you're muted" note, `MuteStatus`, `mute-state.ts`,
+`scripts/mute-check.mjs`, `docs/shots/muted-*.png`) is still in the working
+tree, untouched and uncommitted. It includes a real fix: pressing
+push-to-talk, or talking past the threshold, while muted switched the
+microphone back on. Needs a review and Wes's word before it ships.
+
+**From the group's ideas channel, 2026-09-25 (not built):** FullLoaf: "share
+game when you share screen, or have the option to do either screen or
+game", and "different sounds for joining, calling, dm, and text channel".

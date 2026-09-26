@@ -99,7 +99,7 @@ const TYPES = {
  */
 const CSP = [
   "default-src 'none'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",

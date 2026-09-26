@@ -3544,6 +3544,12 @@ video.mirrored {
   opacity: 0.45;
 }
 
+/* "Hear it" beside a long note keeps to one line instead of being squeezed. */
+.toggle-row > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .toggle-row > span:first-child {
   display: flex;
   flex-direction: column;

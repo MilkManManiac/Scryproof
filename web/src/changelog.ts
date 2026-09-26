@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-25-noise',
+    date: '2026-09-25',
+    title: 'Strong noise suppression',
+    notes: [
+      'Voice settings has a new choice under Noise suppression: Strong, Standard or Off. Strong is on for everyone. A small speech model on your own computer keeps your voice and drops the rest: keys, fans, breathing, and the ringing when someone knocks their microphone.',
+      'Press "Hear it" next to it, with headphones on, to hear yourself the way everyone else does.',
+      'It runs before your voice is encrypted, and nothing about it leaves your computer.',
+      'In the desktop app it starts working after the next app update. Until then the app uses Standard and says so.',
+      'Opening a dropdown in Voice settings during a call no longer throws you back to the top.',
+    ],
+  },
+  {
     id: '2026-09-25-clipper',
     date: '2026-09-25',
     title: 'Cut any song into a sound',

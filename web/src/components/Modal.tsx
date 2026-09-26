@@ -20,10 +20,16 @@ export function Modal({
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
 
+  // Once, on opening. Callers pass `onClose` as a fresh arrow on every render,
+  // and the call panel re-renders about once a second with its connection
+  // numbers; keyed on `onClose`, this took focus back to the first field each
+  // time, which shut any open dropdown and scrolled the dialog to the top.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') close.current();
     };
     window.addEventListener('keydown', onKey);
 
@@ -31,7 +37,7 @@ export function Modal({
     first?.focus();
 
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">

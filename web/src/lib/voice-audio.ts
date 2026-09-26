@@ -20,11 +20,34 @@ function readDb(analyser: AnalyserNode, scratch: Float32Array<ArrayBuffer>): num
   return rms > 0 ? Math.max(-100, 20 * Math.log10(rms)) : -100;
 }
 
+/** The noise model listens in 10 ms frames of 48 kHz audio and is only right at that rate. */
+export const MODEL_SAMPLE_RATE = 48000;
+
+/**
+ * Whether this page may run the noise model (`noise-model.ts`). It is
+ * WebAssembly, which a page may only compile when its policy says
+ * 'wasm-unsafe-eval'. The eight bytes are the smallest valid module.
+ */
+export const canRunModel: boolean = (() => {
+  try {
+    if (typeof AudioWorkletNode === 'undefined') return false;
+    new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 let sharedContext: AudioContext | null = null;
 
-/** One context for the whole app. Browsers cap how many a page may open. */
+/**
+ * One context for the whole app. Browsers cap how many a page may open. It
+ * runs at 48 kHz whatever the sound card does, because that is the rate of
+ * the call itself and the only one the noise model is right at; the browser
+ * converts on the way out.
+ */
 export function audioContext(): AudioContext {
-  if (!sharedContext || sharedContext.state === 'closed') sharedContext = new AudioContext();
+  if (!sharedContext || sharedContext.state === 'closed') sharedContext = new AudioContext({ sampleRate: MODEL_SAMPLE_RATE });
   if (sharedContext.state === 'suspended') void sharedContext.resume().catch(() => undefined);
   return sharedContext;
 }
@@ -275,16 +298,20 @@ export class MicGate {
  * Opens the microphone just to show its level, for choosing a device and a
  * threshold outside a call. Nothing is sent anywhere.
  *
- * With `preview` set to a voice changer, the changed voice is also played
- * back to this device's own speakers, so people hear it before the table
- * does. The bar keeps measuring the raw microphone, because that is what the
- * gate listens to in a call and the threshold line has to mean the same thing.
+ * With `preview` set, the voice is also played back to this device's own
+ * speakers through the same noise model and voice changer a call would use,
+ * so people hear what the table will before the table does. The bar keeps
+ * measuring the raw microphone, because that is what the gate listens to in
+ * a call and the threshold line has to mean the same thing.
+ *
+ * Resolves with the way to stop, and whether the noise model is really
+ * running, which is false where it could not start.
  */
 export async function openMeter(
   constraints: MediaTrackConstraints,
   onLevel: (db: number) => void,
-  preview: VoiceEffect = 'none',
-): Promise<() => void> {
+  preview: { suppress: boolean; effect: VoiceEffect } | null = null,
+): Promise<{ stop: () => void; suppressing: boolean }> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   const context = audioContext();
   const source = context.createMediaStreamSource(stream);
@@ -294,23 +321,29 @@ export async function openMeter(
   const scratch = new Float32Array(1024);
   const timer = setInterval(() => onLevel(readDb(analyser, scratch)), 50);
 
+  let suppressor: { input: AudioNode; output: AudioNode; close(): void } | null = null;
   let chain: EffectChain | null = null;
   const stop = () => {
     clearInterval(timer);
     chain?.close();
+    suppressor?.close();
     source.disconnect();
     for (const track of stream.getTracks()) track.stop();
   };
-  if (preview !== 'none') {
+  if (preview) {
     try {
-      chain = await effectChain(context, source, preview);
+      if (preview.suppress) {
+        suppressor = await import('./noise-model').then((model) => model.openSuppressor(context)).catch(() => null);
+        if (suppressor) source.connect(suppressor.input);
+      }
+      chain = await effectChain(context, suppressor?.output ?? source, preview.effect);
       chain.output.connect(context.destination);
     } catch (problem) {
       stop();
       throw problem;
     }
   }
-  return stop;
+  return { stop, suppressing: suppressor !== null };
 }
 
 /* --------------------------------- sounds ---------------------------------- */

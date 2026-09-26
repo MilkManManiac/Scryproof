@@ -4,6 +4,8 @@
  * of the machine, so it never leaves.
  */
 
+import { canRunModel } from './voice-audio';
+
 export type InputMode = 'open' | 'threshold' | 'push';
 
 export type ShareHeight = 720 | 1080 | 1440 | 0;
@@ -19,6 +21,11 @@ export type CameraFps = 30 | 60;
 export type ReceiveQuality = 'auto' | 'medium' | 'low';
 /** What the microphone is run through before it is sent. `none` sends the voice as it is. */
 export type VoiceEffect = 'none' | 'robot' | 'chipmunk' | 'deep';
+export type NoiseMode = 'strong' | 'standard' | 'off';
+
+export function isNoiseMode(value: unknown): value is NoiseMode {
+  return value === 'strong' || value === 'standard' || value === 'off';
+}
 
 export interface VoicePrefs {
   /** Empty means "whatever the system default is". */
@@ -30,7 +37,13 @@ export interface VoicePrefs {
   shareFps: ShareFps;
   cameraHeight: CameraHeight;
   cameraFps: CameraFps;
-  noiseSuppression: boolean;
+  /**
+   * strong:   the noise model on this device (`noise-model.ts`), which drops
+   *           anything that is not a voice, sudden sounds included
+   * standard: the browser's own, which learns steady sounds like a fan
+   * off:      the microphone as it is
+   */
+  noiseMode: NoiseMode;
   echoCancellation: boolean;
   autoGain: boolean;
   /**
@@ -65,7 +78,7 @@ const DEFAULTS: VoicePrefs = {
   shareFps: 30,
   cameraHeight: 720,
   cameraFps: 30,
-  noiseSuppression: true,
+  noiseMode: 'strong',
   echoCancellation: true,
   autoGain: true,
   inputMode: 'open',
@@ -85,8 +98,11 @@ function load(): VoicePrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
-    const stored = JSON.parse(raw) as Partial<VoicePrefs>;
-    return { ...DEFAULTS, ...stored, volumes: { ...(stored.volumes ?? {}) } };
+    const stored = JSON.parse(raw) as Partial<VoicePrefs> & { noiseSuppression?: boolean };
+    // Before there were three kinds, suppression was a switch. Someone who
+    // turned it off meant off; everyone else gets the new default.
+    const noiseMode = isNoiseMode(stored.noiseMode) ? stored.noiseMode : stored.noiseSuppression === false ? 'off' : DEFAULTS.noiseMode;
+    return { ...DEFAULTS, ...stored, noiseMode, volumes: { ...(stored.volumes ?? {}) } };
   } catch {
     return DEFAULTS;
   }
@@ -121,11 +137,22 @@ export const voicePrefs = {
   },
 };
 
+/**
+ * Whether the noise model does the suppressing. Where it cannot run, Strong
+ * falls back to the browser's, so choosing it never means none at all.
+ */
+export function usesModel(prefs: VoicePrefs): boolean {
+  return prefs.noiseMode === 'strong' && canRunModel;
+}
+
 /** What to ask the browser for when opening the microphone. */
 export function captureOptions(prefs: VoicePrefs): MediaTrackConstraints {
   return {
     deviceId: prefs.inputDeviceId ? { exact: prefs.inputDeviceId } : undefined,
-    noiseSuppression: prefs.noiseSuppression,
+    // Not both: the browser's pass first leaves the model a voice with holes
+    // already cut in it, and two suppressors in a row is what makes a voice
+    // sound underwater.
+    noiseSuppression: prefs.noiseMode === 'standard' || (prefs.noiseMode === 'strong' && !canRunModel),
     echoCancellation: prefs.echoCancellation,
     autoGainControl: prefs.autoGain,
   };

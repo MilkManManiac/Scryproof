@@ -11,17 +11,19 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { isDesktop } from '../lib/desktop';
-import { openMeter, sounds } from '../lib/voice-audio';
+import { canRunModel, openMeter, sounds } from '../lib/voice-audio';
 import { VOICE_EFFECTS, isVoiceEffect } from '../lib/voice-effects';
 import {
   cameraCostLabel,
   captureOptions,
   keyLabel,
+  usesModel,
   shareCostLabel,
   voicePrefs,
   type CameraFps,
   type CameraHeight,
   type InputMode,
+  type NoiseMode,
   type ReceiveQuality,
   type ShareFps,
   type ShareHeight,
@@ -53,6 +55,16 @@ const RECEIVE: { id: ReceiveQuality; label: string; note: string }[] = [
   { id: 'low', label: 'Low', note: 'The smallest picture anyone sends. For a connection that is struggling.' },
 ];
 
+const NOISE: { id: NoiseMode; label: string; note: string }[] = [
+  {
+    id: 'strong',
+    label: 'Strong',
+    note: 'A speech model on this computer keeps your voice and drops the rest: keys, fans, breathing, knocks on the microphone.',
+  },
+  { id: 'standard', label: 'Standard', note: "The browser's own. Takes out steady sounds like a fan, not sudden ones." },
+  { id: 'off', label: 'Off', note: 'Your microphone exactly as it is. For a good microphone in a quiet room.' },
+];
+
 const canChooseSpeaker = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
 
 export function VoiceSettings({ onClose }: { onClose: () => void }) {
@@ -63,9 +75,11 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
   const [capturingKey, setCapturingKey] = useState(false);
   const [hearing, setHearing] = useState(false);
 
-  const { inputDeviceId, noiseSuppression, echoCancellation, autoGain } = prefs;
+  const [modelFailed, setModelFailed] = useState(false);
+
+  const { inputDeviceId, noiseMode, echoCancellation, autoGain } = prefs;
   const voiceEffect = isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none';
-  const preview = hearing && voiceEffect !== 'none' ? voiceEffect : 'none';
+  const suppress = usesModel(prefs);
 
   // The meter follows the chosen microphone and processing, so what it shows
   // is what a call would send.
@@ -74,10 +88,12 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     setMeterError(null);
 
-    openMeter(captureOptions(voicePrefs.get()), setLevel, preview)
-      .then(async (close) => {
-        if (cancelled) return close();
-        stop = close;
+    const options = captureOptions(voicePrefs.get());
+    openMeter(options, setLevel, hearing ? { suppress, effect: voiceEffect } : null)
+      .then(async (meter) => {
+        if (cancelled) return meter.stop();
+        stop = meter.stop;
+        setModelFailed(hearing && suppress && !meter.suppressing);
         // Device names are hidden until the microphone has been allowed once.
         setDevices(await navigator.mediaDevices.enumerateDevices());
       })
@@ -87,7 +103,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
         // building the voice changer.
         const name = problem instanceof Error ? problem.name : '';
         const microphone = ['NotAllowedError', 'NotFoundError', 'NotReadableError', 'OverconstrainedError', 'SecurityError'];
-        if (preview !== 'none' && !microphone.includes(name)) {
+        if (hearing && !microphone.includes(name)) {
           setHearing(false);
           setMeterError('The voice changer could not be started in this browser. In a call you would sound like yourself.');
         } else {
@@ -99,7 +115,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
       cancelled = true;
       stop?.();
     };
-  }, [inputDeviceId, noiseSuppression, echoCancellation, autoGain, preview]);
+  }, [inputDeviceId, noiseMode, echoCancellation, autoGain, hearing, suppress, voiceEffect]);
 
   useEffect(() => {
     if (!capturingKey) return;
@@ -198,18 +214,35 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
           </div>
         ) : null}
 
-        <label className="toggle-row">
+        <div className="settings-subhead">Noise suppression</div>
+        <div className="voice-modes" role="radiogroup" aria-label="Noise suppression">
+          {NOISE.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              role="radio"
+              aria-checked={noiseMode === mode.id}
+              className={noiseMode === mode.id ? 'voice-mode active' : 'voice-mode'}
+              onClick={() => voicePrefs.set({ noiseMode: mode.id })}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <div className="toggle-row">
           <span>
-            Noise suppression
-            <span className="field-note">Takes out steady background noise. Turn off if your voice sounds underwater.</span>
+            {NOISE.find((mode) => mode.id === noiseMode)?.note}
+            <span className="field-note">
+              {noiseMode === 'strong' && (!canRunModel || modelFailed)
+                ? 'This copy of the app cannot run the model yet, so it is using Standard. The next desktop update fixes that; the website already can.'
+                : 'Use headphones to listen, or the speakers feed back into the microphone.'}
+            </span>
           </span>
-          <input
-            type="checkbox"
-            className="perm-switch"
-            checked={prefs.noiseSuppression}
-            onChange={(event) => voicePrefs.set({ noiseSuppression: event.target.checked })}
-          />
-        </label>
+          <button type="button" className="button secondary inline" onClick={() => setHearing((on) => !on)}>
+            {hearing ? 'Stop listening' : 'Hear it'}
+          </button>
+        </div>
+
         <label className="toggle-row">
           <span>
             Echo cancellation
