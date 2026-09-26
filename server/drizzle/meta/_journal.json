@@ -169,6 +169,13 @@
       "when": 1790363518842,
       "tag": "0023_furry_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790462732418,
+      "tag": "0024_safe_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

@@ -619,6 +619,38 @@ export const blocks = pgTable(
 );
 
 /**
+ * A device that asked to be woken when something is addressed to its person
+ * (`services/push.ts`). The endpoint is a URL at Apple, Google, Mozilla or
+ * Microsoft; the ping sent to it is empty, so the relay learns that this
+ * device got one and when, and nothing else (GAMEPLAN 1b, the push rule).
+ *
+ * Tied to the session that made it, so signing out, or a password reset
+ * revoking every session, stops the pings without anybody remembering to.
+ * Mutes are the device's own (`web/src/lib/notify.ts`) and are copied here
+ * because the phone is asleep when the decision is made.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: id(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    mutedServers: jsonb('muted_servers').$type<string[]>().notNull().default([]),
+    mutedChannels: jsonb('muted_channels').$type<string[]>().notNull().default([]),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('push_subscriptions_endpoint_idx').on(table.endpoint),
+    index('push_subscriptions_user_idx').on(table.userId),
+  ],
+);
+
+/**
  * Things a server has planned: "Session 12, Friday 7pm, #voice-table".
  *
  * `reminded_at` is the whole reminder mechanism. The minute-by-minute pass in
@@ -925,3 +957,4 @@ export type AttachmentRow = typeof attachments.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type OverwriteRow = typeof channelOverwrites.$inferSelect;
 export type CategoryOverwriteRow = typeof categoryOverwrites.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -15,6 +15,20 @@ on the app icon).** Wes: "Note it as important." Plan and the rule it lives
 under: `docs/briefs/push.md`. Phones get no alerts at all today once the
 app is off screen.
 
+**Next week, decided 2026-09-26:** the route audit, backups made
+trustworthy, Mac and Linux desktop builds (Wes: "we're probably gonna push
+that to next week").
+
+**To do, Wes 2026-09-26: take Scryproof's sounds to the next level.** "They
+aren't bad but I want to take them to the next level." Every sound today is
+made on the spot from sine tones (`web/src/lib/sounds.ts`, `notify.ts`: no
+audio files, on purpose). The plan he asked for: find high-quality free
+sound assets (licence must allow use with no attribution trap and no
+phoning home; CC0 first: Kenney, freesound CC0, Sonniss GDC bundles), and
+build an artifact where he hears options for each moment (message, mention,
+join, leave, mute, unmute, call ringing, hang up, deafen) and picks the
+ones he likes. Chosen files ship inside the app, never fetched from anyone.
+
 Rules that do not move: no deploy without Wes saying ship; agents follow
 `docs/briefs/README.md` (own worktree, no dev server or smoke tests, no
 push, no HANDOFF edits); one migration per branch and renumber on merge

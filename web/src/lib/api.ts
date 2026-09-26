@@ -513,6 +513,15 @@ export const api = {
    * Blocking. Each of these answers with the whole list of ids afterwards, so
    * the client replaces what it holds instead of guessing at the new state.
    */
+  /** Phone notifications for this device. See `lib/push.ts`. */
+  push: {
+    key: () => get<{ publicKey: string | null }>('/api/push'),
+    subscribe: (body: { endpoint: string; mutedServers: string[]; mutedChannels: string[] }) =>
+      put<{ ok: true }>('/api/push/subscription', body),
+    unsubscribe: (endpoint: string) => request<{ ok: true }>('DELETE', '/api/push/subscription', { endpoint }),
+    seen: () => post<{ ok: true }>('/api/push/seen'),
+  },
+
   blocks: {
     list: () => get<{ blocks: BlockedPerson[] }>('/api/blocks'),
     add: (userId: string) => put<{ blocks: string[] }>(`/api/blocks/${userId}`),

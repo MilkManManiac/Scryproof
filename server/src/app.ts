@@ -38,6 +38,7 @@ import { registerChannelKeyRoutes } from './routes/channel-keys.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerBlockRoutes } from './routes/blocks.js';
 import { registerDownloadRoutes } from './routes/downloads.js';
+import { registerPushRoutes } from './routes/push.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -249,6 +250,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerProfileRoutes(app);
   await registerBlockRoutes(app);
   await registerDownloadRoutes(app);
+  await registerPushRoutes(app);
 
   // This process serves the API and the gateway only. The built web client is
   // served by nginx, which does static files better and keeps a file-serving

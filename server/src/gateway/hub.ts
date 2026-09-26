@@ -39,6 +39,13 @@ export interface Connection {
   status: Presence['status'];
   lastSeenAt: number;
   alive: boolean;
+  /**
+   * Somebody is looking at this window right now: it is on screen, focused,
+   * and was touched in the last few minutes. Reported by the client
+   * (`attention`). While any of a person's windows is attended, their phone
+   * stays quiet: they are already reading it.
+   */
+  attending?: boolean;
 }
 
 const connections = new Map<string, Connection>();
@@ -72,6 +79,13 @@ export function removeConnection(connection: Connection): void {
 
 export function isOnline(userId: string): boolean {
   return byUser.has(userId);
+}
+
+export function isAttending(userId: string): boolean {
+  const set = byUser.get(userId);
+  if (!set) return false;
+  for (const connection of set) if (connection.attending) return true;
+  return false;
 }
 
 export function onlineUserIds(): string[] {

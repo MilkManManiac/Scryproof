@@ -276,6 +276,11 @@ async function handleClientEvent(
       return;
     }
 
+    case 'attention': {
+      connection.attending = event.d?.active === true;
+      return;
+    }
+
     case 'typing': {
       const { channelId } = event.d;
       if (typeof channelId !== 'string') return;

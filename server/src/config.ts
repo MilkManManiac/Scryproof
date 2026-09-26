@@ -7,7 +7,7 @@
  * generating one and pretending things are fine.
  */
 
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -55,6 +55,18 @@ function sessionSecret(): string {
     return fromEnv;
   }
   return randomBytes(32).toString('hex');
+}
+
+function vapidKeys(): { publicKey: string; privateKey: string; subject: string } | null {
+  const subject = optional('VAPID_SUBJECT', 'mailto:admin@scryproof.com');
+  const publicKey = process.env.VAPID_PUBLIC_KEY ?? '';
+  const privateKey = process.env.VAPID_PRIVATE_KEY ?? '';
+  if (publicKey && privateKey) return { publicKey, privateKey, subject };
+  if (isProduction) return null;
+  const pair = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = pair.privateKey.export({ format: 'jwk' });
+  const raw = pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-65);
+  return { publicKey: raw.toString('base64url'), privateKey: jwk.d!, subject };
 }
 
 const dataDir = resolve(process.cwd(), optional('DATA_DIR', '.data'));
@@ -119,6 +131,15 @@ export const config = {
     /** How long a join token stays valid. Short on purpose. */
     tokenTtlSeconds: optionalNumber('LIVEKIT_TOKEN_TTL_SECONDS', 900),
   },
+
+  /**
+   * Web Push, the VAPID pair (`services/push.ts`). Made on the box and kept in
+   * its `.env`, like the session secret. Unset means no push: the settings
+   * switch says it is not available here. In development a pair is made at
+   * boot, so a phone subscribed to a dev server stops working on restart,
+   * which is fine for a dev server.
+   */
+  push: vapidKeys(),
 
   rateLimits: {
     loginPerMinute: optionalNumber('RATE_LOGIN_PER_MINUTE', 10),

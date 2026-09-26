@@ -186,6 +186,8 @@ export type ClientEvent =
   | { t: 'heartbeat' }
   | { t: 'typing'; d: { channelId: Snowflake } }
   | { t: 'presence'; d: { status: Presence['status'] } }
+  /** This window is on screen, focused and in use, or has stopped being. Decides whether the phone is woken. */
+  | { t: 'attention'; d: { active: boolean } }
   | {
       t: 'voice_state';
       d: {

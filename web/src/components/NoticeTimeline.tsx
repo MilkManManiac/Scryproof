@@ -14,6 +14,7 @@ import { api } from '../lib/api';
 import { channelKeysFor } from '../lib/channel-keys';
 import { toPlainLine } from '../lib/mentions';
 import { bySource, notices } from '../lib/notices';
+import { pushTargets } from '../lib/push';
 import type { Notice } from '../lib/notices';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
@@ -76,6 +77,28 @@ export function NoticeBell() {
     });
     return () => notices.onOpen(null);
   }, [dms, state.servers, state.selectedServerId, selectServer, selectChannel]);
+
+  // A phone notification tapped: once there is something to go to, go.
+  const bootstrapped = state.bootstrapped;
+  useEffect(() => {
+    if (!bootstrapped) return;
+    const go = () => {
+      const target = pushTargets.take();
+      if (!target) return;
+      notices.open({
+        ...target,
+        at: Date.now(),
+        authorId: '',
+        authorName: '',
+        serverName: null,
+        channelName: null,
+        preview: null,
+        read: false,
+      });
+    };
+    go();
+    return pushTargets.subscribe(go);
+  }, [bootstrapped]);
 
   return (
     <>

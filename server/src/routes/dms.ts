@@ -39,6 +39,7 @@ import type { DeviceKeyRow, DmChannelRow, DmMemberRow, DmMessageKeyRow, DmMessag
 import * as hub from '../gateway/hub.js';
 import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
+import { pushTo } from '../services/push.js';
 import { consume } from '../lib/rate-limit.js';
 import { blockBetween, blockedBy, blockersOf } from '../services/blocks.js';
 import * as serialize from '../services/serialize.js';
@@ -854,6 +855,23 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
 
     for (const memberId of readers) {
       hub.sendToUser(memberId, { t: 'dm_message_create', d: toDmMessage(created, keyRows, memberId) });
+    }
+    // The same words the in-app pop-up uses. Never the message: it is sealed,
+    // and this server could not read it if it wanted to.
+    if (!body.reactionTo) {
+      const group = dm.kind === 'group';
+      void pushTo(
+        readers.filter((memberId) => memberId !== user.id),
+        {
+          kind: 'dm',
+          title: group ? `${user.displayName} in ${dm.title ?? 'your group'}` : user.displayName,
+          body: group ? 'Wrote in the group.' : 'Sent you a message.',
+          serverId: null,
+          channelId: null,
+          dmId,
+          messageId,
+        },
+      );
     }
 
     return { message: toDmMessage(created, keyRows, user.id) };

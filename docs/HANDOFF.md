@@ -3189,3 +3189,61 @@ and `--device galaxy` for quick runs. Needs the API and the web dev server up.
 one. The on-screen keyboard pushing the message box, pull-to-refresh, and
 Safari's own engine (WebKit is installed under `.tools/webkit`, not yet
 wired into the tour) are the next things to look at on a real device.
+
+## 2026-09-26 evening: iPhones join calls (LIVE), phone notifications (built, not deployed)
+
+**iPhones in calls, LIVE 18:26 ET (client 1790461473320, commit 438da66).**
+`voiceSupport()` only accepted Chromium's `createEncodedStreams`, so every
+iPhone (all Safari underneath) was refused with "This browser cannot
+encrypt media frames". LiveKit encrypts through `RTCRtpScriptTransform`
+there; the check now accepts either. Wes and FullLoaf (iPhone, home-screen
+app) confirmed audio and camera both ways. **Hearth copies
+`voice-key-provider.ts` byte for byte: its smoke suite will fail until the
+copy is refreshed** (Hearth is on hold anyway).
+
+Wes's notes from that call, not built:
+- Portrait camera on a phone looks "super zoomed in"; landscape looks
+  normal. Suspect: a tall picture cropped into a wide tile (object-fit
+  cover). Measure the track's width/height on the receiver before changing.
+- Speaker vs earpiece choice on a phone. "Not high prio but would be
+  nice." Likely impossible for an iPhone web app (no output routing); check.
+
+**Phone notifications, built and tested, NOT deployed** (Wes asked to see
+it first: preview artifact https://claude.ai/artifact/KNQnMtvAdSffu7d47g2YHw).
+Brief: `docs/briefs/push.md`.
+- Server: `lib/web-push.ts` sends an EMPTY ping signed with VAPID (node
+  crypto, no library; relay allowlist so the endpoint cannot be used to make
+  the box call anywhere). `services/push.ts` decides: mentions (after
+  `pingTargets`) and DMs (not reactions); nobody who has a window
+  "attending" (new gateway frame `attention`: visible, focused, and on a
+  computer touched in the last 3 min); per-device mutes copied to the
+  subscription; subscriptions tied to the session (sign-out stops them).
+  What the notification says lives in memory for an hour and is fetched by
+  the phone's service worker from `POST /api/push/pending`; never the
+  message text. Migration 0024 (`push_subscriptions`).
+- Web: `lib/push.ts` (switch, mute sync, clear badge + lock-screen
+  notifications on open, attention reporting, tap-to-open), `sw.js` push +
+  notificationclick, the switch in Settings, Notifications.
+- Proof: `server/src/tests/push.test.ts` (10, mutation-checked) and
+  `npm run test:push`: real Chrome, real Google relay, the app's own switch,
+  quiet while attending, arrives once out of sight. All pass. Chrome is run
+  with its own notification UI; with Windows' native ones
+  `getNotifications()` returns nothing and toasts land on Wes's desktop.
+- **To ship:** `bash scripts/box.sh 90-push-keys.sh` once (makes the key pair
+  on the box, into the vault .env, prints only the public half), then the
+  normal release. Without the keys the switch says the server is not set up.
+- Open choice for Wes (in the preview): mentions in plain channels could show
+  the message's first line (from our server, not the relay; readable on a
+  lock screen). DM text would need the service worker to decrypt on the
+  phone: unverified whether iOS allows the time.
+- Not proven: a real iPhone (iOS 16.4+ home-screen app) and a real Android.
+  First thing after deploy.
+
+**Local dev database:** force-stopping the dev API corrupts PGlite
+(`Aborted()` on the next start). `dev-restart.sh` without `--keep-data`,
+then `npm run seed --workspace server`. The broken copy was moved to
+`%TEMP%\scryproof-dev-data-broken-*`.
+
+**Wes's to-dos added today** (BUILD-ORDER top): next week = route audit,
+backups, Mac/Linux builds. Sound upgrade with a pick-your-sounds artifact
+from free high-quality assets.

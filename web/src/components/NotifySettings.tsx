@@ -10,6 +10,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { notices } from '../lib/notices';
+import { disablePush, enablePush, preparePush, pushAvailability, pushConfigured, pushState } from '../lib/push';
 import { notifyPrefs, play } from '../lib/notify';
 import type { MessageSound } from '../lib/notify';
 import { useStore } from '../state/store';
@@ -73,6 +74,8 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
           onChange={(event) => notifyPrefs.set({ mention: event.target.checked })}
         />
       </label>
+
+      <PushSection />
 
       <div className="settings-subhead">Pop-ups</div>
       <label className="toggle-row">
@@ -199,5 +202,73 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         </>
       ) : null}
     </Modal>
+  );
+}
+
+/**
+ * Phone notifications for this device (`lib/push.ts`). Not drawn at all where
+ * it cannot work, except on an iPhone in Safari, which is told how to get it.
+ */
+function PushSection() {
+  const availability = pushAvailability();
+  const on = useSyncExternalStore(pushState.subscribe, pushState.get);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void preparePush();
+  }, []);
+
+  if (availability === 'unsupported') return null;
+
+  return (
+    <>
+      <div className="settings-subhead">When Scryproof is closed</div>
+      {availability === 'install-first' ? (
+        <p className="field-note">
+          On an iPhone this only works in the app on your home screen. In Safari, tap Share, then Add to Home Screen,
+          open Scryproof from there, and turn it on here.
+        </p>
+      ) : (
+        <label className="toggle-row">
+          <span>
+            Notify this device about mentions and direct messages
+            <span className="field-note">
+              With a sound and a number on the app&rsquo;s icon. Apple or Google carries a blank wake-up; who wrote
+              comes from Scryproof itself, and what they wrote is never in it. Quiet for muted places, and while you
+              are using Scryproof somewhere else.
+              {problem ? ` ${problem}` : ''}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="perm-switch"
+            checked={on === true}
+            disabled={busy || on === null}
+            onChange={(event) => {
+              setProblem(null);
+              if (!event.target.checked) {
+                setBusy(true);
+                void disablePush().finally(() => setBusy(false));
+                return;
+              }
+              if (!pushConfigured()) {
+                setProblem('This server has not been set up for it yet.');
+                return;
+              }
+              setBusy(true);
+              void enablePush()
+                .then((result) => {
+                  if (result === 'refused') {
+                    setProblem('Your device said no. Allow notifications for Scryproof in its settings, then try again.');
+                  } else if (result !== 'on') {
+                    setProblem('That did not work. Try again in a moment.');
+                  }
+                })
+                .finally(() => setBusy(false));
+            }}
+          />
+        </label>
+      )}
+    </>
   );
 }

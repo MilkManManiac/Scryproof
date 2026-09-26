@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-push',
+    date: '2026-09-26',
+    title: 'Your phone tells you when someone wants you',
+    notes: [
+      'Mentions and direct messages can now reach your phone when Scryproof is closed: a sound, the notification on your lock screen, and a number on the app icon. Turn it on in Settings, Notifications, once on each device.',
+      'On an iPhone it works in the app on your home screen (Safari, Share, Add to Home Screen), not in a Safari tab.',
+      'Apple and Google only carry a blank wake-up. Who wrote comes from Scryproof itself, and what they wrote is never in it.',
+      'Nothing arrives on your phone while you are using Scryproof on your computer, and muted servers and channels stay quiet.',
+      'Tapping a notification opens that conversation. Opening the app clears the number.',
+    ],
+  },
+  {
     id: '2026-09-26-phone',
     date: '2026-09-26',
     title: 'Scryproof on your phone, properly',

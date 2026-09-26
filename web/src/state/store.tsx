@@ -50,6 +50,7 @@ import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
 import { DEVICE_ACCEPTED, on } from '../lib/signals';
+import { clearWhenOpened, startPushSync, watchAttention } from '../lib/push';
 
 export interface State {
   connection: ConnectionStatus;
@@ -1294,13 +1295,28 @@ export function StoreProvider({
       onStatus: (status) => {
         dispatch({ type: 'connection', status });
         if (status === 'closed') onSignedOut();
+        // A fresh connection starts out as nobody looking; say otherwise.
+        if (status === 'open' && attending) gateway.send({ t: 'attention', d: { active: true } });
       },
     });
+
+    // Whether somebody is at this window decides whether their phone is
+    // woken for a message (`lib/push.ts`).
+    let attending = false;
+    const stopAttention = watchAttention((active) => {
+      attending = active;
+      gateway.send({ t: 'attention', d: { active } });
+    });
+    const stopPushSync = startPushSync();
+    const stopClearing = clearWhenOpened();
 
     gatewayRef.current = gateway;
     gateway.connect();
 
     return () => {
+      stopAttention();
+      stopPushSync();
+      stopClearing();
       void voice.leave();
       gateway.close();
       gatewayRef.current = null;

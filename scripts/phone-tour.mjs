@@ -88,7 +88,7 @@ const SCREENS = [
   { name: 'you-menu', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel-identity' }] },
   { name: 'settings-menu', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }] },
   { name: 'settings-voice', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { label: 'Voice and audio' }] },
-  { name: 'settings-notify', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { tap: '.panel-menu-item:nth-child(2)' }] },
+  { name: 'settings-notify', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { eval: "[...document.querySelectorAll('.panel-menu-item')].find((el) => el.textContent.trim() === 'Notifications').click(), ''" }] },
   { name: 'themes', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { label: 'Choose a theme' }] },
   { name: 'edit-profile', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { label: 'Edit profile' }] },
   { name: 'account', steps: [{ label: 'Servers and channels' }, { tap: '.user-panel button[aria-label="Settings"]' }, { label: 'Account' }] },
