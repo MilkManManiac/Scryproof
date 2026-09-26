@@ -829,7 +829,11 @@ export class VoiceSession {
 
   private micChoice(): MicChoice {
     const prefs = voicePrefs.get();
-    return { suppress: usesModel(prefs), effect: isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none' };
+    return {
+      suppress: usesModel(prefs),
+      guard: prefs.loudnessGuard,
+      effect: isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none',
+    };
   }
 
   /**
@@ -1021,7 +1025,14 @@ export class VoiceSession {
       await this.micTrack()?.restartTrack(captureOptions(now)).catch(() => undefined);
       this.rebuildGate();
     }
-    if (now.voiceEffect !== before.voiceEffect || now.noiseMode !== before.noiseMode) await this.applyMicChoice();
+    if (now.loudnessGuard !== before.loudnessGuard) this.mix?.setGuarding(now.loudnessGuard);
+    if (
+      now.voiceEffect !== before.voiceEffect ||
+      now.noiseMode !== before.noiseMode ||
+      now.loudnessGuard !== before.loudnessGuard
+    ) {
+      await this.applyMicChoice();
+    }
 
     if ((now.shareHeight !== before.shareHeight || now.shareFps !== before.shareFps) && this.snapshot.sharing) {
       await this.retuneShare(now);
@@ -1248,11 +1259,13 @@ export class VoiceSession {
         this.mix = new OutputMix();
         this.mix.setVolume(voicePrefs.get().outputVolume);
         this.mix.setDeafened(this.deafened);
+        this.mix.setGuarding(voicePrefs.get().loudnessGuard);
         const speaker = voicePrefs.get().outputDeviceId;
         if (speaker) void this.mix.setOutputDevice(speaker);
       }
       const volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
-      this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume);
+      const voice = publication.source === Track.Source.Microphone;
+      this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume, voice);
       // A screen's sound arriving is what puts a volume slider on its tile.
       if (publication.source === Track.Source.ScreenShareAudio) this.refreshVideos();
     });
@@ -1466,6 +1479,23 @@ export class VoiceSession {
     const before = this.snapshot.speaking;
     if (before.length === sorted.length && before.every((id, i) => id === sorted[i])) return;
     this.update({ speaking: sorted });
+  }
+
+  /**
+   * What is really running on the microphone and in front of each voice we
+   * hear, as opposed to what was asked for. For the checks: a stage that
+   * fails to start falls back quietly, by design, so only this can tell.
+   */
+  debugMic(): { processor: boolean; suppressing: boolean; guarding: boolean; effect: string | null; guarded: string[] } {
+    const processor = this.micTrack()?.getProcessor();
+    const mic = processor instanceof MicProcessor ? processor : null;
+    return {
+      processor: mic !== null,
+      suppressing: mic?.suppressing ?? false,
+      guarding: mic?.guarding ?? false,
+      effect: mic?.choice.effect ?? null,
+      guarded: this.mix?.guarded() ?? [],
+    };
   }
 
   async debugInbound(): Promise<Record<string, { energy: number; packets: number }>> {

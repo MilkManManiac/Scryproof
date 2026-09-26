@@ -47,6 +47,11 @@ export interface VoicePrefs {
   echoCancellation: boolean;
   autoGain: boolean;
   /**
+   * Keeps knocks, bumps and pops, yours and everyone's, down near talking
+   * loudness (`loudness-guard.ts`). On unless someone turns it off.
+   */
+  loudnessGuard: boolean;
+  /**
    * open:      the microphone is live whenever you are unmuted
    * threshold: live only while you are louder than `thresholdDb`
    * push:      live only while `pushKey` is held
@@ -92,6 +97,7 @@ const DEFAULTS: VoicePrefs = {
   noiseMode: 'strong',
   echoCancellation: true,
   autoGain: true,
+  loudnessGuard: true,
   inputMode: 'open',
   thresholdDb: -50,
   pushKey: 'Backquote',

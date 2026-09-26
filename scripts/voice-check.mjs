@@ -292,6 +292,31 @@ async function main() {
   check('wes is decoding real audio from alex', clear.energy > 0.001 && clear.packets > 50,
     `+${clear.packets} packets, +${clear.energy.toFixed(4)} energy`);
 
+  // ---- what really runs on the microphone, not what was asked for ------------
+  // A stage that cannot start falls back quietly, by design. From 2026-09-25
+  // to 09-26 the whole processor failed to start in every call and nothing on
+  // screen said so; only asking the running call can tell.
+  const alexMic = await alex.until(`(() => { const m = window.__voice.debugMic(); return m.processor && m.suppressing && m.guarding ? m : null; })()`, 10_000);
+  check('alex\'s microphone really runs the noise model and the loudness guard', Boolean(alexMic),
+    JSON.stringify(alexMic ?? (await alex.evaluate(`window.__voice.debugMic()`))));
+  const guardedEars = await wes.until(`window.__voice.debugMic().guarded.includes('${alex.userId}')`, 10_000);
+  check('wes hears alex through a loudness guard of his own', Boolean(guardedEars),
+    JSON.stringify(await wes.evaluate(`window.__voice.debugMic()`)));
+  await Promise.all([wes, alex].map((person) => person.evaluate(`window.__voicePrefs.set({ loudnessGuard: false })`)));
+  const unguarded = await Promise.all([
+    alex.until(`(() => { const m = window.__voice.debugMic(); return m.processor && m.suppressing && !m.guarding; })()`, 10_000),
+    wes.until(`window.__voice.debugMic().guarded.length === 0`, 10_000),
+  ]);
+  await Promise.all([wes, alex].map((person) => person.evaluate(`window.__voicePrefs.set({ loudnessGuard: true })`)));
+  const reguarded = await Promise.all([
+    alex.until(`(() => { const m = window.__voice.debugMic(); return m.processor && m.suppressing && m.guarding; })()`, 10_000),
+    wes.until(`window.__voice.debugMic().guarded.includes('${alex.userId}')`, 10_000),
+  ]);
+  const stillHeard = await wes.listenTo(alex.userId, 2000);
+  check('the guard comes off and goes back on mid-call, on both ends, and alex is still heard',
+    unguarded.every(Boolean) && reguarded.every(Boolean) && stillHeard.energy > 0.001,
+    `off: ${JSON.stringify(unguarded)}  on: ${JSON.stringify(reguarded)}  energy after: ${stillHeard.energy.toFixed(4)}`);
+
   // The speaking ring reaches both lists, not only the voice view. The fake
   // microphone is a steady tone, so alex is "speaking" the whole time.
   const ringed = await wes.until(`(() => {

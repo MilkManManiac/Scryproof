@@ -59,7 +59,7 @@ const NOISE: { id: NoiseMode; label: string; note: string }[] = [
   {
     id: 'strong',
     label: 'Strong',
-    note: 'A speech model on this computer keeps your voice and drops the rest: keys, fans, breathing, knocks on the microphone.',
+    note: 'A speech model on this computer keeps your voice and drops the rest: keys, fans, breathing, the ring after a knock.',
   },
   { id: 'standard', label: 'Standard', note: "The browser's own. Takes out steady sounds like a fan, not sudden ones." },
   { id: 'off', label: 'Off', note: 'Your microphone exactly as it is. For a good microphone in a quiet room.' },
@@ -77,7 +77,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
 
   const [modelFailed, setModelFailed] = useState(false);
 
-  const { inputDeviceId, noiseMode, echoCancellation, autoGain } = prefs;
+  const { inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard } = prefs;
   const voiceEffect = isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none';
   const suppress = usesModel(prefs);
 
@@ -89,7 +89,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
     setMeterError(null);
 
     const options = captureOptions(voicePrefs.get());
-    openMeter(options, setLevel, hearing ? { suppress, effect: voiceEffect } : null)
+    openMeter(options, setLevel, hearing ? { suppress, guard: loudnessGuard, effect: voiceEffect } : null)
       .then(async (meter) => {
         if (cancelled) return meter.stop();
         stop = meter.stop;
@@ -115,7 +115,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
       cancelled = true;
       stop?.();
     };
-  }, [inputDeviceId, noiseMode, echoCancellation, autoGain, hearing, suppress, voiceEffect]);
+  }, [inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard, hearing, suppress, voiceEffect]);
 
   useEffect(() => {
     if (!capturingKey) return;
@@ -265,6 +265,21 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
             className="perm-switch"
             checked={prefs.autoGain}
             onChange={(event) => voicePrefs.set({ autoGain: event.target.checked })}
+          />
+        </label>
+        <label className="toggle-row">
+          <span>
+            Loudness guard
+            <span className="field-note">
+              Keeps a knock, bump or pop, from your microphone or anyone else&apos;s, down near talking loudness. Your
+              normal voice passes untouched.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="perm-switch"
+            checked={loudnessGuard}
+            onChange={(event) => voicePrefs.set({ loudnessGuard: event.target.checked })}
           />
         </label>
 

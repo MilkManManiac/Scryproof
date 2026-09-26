@@ -6,6 +6,8 @@
  * already decrypted it, and what leaves the gate is encrypted afterwards.
  */
 
+import { type Bridge, splice } from './audio-graph';
+import { openGuard, openHighPass } from './loudness-guard';
 import { effectChain, type EffectChain } from './voice-effects';
 import type { VoiceEffect } from './voice-prefs';
 
@@ -67,6 +69,12 @@ interface Voice {
   energy: number;
   /** The clock time until which this person counts as talking. */
   loudUntil: number;
+  /** Whether this is a voice the loudness guard should stand in front of: microphones, not screens or soundboards. */
+  guardable: boolean;
+  /** The guard, between `source` and `gain`, once it has loaded. */
+  guard: Bridge | null;
+  /** Counts guard changes, so a slow load that has been overtaken throws itself away. */
+  guardTurn: number;
 }
 
 /**
@@ -107,6 +115,7 @@ export class OutputMix {
   private readonly scratch = new Float32Array(1024);
   private deafened = false;
   private volume = 1;
+  private guarding = false;
   private readonly sampler: ReturnType<typeof setInterval>;
 
   constructor() {
@@ -127,7 +136,12 @@ export class OutputMix {
     }, 20);
   }
 
-  add(userId: string, track: MediaStreamTrack, volume: number): void {
+  /**
+   * `guardable` puts the loudness guard in front of this voice while the
+   * guard is on (`setGuarding`). Until it has loaded the voice goes straight
+   * through, which beats a gap.
+   */
+  add(userId: string, track: MediaStreamTrack, volume: number, guardable = false): void {
     this.remove(userId);
     const stream = new MediaStream([track]);
 
@@ -142,12 +156,45 @@ export class OutputMix {
     analyser.fftSize = 1024;
     gain.gain.value = volume;
     source.connect(gain).connect(analyser).connect(this.master);
-    this.voices.set(userId, { source, gain, analyser, pump, energy: 0, loudUntil: 0 });
+    const voice: Voice = { source, gain, analyser, pump, energy: 0, loudUntil: 0, guardable, guard: null, guardTurn: 0 };
+    this.voices.set(userId, voice);
+    if (guardable && this.guarding) void this.guardVoice(voice);
+  }
+
+  /** The loudness guard on every voice, or on none. Screens and soundboards are never guarded. */
+  setGuarding(on: boolean): void {
+    this.guarding = on;
+    for (const voice of this.voices.values()) {
+      if (!voice.guardable) continue;
+      if (on && !voice.guard) void this.guardVoice(voice);
+      if (!on) {
+        voice.guardTurn += 1;
+        if (voice.guard) splice(voice.source, voice.gain, voice.guard, null);
+        voice.guard = null;
+      }
+    }
+  }
+
+  /** Which voices the guard is standing in front of right now. For the checks. */
+  guarded(): string[] {
+    return [...this.voices].filter(([, voice]) => voice.guard !== null).map(([key]) => key);
+  }
+
+  private async guardVoice(voice: Voice): Promise<void> {
+    const turn = (voice.guardTurn += 1);
+    const guard = await openGuard(this.context).catch(() => null);
+    if (!guard) return;
+    const current = [...this.voices.values()].includes(voice);
+    if (!current || turn !== voice.guardTurn || !this.guarding || voice.guard) return guard.close();
+    splice(voice.source, voice.gain, null, guard);
+    voice.guard = guard;
   }
 
   remove(userId: string): void {
     const voice = this.voices.get(userId);
     if (!voice) return;
+    voice.guardTurn += 1;
+    voice.guard?.close();
     voice.source.disconnect();
     voice.gain.disconnect();
     voice.analyser.disconnect();
@@ -303,7 +350,8 @@ export class MicGate {
  * threshold outside a call. Nothing is sent anywhere.
  *
  * With `preview` set, the voice is also played back to this device's own
- * speakers through the same noise model and voice changer a call would use,
+ * speakers through the same high-pass, noise model, loudness guard and
+ * voice changer a call would use,
  * so people hear what the table will before the table does. The bar keeps
  * measuring the raw microphone, because that is what the gate listens to in
  * a call and the threshold line has to mean the same thing.
@@ -314,7 +362,7 @@ export class MicGate {
 export async function openMeter(
   constraints: MediaTrackConstraints,
   onLevel: (db: number) => void,
-  preview: { suppress: boolean; effect: VoiceEffect } | null = null,
+  preview: { suppress: boolean; guard: boolean; effect: VoiceEffect } | null = null,
 ): Promise<{ stop: () => void; suppressing: boolean }> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   const context = audioContext();
@@ -325,29 +373,42 @@ export async function openMeter(
   const scratch = new Float32Array(1024);
   const timer = setInterval(() => onLevel(readDb(analyser, scratch)), 50);
 
-  let suppressor: { input: AudioNode; output: AudioNode; close(): void } | null = null;
+  // Built in a row, each stage hung off the end of the last: nothing is ever
+  // swapped here, a change of setting opens a new meter.
+  const stages: Bridge[] = [];
+  let suppressing = false;
   let chain: EffectChain | null = null;
   const stop = () => {
     clearInterval(timer);
     chain?.close();
-    suppressor?.close();
+    for (const stage of stages) stage.close();
     source.disconnect();
     for (const track of stream.getTracks()) track.stop();
   };
   if (preview) {
     try {
+      let end: AudioNode = source;
+      const add = (stage: Bridge | null) => {
+        if (!stage) return;
+        end.connect(stage.input);
+        end = stage.output;
+        stages.push(stage);
+      };
+      if (preview.guard) add(openHighPass(context));
       if (preview.suppress) {
-        suppressor = await import('./noise-model').then((model) => model.openSuppressor(context)).catch(() => null);
-        if (suppressor) source.connect(suppressor.input);
+        const suppressor = await import('./noise-model').then((model) => model.openSuppressor(context)).catch(() => null);
+        add(suppressor);
+        suppressing = suppressor !== null;
       }
-      chain = await effectChain(context, suppressor?.output ?? source, preview.effect);
+      if (preview.guard) add(await openGuard(context).catch(() => null));
+      chain = await effectChain(context, end, preview.effect);
       chain.output.connect(context.destination);
     } catch (problem) {
       stop();
       throw problem;
     }
   }
-  return { stop, suppressing: suppressor !== null };
+  return { stop, suppressing };
 }
 
 /* --------------------------------- sounds ---------------------------------- */

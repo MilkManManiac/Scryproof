@@ -18,6 +18,8 @@
 
 import type { AudioProcessorOptions, Track, TrackProcessor } from 'livekit-client';
 
+import { type Bridge, loadWorklet, splice } from './audio-graph';
+import { openGuard, openHighPass } from './loudness-guard';
 import type { VoiceEffect } from './voice-prefs';
 
 export const VOICE_EFFECTS: { id: VoiceEffect; label: string; note: string }[] = [
@@ -108,19 +110,6 @@ export function shiftPitch(state: GrainState, input: Float32Array, output: Float
 
 /* ------------------------------- the chains -------------------------------- */
 
-/** The pitch worklet is loaded once per audio context, and a failed load is tried again next time. */
-const worklets = new WeakMap<BaseAudioContext, Promise<void>>();
-
-function loadPitchWorklet(context: BaseAudioContext): Promise<void> {
-  let loading = worklets.get(context);
-  if (!loading) {
-    loading = context.audioWorklet.addModule('/worklets/pitch-shift.js');
-    loading.catch(() => worklets.delete(context));
-    worklets.set(context, loading);
-  }
-  return loading;
-}
-
 export interface EffectChain {
   /** Where the changed voice comes out. */
   output: AudioNode;
@@ -166,7 +155,7 @@ export async function effectChain(context: BaseAudioContext, input: AudioNode, e
   }
 
   if (effect === 'chipmunk' || effect === 'deep') {
-    await loadPitchWorklet(context);
+    await loadWorklet(context, '/worklets/pitch-shift.js');
     const shifter = new AudioWorkletNode(context, 'pitch-shift', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -197,25 +186,29 @@ export async function effectChain(context: BaseAudioContext, input: AudioNode, e
   };
 }
 
+
 /* ------------------------ the microphone, for LiveKit ----------------------- */
 
-/** The noise model and the voice changer together: what `MicProcessor` runs, in that order. */
+/** What `MicProcessor` runs, in this order: the guard's high-pass, the noise model, the guard, the changer. */
 export interface MicChoice {
-  /** Run the noise model first (`noise-model.ts`). */
+  /** Run the noise model (`noise-model.ts`). */
   suppress: boolean;
+  /** Run the loudness guard (`loudness-guard.ts`). */
+  guard: boolean;
   effect: VoiceEffect;
 }
 
 /** Whether a microphone needs a processor at all. Without one it is sent as the browser hands it over. */
 export function needsProcessor(choice: MicChoice): boolean {
-  return choice.suppress || choice.effect !== 'none';
+  return choice.suppress || choice.guard || choice.effect !== 'none';
 }
 
 /**
  * Sits between the microphone and LiveKit, as a LiveKit track processor:
- * microphone, then the noise model, then the voice changer, then out to be
- * encrypted. So the changer never has to work on a keyboard, and nothing
- * anyone hears was ever the raw room.
+ * microphone, then the high-pass, then the noise model, then the loudness
+ * guard, then the voice changer, then out to be encrypted. So the changer
+ * never has to work on a keyboard or a knock, and nothing anyone hears was
+ * ever the raw room.
  *
  * LiveKit sends `processedTrack` in place of the microphone and keeps it
  * there when the microphone is restarted (a new device, or a track the
@@ -225,8 +218,9 @@ export function needsProcessor(choice: MicChoice): boolean {
  * sender, not the track.
  *
  * The output track stays the same one for this processor's whole life,
- * whatever the microphone, the model or the effect does: a change rebuilds
- * only the middle, and nobody else sees a thing.
+ * whatever the microphone or the choices do: each stage sits between two
+ * fixed points and a change swaps only that stage, so nobody else sees a
+ * thing.
  */
 export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcessorOptions> {
   readonly name = 'scryproof-microphone';
@@ -237,17 +231,29 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
 
   /** Whether the noise model really is running; false after asking for it where it could not start. */
   suppressing = false;
+  /** Whether the loudness guard really is running. */
+  guarding = false;
 
+  // The fixed points, in order. Stages are swapped between neighbours.
   private readonly inlet: GainNode;
-  /** Where the cleaned voice comes out, whether or not the model is in front of it. */
+  private readonly shaped: GainNode;
   private readonly cleaned: GainNode;
+  private readonly guarded: GainNode;
   private readonly outlet: MediaStreamAudioDestinationNode;
   private source: MediaStreamAudioSourceNode | null = null;
-  private suppressor: { input: AudioNode; output: AudioNode; close(): void } | null = null;
+
+  /** inlet to shaped: the high-pass, with the guard. */
+  private filter: Bridge | null = null;
+  /** shaped to cleaned: the noise model. */
+  private suppressor: Bridge | null = null;
+  /** cleaned to guarded: the guard. */
+  private limiter: Bridge | null = null;
+  /** guarded to outlet: the changer. */
   private chain: EffectChain | null = null;
   private chainEffect: VoiceEffect | null = null;
-  /** What the front was last built for; null before the first build. */
+  /** What each stage was last built for; null before the first build. */
   private suppressWanted: boolean | null = null;
+  private guardWanted: boolean | null = null;
   private work: Promise<void> = Promise.resolve();
   private closed = false;
 
@@ -261,7 +267,9 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
     private readonly context: AudioContext,
   ) {
     this.inlet = context.createGain();
+    this.shaped = context.createGain();
     this.cleaned = context.createGain();
+    this.guarded = context.createGain();
     this.outlet = context.createMediaStreamDestination();
   }
 
@@ -279,9 +287,10 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
     this.listenTo(options.track);
   }
 
-  /** Change the model or the effect in place. The published track does not change. */
+  /** Change the model, the guard or the effect in place. The published track does not change. */
   async set(choice: MicChoice): Promise<void> {
-    if (choice.suppress === this.current.suppress && choice.effect === this.current.effect) return;
+    const now = this.current;
+    if (choice.suppress === now.suppress && choice.guard === now.guard && choice.effect === now.effect) return;
     this.current = choice;
     await this.build(choice);
   }
@@ -289,16 +298,12 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
   async destroy(): Promise<void> {
     this.closed = true;
     this.processedTrack?.stop();
-    this.chain?.close();
-    this.chain = null;
-    if (this.suppressor) this.inlet.disconnect(this.suppressor.input);
-    this.suppressor?.close();
-    this.suppressor = null;
+    for (const stage of [this.filter, this.suppressor, this.limiter, this.chain]) stage?.close();
+    this.filter = this.suppressor = this.limiter = this.chain = null;
     this.source?.disconnect();
     this.source = null;
     this.microphone = null;
-    this.inlet.disconnect();
-    this.cleaned.disconnect();
+    for (const point of [this.inlet, this.shaped, this.cleaned, this.guarded]) point.disconnect();
   }
 
   private listenTo(track: MediaStreamTrack): void {
@@ -323,46 +328,41 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
   private async apply(choice: MicChoice): Promise<void> {
     if (this.closed) return;
 
+    if (this.guardWanted !== choice.guard) {
+      // A guard that will not load leaves the voice unguarded, which beats
+      // silence. The high-pass goes with it either way: they are one choice.
+      const limiter = choice.guard ? await openGuard(this.context).catch(() => null) : null;
+      if (this.closed) return limiter?.close();
+      const filter = choice.guard ? openHighPass(this.context) : null;
+      const first = this.guardWanted === null;
+      splice(this.inlet, this.shaped, first ? undefined : this.filter, filter);
+      splice(this.cleaned, this.guarded, first ? undefined : this.limiter, limiter);
+      this.filter = filter;
+      this.limiter = limiter;
+      this.guarding = limiter !== null;
+      this.guardWanted = choice.guard;
+    }
+
     if (this.suppressWanted !== choice.suppress) {
       // A model that will not start leaves the voice as the browser gave it,
       // which beats silence; the caller turns the browser's own suppression
       // on when `suppressing` comes back false.
-      let suppressor: MicProcessor['suppressor'] = null;
+      let suppressor: Bridge | null = null;
       if (choice.suppress) {
         suppressor = await import('./noise-model').then((model) => model.openSuppressor(this.context)).catch(() => null);
       }
-      if (this.closed) {
-        suppressor?.close();
-        return;
-      }
-      // The new path is joined before the old one goes: a moment of both
-      // rather than a moment of nothing. Joining a pair twice is harmless.
-      const old = this.suppressor;
-      if (suppressor) {
-        this.inlet.connect(suppressor.input);
-        suppressor.output.connect(this.cleaned);
-      } else {
-        this.inlet.connect(this.cleaned);
-      }
-      if (old) {
-        this.inlet.disconnect(old.input);
-        old.close();
-      } else if (suppressor) {
-        this.inlet.disconnect(this.cleaned);
-      }
+      if (this.closed) return suppressor?.close();
+      splice(this.shaped, this.cleaned, this.suppressWanted === null ? undefined : this.suppressor, suppressor);
       this.suppressor = suppressor;
       this.suppressing = suppressor !== null;
       this.suppressWanted = choice.suppress;
     }
 
-    // The changer hangs off `cleaned`, which never changes, so a new model
-    // in front does not need a new changer behind.
+    // The changer hangs off `guarded`, which never changes, so a new stage in
+    // front does not need a new changer behind.
     if (this.chain && this.chainEffect === choice.effect) return;
-    const chain = await effectChain(this.context, this.cleaned, choice.effect);
-    if (this.closed) {
-      chain.close();
-      return;
-    }
+    const chain = await effectChain(this.context, this.guarded, choice.effect);
+    if (this.closed) return chain.close();
     chain.output.connect(this.outlet);
     this.chain?.close();
     this.chain = chain;

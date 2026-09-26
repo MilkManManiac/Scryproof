@@ -190,6 +190,67 @@ const RUN = (model, names) => `(async () => {
   return out;
 })()`;
 
+/**
+ * Runs in the page: the loudness guard (`web/public/worklets/loudness-guard.js`,
+ * made as `loudness-guard.ts` makes it) on four seconds of made-up talking with
+ * a knock at 3 s, in real time. Unlike the model, the guard is plain
+ * arithmetic, so a made-up knock is a fair test of it; the real recording was
+ * measured in the lab (docs/HANDOFF.md, 2026-09-26). Returns the peak and
+ * loudness of the talking and of the knock, before and after, in dBFS.
+ */
+const GUARD_RUN = `(async () => {
+  const rate = 48000;
+  const input = new Float32Array(rate * 4);
+  for (let n = 0; n < input.length; n += 1) {
+    const t = n / rate;
+    const syllable = 0.5 + 0.5 * Math.sin(2 * Math.PI * 4 * t);
+    input[n] = 0.03 * syllable * (Math.sin(2 * Math.PI * 150 * t) + 0.6 * Math.sin(2 * Math.PI * 300 * t) + 0.3 * Math.sin(2 * Math.PI * 450 * t));
+    if (t >= 3 && t < 3.08) input[n] += 0.9 * Math.exp(-(t - 3) * 40) * Math.sin(2 * Math.PI * 80 * (t - 3));
+  }
+  const context = new AudioContext({ sampleRate: rate });
+  await context.resume();
+  await context.audioWorklet.addModule('/worklets/loudness-guard.js');
+  const guard = new AudioWorkletNode(context, 'loudness-guard', {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit',
+    processorOptions: { headroomDb: 14 },
+  });
+  const buffer = context.createBuffer(1, input.length, rate);
+  buffer.copyToChannel(input, 0);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const taken = [];
+  const tap = context.createScriptProcessor(1024, 1, 1);
+  tap.onaudioprocess = (event) => taken.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+  const hush = context.createGain();
+  hush.gain.value = 0;
+  source.connect(guard).connect(tap).connect(hush).connect(context.destination);
+  const ended = new Promise((done) => (source.onended = done));
+  source.start();
+  await ended;
+  await new Promise((wait) => setTimeout(wait, 300));
+  await context.close();
+  const out = new Float32Array(taken.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of taken) { out.set(part, at); at += part.length; }
+  // The tap starts a block or two after the source; line the two up on the talking.
+  let lag = 0;
+  for (; lag < 8192 && Math.abs(out[lag]) < 1e-6; lag += 1);
+  let first = 0;
+  for (; first < 8192 && Math.abs(input[first]) < 1e-6; first += 1);
+  const aligned = out.subarray(lag - first);
+  const db = (value) => 20 * Math.log10(value + 1e-12);
+  const measure = (samples, from, to) => {
+    let peak = 0, sum = 0;
+    const part = samples.subarray(Math.round(from * rate), Math.round(to * rate));
+    for (const sample of part) { peak = Math.max(peak, Math.abs(sample)); sum += sample * sample; }
+    return { peak: db(peak), rms: db(Math.sqrt(sum / part.length)) };
+  };
+  return {
+    talkBefore: measure(input, 1, 2.9), talkAfter: measure(aligned, 1, 2.9),
+    knockBefore: measure(input, 2.99, 3.1), knockAfter: measure(aligned, 2.99, 3.1),
+  };
+})()`;
+
 const PROBE = `(() => { try { new WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0])); return true; } catch { return false; } })()`;
 
 /* ---------------------------------- checks --------------------------------- */
@@ -245,7 +306,6 @@ try {
       return [name, new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)];
     }),
   );
-  page.close();
 
   mkdirSync(outDir, { recursive: true });
   for (const name of names) {
@@ -264,6 +324,13 @@ try {
     const changed = results.noise.some((sample, index) => Math.abs(sample - (clips.noise[index] ?? 0)) > 1e-4);
     check(changed, 'the model ran: what came out is not what went in');
   }
+  const guarded = await page.evaluate(GUARD_RUN);
+  const fmt = (level) => `peak ${level.peak.toFixed(1)}, loudness ${level.rms.toFixed(1)}`;
+  console.log(`      talking  before ${fmt(guarded.talkBefore)}   after ${fmt(guarded.talkAfter)}`);
+  console.log(`      knock    before ${fmt(guarded.knockBefore)}   after ${fmt(guarded.knockAfter)}`);
+  check(Math.abs(guarded.talkAfter.rms - guarded.talkBefore.rms) < 1, 'the loudness guard leaves talking within 1 dB');
+  check(guarded.knockAfter.peak < -11 && guarded.knockBefore.peak > -4, 'the loudness guard holds a knock near full scale under -11 dBFS');
+  page.close();
   if (clips.knock) check(settled(results.knock) - settled(clips.knock) < -30, "the ring after a knock is at least 30 dB quieter");
   if (clips.speech) check(rmsDb(results.speech) - rmsDb(clips.speech) > -6, 'speech comes through: within 6 dB of what went in');
   console.log(`      before and after written to ${outDir}`);
@@ -275,6 +342,8 @@ try {
     .then(() => false)
     .catch(() => true);
   check(refused, 'under the old policy the model refuses to start instead of half-running');
+  const oldGuard = await old.evaluate(GUARD_RUN).catch(() => null);
+  check(oldGuard !== null && oldGuard.knockAfter.peak < -11, 'the loudness guard still works under the old policy (no WebAssembly in it), so desktop apps before 0.5.4 get it');
   old.close();
 } finally {
   current.close();

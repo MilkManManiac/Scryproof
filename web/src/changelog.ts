@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-guard',
+    date: '2026-09-26',
+    title: 'No more mic blasts',
+    notes: [
+      'New: the loudness guard. When someone knocks, bumps or grabs their microphone, it comes through about as loud as a word, not a blast. Normal talking passes untouched.',
+      'It works on both ends: on your microphone before anyone hears it, and on every voice you hear, so even a friend on an older version cannot blast you. It is on for everyone; the switch is in Voice settings.',
+      'Fixed: Strong noise suppression never actually switched on in calls after yesterday\'s update, and while it was chosen, neither did the voice changers. You got Standard and your own voice instead, and nothing said so. Both work now.',
+    ],
+  },
+  {
     id: '2026-09-26-bar',
     date: '2026-09-26',
     title: 'Soundboard up front, a clearer bottom bar, and Loaf v2',
