@@ -141,6 +141,24 @@ try {
   check('the window is at app://scryproof', (await evaluate('location.origin')) === 'app://scryproof');
   check('it is a secure context, with WebCrypto and IndexedDB', await evaluate(`isSecureContext && Boolean(crypto.subtle) && Boolean(window.indexedDB)`));
   check('the sign-in screen drew', Boolean(await until(`document.querySelector('input[type=password]') !== null`)));
+  /* Strong noise suppression is WebAssembly, and the loudness guard a worklet: both have to be allowed here. */
+  check('the page can compile WebAssembly, so Strong noise suppression runs (shell 0.5.4)', await evaluate(`
+    (() => { try { new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])); return true; } catch { return false; } })()
+  `));
+  check('the loudness guard loads in the app', await evaluate(`
+    (async () => {
+      const context = new AudioContext({ sampleRate: 48000 });
+      try {
+        await context.audioWorklet.addModule('/worklets/loudness-guard.js');
+        new AudioWorkletNode(context, 'loudness-guard');
+        return true;
+      } catch {
+        return false;
+      } finally {
+        void context.close();
+      }
+    })()
+  `));
   check('the page was told which server it talks to', (await evaluate('window.scryproofDesktop.server')) === new URL(SERVER).origin);
 
   /* Signing in: through the forwarder, cookie kept by the app. */
