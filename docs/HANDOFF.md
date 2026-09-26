@@ -2942,3 +2942,63 @@ microphone back on. Needs a review and Wes's word before it ships.
 **From the group's ideas channel, 2026-09-25 (not built):** FullLoaf: "share
 game when you share screen, or have the option to do either screen or
 game", and "different sounds for joining, calling, dm, and text channel".
+
+## IN PROGRESS 2026-09-25 night: the mic-knock blast (Wes: "its better, but def still happens... really research how we could solve this")
+
+**Measured on Wes's recording** (`Videos\2026-09-25 20-33-20.mkv`; the working
+copy is `full.wav` in the session scratchpad `rec\`; recut it with ffmpeg if
+it's gone):
+- Normal speech: 10 ms loudness median -33 dBFS, 90th percentile -22.
+- Worst blast at 12.70 s: 10 ms loudness -6 dBFS, peak -0.6 dBFS. That is
+  ~27 dB over normal talk. Energy: 19% at 60-100 Hz, 37% at 100-150 Hz,
+  plus a broadband burst from 2 to 13 kHz lasting ~120 ms (a plosive pop or
+  a rub?). A speech burst follows it.
+- Knock thump at 18.66 s: **86% of its energy at 60-100 Hz, peaking at
+  79 Hz.** Speech peaks at 140-180 Hz. A 100 Hz high-pass alone should take
+  most of a pure knock.
+- RNNoise (live now) removes the ring after ~250 ms but passes that first
+  quarter second.
+
+**Research (subagent, sources in the transcript):**
+- No app publishes a fix for the leading edge. Krisp is documented as not
+  handling "very loud or irregular" sounds.
+- Chrome removed its own keyboard-click suppressor (M131) and every `goog*`
+  constraint (Chrome 134).
+- `autoGainControl: true` is AGC2. Its limiter only guards near 0 dBFS and
+  has no look-ahead, so AGC can boost a hot mic's knock. Mumble's lesson:
+  only let gain rise during speech.
+- DynamicsCompressorNode is not a brick-wall limiter: 6 ms pre-delay and
+  automatic makeup gain.
+- DeepFilterNet3 has a web build (mezonai/mezon-noise-suppression), but it
+  is ~24 MB, adds 40 ms, and loads from `blob:` URLs our CSP blocks. It is
+  not proven better on thumps.
+- Hardware: Windows Mic Boost to 0 dB, a shock mount, sleeve the arm springs.
+
+**Plan being tested (ranked):**
+1. Sender side, after RNNoise and before encryption: a 100 Hz high-pass
+   plus our own look-ahead limiter ("loudness guard": learns the person's
+   talking level, ceiling = level + N dB, 5 ms look-ahead, 120 ms release),
+   possibly with a transient ducker.
+2. The same guard on the listener side, per incoming voice, so an old
+   client or a broken setup can't blast anyone.
+3. Only if needed: DeepFilterNet3.
+
+**State of the code (uncommitted, untested):**
+`web/public/worklets/loudness-guard.js` is written. Its header claims a
+twin `guardBlock` in `web/src/lib/loudness-guard.ts` that does NOT exist
+yet: write it (the pattern is `voice-effects.ts` `shiftPitch`) or drop the
+claim. The lab script is `lab\lab.mjs` in the session scratchpad: a copy of
+`scripts/noise-check.mjs` with a chain-configurable runner (highpass,
+rnnoise, compressor, guard). Copy it into `scripts/` to run; it needs
+`web/dist` built and a `CANDIDATES` JSON env var. **The first lab run wrote
+no output and printed nothing**; debug that first (probably the
+`/worklets/` path or an exception swallowed by the `tail`).
+
+**Next:** get the lab producing A-F wavs. Measure each event's peak and
+10 ms loudness, and the speech median (it must not move more than ~1 dB).
+Pick the chain, wire it into `MicProcessor`
+(microphone, high-pass, model, guard, changer), and add the per-voice guard
+on the receive mix in `voice-audio.ts`. Extend `test:noise`. Then show Wes
+before and after wavs of the 12.70 s blast. Tell Seth about Mic Boost and
+Automatic volume. Consider making AGC default off, or letting gain rise
+only during speech.
