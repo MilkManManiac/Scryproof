@@ -5848,12 +5848,58 @@ kbd {
   .main-topic {
     display: none;
   }
+  /* Settings: the side menu becomes a strip of tabs across the top and the
+     page gets the whole width. As a 150px column it left the page about
+     200px, and the Delete button, the role tabs and the colours ran off
+     the right edge. */
+  .settings {
+    flex-direction: column;
+    gap: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
   .settings-nav {
-    width: 150px;
-    flex-basis: 150px;
+    width: auto;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .settings-nav-title,
+  .settings-nav-spacer {
+    display: none;
+  }
+  .settings-nav-item {
+    flex: none;
+    white-space: nowrap;
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+  /* Close is last in the menu; on the strip it comes first, where a way
+     back is looked for. */
+  .settings-nav-spacer + .settings-nav-item {
+    order: -1;
+    color: var(--accent-bright);
+  }
+  .settings-nav-spacer + .settings-nav-item::before {
+    content: '\2039  ';
+    white-space: pre;
   }
   .settings-content {
-    padding: 20px 16px 60px;
+    padding: 20px 16px calc(60px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+  .settings-heading {
+    font-size: 24px;
   }
 }
 
@@ -6802,7 +6848,9 @@ kbd {
   }
   /* The board of faces opens from a button that is no longer at the right
      edge, so it becomes a sheet like the emoji picker. */
-  .spawner {
+  .spawner,
+  .spawner.soundboard,
+  .voice-dock .spawner {
     position: fixed;
     top: auto;
     right: 8px;
@@ -6810,5 +6858,87 @@ kbd {
     left: 8px;
     z-index: 60;
     width: auto;
+  }
+
+  /* The call buttons shrink together to fit the narrowest phone rather than
+     pushing Leave off the edge. */
+  .call-controls {
+    align-self: stretch;
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .call-button {
+    flex: 0 1 44px;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    aspect-ratio: 1;
+  }
+  .call-button.hang-up {
+    flex-basis: 56px;
+    aspect-ratio: 56 / 44;
+  }
+  /* Soundboard and quality sit in a wrapper that anchors their popovers;
+     the wrapper takes the button's share and the button fills it. */
+  .call-controls > .call-quality-anchor {
+    flex: 0 1 44px;
+    min-width: 0;
+  }
+  .call-quality-anchor > .call-button {
+    width: 100%;
+  }
+  /* Thumb-sized. The desktop's 22 to 30px targets are a mouse's; Apple
+     asks 44, Google 48. The header and the drawers are where a thumb goes
+     all day. Minimums, so anything already bigger stays as it was. */
+  .main-header .icon-button,
+  .sidebar-header .icon-button,
+  .dock .icon-button,
+  .user-panel .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .members-open {
+    min-height: 44px;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+  .channel,
+  .member,
+  .dm-row {
+    min-height: 44px;
+  }
+  .category-label {
+    min-height: 36px;
+  }
+  .reaction {
+    min-height: 32px;
+  }
+
+  /* Searching takes the whole header: the box, and an X to put it away.
+     Beside the channel name and the member count it printed over both. */
+  .main-header.searching > :not(.dock-open):not(.main-actions),
+  .main-header.searching .main-actions > :not(.search-box):not(.search-toggle) {
+    display: none;
+  }
+  .main-header.searching .main-actions {
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
+  .main-header.searching .search-box {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  /* The instruments wrap into rows instead of each stat squeezing into a
+     column of three lines. */
+  .connection-panel {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 6px 12px;
+  }
+  .connection-stat {
+    white-space: nowrap;
   }
 }

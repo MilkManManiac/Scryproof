@@ -191,6 +191,11 @@ function Shell() {
   // Except @ with no conversation open: that leaves the list of them showing,
   // since an empty page is not where anyone tapping @ was going.
   useEffect(() => setDock(dms.active && !dms.openId && phone ? 'left' : null), [dms.active]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On a phone the results live in the right-hand drawer, which nothing
+  // opened: Enter did a search nobody could see.
+  useEffect(() => {
+    if (phone && searchQuery) setDock('right');
+  }, [phone, searchQuery]);
   useEffect(() => {
     if (!phone) setDock(null);
   }, [phone]);
@@ -315,7 +320,7 @@ function Shell() {
             <DmPane />
           ) : server && channel ? (
             <>
-              <header className="main-header">
+              <header className={searchOpen ? 'main-header searching' : 'main-header'}>
                 <DockButton />
                 <div className="main-title">
                   <span className="channel-sigil">{channel.type === 'voice' ? '♫' : '#'}</span>
@@ -356,11 +361,11 @@ function Shell() {
                   {channel.type === 'text' ? (
                     <button
                       type="button"
-                      className="icon-button"
-                      title="Search (Ctrl+F)"
+                      className="icon-button search-toggle"
+                      title={phone && searchOpen ? 'Close search' : 'Search (Ctrl+F)'}
                       onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
                     >
-                      &#128269;
+                      {phone && searchOpen ? '✕' : '🔍'}
                     </button>
                   ) : null}
                   {channel.type === 'text' ? (
@@ -416,7 +421,14 @@ function Shell() {
         </main>
 
         {server && !dms.active ? (
-          <div className={dock === 'right' ? 'dock right open' : 'dock right'}>
+          <div
+            className={dock === 'right' ? 'dock right open' : 'dock right'}
+            // A result in the same channel changes no selection, so the drawer
+            // would stay open over the message it just jumped to.
+            onClickCapture={(event) => {
+              if (phone && (event.target as Element).closest('.search-result')) setDock(null);
+            }}
+          >
             {searchQuery ? (
               <SearchResults server={server} query={searchQuery} onClose={closeSearch} />
             ) : (
