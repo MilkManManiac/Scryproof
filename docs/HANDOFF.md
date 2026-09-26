@@ -3157,7 +3157,7 @@ staff to his horns; new: leaves falling from the oak. Web tests 408.
 ![Loaf v2, the new painting](shots/theme-loaf2.png)
 ![The scene alone](shots/theme-loaf2-scene.png)
 
-## 2026-09-26 evening: the phone pass (committed, NOT deployed)
+## LIVE 2026-09-26 17:55 ET: the phone pass (client 1790459634095)
 
 Wes: "Layout issues are the main problems right now. Also when I'm on my app
 I can't see the other servers I'm in." Then: "lets get to building and

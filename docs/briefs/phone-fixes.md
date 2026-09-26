@@ -16,8 +16,8 @@ Decisions already made that frame this: no Apple developer fee, so the PWA *is*
 the iPhone app for good; Android may later get a Capacitor build of this same
 code. Every fix here lands on both.
 
-**Status, 2026-09-26 evening: all 13 built and committed (d302bb4, e4b02c1,
-1dd2d7f), not deployed.** Two things turned up while building that the first
+**Status, 2026-09-26 evening: all 13 built and LIVE 17:55 ET (d302bb4, e4b02c1,
+1dd2d7f; client 1790459634095).** Two things turned up while building that the first
 tour missed: search results on a phone went into a drawer nothing opened, so
 a search showed nothing; and a dialog opened from the drawer lived inside the
 drawer. Both fixed. See docs/HANDOFF.md for the summary.
