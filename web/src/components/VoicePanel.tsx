@@ -30,6 +30,8 @@ import { useVoice } from '../state/useVoice';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
 import { CallQuality } from './CallQuality';
 import { VoiceSettings } from './VoiceSettings';
+import { SoundBoard } from './SoundBoard';
+import { MuteBanner } from './MuteStatus';
 import {
   CameraGlyph,
   ExpandGlyph,
@@ -39,6 +41,7 @@ import {
   MicGlyph,
   ScreenGlyph,
   SlidersGlyph,
+  SoundboardGlyph,
 } from './glyphs';
 
 /**
@@ -218,6 +221,7 @@ export function VoiceStage(
   const [focused, setFocused] = useState<string | null>(null);
   const [picture, setPicture] = useState<Picture | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const focusFrame = useRef<HTMLDivElement>(null);
   const [gridBox, grid] = useBoxSize();
@@ -235,6 +239,10 @@ export function VoiceStage(
   const live = here && mine;
   const joining = mine && !here && voice.phase === 'connecting';
   const connected = live && voice.phase === 'connected';
+  // The soundboard, here as well as in the card by your name: a server call's,
+  // once its track is up, and not while a moderator has you muted.
+  const boardServer = myState?.serverId ? state.servers[myState.serverId] : undefined;
+  const boardReady = connected && Boolean(boardServer) && voice.soundboard && !myState?.serverMute;
 
   // Timed out, the token request is refused, so offering Join would only
   // produce an error. Leave stays: a timeout should not trap anyone in a room.
@@ -503,26 +511,27 @@ export function VoiceStage(
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
       {live && voice.shareNotice && !voice.sharing ? <p className="voice-stage-error">{voice.shareNotice}</p> : null}
 
+      {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
         {myState ? (
           <>
             <button
               type="button"
-              className={`call-button${myState.selfMute ? ' off' : ''}`}
+              className={`call-button${myState.selfMute || myState.serverMute ? ' off' : ''}`}
               title={myState.selfMute ? 'Unmute' : 'Mute'}
               aria-label={myState.selfMute ? 'Unmute' : 'Mute'}
               onClick={() => updateVoice({ selfMute: !myState.selfMute })}
             >
-              <MicGlyph size={20} off={myState.selfMute} />
+              <MicGlyph size={20} off={myState.selfMute || myState.serverMute} />
             </button>
             <button
               type="button"
-              className={`call-button${myState.selfDeaf ? ' off' : ''}`}
+              className={`call-button${myState.selfDeaf || myState.serverDeaf ? ' off' : ''}`}
               title={myState.selfDeaf ? 'Undeafen' : 'Deafen'}
               aria-label={myState.selfDeaf ? 'Undeafen' : 'Deafen'}
               onClick={() => updateVoice({ selfDeaf: !myState.selfDeaf })}
             >
-              <HeadphonesGlyph size={20} off={myState.selfDeaf} />
+              <HeadphonesGlyph size={20} off={myState.selfDeaf || myState.serverDeaf} />
             </button>
           </>
         ) : null}
@@ -547,6 +556,25 @@ export function VoiceStage(
           >
             <ScreenGlyph size={20} />
           </button>
+        ) : null}
+        {live && boardServer ? (
+          <span className="call-quality-anchor">
+            <button
+              type="button"
+              className={`call-button${boardOpen ? ' on' : ''}`}
+              disabled={!boardReady}
+              title={boardReady ? 'Soundboard: play a sound for everyone' : 'Soundboard (getting ready)'}
+              aria-label="Soundboard"
+              aria-expanded={boardOpen}
+              onMouseDown={(event) => {
+                if (boardOpen) event.stopPropagation();
+              }}
+              onClick={() => setBoardOpen((open) => !open)}
+            >
+              <SoundboardGlyph size={20} />
+            </button>
+            {boardOpen && boardReady ? <SoundBoard server={boardServer} onClose={() => setBoardOpen(false)} /> : null}
+          </span>
         ) : null}
         {live ? (
           <span className="call-quality-anchor">

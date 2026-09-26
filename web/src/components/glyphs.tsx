@@ -123,3 +123,34 @@ export function ExpandGlyph({ size }: { size?: number } = {}) {
     </svg>
   );
 }
+
+/** A cog: settings. */
+export function GearGlyph({ size }: { size?: number } = {}) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M12.66 6.18L14.6 6.82V9.18L12.66 9.82L12.58 10L13.5 11.83L11.83 13.5L10 12.58L9.82 12.66L9.18 14.6H6.82L6.18 12.66L6 12.58L4.17 13.5L2.5 11.83L3.42 10L3.34 9.82L1.4 9.18V6.82L3.34 6.18L3.42 6L2.5 4.17L4.17 2.5L6 3.42L6.18 3.34L6.82 1.4H9.18L9.82 3.34L10 3.42L11.83 2.5L13.5 4.17L12.58 6Z" />
+      <circle cx="8" cy="8" r="2.1" />
+    </svg>
+  );
+}
+
+/** A bell: notifications. */
+export function BellGlyph({ size }: { size?: number } = {}) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M4 11.5V7a4 4 0 018 0v4.5l1.2 1.2H2.8z" />
+      <path d="M6.5 14a1.6 1.6 0 003 0" />
+    </svg>
+  );
+}
+
+/** A speaker with a spark: the soundboard, sounds played into the call. */
+export function SoundboardGlyph({ size }: { size?: number } = {}) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M1.5 6.5h2.2L7 4v8L3.7 9.5H1.5z" />
+      <path d="M12 2.2v3.6M10.2 4h3.6" />
+      <path d="M9.5 8.5a2 2 0 010 2.5M11.5 7a4.5 4.5 0 010 5.5" />
+    </svg>
+  );
+}

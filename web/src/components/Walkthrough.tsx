@@ -145,11 +145,12 @@ export const STEPS: readonly Step[] = [
     body: (
       <>
         <p>
-          Bottom left is you. The gear is your microphone and volume settings, including how loud the soundboard is for
-          you. The note next to it is notifications. In a call, mute, deafen and the soundboard show up here too.
+          Bottom left is you: mute, deafen, and the gear, which has every setting (voice, notifications, themes, your
+          profile). Mute and deafen work before a call too; you join the way you left them. In a call, a card above
+          your name has hang up, camera, screen and the <b>Soundboard</b>.
         </p>
         <p>
-          Click your name for themes, <b>What&apos;s new</b>, and this walkthrough.
+          Click your name for your status, <b>What&apos;s new</b>, and this walkthrough.
         </p>
         <p>
           When a new version is ready, a bar across the top says <b>Reload now</b>, or <b>Restart to install</b> in the

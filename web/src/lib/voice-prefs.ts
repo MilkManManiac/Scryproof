@@ -66,6 +66,17 @@ export interface VoicePrefs {
    */
   soundboardVolume: number;
   sounds: boolean;
+  /** A short tone when you mute, unmute, deafen or undeafen, or a moderator does it to you. */
+  muteSounds: boolean;
+  /** "You're muted" when the microphone hears you talking while you are muted. Measured here, never sent. */
+  mutedTalkNote: boolean;
+  /**
+   * Muted and deafened as you last left them, Discord's way: set from the bar
+   * with no call open, carried into the next call, and kept up to date by
+   * whatever you last chose in one.
+   */
+  selfMute: boolean;
+  selfDeaf: boolean;
   receiveQuality: ReceiveQuality;
   voiceEffect: VoiceEffect;
 }
@@ -88,6 +99,10 @@ const DEFAULTS: VoicePrefs = {
   volumes: {},
   soundboardVolume: 1,
   sounds: true,
+  muteSounds: true,
+  mutedTalkNote: true,
+  selfMute: false,
+  selfDeaf: false,
   receiveQuality: 'auto',
   voiceEffect: 'none',
 };

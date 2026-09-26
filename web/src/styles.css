@@ -683,14 +683,21 @@ select {
 }
 .user-panel-tools {
   display: flex;
+  flex: 0 0 auto;
   gap: 2px;
   margin-left: auto;
 }
 
 .user-panel-identity {
   min-width: 0;
-  flex: 1 1 96px;
+  flex: 1 1 0;
   line-height: 1.25;
+  text-align: left;
+  padding: 2px 4px;
+  border-radius: var(--radius);
+}
+.user-panel-identity:hover {
+  background: var(--panel-3);
 }
 
 .user-panel-name {
@@ -739,6 +746,156 @@ select {
 .icon-button.danger:hover {
   background: rgb(212 97 79 / 0.14);
   color: var(--bad);
+}
+
+/* The bar's own three: microphone, headphones, settings. Bigger and brighter
+   than the small tools elsewhere, because these are reached for all day. */
+.icon-button.panel-tool {
+  width: 34px;
+  height: 34px;
+  color: var(--text-muted);
+}
+.icon-button.panel-tool:hover {
+  color: var(--text);
+}
+
+/* What rises out of the bar: your status and name menu, and settings. */
+.panel-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 8px;
+  right: 8px;
+  z-index: 30;
+  padding: 6px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.panel-menu-heading {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.panel-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-align: left;
+}
+.panel-menu-item:hover,
+.panel-menu-item:focus-visible {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.panel-menu-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+.panel-menu-rule {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line);
+}
+
+/* ------------------------------------------------------------- voice dock */
+
+/* In a call, the card above your name: which call, hang up, and the call's
+   three big buttons. Discord's "Voice connected" panel. */
+.voice-dock {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
+  background: rgb(var(--bg-rgb) / 0.5);
+}
+.voice-dock-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-dock-signal {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgb(227 176 77 / 0.18);
+}
+.voice-dock-signal.live {
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent);
+}
+.voice-dock-words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+.voice-dock-state {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--warn);
+}
+.voice-dock-state.live {
+  color: var(--good);
+}
+.voice-dock-where {
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-dock-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.voice-dock-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 4px 6px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.voice-dock-button:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.voice-dock-button.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--accent-wash);
+}
+.voice-dock-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.voice-dock .spawner {
+  left: 0;
+  right: auto;
 }
 
 /* ------------------------------------------------------------------- main */
@@ -6363,4 +6520,133 @@ kbd {
 
 .sealed-unverified {
   cursor: help;
+}
+
+/* ------------------------------------------------------ muted and deafened */
+
+/* Off is red wherever the microphone and headphones buttons appear. */
+.icon-button.off {
+  background: rgb(212 97 79 / 0.16);
+  color: var(--bad);
+}
+.icon-button.off:hover {
+  background: rgb(212 97 79 / 0.26);
+  color: var(--bad);
+}
+.voice-flag.muted {
+  color: var(--bad);
+}
+
+/* A red strip that says which, and undoes it when clicked. */
+.mute-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  background: var(--bad);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  text-align: left;
+  cursor: pointer;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.mute-banner:hover {
+  filter: brightness(1.08);
+}
+.mute-banner.locked {
+  cursor: default;
+}
+.mute-banner.locked:hover {
+  filter: none;
+}
+.mute-banner-glyph {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.mute-banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mute-banner-action {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* In the panel, its own row above your name. */
+.mute-banner.panel {
+  order: -1;
+  flex: 1 0 100%;
+}
+/* In a call, a pill just above the buttons. */
+.mute-banner.call {
+  align-self: center;
+  border-radius: 999px;
+  padding: 7px 16px;
+  margin-bottom: -8px;
+}
+/* Talking into a muted microphone: the strip pulses while the note is up. */
+.mute-banner.nudge {
+  animation: mute-nudge 900ms ease-in-out 3;
+}
+@keyframes mute-nudge {
+  50% {
+    box-shadow: 0 0 0 5px rgb(212 97 79 / 0.35);
+  }
+}
+
+.muted-talk {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 8px 8px 8px 11px;
+  border: 1px solid rgb(212 97 79 / 0.6);
+  border-radius: var(--radius);
+  background: rgb(212 97 79 / 0.16);
+  color: var(--bad);
+  box-shadow: var(--hi);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.muted-talk-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.muted-talk-text strong {
+  color: var(--bad);
+}
+.muted-talk-unmute {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  background: var(--bad);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.muted-talk-unmute:hover {
+  filter: brightness(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mute-banner,
+  .mute-banner.nudge,
+  .muted-talk {
+    animation: none;
+  }
 }

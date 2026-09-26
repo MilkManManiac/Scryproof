@@ -47,6 +47,8 @@ import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { VoiceSession, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
+import { sounds } from '../lib/voice-audio';
+import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
 import { DEVICE_ACCEPTED, on } from '../lib/signals';
 
 export interface State {
@@ -171,6 +173,12 @@ type Action =
 const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
 
 /** What the gateway is told to put this person in. */
+/** Muted and deafened as last left, sent with every join so a call (or a rejoin after a drop) starts that way. */
+const standingVoice = (): { selfMute: boolean; selfDeaf: boolean } => {
+  const { selfMute, selfDeaf } = voicePrefs.get();
+  return { selfMute, selfDeaf };
+};
+
 const intentFor = (place: CallPlace): { channelId: string | null; dmId: string | null } =>
   place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id };
 
@@ -956,6 +964,8 @@ export function StoreProvider({
    */
   const selfRooms = useRef(new Map<string, string>());
   const selfId = useRef<string | null>(null);
+  /** This person's own voice entry in the call this device is in, as last announced. */
+  const ownVoice = useRef<VoiceState | null>(null);
   // Read inside the long-lived gateway callback, which is created once and
   // would otherwise be looking at whatever was selected when it was made.
   const openChannel = useRef<string | null>(null);
@@ -982,8 +992,32 @@ export function StoreProvider({
   // Lets `npm run test:voice` ask a real browser what it actually decoded.
   // Dev builds only; Vite removes the branch from production.
   if (import.meta.env.DEV) {
-    Object.assign(window, { __voice: voice, __voicePrefs: voicePrefs });
+    Object.assign(window, { __voice: voice, __voicePrefs: voicePrefs, __mutedTalkNote: mutedTalkNote, __ownVoice: () => ownVoice.current });
   }
+
+  // "You're muted", for someone talking into a muted microphone. The level is
+  // the gate's own, read from a copy of the microphone that goes only to a
+  // meter on this device; nothing is sent while muted, this included.
+  useEffect(() => {
+    const watch = new MutedTalkWatch();
+    const timer = setInterval(() => {
+      const own = ownVoice.current;
+      const prefs = voicePrefs.get();
+      const watching =
+        prefs.mutedTalkNote &&
+        currentCall.current !== null &&
+        voice.getSnapshot().phase === 'connected' &&
+        own !== null &&
+        own.selfMute &&
+        !own.selfDeaf &&
+        !own.serverMute &&
+        !own.serverDeaf;
+      const loud = watching && voice.micLevel() >= talkingLevel(prefs.thresholdDb);
+      if (watch.feed(Date.now(), loud, watching)) mutedTalkNote.show();
+      else if (!watching && mutedTalkNote.visible()) mutedTalkNote.hide();
+    }, WATCH_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [voice]);
 
   useEffect(() => {
     if (!state.bootstrapped || !state.user) return;
@@ -1108,7 +1142,7 @@ export function StoreProvider({
         const place = currentCall.current;
         if (place) {
           void voice.join(place, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
+            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
           );
         }
       }
@@ -1127,6 +1161,18 @@ export function StoreProvider({
         const left = room === null ? selfRooms.current.get(key) : undefined;
         if (room === null) selfRooms.current.delete(key);
         else selfRooms.current.set(key, room);
+
+        // A tone when mute or deafen changes, yours or a moderator's, like
+        // Discord. Only within one call: joining somewhere new is not a change.
+        const before = ownVoice.current;
+        if (room === null) {
+          if (before && voiceRoomOf(before) === left) ownVoice.current = null;
+        } else {
+          ownVoice.current = event.d;
+          const cue = before && voiceRoomOf(before) === room ? muteCue(before, event.d) : null;
+          const prefs = voicePrefs.get();
+          if (cue && currentCall.current && prefs.muteSounds) sounds[cue](prefs.outputVolume);
+        }
 
         if (room === null) {
           // Moved out by a moderator, removed from the server, or refused
@@ -1295,7 +1341,7 @@ export function StoreProvider({
       // The gateway takes this person out of any other call as it puts them
       // in this one: one call at a time, a server's or a conversation's.
       void voice.join(place, () =>
-        gatewayRef.current?.send({ t: 'voice_state', d: intentFor(place) }),
+        gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
       );
     },
     [voice],
@@ -1312,6 +1358,11 @@ export function StoreProvider({
 
   const updateVoice = useCallback(
     (patch: { selfMute?: boolean; selfDeaf?: boolean; sharingScreen?: boolean; cameraOn?: boolean }) => {
+      // Remembered either way, so the next call starts as this one was left.
+      const remembered: { selfMute?: boolean; selfDeaf?: boolean } = {};
+      if (patch.selfMute !== undefined) remembered.selfMute = patch.selfMute;
+      if (patch.selfDeaf !== undefined) remembered.selfDeaf = patch.selfDeaf;
+      if (Object.keys(remembered).length) voicePrefs.set(remembered);
       const place = currentCall.current;
       if (!place) return;
       gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...patch } });

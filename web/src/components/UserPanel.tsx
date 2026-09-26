@@ -1,28 +1,37 @@
 /**
- * Who you are, and the controls you reach for most: presence, mute, deafen.
- * Signing out lives in the menu behind your name, because it is rare and the
- * bar is narrow.
+ * Who you are, and the controls you reach for most, laid out the way Discord
+ * does it so nobody has to learn it: your face and name, then microphone,
+ * headphones and settings. While you are in a call, the card above
+ * (`VoiceDock.tsx`) holds the call's own buttons: leave, camera, screen,
+ * soundboard.
  *
- * Mute and deafen here are the client's own state, sent to the server so other
+ * Wes, 2026-09-26: the old bar's marks were "hard to see and aren't
+ * intuitive" (a music note meant notifications, the gear meant only voice
+ * settings, and mute and deafen vanished outside a call). Now every mark is
+ * drawn, the gear holds every setting, and mute and deafen are always there:
+ * outside a call they set how the next one starts.
+ *
+ * Mute and deafen are the client's own state, sent to the server so other
  * members see it. Nothing in this panel grants anything; it only reports.
  */
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { PresenceStatus } from '@scryproof/shared';
 
 import { buildLabel, isDesktop } from '../lib/desktop';
 import { canInstall, install, subscribeInstall } from '../lib/install';
+import { voicePrefs } from '../lib/voice-prefs';
 import { openWalkthrough } from '../lib/walkthrough';
 import { hasUnread, subscribeUnread } from '../lib/whats-new';
 import { useStore } from '../state/store';
-import { useVoice } from '../state/useVoice';
 import { Avatar } from './Avatar';
-import { VoiceGlyph } from './glyphs';
+import { GearGlyph, HeadphonesGlyph, MicGlyph } from './glyphs';
+import { MuteBanner, MutedTalkNote } from './MuteStatus';
 import { NotifySettings } from './NotifySettings';
 import { useProfileCard } from './ProfileCard';
 import { ProfileSettings } from './ProfileSettings';
-import { SoundBoard } from './SoundBoard';
 import { ThemePicker } from './ThemePicker';
+import { VoiceDock } from './VoiceDock';
 import { VoiceSettings } from './VoiceSettings';
 import { NewsCard, WhatsNew } from './WhatsNew';
 import { AccountSettings } from './settings/AccountSettings';
@@ -35,33 +44,65 @@ const STATUS_LABEL: Record<PresenceStatus, string> = {
   offline: 'Invisible',
 };
 
+type Dialog = 'audio' | 'notify' | 'profile' | 'account' | 'blocked' | 'themes' | 'news';
+
+/** A menu that rises out of the bar, and shuts on a click anywhere else or Escape. */
+function PanelMenu({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) close.current();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close.current();
+    };
+    const timer = setTimeout(() => window.addEventListener('mousedown', onDown), 0);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+  return (
+    <div className="panel-menu" ref={box} role="menu" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({ children, title, onClick }: { children: ReactNode; title?: string; onClick: () => void }) {
+  return (
+    <button type="button" className="panel-menu-item" role="menuitem" title={title} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
 export function UserPanel() {
-  const { state, setPresence, signOut, updateVoice, leaveVoice } = useStore();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [audioOpen, setAudioOpen] = useState(false);
-  const [notifyOpen, setNotifyOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [blockedOpen, setBlockedOpen] = useState(false);
-  const [themesOpen, setThemesOpen] = useState(false);
-  const [newsOpen, setNewsOpen] = useState(false);
-  const [boardOpen, setBoardOpen] = useState(false);
-  const call = useVoice();
+  const { state, setPresence, signOut, updateVoice } = useStore();
+  const [menu, setMenu] = useState<'you' | 'settings' | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
   const card = useProfileCard();
   const installable = useSyncExternalStore(subscribeInstall, canInstall) && !isDesktop;
   const news = useSyncExternalStore(subscribeUnread, hasUnread);
+  const standingMute = useSyncExternalStore(voicePrefs.subscribe, () => voicePrefs.get().selfMute);
+  const standingDeaf = useSyncExternalStore(voicePrefs.subscribe, () => voicePrefs.get().selfDeaf);
 
   const user = state.user;
   if (!user) return null;
 
   const myVoice = Object.values(state.voiceStates).find((voice) => voice.userId === user.id);
   const status = state.presences[user.id] ?? 'online';
-  // The board belongs to the server whose call you are in, which need not be
-  // the one on screen. Offered only once its track is up, and not while a
-  // moderator has you muted; the session refuses in both cases anyway.
-  // A call in a conversation has no server, so no board.
-  const boardServer = myVoice?.serverId ? state.servers[myVoice.serverId] : undefined;
-  const boardReady = Boolean(boardServer) && call.soundboard && !myVoice?.serverMute;
+
+  // In a call, the buttons show the call; out of one, how the next call starts.
+  const selfMute = myVoice ? myVoice.selfMute : standingMute;
+  const selfDeaf = myVoice ? myVoice.selfDeaf : standingDeaf;
+  const micOff = selfMute || Boolean(myVoice?.serverMute);
+  const earsOff = selfDeaf || Boolean(myVoice?.serverDeaf);
+  const later = myVoice ? '' : ' (for your next call)';
 
   const connectionLabel =
     state.connection === 'open'
@@ -72,220 +113,156 @@ export function UserPanel() {
           ? 'Connecting'
           : 'Disconnected';
 
+  const open = (next: Dialog) => {
+    setDialog(next);
+    setMenu(null);
+  };
+  const shut = () => setDialog(null);
+
   return (
     <>
-    {news && !newsOpen ? <NewsCard onOpen={() => setNewsOpen(true)} /> : null}
-    <div className="user-panel" style={{ position: 'relative' }}>
-      <button
-        type="button"
-        className="who"
-        title="Your profile"
-        onClick={(event) => card.show(user, event.currentTarget, state.selectedServerId)}
-      >
-        <Avatar user={user} small presence={state.connection === 'open' ? status : 'offline'} />
-      </button>
-
-      <button
-        type="button"
-        className="user-panel-identity"
-        style={{ textAlign: 'left' }}
-        onClick={() => setMenuOpen((open) => !open)}
-        title={news ? 'Something new since you were last here. Status, themes and sign out.' : 'Status and sign out'}
-      >
-        <div className="user-panel-name">
-          {user.displayName}
-        </div>
-        <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
-      </button>
-
-      <span className="user-panel-tools">
-      {myVoice ? (
-        <>
-          <button
-            type="button"
-            className={myVoice.selfMute ? 'icon-button danger on' : 'icon-button'}
-            title={myVoice.selfMute ? 'Unmute' : 'Mute'}
-            onClick={() => updateVoice({ selfMute: !myVoice.selfMute })}
-          >
-            {myVoice.selfMute ? '\u{1F507}' : '\u{1F3A4}'}
-          </button>
-          <button
-            type="button"
-            className={myVoice.selfDeaf ? 'icon-button danger on' : 'icon-button'}
-            title={myVoice.selfDeaf ? 'Undeafen' : 'Deafen'}
-            onClick={() => updateVoice({ selfDeaf: !myVoice.selfDeaf })}
-          >
-            {'\u{1F3A7}'}
-          </button>
-          {boardReady ? (
-            <button
-              type="button"
-              className={boardOpen ? 'icon-button on' : 'icon-button'}
-              title="Soundboard"
-              aria-label="Soundboard"
-              onClick={() => setBoardOpen((open) => !open)}
-            >
-              <VoiceGlyph />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="icon-button danger"
-            title="Leave voice"
-            onClick={() => leaveVoice()}
-          >
-            &#10005;
-          </button>
-        </>
-      ) : null}
-
-      <button
-        type="button"
-        className="icon-button"
-        title="Notifications"
-        onClick={() => setNotifyOpen(true)}
-      >
-        &#9836;
-      </button>
-
-      <button
-        type="button"
-        className="icon-button"
-        title="Voice and audio settings"
-        onClick={() => setAudioOpen(true)}
-      >
-        &#9881;
-      </button>
-      </span>
-
-      {boardOpen && boardReady && boardServer ? (
-        <SoundBoard server={boardServer} onClose={() => setBoardOpen(false)} />
-      ) : null}
-      {audioOpen ? <VoiceSettings onClose={() => setAudioOpen(false)} /> : null}
-      {notifyOpen ? <NotifySettings onClose={() => setNotifyOpen(false)} /> : null}
-      {profileOpen ? <ProfileSettings onClose={() => setProfileOpen(false)} /> : null}
-      {accountOpen ? <AccountSettings onClose={() => setAccountOpen(false)} /> : null}
-      {blockedOpen ? <BlockedPeople onClose={() => setBlockedOpen(false)} /> : null}
-      {themesOpen ? <ThemePicker onClose={() => setThemesOpen(false)} /> : null}
-      {newsOpen ? <WhatsNew onClose={() => setNewsOpen(false)} /> : null}
-
-      {menuOpen ? (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 'calc(100% + 4px)',
-            left: 8,
-            right: 8,
-            background: 'var(--bg-raised)',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 'var(--radius)',
-            padding: 4,
-            zIndex: 30,
-            boxShadow: '0 12px 32px #00000066',
-          }}
+      {news && dialog !== 'news' ? <NewsCard onOpen={() => setDialog('news')} /> : null}
+      {myVoice ? <MutedTalkNote onUnmute={() => updateVoice({ selfMute: false })} /> : null}
+      {myVoice ? <VoiceDock mine={myVoice} /> : null}
+      <div className="user-panel" style={{ position: 'relative' }}>
+        <MuteBanner state={myVoice} onChange={updateVoice} where="panel" />
+        <button
+          type="button"
+          className="who"
+          title="Your profile"
+          onClick={(event) => card.show(user, event.currentTarget, state.selectedServerId)}
         >
-          {(Object.keys(STATUS_LABEL) as PresenceStatus[]).map((option) => (
-            <button
-              key={option}
-              type="button"
-              className="channel"
-              onClick={() => {
-                setPresence(option);
-                setMenuOpen(false);
-              }}
-            >
-              <i className={`presence-dot ${option}`} style={{ position: 'static', border: 'none' }} />
-              <span className="channel-name">{STATUS_LABEL[option]}</span>
-            </button>
-          ))}
+          <Avatar user={user} small presence={state.connection === 'open' ? status : 'offline'} />
+        </button>
+
+        <button
+          type="button"
+          className="user-panel-identity"
+          onMouseDown={(event) => {
+            if (menu === 'you') event.stopPropagation();
+          }}
+          onClick={() => setMenu((current) => (current === 'you' ? null : 'you'))}
+          title={news ? 'Something new since you were last here. Status, profile and sign out.' : 'Status, profile and sign out'}
+          aria-expanded={menu === 'you'}
+        >
+          <div className="user-panel-name">
+            {user.displayName}
+            {news ? <i className="news-dot" aria-hidden="true" /> : null}
+          </div>
+          <div className="user-panel-status">{state.connection === 'open' && user.statusText ? user.statusText : connectionLabel}</div>
+        </button>
+
+        <span className="user-panel-tools">
           <button
             type="button"
-            className="channel"
-            onClick={() => {
-              setProfileOpen(true);
-              setMenuOpen(false);
-            }}
+            className={micOff ? 'icon-button panel-tool off' : 'icon-button panel-tool'}
+            title={(selfMute ? 'Unmute' : 'Mute') + later}
+            aria-label={selfMute ? 'Unmute' : 'Mute'}
+            aria-pressed={micOff}
+            onClick={() => updateVoice({ selfMute: !selfMute })}
           >
-            <span className="channel-name">Edit profile</span>
+            <MicGlyph size={20} off={micOff} />
           </button>
           <button
             type="button"
-            className="channel"
-            onClick={() => {
-              setAccountOpen(true);
-              setMenuOpen(false);
-            }}
+            className={earsOff ? 'icon-button panel-tool off' : 'icon-button panel-tool'}
+            title={(selfDeaf ? 'Undeafen' : 'Deafen') + later}
+            aria-label={selfDeaf ? 'Undeafen' : 'Deafen'}
+            aria-pressed={earsOff}
+            onClick={() => updateVoice({ selfDeaf: !selfDeaf })}
           >
-            <span className="channel-name">Account</span>
+            <HeadphonesGlyph size={20} off={earsOff} />
           </button>
           <button
             type="button"
-            className="channel"
-            onClick={() => {
-              setBlockedOpen(true);
-              setMenuOpen(false);
+            className={menu === 'settings' ? 'icon-button panel-tool on' : 'icon-button panel-tool'}
+            title="Settings"
+            aria-label="Settings"
+            aria-expanded={menu === 'settings'}
+            onMouseDown={(event) => {
+              if (menu === 'settings') event.stopPropagation();
             }}
+            onClick={() => setMenu((current) => (current === 'settings' ? null : 'settings'))}
           >
-            <span className="channel-name">Blocked people</span>
+            <GearGlyph size={20} />
           </button>
-          <button
-            type="button"
-            className="channel"
-            title="Choose a theme"
-            onClick={() => {
-              setThemesOpen(true);
-              setMenuOpen(false);
-            }}
-          >
-            <span className="channel-name">Themes</span>
-          </button>
-          <button
-            type="button"
-            className="channel"
-            title="What changed in the last few releases"
-            onClick={() => {
-              setNewsOpen(true);
-              setMenuOpen(false);
-            }}
-          >
-            <span className="channel-name">
+        </span>
+
+        {dialog === 'audio' ? <VoiceSettings onClose={shut} /> : null}
+        {dialog === 'notify' ? <NotifySettings onClose={shut} /> : null}
+        {dialog === 'profile' ? <ProfileSettings onClose={shut} /> : null}
+        {dialog === 'account' ? <AccountSettings onClose={shut} /> : null}
+        {dialog === 'blocked' ? <BlockedPeople onClose={shut} /> : null}
+        {dialog === 'themes' ? <ThemePicker onClose={shut} /> : null}
+        {dialog === 'news' ? <WhatsNew onClose={shut} /> : null}
+
+        {menu === 'settings' ? (
+          <PanelMenu label="Settings" onClose={() => setMenu(null)}>
+            <div className="panel-menu-heading">Settings</div>
+            <MenuItem onClick={() => open('audio')}>Voice and audio</MenuItem>
+            <MenuItem onClick={() => open('notify')}>Notifications</MenuItem>
+            <MenuItem title="Choose a theme" onClick={() => open('themes')}>
+              Themes
+            </MenuItem>
+            <MenuItem onClick={() => open('profile')}>Edit profile</MenuItem>
+            <MenuItem onClick={() => open('account')}>Account</MenuItem>
+            <MenuItem onClick={() => open('blocked')}>Blocked people</MenuItem>
+          </PanelMenu>
+        ) : null}
+
+        {menu === 'you' ? (
+          <PanelMenu label="You" onClose={() => setMenu(null)}>
+            {(Object.keys(STATUS_LABEL) as PresenceStatus[]).map((option) => (
+              <MenuItem
+                key={option}
+                onClick={() => {
+                  setPresence(option);
+                  setMenu(null);
+                }}
+              >
+                <i className={`presence-dot ${option}`} style={{ position: 'static', border: 'none' }} />
+                {STATUS_LABEL[option]}
+                {option === status ? (
+                  <span className="panel-menu-check" aria-label="current">
+                    &#10003;
+                  </span>
+                ) : null}
+              </MenuItem>
+            ))}
+            <div className="panel-menu-rule" />
+            <MenuItem onClick={() => open('profile')}>Edit profile</MenuItem>
+            <MenuItem title="What changed in the last few releases" onClick={() => open('news')}>
               What&apos;s new
               {news ? <i className="news-dot" aria-hidden="true" /> : null}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="channel"
-            title="A short tour of the app, in plain words"
-            onClick={() => {
-              setMenuOpen(false);
-              openWalkthrough();
-            }}
-          >
-            <span className="channel-name">How Scryproof works</span>
-          </button>
-          {installable ? (
-            <button
-              type="button"
-              className="channel"
-              title="Puts Scryproof on your home screen or desktop, in its own window"
+            </MenuItem>
+            <MenuItem
+              title="A short tour of the app, in plain words"
               onClick={() => {
-                setMenuOpen(false);
-                void install();
+                setMenu(null);
+                openWalkthrough();
               }}
             >
-              <span className="channel-name">Install on this device</span>
-            </button>
-          ) : null}
-          <button type="button" className="channel" onClick={() => void signOut()}>
-            <span className="channel-name">Sign out</span>
-          </button>
-          <div className="build-label" title="Which build of Scryproof this is">
-            {buildLabel()}
-          </div>
-        </div>
-      ) : null}
-    </div>
+              How Scryproof works
+            </MenuItem>
+            {installable ? (
+              <MenuItem
+                title="Puts Scryproof on your home screen or desktop, in its own window"
+                onClick={() => {
+                  setMenu(null);
+                  void install();
+                }}
+              >
+                Install on this device
+              </MenuItem>
+            ) : null}
+            <div className="panel-menu-rule" />
+            <MenuItem onClick={() => void signOut()}>Sign out</MenuItem>
+            <div className="build-label" title="Which build of Scryproof this is">
+              {buildLabel()}
+            </div>
+          </PanelMenu>
+        ) : null}
+      </div>
     </>
   );
 }

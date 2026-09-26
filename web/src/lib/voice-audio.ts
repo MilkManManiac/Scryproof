@@ -243,7 +243,7 @@ export class MicGate {
 
   constructor(
     private readonly track: MediaStreamTrack,
-    private readonly rule: () => { mode: 'open' | 'threshold' | 'push'; thresholdDb: number },
+    private readonly rule: () => { mode: 'open' | 'threshold' | 'push'; thresholdDb: number; muted: boolean },
     private readonly onChange: () => void,
     listenTo: MediaStreamTrack = track,
   ) {
@@ -265,7 +265,7 @@ export class MicGate {
 
   private tick(): void {
     this.level = readDb(this.analyser, this.scratch);
-    const { mode, thresholdDb } = this.rule();
+    const { mode, thresholdDb, muted } = this.rule();
     const now = performance.now();
 
     let open: boolean;
@@ -279,9 +279,13 @@ export class MicGate {
 
     if (open !== this.open) {
       this.open = open;
-      this.track.enabled = open;
+      // Muted is off whatever the gate thinks. Without this, pressing the
+      // push-to-talk key, or talking past the threshold, switched a muted
+      // microphone's track back on: mute and the gate share this one flag.
+      if (!muted) this.track.enabled = open;
       this.onChange();
     }
+    if (muted && this.track.enabled) this.track.enabled = false;
   }
 
   close(): void {
@@ -353,8 +357,10 @@ export async function openMeter(
  * nothing to download, nothing to license, and they cannot be mistaken for
  * anybody else's app.
  */
-function chime(notes: number[]): void {
+function chime(notes: number[], level = 1): void {
   const context = audioContext();
+  const peak = 0.12 * Math.min(Math.max(level, 0), 2);
+  if (peak <= 0) return;
   const start = context.currentTime + 0.01;
   notes.forEach((frequency, index) => {
     const oscillator = context.createOscillator();
@@ -363,7 +369,7 @@ function chime(notes: number[]): void {
     oscillator.type = 'sine';
     oscillator.frequency.value = frequency;
     envelope.gain.setValueAtTime(0, at);
-    envelope.gain.linearRampToValueAtTime(0.12, at + 0.015);
+    envelope.gain.linearRampToValueAtTime(peak, at + 0.015);
     envelope.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
     oscillator.connect(envelope).connect(context.destination);
     oscillator.start(at);
@@ -374,6 +380,13 @@ function chime(notes: number[]): void {
 export const sounds = {
   joined: () => chime([523.25, 783.99]),
   left: () => chime([659.25, 440]),
-  muted: () => chime([392]),
-  unmuted: () => chime([587.33]),
+  /*
+   * Mute and deafen, like Discord's: down for off, up for on, deafen a lower
+   * pair than mute so the two can be told apart without looking. `level` is
+   * the output volume, so they are never louder than the call.
+   */
+  muted: (level = 1) => chime([587.33, 392], level),
+  unmuted: (level = 1) => chime([392, 587.33], level),
+  deafened: (level = 1) => chime([392, 261.63], level),
+  undeafened: (level = 1) => chime([261.63, 392], level),
 };

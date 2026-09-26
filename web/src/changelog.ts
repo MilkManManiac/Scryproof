@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-bar',
+    date: '2026-09-26',
+    title: 'Soundboard up front, a clearer bottom bar, and Loaf v2',
+    notes: [
+      'In a call, a card above your name says "Voice connected" and has big Camera, Screen and Soundboard buttons, plus hang up. The Soundboard is also a button under the call itself.',
+      'The bar at the bottom left now reads like Discord: your name, then microphone, headphones and a gear. The gear has every setting: voice, notifications, themes, your profile.',
+      'Mute and deafen work before you join. Mute yourself, join a call, and you arrive muted. You also stay muted if your connection drops and comes back.',
+      'A short tone plays when you mute, unmute, deafen or undeafen, and a note pops up if you talk while muted. Both can be turned off in Voice settings.',
+      'Fixed: with push-to-talk or voice activity on, talking while muted could switch your microphone back on. Muted now means nobody hears you, in every mode.',
+      'New theme, Loaf v2: the party at the campfire under a full moon. Fog rolls through the valley, the fire crackles, the wizard\'s staff casts, birds cross the moon, and the wolf is watching.',
+    ],
+  },
+  {
     id: '2026-09-25-noise',
     date: '2026-09-25',
     title: 'Strong noise suppression',

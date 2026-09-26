@@ -3002,3 +3002,61 @@ on the receive mix in `voice-audio.ts`. Extend `test:noise`. Then show Wes
 before and after wavs of the 12.70 s blast. Tell Seth about Mic Boost and
 Automatic volume. Consider making AGC default off, or letting gain rise
 only during speech.
+
+**Update 2026-09-26 00:30 (mic knock):** the lab ran. The first run hung
+because a 21 s result is too big for one CDP reply; the lab now stashes
+the result on `window` and pulls it back in 500 kB slices. The guard's
+tests are in (`web/src/tests/loudness-guard.test.ts`, loads the shipped
+worklet in Node; the false `guardBlock` claim is gone). Measured on the
+recording: the handling blast at 12.7 s goes from about 27 dB over his
+talking to -20 dBFS (gentle, 14 dB headroom) or -24 (firm, 10 dB), with
+speech moving +0.4 or -1.7 dB. A plain compressor lifted speech 10 dB and
+the ring with it: dropped. The loud moments at 4.0 s and 5.7-5.9 s sit at
+150-500 Hz, voice-shaped, so RNNoise passes them; handling or laughing
+is unknown. Wes has `Videos\Scryproof mic test\` (original, live now,
+gentle, firm) and was asked: gentle or firm, and what were 4 s and 6 s.
+**Not wired into the app yet.**
+
+## 2026-09-26: Loaf v2, the bottom bar, the soundboard up front
+
+Local only, not deployed. Wes: "for now lets go with 3 and go absolutly
+nuts with the effects and alive feel ... make that Loafv2", then "improve
+how the soundbaord works and is found. Make it as easy to find as discord",
+and the bottom left "hard to see and aren't intuitive".
+
+**Loaf v2** (commit ad29f97). Seven rounds of paintings for FullLoaf
+(everything in `Downloads\Campfire theme options\`); he picked the party
+at the fire, then Wes picked the lace-cut silhouettes. `imagegen` gained
+`--image` (paste a picture into Gemini and ask for an edit), which is what
+kept the background identical across the character passes. The effects
+are one Ambient word, `camp` (`camp-scene.ts`), every point in the
+painting's own pixels mapped through the cover arithmetic: stars only where
+the painting is sky (read from the image), moon halo, shooting stars,
+birds, two fog bands and low mist, smoke, fire flicker and sparks, the
+wizard's crystal (motes, and a cast every 10-20 s), the warlock's violet
+wisps, the druid's glow and falling leaves, the wolf's eye (blinks),
+fireflies. `shot.mjs` gained `SETTLE_MS` and `BARE=1`.
+
+![Loaf v2](shots/theme-loaf2.png)
+![Loaf v2, the scene alone](shots/theme-loaf2-scene.png)
+
+**The bottom bar and the voice dock.** Discord's layout: face, name and
+status, then microphone, headphones and a gear (drawn glyphs, 34 px). The
+gear is a menu with every setting; the name is status, profile, What's
+new, the tour, sign out. Mute and deafen show outside a call and are
+remembered (`voicePrefs.selfMute/selfDeaf`), sent with every join and
+every rejoin after a drop (which also fixes a rejoin quietly unmuting
+you). In a call, `VoiceDock.tsx` sits above the bar: Voice connected,
+channel / server, hang up, and big Camera, Screen, Soundboard buttons. The
+soundboard is also a button in the call controls.
+
+**The mute work is reviewed and in** (it was sitting uncommitted): tones,
+the talking-while-muted note, deafen marks in the sidebar, and the fix
+for the gate switching a muted microphone back on. `mute-check.mjs` 10/10,
+`test:voice` 57/57, web tests 398. One change to it: the red "Muted"
+strip by your name now shows only for a moderator's mute, since the
+microphone button itself turns red now.
+
+![In a call](shots/voice-dock.png)
+![The soundboard from the dock](shots/voice-dock-soundboard.png)
+![Muted before joining](shots/user-bar-premuted.png)

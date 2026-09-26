@@ -818,7 +818,7 @@ export class VoiceSession {
     if (track.isMuted) heard.enabled = false;
     this.gate = new MicGate(
       sent,
-      () => ({ mode: voicePrefs.get().inputMode, thresholdDb: voicePrefs.get().thresholdDb }),
+      () => ({ mode: voicePrefs.get().inputMode, thresholdDb: voicePrefs.get().thresholdDb, muted: track.isMuted }),
       () => this.update({ transmitting: this.gate?.open ?? false }),
       heard,
     );

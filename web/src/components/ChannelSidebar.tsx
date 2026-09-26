@@ -29,7 +29,7 @@ import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
 import { useVoice } from '../state/useVoice';
-import { CameraGlyph, ScreenGlyph } from './glyphs';
+import { CameraGlyph, HeadphonesGlyph, MicGlyph, ScreenGlyph } from './glyphs';
 import { useProfileCard } from './ProfileCard';
 
 export function ChannelSidebar({ server }: { server: ServerDetail }) {
@@ -359,9 +359,13 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                         <CameraGlyph />
                                       </span>
                                     ) : null}
-                                    {voice.selfMute || voice.serverMute ? (
-                                      <span className="muted" title="Muted">
-                                        &#128263;
+                                    {voice.selfDeaf || voice.serverDeaf ? (
+                                      <span className="voice-flag muted" title="Deafened">
+                                        <HeadphonesGlyph off />
+                                      </span>
+                                    ) : voice.selfMute || voice.serverMute ? (
+                                      <span className="voice-flag muted" title="Muted">
+                                        <MicGlyph off />
                                       </span>
                                     ) : null}
                                   </span>

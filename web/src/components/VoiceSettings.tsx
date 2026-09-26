@@ -375,6 +375,47 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
           />
         </label>
 
+        <label className="toggle-row">
+          <span>
+            Sounds when I mute or deafen
+            <span className="field-note">
+              A short tone going down for off and up for on, also when a moderator does it.{' '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  sounds.muted(prefs.outputVolume);
+                }}
+              >
+                Hear it
+              </button>
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="perm-switch"
+            checked={prefs.muteSounds}
+            onChange={(event) => voicePrefs.set({ muteSounds: event.target.checked })}
+          />
+        </label>
+
+        <label className="toggle-row">
+          <span>
+            Tell me when I talk while muted
+            <span className="field-note">
+              A short note saying you are muted if your microphone hears you talking. It is measured on this device;
+              nothing is sent while you are muted.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="perm-switch"
+            checked={prefs.mutedTalkNote}
+            onChange={(event) => voicePrefs.set({ mutedTalkNote: event.target.checked })}
+          />
+        </label>
+
         <div className="settings-subhead">Camera</div>
         <select
           className="voice-select"
