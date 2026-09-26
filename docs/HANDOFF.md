@@ -3240,10 +3240,13 @@ Brief: `docs/briefs/push.md`.
   whole vocabulary. One notification per kind (tag `scryproof-<kind>`), the
   newest replacing the last; the icon number counts. Each subscription
   carries the phone's own `mentions` (the mention switch; DMs count as
-  mentions) and `messages` (message sounds not off) settings, migration
-  0025. "New message in a channel" goes to readers whose phone asked for
-  every message and who were not already pinged (`pushToReaders`). No
-  preview text is coming, for channels or DMs.
+  mentions) and `messages` settings, migration 0025. `messages` is its own
+  per-device switch, "Every channel message too" (`prefs.pushEvery`), off by
+  default: Wes said yes to phones defaulting to mentions and DMs only, since
+  the desktop default ('unfocused') would buzz for every message. "New
+  message in a channel" goes to readers whose phone asked for every message
+  and who were not already pinged (`pushToReaders`). No preview text is
+  coming, for channels or DMs.
 - Not proven: a real iPhone (iOS 16.4+ home-screen app) and a real Android.
   First thing after deploy.
 

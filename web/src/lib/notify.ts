@@ -26,9 +26,22 @@ export interface NotifyPrefs {
   mutedChannels: string[];
   /** How loud both sounds are: 1 is as designed, 0 is silent, 2 is twice the level. */
   volume: number;
+  /**
+   * Phone notifications for every channel message, not just mentions and direct
+   * messages. Off by default: a buzz per message in a busy server gets the whole
+   * thing switched off (Wes, 2026-09-26).
+   */
+  pushEvery: boolean;
 }
 
-const DEFAULTS: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1 };
+const DEFAULTS: NotifyPrefs = {
+  mention: true,
+  message: 'unfocused',
+  mutedServers: [],
+  mutedChannels: [],
+  volume: 1,
+  pushEvery: false,
+};
 
 /** A stored volume is trusted only if it is a number on the slider's range. */
 function clampVolume(value: unknown): number {

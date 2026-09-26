@@ -85,9 +85,9 @@ function sameKey(subscription: PushSubscription, key: Uint8Array): boolean {
 }
 
 /**
- * What this device wants to hear about, from the same settings as its in-app
- * sounds: mentions (and direct messages, which count as one), and every other
- * message unless message sounds are off.
+ * What this device wants to hear about: mentions (and direct messages, which
+ * count as one) while the mention switch is on, and every other message only
+ * if this device asked for that too.
  */
 const settings = () => {
   const prefs = notifyPrefs.get();
@@ -95,7 +95,7 @@ const settings = () => {
     mutedServers: prefs.mutedServers,
     mutedChannels: prefs.mutedChannels,
     mentions: prefs.mention,
-    messages: prefs.message !== 'off',
+    messages: prefs.pushEvery,
   };
 };
 

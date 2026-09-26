@@ -25,8 +25,8 @@ export const CHANGELOG: readonly Release[] = [
     title: 'Your phone tells you when someone wants you',
     notes: [
       'Scryproof can now reach your phone when it is closed: a sound, a notification on your lock screen, and a number on the app icon. Turn it on in Settings, Notifications, once on each device.',
-      'The notification only ever says "Someone messaged you", "Someone mentioned you" or "New message in a channel". Never who, where, or what: a locked phone is read by whoever is holding it.',
-      'It follows the notification settings on that phone: mentions and direct messages, every other message unless message sounds are off, and nothing from muted servers or channels.',
+      'The notification only ever says "Someone messaged you" or "Someone mentioned you". Never who, where, or what: a locked phone is read by whoever is holding it.',
+      'Mentions and direct messages only, unless you also turn on "Every channel message too", which adds "New message in a channel". Muted servers and channels stay quiet.',
       'On an iPhone it works in the app on your home screen (Safari, Share, Add to Home Screen), not in a Safari tab. No need to sign out or add it again if it is already there.',
       'Apple and Google only carry a blank wake-up. Nothing arrives on your phone while you are using Scryproof on your computer.',
       'Tapping a notification opens that conversation. Opening the app clears the number.',

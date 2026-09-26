@@ -233,11 +233,9 @@ function PushSection() {
           <span>
             Notify this device
             <span className="field-note">
-              Only ever &ldquo;Someone messaged you&rdquo;, &ldquo;Someone mentioned you&rdquo; or &ldquo;New message
-              in a channel&rdquo;, never who or what, with a sound and a number on the app&rsquo;s icon. It follows
-              this page: mentions and direct messages while the switch above is on, every other message unless
-              &ldquo;Sounds for everything else&rdquo; is off, nothing from muted places. Quiet while you are using
-              Scryproof somewhere else.
+              &ldquo;Someone messaged you&rdquo; or &ldquo;Someone mentioned you&rdquo;, never who or what, with a
+              sound and a number on the app&rsquo;s icon. Mentions follow the switch at the top, muted places stay
+              quiet, and nothing comes while you are using Scryproof somewhere else.
               {problem ? ` ${problem}` : ''}
             </span>
           </span>
@@ -271,6 +269,29 @@ function PushSection() {
           />
         </label>
       )}
+      {availability === 'ready' && on === true ? <EveryMessage /> : null}
     </>
+  );
+}
+
+function EveryMessage() {
+  const [every, setEvery] = useState(notifyPrefs.get().pushEvery);
+  useEffect(() => notifyPrefs.subscribe(() => setEvery(notifyPrefs.get().pushEvery)), []);
+  return (
+    <label className="toggle-row">
+      <span>
+        Every channel message too
+        <span className="field-note">
+          Adds &ldquo;New message in a channel&rdquo; for everything said where you can see it. Busy servers make
+          this a lot of buzzing.
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        className="perm-switch"
+        checked={every}
+        onChange={(event) => notifyPrefs.set({ pushEvery: event.target.checked })}
+      />
+    </label>
   );
 }
