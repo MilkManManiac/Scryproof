@@ -36,6 +36,8 @@ const BLOCK = 90;
 /** One grid square, in pixels, for the height a block reserves before it is drawn. */
 const CELL = 36;
 const COLUMNS = 9;
+/** A screen with no mouse to hover with: a phone or a tablet. */
+const TOUCH = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
 /** The tab for each category: a plain emoji, drawn by the system font like the rest. */
 const TAB_ICON: Record<string, string> = {
@@ -220,10 +222,12 @@ export function ReactionPicker({
   }, [onClose]);
 
   // Focused as soon as the picker opens, so typing works without a click.
+  // Not on a touch screen: there, focus is the on-screen keyboard, which
+  // would cover the grid most people came to tap in.
   // The rest of the categories are drawn on the frame after, so the first
   // paint is only what is on screen.
   useEffect(() => {
-    input.current?.focus();
+    if (!TOUCH) input.current?.focus();
     const frame = requestAnimationFrame(() => setEverything(true));
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -353,7 +357,7 @@ export function ReactionPicker({
     setTone(next);
     saveTone(next);
     setChoosingTone(false);
-    input.current?.focus();
+    if (!TOUCH) input.current?.focus();
   }
 
   function onSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

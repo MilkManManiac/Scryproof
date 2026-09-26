@@ -24,6 +24,8 @@ import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { DmCallButton, DmCallMark, DmCallStage } from './DmCall';
 import { DockButton } from './DockButton';
+import { usePhone } from '../lib/usePhone';
+import { HoldSheet, releaseAfterAction, releaseHold, useHold } from '../lib/hold';
 import { DmPeoplePicker } from './DmPeoplePicker';
 import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
@@ -195,14 +197,26 @@ export function DmPane() {
   /** Per conversation: the message the next thing sent will answer. */
   const [replying, setReplying] = useState<Record<string, string | null>>({});
   const [checkingKeys, setCheckingKeys] = useState(false);
+  const phone = usePhone();
 
   if (!dm) {
+    // On a phone the list is in the drawer, so this screen needs the button
+    // that opens it. Without it @ was a room with no door (Wes, 2026-09-26:
+    // "I can't see the other servers I'm in").
     return (
       <div className="empty">
+        {phone ? (
+          <header className="main-header">
+            <DockButton />
+            <div className="main-title">Direct messages</div>
+          </header>
+        ) : null}
         <div>
           <h2>Direct messages</h2>
           <p>
-            Pick a conversation on the left, or click anyone in a server&rsquo;s member list to start one.
+            {phone
+              ? 'Tap the menu at the top left for your conversations and your servers, or tap anyone in a server’s member list to start one.'
+              : 'Pick a conversation on the left, or click anyone in a server’s member list to start one.'}{' '}
             Everything written here is locked on your device before it is sent. The server stores it and
             cannot read it.
           </p>
@@ -1003,6 +1017,8 @@ function DmRow({
   const [error, setError] = useState<string | null>(null);
   /** One blocked message shown on purpose. It hides again on reload. */
   const [shown, setShown] = useState(false);
+  const phone = usePhone();
+  const { held, bind } = useHold(view.id, phone && !view.deleted && !editing);
   const readable = !view.deleted && view.problem === null && view.text !== null;
   // The sender's own time for this message disagrees with the time the server
   // gave it. The server can move its own stamp; it cannot move the one inside
@@ -1130,8 +1146,70 @@ function DmRow({
 
   const chips = grouped(reactions);
 
+  // The hover tray on a wide screen; on a phone, what holding the message lifts.
+  const actions = (
+    <div
+      className={held ? 'message-actions sheet' : picking ? 'message-actions open' : 'message-actions'}
+      onClickCapture={held ? releaseAfterAction : undefined}
+    >
+      {readable ? (
+        <>
+          <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
+            &#9786;
+          </button>
+          <button type="button" className="icon-button" title="Reply" onClick={onReply}>
+            &#8617;
+          </button>
+        </>
+      ) : null}
+      {picking ? (
+        <ReactionPicker
+          onClose={() => setPicking(false)}
+          onPick={(emoji) => {
+            setPicking(false);
+            releaseHold();
+            rememberReaction(emoji);
+            onReact(emoji);
+          }}
+        />
+      ) : null}
+      {mine && readable ? (
+        <button
+          type="button"
+          className="icon-button"
+          title="Edit"
+          onClick={() => {
+            setDraft(view.text ?? '');
+            setEditing(true);
+          }}
+        >
+          &#9998;
+        </button>
+      ) : null}
+      {held && readable && view.text ? (
+        <button
+          type="button"
+          className="icon-button"
+          title="Copy text"
+          onClick={() => void navigator.clipboard?.writeText(view.text ?? '').catch(() => undefined)}
+        >
+          &#10697;
+        </button>
+      ) : null}
+      {mine ? (
+        <button type="button" className="icon-button danger" title="Delete" onClick={onDelete}>
+          &#10005;
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div id={`dm-message-${view.id}`} className={`message${isGrouped ? ' grouped' : ''}${view.replyTo ? ' is-reply' : ''}`}>
+    <div
+      id={`dm-message-${view.id}`}
+      className={`message${isGrouped ? ' grouped' : ''}${view.replyTo ? ' is-reply' : ''}${held ? ' held' : ''}`}
+      {...bind}
+    >
       {view.replyTo ? (
         <button
           type="button"
@@ -1203,48 +1281,7 @@ function DmRow({
           </div>
         ) : null}
       </div>
-      {view.deleted || editing ? null : (
-        <div className={picking ? 'message-actions open' : 'message-actions'}>
-          {readable ? (
-            <>
-              <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
-                &#9786;
-              </button>
-              <button type="button" className="icon-button" title="Reply" onClick={onReply}>
-                &#8617;
-              </button>
-            </>
-          ) : null}
-          {picking ? (
-            <ReactionPicker
-              onClose={() => setPicking(false)}
-              onPick={(emoji) => {
-                setPicking(false);
-                rememberReaction(emoji);
-                onReact(emoji);
-              }}
-            />
-          ) : null}
-          {mine && readable ? (
-            <button
-              type="button"
-              className="icon-button"
-              title="Edit"
-              onClick={() => {
-                setDraft(view.text ?? '');
-                setEditing(true);
-              }}
-            >
-              &#9998;
-            </button>
-          ) : null}
-          {mine ? (
-            <button type="button" className="icon-button danger" title="Delete" onClick={onDelete}>
-              &#10005;
-            </button>
-          ) : null}
-        </div>
-      )}
+      {view.deleted || editing ? null : held ? <HoldSheet>{actions}</HoldSheet> : actions}
     </div>
   );
 }
@@ -1625,7 +1662,7 @@ function DmComposer({
           ) : null}
         </span>
         <RecordButton disabled={!state.ready} onClip={sendVoice} onError={setError} />
-        <button type="button" className="icon-button" title="Send" disabled={!state.ready || busy} onClick={() => void submit()}>
+        <button type="button" className="icon-button composer-send" title="Send" disabled={!state.ready || busy} onClick={() => void submit()}>
           &#10148;
         </button>
       </div>

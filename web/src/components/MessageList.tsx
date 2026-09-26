@@ -24,6 +24,8 @@ import { useLocalNames } from '../lib/local-names';
 import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
 import { CHANNEL_MEMORY_CHANGED, EDIT_LAST, on } from '../lib/signals';
 import { BottomPin } from '../lib/stick-to-bottom';
+import { HoldSheet, releaseAfterAction, releaseHold, useHold } from '../lib/hold';
+import { usePhone } from '../lib/usePhone';
 import { unreadLine } from '../lib/unread-line';
 import { can, useTimeoutEnd } from '../lib/usePermissions';
 import { useStore, useTypingUsers } from '../state/store';
@@ -838,6 +840,8 @@ function MessageRow({
   const editBox = useRef<HTMLTextAreaElement>(null);
   /** One blocked message shown on purpose. It hides again on reload. */
   const [shown, setShown] = useState(false);
+  const phone = usePhone();
+  const { held, bind } = useHold(message.id, phone && !message.deleted && !editing);
 
   useEffect(() => {
     if (!openEditor || editing) return;
@@ -923,10 +927,105 @@ function MessageRow({
   const parent = message.replyTo;
   const parentMember = parent ? members.find((entry) => entry.userId === parent.authorId) : undefined;
 
+  // The hover tray on a wide screen; on a phone, what holding the message lifts.
+  const actions = (
+    <div
+      className={held ? 'message-actions sheet' : picking ? 'message-actions open' : 'message-actions'}
+      onClickCapture={held ? releaseAfterAction : undefined}
+    >
+      {canReact ? (
+        <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
+          &#9786;
+        </button>
+      ) : null}
+      {canReply ? (
+        <button
+          type="button"
+          className="icon-button"
+          title="Reply"
+          onClick={() => replyTo(message.channelId, message)}
+        >
+          &#8617;
+        </button>
+      ) : null}
+      {picking ? (
+        <ReactionPicker
+          emojis={emojis}
+          onClose={() => setPicking(false)}
+          onPick={(emoji) => {
+            setPicking(false);
+            releaseHold();
+            toggle(emoji);
+          }}
+        />
+      ) : null}
+      {mine && !timedOut && message.content !== null && message.kind === 'text' ? (
+        <button
+          type="button"
+          className="icon-button"
+          title="Edit"
+          onClick={() => {
+            setDraft(toDraft(message.content ?? '', members));
+            setEditing(true);
+          }}
+        >
+          &#9998;
+        </button>
+      ) : null}
+      {canPin ? (
+        <button
+          type="button"
+          className={message.pinnedAt ? 'icon-button on' : 'icon-button'}
+          title={message.pinnedAt ? 'Unpin' : 'Pin'}
+          onClick={() => void (message.pinnedAt ? api.messages.unpin(message.id) : api.messages.pin(message.id)).catch(() => undefined)}
+        >
+          &#128204;
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className={bookmarked ? 'icon-button on' : 'icon-button'}
+        title={bookmarked ? 'Unsave' : 'Save'}
+        onClick={() => {
+          const next = !bookmarked;
+          setBookmarked(next);
+          void (next ? api.messages.bookmark(message.id) : api.messages.unbookmark(message.id)).catch(() =>
+            setBookmarked(!next),
+          );
+        }}
+      >
+        &#128278;
+      </button>
+      {/* Holding a message on a phone is also how text is selected, so the
+          sheet has to offer what that took away. */}
+      {held && message.content ? (
+        <button
+          type="button"
+          className="icon-button"
+          title="Copy text"
+          onClick={() => void navigator.clipboard?.writeText(toDraft(message.content ?? '', members)).catch(() => undefined)}
+        >
+          &#10697;
+        </button>
+      ) : null}
+      {canDelete ? (
+        <button
+          type="button"
+          className="icon-button danger"
+          title="Delete"
+          onClick={() => void api.messages.remove(message.id).catch(() => undefined)}
+        >
+          &#10005;
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div
       id={`message-${message.id}`}
-      className={`message${grouped ? ' grouped' : ''}${pingsMe ? ' pings-me' : ''}${parent ? ' is-reply' : ''}`}
+      className={`message${grouped ? ' grouped' : ''}${pingsMe ? ' pings-me' : ''}${parent ? ' is-reply' : ''}${held ? ' held' : ''}`}
+      {...bind}
     >
       {parent ? (
         <button type="button" className="reply-line" onClick={() => jumpTo(parent.id)} title="Go to that message">
@@ -1159,81 +1258,10 @@ function MessageRow({
         )}
       </div>
 
-      {message.deleted || editing ? null : (
-        <div className={picking ? 'message-actions open' : 'message-actions'}>
-          {canReact ? (
-            <button type="button" className="icon-button" title="React" onClick={() => setPicking((open) => !open)}>
-              &#9786;
-            </button>
-          ) : null}
-          {canReply ? (
-            <button
-              type="button"
-              className="icon-button"
-              title="Reply"
-              onClick={() => replyTo(message.channelId, message)}
-            >
-              &#8617;
-            </button>
-          ) : null}
-          {picking ? (
-            <ReactionPicker
-              emojis={emojis}
-              onClose={() => setPicking(false)}
-              onPick={(emoji) => {
-                setPicking(false);
-                toggle(emoji);
-              }}
-            />
-          ) : null}
-          {mine && !timedOut && message.content !== null && message.kind === 'text' ? (
-            <button
-              type="button"
-              className="icon-button"
-              title="Edit"
-              onClick={() => {
-                setDraft(toDraft(message.content ?? '', members));
-                setEditing(true);
-              }}
-            >
-              &#9998;
-            </button>
-          ) : null}
-          {canPin ? (
-            <button
-              type="button"
-              className={message.pinnedAt ? 'icon-button on' : 'icon-button'}
-              title={message.pinnedAt ? 'Unpin' : 'Pin'}
-              onClick={() => void (message.pinnedAt ? api.messages.unpin(message.id) : api.messages.pin(message.id)).catch(() => undefined)}
-            >
-              &#128204;
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={bookmarked ? 'icon-button on' : 'icon-button'}
-            title={bookmarked ? 'Unsave' : 'Save'}
-            onClick={() => {
-              const next = !bookmarked;
-              setBookmarked(next);
-              void (next ? api.messages.bookmark(message.id) : api.messages.unbookmark(message.id)).catch(() =>
-                setBookmarked(!next),
-              );
-            }}
-          >
-            &#128278;
-          </button>
-          {canDelete ? (
-            <button
-              type="button"
-              className="icon-button danger"
-              title="Delete"
-              onClick={() => void api.messages.remove(message.id).catch(() => undefined)}
-            >
-              &#10005;
-            </button>
-          ) : null}
-        </div>
+      {message.deleted || editing ? null : held ? (
+        <HoldSheet>{actions}</HoldSheet>
+      ) : (
+        actions
       )}
     </div>
   );

@@ -57,6 +57,7 @@ const DEVICES = [
  *   { channel: name }     open that channel (through the drawer on a phone)
  *   { server: name }      open that server (through the drawer)
  *   { type: text }        type into whatever has focus
+ *   { hold: css }         press and hold the last visible match with a finger
  *   { focus: css }        focus an element
  *   { eval: js }          anything else
  *   { wait: ms }
@@ -72,11 +73,13 @@ const SCREENS = [
   { name: 'channel-maps', steps: [{ channel: 'maps' }] },
   { name: 'composer-typing', steps: [{ focus: '.composer textarea, .composer [contenteditable]' }, { type: 'hey is anyone on tonight' }] },
   { name: 'emoji-picker', steps: [{ label: 'Emoji' }] },
-  { name: 'message-actions', steps: [{ eval: `(() => { const m = [...document.querySelectorAll('.message')].pop(); m?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); m?.click(); })()` }] },
+  { name: 'message-actions', steps: [{ hold: '.messages .message .message-text' }] },
+  { name: 'message-actions-react', steps: [{ hold: '.messages .message .message-text' }, { label: 'React' }] },
   { name: 'search', steps: [{ label: 'Search (Ctrl+F)' }, { type: 'map' }, { eval: `document.activeElement?.form?.requestSubmit?.() ?? document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))` }] },
   { name: 'pinned', steps: [{ label: 'Pinned messages' }] },
   { name: 'notifications', steps: [{ label: 'Servers and channels' }, { tap: '.rail .rail-bell' }] },
   { name: 'dms', steps: [{ label: 'Servers and channels' }, { tap: '.rail button[title^="Direct messages"]' }] },
+  { name: 'dms-drawer-closed', steps: [{ label: 'Servers and channels' }, { tap: '.rail button[title^="Direct messages"]' }, { tap: '.dock-backdrop' }] },
   { name: 'dm-conversation', steps: [{ label: 'Servers and channels' }, { tap: '.rail button[title^="Direct messages"]' }, { tap: '.dock.left button.dm-row' }] },
   { name: 'profile-card', steps: [{ label: 'Members' }, { tap: '.members .member' }] },
   { name: 'profile-self', steps: [{ label: 'Servers and channels' }, { label: 'Your profile' }] },
@@ -166,6 +169,19 @@ async function step(action) {
     const hit = await run(`(() => { const el = __byLabel(${JSON.stringify(action.label)}); if (!el) return false; el.click(); return true; })()`);
     if (!hit) throw new Error(`no visible button called "${action.label}"`);
     return sleep(700);
+  }
+  if (action.hold) {
+    // A real touch through the browser's input pipeline, held past the
+    // app's long-press time, so this tests what a thumb would do.
+    const at = await run(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(action.hold)})].filter(__visible).pop();
+      if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect();
+      return { x: r.left + Math.min(r.width / 2, 60), y: r.top + r.height / 2 }; })()`);
+    if (!at) throw new Error(`nothing visible matches ${action.hold}`);
+    const point = [{ x: at.x, y: at.y }];
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point });
+    await sleep(700);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    return sleep(500);
   }
   if (action.focus) {
     const hit = await run(`(() => { const el = document.querySelector(${JSON.stringify(action.focus)}); if (!el) return false; el.focus(); return true; })()`);
@@ -274,7 +290,9 @@ try {
   const onlyDevice = flag('device', null);
   const onlyScreen = flag('only', null);
   const devices = DEVICES.filter((d) => !onlyDevice || d.id === onlyDevice);
-  const screens = SCREENS.filter((s) => !onlyScreen || s.name.includes(onlyScreen));
+  // A comma list picks several: --only channel,dms. An exact name wins over a part of one.
+  const wanted = onlyScreen?.split(',') ?? [];
+  const screens = SCREENS.filter((s) => !onlyScreen || wanted.some((w) => s.name === w) || (wanted.length === 1 && s.name.includes(wanted[0])));
   if (!devices.length || !screens.length) throw new Error('nothing matches --device / --only');
 
   for (const device of devices) {

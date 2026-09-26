@@ -690,7 +690,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
 
         <button
           type="button"
-          className="icon-button"
+          className="icon-button composer-send"
           title="Send"
           disabled={!mayPost || cooldown > 0}
           onClick={() => void send()}

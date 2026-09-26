@@ -187,7 +187,10 @@ function Shell() {
   const phone = usePhone();
   const [dock, setDock] = useState<'left' | 'right' | null>(null);
   useEffect(() => on(OPEN_DOCK, () => setDock('left')), []);
-  useEffect(() => setDock(null), [state.selectedServerId, state.selectedChannelId, dms.openId, dms.active]);
+  useEffect(() => setDock(null), [state.selectedServerId, state.selectedChannelId, dms.openId]);
+  // Except @ with no conversation open: that leaves the list of them showing,
+  // since an empty page is not where anyone tapping @ was going.
+  useEffect(() => setDock(dms.active && !dms.openId && phone ? 'left' : null), [dms.active]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!phone) setDock(null);
   }, [phone]);
@@ -277,7 +280,7 @@ function Shell() {
   );
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="shell">
       <UpdateBanner inVoice={inVoice} />
       {state.connection !== 'open' ? (
         <div className={state.connection === 'closed' ? 'banner bad' : 'banner'}>
