@@ -20,6 +20,20 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-phone',
+    date: '2026-09-26',
+    title: 'Scryproof on your phone, properly',
+    notes: [
+      'Swipe right anywhere for your servers and channels, left for the member list, and back the other way to close them.',
+      'Press and hold a message for React, Reply, Edit, Pin, Save, Copy text and Delete. Before, a phone could not reach any of them.',
+      'Fixed: tapping @ for direct messages on a phone left you on a screen with no way back to your servers. The menu button is there now, and your conversations open straight away.',
+      'The back button on Android closes whatever is open (the menu, a dialog, settings) instead of leaving the app.',
+      'The message box gives your words the whole width, with the buttons in a row underneath. iPhones no longer zoom in when you tap a text box.',
+      'Settings, calls and search fit on a phone: nothing runs off the edge, the hang-up button always fits, and search results actually show up.',
+      'Bigger buttons everywhere a thumb goes.',
+    ],
+  },
+  {
     id: '2026-09-26-camp',
     date: '2026-09-26',
     title: 'Loaf v2: the party turns to the fire',
