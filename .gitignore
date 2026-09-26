@@ -31,3 +31,6 @@ desktop/release/
 
 # Agent worktrees, never part of the repo.
 .claude/worktrees/
+
+# Phone tour pictures (scripts/phone-tour.mjs). Regenerated, never committed.
+.shots/
