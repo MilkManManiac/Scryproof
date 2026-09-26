@@ -176,6 +176,13 @@
       "when": 1790462732418,
       "tag": "0024_safe_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790465117736,
+      "tag": "0025_colossal_sunfire",
+      "breakpoints": true
     }
   ]
 }

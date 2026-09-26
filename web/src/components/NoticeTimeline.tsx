@@ -87,6 +87,8 @@ export function NoticeBell() {
       if (!target) return;
       notices.open({
         ...target,
+        // Opened the same way as a mention: go to the channel, light the message.
+        kind: target.kind === 'message' ? 'mention' : target.kind,
         at: Date.now(),
         authorId: '',
         authorName: '',

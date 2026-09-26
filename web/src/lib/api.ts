@@ -516,7 +516,13 @@ export const api = {
   /** Phone notifications for this device. See `lib/push.ts`. */
   push: {
     key: () => get<{ publicKey: string | null }>('/api/push'),
-    subscribe: (body: { endpoint: string; mutedServers: string[]; mutedChannels: string[] }) =>
+    subscribe: (body: {
+      endpoint: string;
+      mutedServers: string[];
+      mutedChannels: string[];
+      mentions: boolean;
+      messages: boolean;
+    }) =>
       put<{ ok: true }>('/api/push/subscription', body),
     unsubscribe: (endpoint: string) => request<{ ok: true }>('DELETE', '/api/push/subscription', { endpoint }),
     seen: () => post<{ ok: true }>('/api/push/seen'),

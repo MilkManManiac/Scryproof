@@ -25,14 +25,27 @@ export async function registerPushRoutes(app: FastifyInstance): Promise<void> {
     return { publicKey: pushPublicKey() };
   });
 
-  /** Turn it on for this device, or update what this device has muted. */
+  /** Turn it on for this device, or update what this device has muted and wants to hear. */
   app.put('/api/push/subscription', async (request) => {
     const user = requireUser(request);
     if (!request.sessionId) throw unauthorized();
     if (!pushPublicKey()) throw badRequest('Phone notifications are not switched on for this server.', 'push_off');
     const body = z
-      .object({ endpoint: endpointShape, mutedServers: idList, mutedChannels: idList })
+      .object({
+        endpoint: endpointShape,
+        mutedServers: idList,
+        mutedChannels: idList,
+        // Absent from a page loaded before these existed: the old behaviour.
+        mentions: z.boolean().default(true),
+        messages: z.boolean().default(false),
+      })
       .parse(request.body);
+    const settings = {
+      mutedServers: body.mutedServers,
+      mutedChannels: body.mutedChannels,
+      mentions: body.mentions,
+      messages: body.messages,
+    };
     if (!isRelayEndpoint(body.endpoint)) {
       throw badRequest('That is not a notification service this server knows.', 'push_endpoint');
     }
@@ -46,16 +59,14 @@ export async function registerPushRoutes(app: FastifyInstance): Promise<void> {
         userId: user.id,
         sessionId: request.sessionId,
         endpoint: body.endpoint,
-        mutedServers: body.mutedServers,
-        mutedChannels: body.mutedChannels,
+        ...settings,
       })
       .onConflictDoUpdate({
         target: pushSubscriptions.endpoint,
         set: {
           userId: user.id,
           sessionId: request.sessionId,
-          mutedServers: body.mutedServers,
-          mutedChannels: body.mutedChannels,
+          ...settings,
         },
       });
     return { ok: true };

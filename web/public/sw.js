@@ -48,20 +48,18 @@ async function woken() {
 
   const show = answer && Array.isArray(answer.show) ? answer.show : [];
   if (show.length === 0) {
-    await self.registration.showNotification('Scryproof', {
-      body: 'Something new for you.',
+    await self.registration.showNotification('Something new for you', {
       tag: 'scryproof',
       icon: ICON,
     });
     return;
   }
   for (const ping of show) {
-    // One per conversation: the next message from the same place replaces
-    // this one (and sounds again) instead of stacking up beside it. The same
-    // tags as the in-app pop-ups, so a window and the phone never double up.
+    // The words are the server's and name nobody: "Someone messaged you".
+    // One of each kind at a time: a newer one replaces it (and sounds again)
+    // rather than stacking identical lines. The number on the icon counts.
     await self.registration.showNotification(ping.title, {
-      body: ping.body,
-      tag: ping.dmId || ping.channelId || ping.messageId,
+      tag: `scryproof-${ping.kind}`,
       renotify: true,
       icon: ICON,
       data: {

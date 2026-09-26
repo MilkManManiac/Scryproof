@@ -856,21 +856,12 @@ export async function registerDmRoutes(app: FastifyInstance): Promise<void> {
     for (const memberId of readers) {
       hub.sendToUser(memberId, { t: 'dm_message_create', d: toDmMessage(created, keyRows, memberId) });
     }
-    // The same words the in-app pop-up uses. Never the message: it is sealed,
-    // and this server could not read it if it wanted to.
+    // "Someone messaged you" and nothing more: not who, not which chat. The
+    // message itself is sealed, and this server could not read it anyway.
     if (!body.reactionTo) {
-      const group = dm.kind === 'group';
       void pushTo(
         readers.filter((memberId) => memberId !== user.id),
-        {
-          kind: 'dm',
-          title: group ? `${user.displayName} in ${dm.title ?? 'your group'}` : user.displayName,
-          body: group ? 'Wrote in the group.' : 'Sent you a message.',
-          serverId: null,
-          channelId: null,
-          dmId,
-          messageId,
-        },
+        { kind: 'dm', serverId: null, channelId: null, dmId, messageId },
       );
     }
 

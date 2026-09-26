@@ -8,6 +8,11 @@ message or something?" ... "Note it as important."
 Main-session job, not an agent brief: it touches the service worker, the
 server and a secret.
 
+**Wording, decided 2026-09-26:** the lock screen says only "Someone
+messaged you", "Someone mentioned you" or "New message in a channel",
+following each phone's own notification settings. Never who, where, or
+what. See HANDOFF, 2026-09-26 evening.
+
 ## Why phones get nothing today
 
 Pop-ups (`web/src/lib/notices.ts`) only happen while the page is running.

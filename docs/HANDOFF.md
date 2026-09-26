@@ -3224,7 +3224,7 @@ Brief: `docs/briefs/push.md`.
 - Web: `lib/push.ts` (switch, mute sync, clear badge + lock-screen
   notifications on open, attention reporting, tap-to-open), `sw.js` push +
   notificationclick, the switch in Settings, Notifications.
-- Proof: `server/src/tests/push.test.ts` (10, mutation-checked) and
+- Proof: `server/src/tests/push.test.ts` (13; the first 10 mutation-checked) and
   `npm run test:push`: real Chrome, real Google relay, the app's own switch,
   quiet while attending, arrives once out of sight. All pass. Chrome is run
   with its own notification UI; with Windows' native ones
@@ -3232,10 +3232,18 @@ Brief: `docs/briefs/push.md`.
 - **To ship:** `bash scripts/box.sh 90-push-keys.sh` once (makes the key pair
   on the box, into the vault .env, prints only the public half), then the
   normal release. Without the keys the switch says the server is not set up.
-- Open choice for Wes (in the preview): mentions in plain channels could show
-  the message's first line (from our server, not the relay; readable on a
-  lock screen). DM text would need the service worker to decrypt on the
-  phone: unverified whether iOS allows the time.
+- **Decided (Wes, 2026-09-26, after the preview):** "It shouldn't show any
+  bit of the message. I'm thinking we even make it more secure. aka someone
+  messaged you. or someone mentioned you. or new message in channel.
+  Depending on the notifications settings that they have." So the lock
+  screen names nobody and no place: `WORDS` in `services/push.ts` is the
+  whole vocabulary. One notification per kind (tag `scryproof-<kind>`), the
+  newest replacing the last; the icon number counts. Each subscription
+  carries the phone's own `mentions` (the mention switch; DMs count as
+  mentions) and `messages` (message sounds not off) settings, migration
+  0025. "New message in a channel" goes to readers whose phone asked for
+  every message and who were not already pinged (`pushToReaders`). No
+  preview text is coming, for channels or DMs.
 - Not proven: a real iPhone (iOS 16.4+ home-screen app) and a real Android.
   First thing after deploy.
 

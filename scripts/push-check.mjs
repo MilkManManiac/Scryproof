@@ -186,8 +186,12 @@ try {
   }
   check('Google delivered the ping and the notification appeared', shown.length > 0, JSON.stringify(shown));
   if (shown.length > 0) {
-    check('it names who and where', /^Alex in #/.test(shown[0].title), shown[0].title);
-    check('it never says what', !JSON.stringify(shown).includes('secret'), shown[0].body);
+    check('it says "Someone mentioned you"', shown[0].title === 'Someone mentioned you', shown[0].title);
+    check(
+      'it never says who, where, or what',
+      !/secret|Alex|general|Table/.test(JSON.stringify(shown)),
+      JSON.stringify(shown),
+    );
   }
 
   // Part two: the app itself. Its own switch code turns it on, and while

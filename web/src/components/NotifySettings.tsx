@@ -231,11 +231,13 @@ function PushSection() {
       ) : (
         <label className="toggle-row">
           <span>
-            Notify this device about mentions and direct messages
+            Notify this device
             <span className="field-note">
-              With a sound and a number on the app&rsquo;s icon. Apple or Google carries a blank wake-up; who wrote
-              comes from Scryproof itself, and what they wrote is never in it. Quiet for muted places, and while you
-              are using Scryproof somewhere else.
+              Only ever &ldquo;Someone messaged you&rdquo;, &ldquo;Someone mentioned you&rdquo; or &ldquo;New message
+              in a channel&rdquo;, never who or what, with a sound and a number on the app&rsquo;s icon. It follows
+              this page: mentions and direct messages while the switch above is on, every other message unless
+              &ldquo;Sounds for everything else&rdquo; is off, nothing from muted places. Quiet while you are using
+              Scryproof somewhere else.
               {problem ? ` ${problem}` : ''}
             </span>
           </span>

@@ -626,8 +626,9 @@ export const blocks = pgTable(
  *
  * Tied to the session that made it, so signing out, or a password reset
  * revoking every session, stops the pings without anybody remembering to.
- * Mutes are the device's own (`web/src/lib/notify.ts`) and are copied here
- * because the phone is asleep when the decision is made.
+ * Mutes and the two sound settings are the device's own
+ * (`web/src/lib/notify.ts`) and are copied here because the phone is asleep
+ * when the decision is made.
  */
 export const pushSubscriptions = pgTable(
   'push_subscriptions',
@@ -642,6 +643,10 @@ export const pushSubscriptions = pgTable(
     endpoint: text('endpoint').notNull(),
     mutedServers: jsonb('muted_servers').$type<string[]>().notNull().default([]),
     mutedChannels: jsonb('muted_channels').$type<string[]>().notNull().default([]),
+    /** Direct messages and mentions wake it: the device's "mention" setting. */
+    mentions: boolean('mentions').notNull().default(true),
+    /** Every other message in a channel it can see: its "message" setting is not off. */
+    messages: boolean('messages').notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [

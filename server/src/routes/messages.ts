@@ -27,7 +27,7 @@ import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/sha
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { attachments, bookmarks, channelEpochs, channels, deviceKeys, messages, reactions, servers, users } from '../db/schema.js';
+import { attachments, bookmarks, channelEpochs, channels, deviceKeys, messages, reactions, users } from '../db/schema.js';
 import type { PollBody } from '../db/schema.js';
 import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { rollDie } from '../lib/crypto.js';
@@ -45,7 +45,7 @@ import { addReaction, reactionsForMessages, removeReaction } from '../services/r
 import { setVotes, tallyForMessages } from '../services/polls.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
 import { searchMessages } from '../services/search.js';
-import { pushTo } from '../services/push.js';
+import { pushTo, pushToReaders } from '../services/push.js';
 import { bookmarksFor, isBookmarked } from '../services/bookmarks.js';
 import type { ChannelRow, MessageRow, User } from '../db/schema.js';
 
@@ -570,24 +570,20 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     for (const [userId, state] of await bumpMentions(pinged, channelId, user.id)) {
       hub.sendToUser(userId, { t: 'read_state_update', d: state });
     }
+    // Phones: "Someone mentioned you" for the pinged, "New message in a
+    // channel" for everyone else whose phone asked for every message.
     if (pinged.length > 0) {
-      const [server] = await db
-        .select({ name: servers.name })
-        .from(servers)
-        .where(eq(servers.id, ctx.serverId))
-        .limit(1);
-      // Who and where, never what: the lock screen is read by whoever is
-      // holding the phone.
-      void pushTo(pinged, {
-        kind: 'mention',
-        title: `${user.displayName} in #${channel.name}`,
-        body: server ? `Mentioned you in ${server.name}.` : 'Mentioned you.',
-        serverId: ctx.serverId,
-        channelId,
-        dmId: null,
-        messageId: hydrated.id,
-      });
+      void pushTo(pinged, { kind: 'mention', serverId: ctx.serverId, channelId, dmId: null, messageId: hydrated.id });
     }
+    void pushToReaders({
+      serverId: ctx.serverId,
+      channelId,
+      categoryId: channel.categoryId,
+      senderId: user.id,
+      memberIds,
+      alreadyPinged: pinged,
+      messageId: hydrated.id,
+    });
 
     return { message: hydrated };
   });

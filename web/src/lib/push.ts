@@ -1,6 +1,6 @@
 /**
  * Phone notifications, this device's half: turning them on, keeping the
- * server's copy of this device's mutes current, clearing the number on the
+ * server's copy of this device's mutes and sound settings current, clearing the number on the
  * icon when the app is opened, and telling the server whether anybody is
  * looking at this window (so a phone is not woken for a message its person is
  * already reading at their desk).
@@ -84,9 +84,19 @@ function sameKey(subscription: PushSubscription, key: Uint8Array): boolean {
   return bytes.length === key.length && bytes.every((byte, at) => byte === key[at]);
 }
 
-const mutes = () => {
+/**
+ * What this device wants to hear about, from the same settings as its in-app
+ * sounds: mentions (and direct messages, which count as one), and every other
+ * message unless message sounds are off.
+ */
+const settings = () => {
   const prefs = notifyPrefs.get();
-  return { mutedServers: prefs.mutedServers, mutedChannels: prefs.mutedChannels };
+  return {
+    mutedServers: prefs.mutedServers,
+    mutedChannels: prefs.mutedChannels,
+    mentions: prefs.mention,
+    messages: prefs.message !== 'off',
+  };
 };
 
 /** Call straight from a tap. */
@@ -108,7 +118,7 @@ export async function enablePush(): Promise<'on' | 'refused' | 'unavailable' | '
       userVisibleOnly: true,
       applicationServerKey: key as BufferSource,
     });
-    await api.push.subscribe({ endpoint: subscription.endpoint, ...mutes() });
+    await api.push.subscribe({ endpoint: subscription.endpoint, ...settings() });
     changed(true);
     return 'on';
   } catch {
@@ -127,7 +137,7 @@ export async function disablePush(): Promise<void> {
 }
 
 /**
- * After signing in, and whenever mutes change: the server's copy follows this
+ * After signing in, and whenever settings change: the server's copy follows this
  * device. Signing in again makes a new session, and a subscription is only
  * honoured while the session that made it lives, so it is handed over.
  */
@@ -138,7 +148,7 @@ export function startPushSync(): () => void {
     const registration = await navigator.serviceWorker.getRegistration();
     const subscription = await registration?.pushManager.getSubscription();
     if (!subscription || Notification.permission !== 'granted') return;
-    await api.push.subscribe({ endpoint: subscription.endpoint, ...mutes() }).catch(() => {});
+    await api.push.subscribe({ endpoint: subscription.endpoint, ...settings() }).catch(() => {});
   };
   void sync();
   const stop = notifyPrefs.subscribe(() => {
@@ -224,7 +234,10 @@ export function watchAttention(report: (active: boolean) => void): () => void {
  * window, or opens one with it in the address; either way it waits here until
  * the app has loaded enough to go there.
  */
-export type PushTarget = Pick<Notice, 'id' | 'kind' | 'serverId' | 'channelId' | 'dmId'>;
+export type PushTarget = Pick<Notice, 'id' | 'serverId' | 'channelId' | 'dmId'> & {
+  /** "message" is a channel message that did not mention anyone in particular. */
+  kind: Notice['kind'] | 'message';
+};
 
 let waiting: PushTarget | null = readFromAddress();
 const targetListeners = new Set<() => void>();

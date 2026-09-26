@@ -104,11 +104,16 @@ describe('phone notifications', () => {
   const call = (person: Person, method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, payload?: object) =>
     app.inject({ method, url, headers: { cookie: person.cookie }, ...(payload ? { payload } : {}) });
 
-  const subscribe = (person: Person, mutes: { mutedServers?: string[]; mutedChannels?: string[] } = {}) =>
+  const subscribe = (
+    person: Person,
+    settings: { mutedServers?: string[]; mutedChannels?: string[]; mentions?: boolean; messages?: boolean } = {},
+  ) =>
     call(person, 'PUT', '/api/push/subscription', {
       endpoint: person.endpoint,
-      mutedServers: mutes.mutedServers ?? [],
-      mutedChannels: mutes.mutedChannels ?? [],
+      mutedServers: settings.mutedServers ?? [],
+      mutedChannels: settings.mutedChannels ?? [],
+      mentions: settings.mentions ?? true,
+      messages: settings.messages ?? false,
     });
 
   const mention = (from: Person, to: Person) =>
@@ -177,7 +182,7 @@ describe('phone notifications', () => {
     assert.equal(reply.json().publicKey, config.push!.publicKey);
   });
 
-  it('wakes a mentioned person, and tells their phone who and where but never what', async () => {
+  it('wakes a mentioned person, and tells their phone that much and no more: not who, not where, not what', async () => {
     assert.equal((await subscribe(wes)).statusCode, 200);
     assert.equal((await mention(alex, wes)).statusCode, 200);
     await settle();
@@ -190,9 +195,13 @@ describe('phone notifications', () => {
     const body = pending.json();
     assert.equal(body.unread, 1);
     assert.equal(body.show.length, 1);
-    assert.equal(body.show[0].title, 'Alex in #general');
-    assert.equal(body.show[0].body, 'Mentioned you in The Table.');
-    assert.equal(JSON.stringify(body).includes('tonight'), false);
+    assert.equal(body.show[0].title, 'Someone mentioned you');
+    assert.equal(body.show[0].body, undefined);
+    // Where a tap goes is there; nothing that could be read off a lock screen.
+    assert.equal(body.show[0].channelId, channelId);
+    for (const secret of ['tonight', 'Alex', 'general', 'The Table']) {
+      assert.equal(JSON.stringify(body).includes(secret), false, secret);
+    }
 
     // Drawn once. A second wake does not bring it back.
     const again = (await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint })).json();
@@ -213,6 +222,63 @@ describe('phone notifications', () => {
       pings.map((ping) => ping.endpoint),
       [wes.endpoint],
     );
+  });
+
+  it('says "Someone messaged you" for a direct message, and nothing about who or which chat', async () => {
+    // Called the way routes/dms.ts calls it: a sealed DM needs device keys
+    // this file does not set up, and the route adds nothing but the ids.
+    await subscribe(wes);
+    const dmId = uuidv7();
+    await push.pushTo([wes.id], { kind: 'dm', serverId: null, channelId: null, dmId, messageId: uuidv7() });
+    assert.equal(pings.length, 1);
+    assert.equal(pings[0]!.topic, topicFor(dmId));
+    const body = (await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint })).json();
+    assert.deepEqual(Object.keys(body.show[0]).sort(), ['channelId', 'dmId', 'kind', 'messageId', 'serverId', 'title']);
+    assert.equal(body.show[0].title, 'Someone messaged you');
+    assert.equal(body.show[0].dmId, dmId);
+  });
+
+  it('wakes a phone for every message only when that phone asked for every message', async () => {
+    const chat = () => call(alex, 'POST', `/api/channels/${channelId}/messages`, { content: 'anyone around' });
+
+    await subscribe(wes, { messages: false });
+    await chat();
+    await settle();
+    assert.equal(pings.length, 0);
+
+    await subscribe(wes, { messages: true });
+    await chat();
+    await settle();
+    assert.equal(pings.length, 1);
+    const body = (await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint })).json();
+    assert.equal(body.show[0].title, 'New message in a channel');
+    assert.equal(JSON.stringify(body).includes('anyone'), false);
+
+    // A mention is one notification, the mention, not both.
+    pings.length = 0;
+    await mention(alex, wes);
+    await settle();
+    assert.equal(pings.length, 1);
+    const both = (await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint })).json();
+    assert.deepEqual(
+      both.show.map((ping: { title: string }) => ping.title),
+      ['Someone mentioned you'],
+    );
+
+    // Muting the channel on that phone silences every message too.
+    pings.length = 0;
+    await subscribe(wes, { messages: true, mutedChannels: [channelId] });
+    await chat();
+    await settle();
+    assert.equal(pings.length, 0);
+  });
+
+  it('stays quiet for mentions when that phone turned mention sounds off', async () => {
+    await subscribe(wes, { mentions: false });
+    await mention(alex, wes);
+    await settle();
+    assert.equal(pings.length, 0);
+    await subscribe(wes);
   });
 
   it('leaves the phone alone while its person is at another window', async () => {
