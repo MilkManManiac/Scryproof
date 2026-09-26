@@ -21,6 +21,8 @@
  *   faces     cutouts from `--ambient-sprite` (a row of square frames)
  *             drifting across the room, spinning slowly, bouncing off the
  *             edges the way a screensaver logo does
+ *   camp      Loaf v2's whole scene, pinned to points in its painting
+ *             (camp-scene.ts): fire, fog, birds, staffs, a wolf, and more
  *
  * The rules that keep it from being a screensaver: everything is small and
  * dim, it runs at thirty frames a second and not sixty, it stops dead when
@@ -33,6 +35,8 @@
 import { useEffect, useRef } from 'react';
 
 import { theme } from '../lib/theme';
+
+import { campScene, type Scene } from './camp-scene';
 
 interface Ember {
   x: number;
@@ -162,6 +166,20 @@ function readAccent(): string {
   return [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16)).join(' ');
 }
 
+/** The painting's URL, or null when the theme has none. */
+function readBackdrop(): string | null {
+  const match = readToken('--backdrop').match(/^url\((['"]?)(.+?)\1\)$/);
+  return match ? match[2]! : null;
+}
+
+/** `--backdrop-position` as fractions, the way `background-position` reads it for cover. */
+function readBackdropPosition(): { x: number; y: number } {
+  const words: Record<string, number> = { left: 0, top: 0, center: 0.5, right: 1, bottom: 1 };
+  const [x = 'center', y = 'center'] = readToken('--backdrop-position').split(/\s+/);
+  const fraction = (word: string) => (word in words ? words[word]! : parseFloat(word) / 100);
+  return { x: fraction(x), y: fraction(y) };
+}
+
 /** The sprite sheet's URL, or null when the theme has none. */
 function readSprite(): string | null {
   const match = readToken('--ambient-sprite').match(/^url\((['"]?)(.+?)\1\)$/);
@@ -208,6 +226,7 @@ export function Ambient() {
     let spriteUrl: string | null = null;
     let meteor: Meteor | null = null;
     let meteorAt = 0;
+    let camp: Scene | null = null;
     let frame = 0;
     let last = 0;
     let width = 0;
@@ -326,6 +345,8 @@ export function Ambient() {
         : [];
       meteor = null;
       meteorAt = motion.has('shooting') ? now + 6_000 + Math.random() * 20_000 : Infinity;
+      camp = motion.has('camp') ? campScene(readBackdrop()) : null;
+      camp?.resize(width, height, readBackdropPosition());
     };
 
     const resize = () => {
@@ -592,6 +613,7 @@ export function Ambient() {
       drawSparkles(dt);
       drawEmbers(dt);
       drawFaces(dt);
+      camp?.draw(context, now, dt);
     };
 
     const start = () => {
@@ -603,6 +625,7 @@ export function Ambient() {
         sparkles.length === 0 &&
         fireflies.length === 0 &&
         faces.length === 0 &&
+        !camp &&
         meteorAt === Infinity &&
         rippleAt === Infinity;
       if (still.matches || document.hidden || nothing) return;

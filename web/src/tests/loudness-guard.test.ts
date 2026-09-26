@@ -44,7 +44,7 @@ function run(guard: Processor, signal: Float32Array): Float32Array {
 const db = (x: number) => 20 * Math.log10(x);
 const peak = (x: Float32Array, from = 0, to = x.length) => {
   let top = 0;
-  for (let n = from; n < to; n += 1) top = Math.max(top, Math.abs(x[n]));
+  for (let n = from; n < to; n += 1) top = Math.max(top, Math.abs(x[n]!));
   return top;
 };
 
@@ -88,7 +88,7 @@ describe('the loudness guard', () => {
     const output = run(loadGuard(), input);
     // After the first second, output is input shifted by the look-ahead.
     let worst = 0;
-    for (let n = RATE; n < input.length; n += 1) worst = Math.max(worst, Math.abs(output[n] - input[n - DELAY]));
+    for (let n = RATE; n < input.length; n += 1) worst = Math.max(worst, Math.abs(output[n]! - input[n - DELAY]!));
     assert.ok(worst < 1e-4, `talking changed by ${worst}`);
   });
 

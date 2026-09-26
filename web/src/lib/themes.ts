@@ -18,6 +18,7 @@ export const THEMES: readonly Theme[] = [
   { id: 'ember', name: 'The ridge, alive' },
   { id: 'dusk', name: 'Ham' },
   { id: 'forg', name: 'Forg' },
+  { id: 'loaf2', name: 'Loaf v2' },
   { id: 'loaf', name: 'Loaf' },
   { id: 'scry', name: 'The chamber' },
   { id: 'hall', name: 'The hall' },

@@ -1,0 +1,94 @@
+/*
+ * Loaf v2: the party at rest. A campfire in the woods under a full moon, a
+ * ruined castle across the valley, five lace-cut silhouettes around the fire
+ * (rogue, tiefling warlock, dragonborn paladin, druid and wolf, wizard).
+ *
+ * Made for Loaf, from his brief (2026-09-25: "a starry night in the woods,
+ * like a dnd campfire resting at night vibe") and his notes on seven rounds
+ * of paintings; the painting is `assets/gen/loaf2-a.jpg`, made through
+ * imagegen. Wes: "go absolutely nuts with the effects and alive feel."
+ *
+ * Surfaces are the valley's night blue, the accent is the fire, and
+ * moonlight stands where the other themes have gold. Dim text is the mist,
+ * 7.4:1 on the solid panel. Every token the hall sets is set here.
+ *
+ * What moves is one word, `camp`: the whole scene is pinned to points in the
+ * painting (see camp-scene.ts), because a fire at "38% 70%" of the window is
+ * only on the fire for one window shape.
+ */
+
+:root[data-theme='loaf2'] {
+  --bg: #081116;
+  --bg-rgb: 8 17 22;
+
+  --panel-rgb: 14 26 33;
+  --panel-alpha: 0.55;
+  --panel-solid: #0e1a21;
+  --panel-2: #15252e;
+  --panel-3: #1d313b;
+  --panel-4: #273e49;
+
+  --line: #203641;
+  --line-strong: #2f4c59;
+  --edge: inset 0 0 0 1px rgb(214 236 246 / 0.07);
+  --hi: inset 0 1px 0 rgb(214 236 246 / 0.06);
+
+  --text: #f1f6f8;
+  --text-muted: #d1dde2;
+  /* The mist. */
+  --text-dim: #a3bcc8;
+  --text-faint: #7c929c;
+
+  /* The fire. */
+  --accent: #f0913f;
+  --accent-bright: #ffae62;
+  --accent-dim: #9a5520;
+  --accent-wash: rgb(240 145 63 / 0.13);
+  --on-accent: #1b0e05;
+
+  /* Moonlight, where the other themes have gold. */
+  --gold: #cfe4ec;
+  --gold-dim: #83a0ab;
+
+  --good: #56c48c;
+  --warn: #e3b04d;
+  --bad: #e46a5c;
+  --speaking: #5fd39a;
+
+  --shadow-1: 0 1px 1px hsl(200 45% 3% / 0.55), 0 4px 10px -3px hsl(200 45% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(200 45% 3% / 0.55), 0 8px 18px -6px hsl(200 45% 3% / 0.65),
+    0 22px 44px -14px hsl(200 45% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(200 45% 3% / 0.55), 0 16px 32px -8px hsl(200 45% 3% / 0.7),
+    0 40px 80px -20px hsl(200 45% 3% / 0.75);
+
+  /* The painting. Anchored low so the party stays in the picture when a
+     wide window crops the top and bottom. */
+  --backdrop: url('/backdrops/loaf2.jpg');
+  --backdrop-position: center 70%;
+  /* The hearth layer breathes on the fire; camp-scene draws the flicker. */
+  --glow-color: rgb(240 145 63 / 0.18);
+  --glow-position: 43% 80%;
+  --ambient-motion: camp;
+  --star-color: 236 246 255;
+  --star-depth: 0.3;
+  --ambient-sprite: none;
+
+  color-scheme: dark;
+}
+
+/* The shared room darkens the bottom third hard so the composer sits on near
+   black. Here the party sits in that third, so the fall to dark starts later
+   and stops short. */
+:root[data-theme='loaf2'] .ambient,
+:root[data-theme='loaf2'] .settings-backdrop {
+  background-image:
+    radial-gradient(120% 90% at 50% 10%, transparent 45%, rgb(0 0 0 / 0.35) 100%),
+    linear-gradient(
+      180deg,
+      rgb(var(--bg-rgb) / 0.05) 0%,
+      rgb(var(--bg-rgb) / 0.12) 55%,
+      rgb(var(--bg-rgb) / 0.4) 86%,
+      rgb(var(--bg-rgb) / 0.75) 100%
+    ),
+    var(--backdrop);
+}

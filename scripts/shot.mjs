@@ -222,6 +222,10 @@ try {
     await sleep(400);
   }
 
+  // SETTLE_MS=4000 lets a moving theme run a while first, so its effects are in the picture.
+  if (process.env.SETTLE_MS) await sleep(Number(process.env.SETTLE_MS));
+  // BARE=1 hides everything but the room, to look at a theme's painting and motion alone.
+  if (process.env.BARE === '1') await run(`document.head.insertAdjacentHTML('beforeend', '<style>#root * { visibility: hidden } #root .ambient, #root .ambient-motion { visibility: visible }</style>') || true`);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(out, Buffer.from(shot.data, 'base64'));
   console.log(`wrote ${out} (as ${user}${channel ? `, in #${channel}` : ''})`);
