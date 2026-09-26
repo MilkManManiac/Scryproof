@@ -3133,7 +3133,7 @@ ducker. Still to tell Seth: Windows Mic Boost to 0 dB, and turn off
 Automatic volume.
 
 
-## 2026-09-26 afternoon: Loaf v2's new painting, moving fog (built, not deployed)
+## LIVE 2026-09-26 14:03 ET: Loaf v2's new painting, moving fog (client 1790445725879)
 
 Loaf asked for the party facing the fire with their backs to the viewer, in
 round 7's "half-lit" style. Rounds 8 and 9 are in `Downloads\Campfire theme
