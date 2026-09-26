@@ -2,7 +2,7 @@
 
 Living state. Update this at the end of every working session.
 
-**Last updated:** 2026-09-25. **LIVE 2026-09-25 21:14 ET (client 1790385137643): Strong noise suppression (RNNoise on each person's device) and the voice settings dropdown fix; see the last section. Desktop app needs shell 0.5.4 for Strong.** **LIVE 2026-09-25 16:50 ET (client 1790369344331): the sound clipper (migration 0023, `sounds.volume` confirmed on the box) and the one-time walkthrough.** Earlier, **LIVE 2026-09-25 13:53 ET: Trey's E2EE PR with the review fixes, soundboard volume, 15 s clips, the What's new card, and shell 0.5.3** (installer sha256 8dfd880a3f4b66884560e66680c54ba5a085a9b3f1dd89b136552e23cb7f33fa); Wes confirmed his app offered and installed 0.5.3. Before that: **LIVE 2026-09-24 17:37 ET (client 1790285738681): six authorization fixes, four found by Alex testing the live site** (join-by-id route removed, account invites host-only, channel move and member overwrites scoped to the server, profiles and avatars only for people who share a server). Proven live: the old join route now returns 404. **Next week starts with the full route audit, see `BUILD-ORDER.md`.** Earlier today: **LIVE 2026-09-24 17:03 ET (client 1790283703641, shell 0.5.2 unchanged): who messaged you (faces under the DM button, counts in the member list), the profile card opens ready to type, and messages that expire per channel (migration 0022 applied; `expire_after_seconds` confirmed on the box).** Deployed with four people connected and no call open; the restart took five seconds. The Hearth voice bridge is built and pushed but ON HOLD until Wes asks the players whether they want music-only or recording too (see `BUILD-ORDER.md`). Before that: **The push: encrypted channels stages 1 to 3, the group DM sender fix, the share picker (shell 0.5.2), the full emoji browser and Wes's notes: LIVE 2026-09-23 12:58 ET** (client 1790180431870, shell 0.5.2 published; last two sections). The box now has swap on the vault (see the last section): two build attempts froze the live site for a few minutes before it did. Next: the M7 proof with Wes. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
+**Last updated:** 2026-09-26. **LIVE 2026-09-26 05:33 ET (client 1790415064384, shell 0.5.4 published, installer sha256 108d50aea0cf750d43de47dab46546afeacf8c004f3e6b9916e268f24938c2b7): the loudness guard on every microphone and every voice, Strong noise suppression really running in calls (it never had been, see the last section), Loaf v2, the Discord-style bottom bar with the voice dock and soundboard, and the mute work.** Before that, **LIVE 2026-09-25 21:14 ET (client 1790385137643): Strong noise suppression (RNNoise on each person's device) and the voice settings dropdown fix; see the last section. Desktop app needs shell 0.5.4 for Strong.** **LIVE 2026-09-25 16:50 ET (client 1790369344331): the sound clipper (migration 0023, `sounds.volume` confirmed on the box) and the one-time walkthrough.** Earlier, **LIVE 2026-09-25 13:53 ET: Trey's E2EE PR with the review fixes, soundboard volume, 15 s clips, the What's new card, and shell 0.5.3** (installer sha256 8dfd880a3f4b66884560e66680c54ba5a085a9b3f1dd89b136552e23cb7f33fa); Wes confirmed his app offered and installed 0.5.3. Before that: **LIVE 2026-09-24 17:37 ET (client 1790285738681): six authorization fixes, four found by Alex testing the live site** (join-by-id route removed, account invites host-only, channel move and member overwrites scoped to the server, profiles and avatars only for people who share a server). Proven live: the old join route now returns 404. **Next week starts with the full route audit, see `BUILD-ORDER.md`.** Earlier today: **LIVE 2026-09-24 17:03 ET (client 1790283703641, shell 0.5.2 unchanged): who messaged you (faces under the DM button, counts in the member list), the profile card opens ready to type, and messages that expire per channel (migration 0022 applied; `expire_after_seconds` confirmed on the box).** Deployed with four people connected and no call open; the restart took five seconds. The Hearth voice bridge is built and pushed but ON HOLD until Wes asks the players whether they want music-only or recording too (see `BUILD-ORDER.md`). Before that: **The push: encrypted channels stages 1 to 3, the group DM sender fix, the share picker (shell 0.5.2), the full emoji browser and Wes's notes: LIVE 2026-09-23 12:58 ET** (client 1790180431870, shell 0.5.2 published; last two sections). The box now has swap on the vault (see the last section): two build attempts froze the live site for a few minutes before it did. Next: the M7 proof with Wes. Before that: **Batch five is live** (last section; client 1790139149928, installer 0.5.1 on /download): group DMs, DM calls, emoji search, the shell updating itself, Electron fuses. The self-update was proven on Wes's PC: 0.5.0 by hand, then 0.5.1 downloaded, verified and installed itself; Wes: "seemed to work like you explained". Before that, **batch four is live** (client 1790135803188, installer 0.4.0 on /download), with the password reset and jump-again-for-everyone. Everyone has to run the new installer once for the right-click menu, share-sound choice and interface scale. Wes: nothing deploys without asking him first; he may batch several. Before that, Session A: nightly encrypted backups are running with a restore proven, and the password reset is built. **Wes: nothing deploys without asking him first; he may batch several.** Before that: **next session reads `docs/BUILD-ORDER.md`**: the ranked list of what to build next, from the group's Discord suggestions and the security gaps, with the code facts already checked. Before that: The big one is live (client 1790124190233, last section): polls, events, saved, invite links, voice messages, soundboard, voice changers, initiative, commands in DMs, Delete channel, and the jump-for-everyone fix. Before that, commands and the Meepo characters went live; Wes: "Just jump is fine." Live today: ridge default, the formatting pass, the speaking ring and sharing marks, per-watcher video quality, the moving theme, the house rule, the second batch from lamp's notes (profile card, picture viewer, text styles, phone drawers, installable), the night push (What's new, the dusk theme, the join fix), and Loaf and Forg; see the last four sections.
 
 > **Read GAMEPLAN.md section 1b before building anything in M0 or M3**, and
 > `docs/voice-e2ee.md` before touching voice. The server-held voice key is
@@ -2943,7 +2943,7 @@ microphone back on. Needs a review and Wes's word before it ships.
 game when you share screen, or have the option to do either screen or
 game", and "different sounds for joining, calling, dm, and text channel".
 
-## IN PROGRESS 2026-09-25 night: the mic-knock blast (Wes: "its better, but def still happens... really research how we could solve this")
+## DONE (live 2026-09-26, last section) 2026-09-25 night: the mic-knock blast (Wes: "its better, but def still happens... really research how we could solve this")
 
 **Measured on Wes's recording** (`Videos\2026-09-25 20-33-20.mkv`; the working
 copy is `full.wav` in the session scratchpad `rec\`; recut it with ffmpeg if
@@ -3019,7 +3019,7 @@ gentle, firm) and was asked: gentle or firm, and what were 4 s and 6 s.
 
 ## 2026-09-26: Loaf v2, the bottom bar, the soundboard up front
 
-Local only, not deployed. Wes: "for now lets go with 3 and go absolutly
+LIVE 2026-09-26 05:33 ET with the guard (last section). Wes: "for now lets go with 3 and go absolutly
 nuts with the effects and alive feel ... make that Loafv2", then "improve
 how the soundbaord works and is found. Make it as easy to find as discord",
 and the bottom left "hard to see and aren't intuitive".
@@ -3060,3 +3060,75 @@ microphone button itself turns red now.
 ![In a call](shots/voice-dock.png)
 ![The soundboard from the dock](shots/voice-dock-soundboard.png)
 ![Muted before joining](shots/user-bar-premuted.png)
+
+## LIVE 2026-09-26 05:33 ET: the loudness guard, and Strong really on (client 1790415064384, shell 0.5.4)
+
+Wes, going to bed: "do push build / review whatever you need to. You have
+full permission." Released with `release.sh` after `cd desktop && npm run
+dist`, then `publish-installer.sh`. No infra change, so no `site runtime`.
+Everything from the section above went out in the same release.
+
+**The bug found on the way: Strong never ran in a call.** `MicProcessor`'s
+first build undid a join it had never made (`inlet.disconnect(cleaned)`),
+and Chrome throws on that ("the given destination is not connected"). So
+`init` threw, LiveKit never attached the processor, `publishMicrophone`
+caught it and sent the plain microphone, and `fallBackIfModelFailed` turned
+the browser's suppression on. From the 2026-09-25 21:14 release until this
+one, everyone with Strong (the default) got Standard, and with Strong
+chosen the voice changers did nothing either. Nothing on screen could tell:
+the settings preview builds its own chain, which worked. Proven on the old
+code in a real call: `processor: false` with `noiseMode: 'strong'`.
+Wes's "its better, but def still happens" after that release was therefore
+not the model. Fix: `web/src/lib/audio-graph.ts` `splice` only undoes joins
+that exist. `web/src/tests/mic-processor.test.ts` fakes Chrome's rule,
+builds all eight choices from nothing and every change between them, and
+checks there is exactly one way through, in order; it fails on the old
+behaviour (8 of 10). `test:voice` now asks the running call what really
+runs (`window.__voice.debugMic()`), because a stage that cannot start
+falls back quietly by design.
+
+**The guard.** I chose gentle (headroom 14 dB) without Wes's answer: firm
+took the recorded blast only 4 dB lower and pulled talking down 1.7 dB, and
+would flatten laughs. The 4 s and 6 s moments are still unexplained (voice-
+shaped, 150-500 Hz). `web/src/lib/loudness-guard.ts` explains the numbers.
+- Microphone: high-pass 100 Hz (two 12 dB biquads), noise model, guard,
+  changer, then encryption. Exactly lab chain D: the 12.7 s blast went from
+  -0.6 dBFS peak to -13.4, 10 ms loudness -6.3 to -20.0, talking +0.4 dB.
+- Listener side: `OutputMix` puts a guard in front of every incoming
+  microphone (not screens, not soundboards) once the worklet has loaded;
+  until then the voice goes straight through. So a friend on an old client
+  cannot blast anyone. Guard only, no second high-pass.
+- One setting, `voicePrefs.loudnessGuard`, default on, "Loudness guard" in
+  Voice settings under Automatic volume; it switches both ends, mid-call
+  too. "Hear it" plays through the same chain.
+- The guard is plain JavaScript, no WebAssembly, so it runs even in a
+  desktop shell older than 0.5.4 (checked in `test:noise` under the old
+  policy).
+
+**Shell 0.5.4:** only the version bump; the policy line
+(`'wasm-unsafe-eval'`) and Trey's `isApiUrl` hardening were already on
+main. Installed apps offer it within the hour. `test:desktop` gained two
+checks: the app can compile WebAssembly, and the guard loads.
+
+    Installer Scryproof-Setup-0.5.4.exe
+      installer  SHA-256: 108d50aea0cf750d43de47dab46546afeacf8c004f3e6b9916e268f24938c2b7
+      update key SHA-256: 755f8ba552e2d4aadd36c6a46fdeb085c12abf71f5818df322d65e07ae8ae35a
+
+The update key is unchanged since 2026-09-21. Recorded here, on GitHub, and
+off the box. Not yet in GitHub release notes; that is Wes's call.
+
+**Proven.** Web tests 408/408. `test:voice` 60/60 (new: the model and guard
+really run on alex's microphone; wes hears alex through his own guard; both
+come off and back on mid-call and alex is still heard). `test:noise` all,
+including the guard on a made-up knock in real Chromium (-1.9 to -20.3 dBFS
+peak, talking 0.1 dB) under the site's policy and the old desktop one.
+`test:desktop` all. Live, in headless Chrome on https://scryproof.com: the
+header carries 'wasm-unsafe-eval', WebAssembly compiles, the guard worklet
+loads (200, application/javascript), and the served bundle holds it.
+
+**Not proven.** Nobody has heard the guard or real Strong on a live call
+yet. Seth's knocks are the test: ask Wes whether they are gone. If a knock
+still gets through, the next steps are firm (headroom 10) or a transient
+ducker. Still to tell Seth: Windows Mic Boost to 0 dB, and turn off
+Automatic volume.
+
