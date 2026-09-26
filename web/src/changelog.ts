@@ -20,6 +20,17 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-camp',
+    date: '2026-09-26',
+    title: 'Loaf v2: the party turns to the fire',
+    notes: [
+      'A new painting for the Loaf v2 theme, Loaf\'s pick: the party with their backs to us on a log by the fire, the rogue stretched out on the grass.',
+      'The fog moves now: banks of mist roll through the valley both ways, drift across the clearing and hang low over the grass, and thin cloud slides across the moon.',
+      'Birds fly by every few seconds, some high by the moon, some small and far off over the valley. Shooting stars come every few seconds too, sometimes two at once.',
+      'The wizard\'s staff still casts, the druid\'s still drops leaves, the tiefling\'s horns smoulder violet, and now and then a leaf falls from the big oak.',
+    ],
+  },
+  {
     id: '2026-09-26-guard',
     date: '2026-09-26',
     title: 'No more mic blasts',

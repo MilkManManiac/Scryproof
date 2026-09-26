@@ -3,28 +3,33 @@
  * painting itself.
  *
  * The other words in Ambient.tsx place their motion by fractions of the
- * window. This one cannot: the fire, the moon and three staff tips are
- * points in the picture, and the picture is laid out by `background-size:
- * cover`, so where a point lands depends on the window's shape. Every point
- * here is in the painting's own pixels (1376 x 768, `assets/gen/sil-lace.jpg`)
- * and goes through the same arithmetic the browser uses for cover before it
- * is drawn. Sizes scale with the painting too, so a spark is the same size
+ * window. This one cannot: the fire, the moon and the staff tips are points
+ * in the picture, and the picture is laid out by `background-size: cover`,
+ * so where a point lands depends on the window's shape. Every point here is
+ * in the painting's own pixels (1376 x 768, `assets/gen/loaf2-b.jpg`, the
+ * party on the log with their backs to us, small in the clearing) and goes
+ * through the same arithmetic the browser uses for cover before it is
+ * drawn. Sizes scale with the painting too, so a spark is the same size
  * against the fire on a laptop and on a big monitor.
  *
  * What moves, back to front:
  *   stars     twinkle only where the painting has sky: the picture is read
  *             once, and only bright blue pixels in the top third take a star
  *   moon      a slow halo, breathing
- *   shooting  now and then, across the open sky left of the oak
- *   birds     a small flock crossing the sky every half minute or so
- *   fog       two bands of mist drifting through the valley, opposite ways,
- *             and a thin low mist over the clearing
+ *   shooting  every few seconds across the open sky left of the oak,
+ *             sometimes two close together
+ *   cloud     thin streaks of cloud sliding across the moon
+ *   birds     flocks, pairs and lone birds, high over the castle or small
+ *             and far off over the valley, one after another
+ *   fog       rolling banks of mist: two through the valley, opposite ways,
+ *             one drifting across the clearing, one low over the grass
  *   smoke     from the fire, rising, spreading, leaning with the air
  *   fire      the light on the clearing flickers; sparks rise off the flames
- *   staffs    the wizard's crystal pulses blue and throws motes, and every
- *             so often casts: a ring and a burst; the warlock's burns with
- *             violet wisps; the druid's glows green and lets fall a leaf
- *   wolf      its eye catches the firelight, and blinks
+ *   staffs    the wizard's staff pulses blue and throws motes, and every so
+ *             often casts: a ring and a burst; the druid's glows green and
+ *             lets fall a leaf
+ *   horns     the tiefling's horns smoulder, violet wisps curling up
+ *   oak       now and then a leaf lets go of the big oak and drifts down
  *   fireflies wandering the undergrowth, yellow-green
  *
  * The same rules as the rest of Ambient: thirty frames a second, stopped
@@ -35,15 +40,17 @@
 const IW = 1376;
 const IH = 768;
 
-const FIRE = { x: 590, y: 622 };
-const MOON = { x: 508, y: 170, r: 95 };
-const WIZARD = { x: 1210, y: 438 };
-const WARLOCK = { x: 523, y: 410 };
-const DRUID = { x: 897, y: 392 };
-const WOLF_EYE = { x: 1022.5, y: 485 };
+const FIRE = { x: 680, y: 572 };
+const MOON = { x: 509, y: 166, r: 94 };
+const WIZARD = { x: 614, y: 486 };
+const DRUID = { x: 711, y: 484 };
+const HORNS = { x: 928, y: 492 };
+/** The oak's canopy, where its leaves let go. */
+const CANOPY = { left: 700, right: 1300, top: 90, bottom: 240 };
 
-/** Where the open sky is, for things that fly: left of the oak's canopy. */
-const SKY = { left: 120, right: 690, top: 15, bottom: 150 };
+/** Where things fly. High: the open sky left of the oak. Far: low over the valley, under the oak's branches. */
+const SKY = { left: 120, right: 680, top: 15, bottom: 170 };
+const FAR = { left: 60, right: 1040, top: 236, bottom: 288 };
 
 interface Point {
   x: number;
@@ -66,10 +73,15 @@ interface Particle extends Point {
   angle: number;
 }
 
-interface Puff extends Point {
-  rx: number;
-  ry: number;
-  vx: number;
+/** A band of mist: one tile of fog texture, repeated across the painting and sliding sideways. */
+interface FogBank {
+  texture: HTMLCanvasElement | null;
+  y: number;
+  height: number;
+  /** One tile's width, in the painting's pixels. */
+  tile: number;
+  /** Painting pixels a second; negative drifts left. */
+  speed: number;
   alpha: number;
   phase: number;
 }
@@ -86,6 +98,7 @@ interface Flock {
   birds: Bird[];
   vx: number;
   vy: number;
+  lane: typeof SKY;
 }
 
 interface Meteor extends Point {
@@ -93,9 +106,62 @@ interface Meteor extends Point {
   vy: number;
   life: number;
   span: number;
+  tail: number;
 }
 
 const rand = (low: number, high: number) => low + Math.random() * (high - low);
+
+/**
+ * One tile of fog: soft blobs of mist that wrap around left to right, so the
+ * tile repeats with no seam, fading out toward its top and bottom. `flat`
+ * squashes the blobs into streaks, for cloud.
+ */
+function fogTexture(width: number, height: number, flat: number): HTMLCanvasElement | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width);
+  canvas.height = Math.round(height);
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  const blobs = Math.round((width * height) / 1800);
+  for (let index = 0; index < blobs; index += 1) {
+    const x = rand(0, width);
+    const y = rand(height * 0.25, height * 0.75);
+    const radius = rand(height * 0.18, height * 0.5);
+    const alpha = rand(0.05, 0.16);
+    for (const shift of [-width, 0, width]) {
+      context.save();
+      context.translate(x + shift, y);
+      context.scale(1, flat);
+      const gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);
+      gradient.addColorStop(0, `rgb(218 234 244 / ${alpha})`);
+      gradient.addColorStop(0.5, `rgb(200 222 236 / ${alpha * 0.5})`);
+      gradient.addColorStop(1, 'rgb(200 222 236 / 0)');
+      context.fillStyle = gradient;
+      context.fillRect(-radius, -radius, radius * 2, radius * 2);
+      context.restore();
+    }
+  }
+  // Fade the band out at its top and bottom so it has no edge.
+  context.globalCompositeOperation = 'destination-in';
+  const fade = context.createLinearGradient(0, 0, 0, height);
+  fade.addColorStop(0, 'rgb(0 0 0 / 0)');
+  fade.addColorStop(0.35, 'rgb(0 0 0 / 1)');
+  fade.addColorStop(0.65, 'rgb(0 0 0 / 1)');
+  fade.addColorStop(1, 'rgb(0 0 0 / 0)');
+  context.fillStyle = fade;
+  context.fillRect(0, 0, width, height);
+  return canvas;
+}
+
+const bank = (y: number, height: number, tile: number, speed: number, alpha: number, flat = 1): FogBank => ({
+  texture: fogTexture(tile, height, flat),
+  y,
+  height,
+  tile,
+  speed,
+  alpha,
+  phase: rand(0, Math.PI * 2),
+});
 
 export interface Scene {
   resize(width: number, height: number, position: { x: number; y: number }): void;
@@ -114,18 +180,26 @@ export function campScene(backdropUrl: string | null): Scene {
   const motes: Particle[] = [];
   const wisps: Particle[] = [];
   const leaves: Particle[] = [];
+  const oakLeaves: Particle[] = [];
   const burst: Particle[] = [];
   const fireflies: (Point & { vx: number; vy: number; phase: number; period: number })[] = [];
-  let valley: Puff[] = [];
-  let ground: Puff[] = [];
-  let flock: Flock | null = null;
-  let flockAt = performance.now() + rand(4_000, 12_000);
-  let meteor: Meteor | null = null;
-  let meteorAt = performance.now() + rand(8_000, 20_000);
+  const flocks: Flock[] = [];
+  let flockAt = performance.now() + rand(1_500, 4_000);
+  const meteors: Meteor[] = [];
+  let meteorAt = performance.now() + rand(2_000, 5_000);
   let castAt = performance.now() + rand(6_000, 14_000);
   let castRing = -1;
   let leafAt = performance.now() + rand(2_000, 6_000);
-  let blinkAt = performance.now() + rand(3_000, 8_000);
+  let oakLeafAt = performance.now() + rand(3_000, 8_000);
+
+  // Built once. Speeds are the painting's pixels a second: on a wide screen
+  // the valley mist crosses in about a minute and a half, slow enough to be
+  // weather and quick enough to see moving.
+  const cloud = bank(150, 80, 1100, 7, 0.55, 0.35);
+  const valleyFar = bank(365, 150, 1400, 12, 0.85);
+  const valleyNear = bank(440, 130, 1200, -19, 0.7);
+  const clearing = bank(560, 150, 1300, 24, 0.3);
+  const grass = bank(705, 120, 1000, -15, 0.7);
 
   // Find the sky: read the painting once, small, and keep the pixels that
   // are bright blue and high up. Stars go only there, never on a tree.
@@ -155,7 +229,7 @@ export function campScene(backdropUrl: string | null): Scene {
         }
       }
       skyPoints = points;
-      stars = Array.from({ length: Math.min(140, points.length) }, () => {
+      stars = Array.from({ length: Math.min(160, points.length) }, () => {
         const point = points[Math.floor(Math.random() * points.length)]!;
         return {
           x: point.x + rand(-2, 2),
@@ -174,26 +248,10 @@ export function campScene(backdropUrl: string | null): Scene {
   /** A size in the painting's pixels, never under a screen pixel. */
   const S = (size: number) => Math.max(0.8, size * scale);
 
-  const seedPuff = (band: 'valley' | 'ground', index: number, anywhere: boolean): Puff => {
-    const low = band === 'ground';
-    return {
-      x: anywhere ? rand(-200, IW + 200) : index % 2 ? IW + 250 : -250,
-      y: low ? rand(640, 740) : rand(300, 440),
-      rx: low ? rand(160, 300) : rand(140, 280),
-      ry: low ? rand(18, 34) : rand(22, 48),
-      // Upper band drifts right, lower band left; a little variety in each.
-      vx: (low ? rand(3, 7) : rand(5, 11)) * (low ? -1 : 1) * (index % 3 === 0 ? 0.6 : 1),
-      alpha: low ? rand(0.07, 0.14) : rand(0.12, 0.26),
-      phase: rand(0, Math.PI * 2),
-    };
-  };
-
-  valley = Array.from({ length: 20 }, (_, index) => seedPuff('valley', index, true));
-  ground = Array.from({ length: 7 }, (_, index) => seedPuff('ground', index, true));
   for (let index = 0; index < 46; index += 1) {
     fireflies.push({
       x: rand(0, IW),
-      y: rand(470, 760),
+      y: rand(520, 760),
       vx: rand(-4, 4),
       vy: rand(-3, 3),
       phase: rand(0, 10),
@@ -202,25 +260,25 @@ export function campScene(backdropUrl: string | null): Scene {
   }
 
   const spawnEmber = (): Particle => ({
-    x: FIRE.x + rand(-22, 22),
-    y: FIRE.y + rand(-30, 10),
-    vx: rand(-8, 8),
-    vy: -rand(30, 85),
+    x: FIRE.x + rand(-14, 14),
+    y: FIRE.y + rand(-34, -4),
+    vx: rand(-6, 6),
+    vy: -rand(26, 70),
     life: 0,
-    span: rand(1600, 4600),
-    size: rand(0.9, 2.3),
+    span: rand(1500, 4200),
+    size: rand(0.8, 1.9),
     spin: rand(1, 3),
     angle: rand(0, Math.PI * 2),
   });
 
   const spawnSmoke = (): Particle => ({
-    x: FIRE.x + rand(-10, 10),
-    y: FIRE.y - 50,
-    vx: rand(2, 7),
-    vy: -rand(10, 18),
+    x: FIRE.x + rand(-8, 8),
+    y: FIRE.y - 60,
+    vx: rand(2, 6),
+    vy: -rand(9, 16),
     life: 0,
     span: rand(6000, 9500),
-    size: rand(14, 22),
+    size: rand(10, 16),
     spin: 0,
     angle: rand(0, Math.PI * 2),
   });
@@ -229,51 +287,69 @@ export function campScene(backdropUrl: string | null): Scene {
     x: WIZARD.x,
     y: WIZARD.y,
     vx: 0,
-    vy: -rand(8, 16),
+    vy: -rand(7, 13),
     life: 0,
     span: rand(1800, 3200),
-    size: rand(0.8, 1.8),
+    size: rand(0.7, 1.5),
     spin: rand(2, 4) * (Math.random() < 0.5 ? -1 : 1),
     angle: rand(0, Math.PI * 2),
   });
 
   const spawnWisp = (): Particle => ({
-    x: WARLOCK.x + rand(-3, 3),
-    y: WARLOCK.y + rand(-4, 4),
-    vx: rand(-3, 3),
-    vy: -rand(12, 24),
+    x: HORNS.x + rand(-9, 9),
+    y: HORNS.y + rand(-3, 3),
+    vx: rand(-2, 2),
+    vy: -rand(8, 16),
     life: 0,
-    span: rand(900, 1800),
-    size: rand(1.5, 3.2),
+    span: rand(900, 1700),
+    size: rand(0.9, 1.9),
     spin: rand(3, 6),
     angle: rand(0, Math.PI * 2),
   });
 
   const spawnLeaf = (): Particle => ({
-    x: DRUID.x + rand(-6, 6),
-    y: DRUID.y + rand(-4, 4),
-    vx: rand(-4, 4),
-    vy: rand(6, 11),
+    x: DRUID.x + rand(-4, 4),
+    y: DRUID.y + rand(-3, 3),
+    vx: rand(-3, 3),
+    vy: rand(5, 9),
     life: 0,
-    span: rand(5000, 7500),
-    size: rand(2.5, 3.8),
+    span: rand(4000, 6000),
+    size: rand(1.8, 2.6),
     spin: rand(1.2, 2.4) * (Math.random() < 0.5 ? -1 : 1),
     angle: rand(0, Math.PI * 2),
   });
 
+  const spawnOakLeaf = (): Particle => ({
+    x: rand(CANOPY.left, CANOPY.right),
+    y: rand(CANOPY.top, CANOPY.bottom),
+    vx: rand(-10, 4),
+    vy: rand(9, 15),
+    life: 0,
+    span: rand(12_000, 18_000),
+    size: rand(3, 4.5),
+    spin: rand(0.8, 1.8) * (Math.random() < 0.5 ? -1 : 1),
+    angle: rand(0, Math.PI * 2),
+  });
+
   const spawnFlock = (): Flock => {
+    const far = Math.random() < 0.4;
+    const lane = far ? FAR : SKY;
     const leftward = Math.random() < 0.5;
-    const count = 3 + Math.floor(Math.random() * 4);
-    const startX = leftward ? SKY.right + 40 : SKY.left - 60;
-    const startY = rand(SKY.top + 20, SKY.bottom);
+    const roll = Math.random();
+    const count = roll < 0.25 ? 1 : roll < 0.45 ? 2 : 3 + Math.floor(Math.random() * 5);
+    const startX = leftward ? lane.right + 40 : lane.left - 60;
+    const startY = rand(lane.top + (far ? 4 : 20), lane.bottom - (far ? 4 : 0));
+    const size = far ? rand(2.6, 3.8) : rand(5, 8);
+    const spacing = far ? 0.5 : 1;
     return {
-      vx: rand(50, 80) * (leftward ? -1 : 1),
-      vy: rand(-6, 4),
+      lane,
+      vx: (far ? rand(26, 42) : rand(50, 80)) * (leftward ? -1 : 1),
+      vy: far ? rand(-2, 2) : rand(-6, 4),
       birds: Array.from({ length: count }, (_, index) => ({
         // A loose V: each bird a little behind and to the side of the one before.
-        x: startX - (leftward ? -1 : 1) * index * rand(14, 22),
-        y: startY + (index % 2 ? 1 : -1) * Math.ceil(index / 2) * rand(6, 11),
-        size: rand(5, 8),
+        x: startX - (leftward ? -1 : 1) * index * rand(14, 22) * spacing,
+        y: startY + (index % 2 ? 1 : -1) * Math.ceil(index / 2) * rand(6, 11) * spacing,
+        size: size * rand(0.85, 1.15),
         flap: rand(0, Math.PI * 2),
         rate: rand(7, 10),
       })),
@@ -282,15 +358,17 @@ export function campScene(backdropUrl: string | null): Scene {
 
   const spawnMeteor = (): Meteor => {
     const leftward = Math.random() < 0.6;
-    const angle = rand(20, 38) * (Math.PI / 180);
-    const speed = rand(420, 560);
+    const angle = rand(18, 40) * (Math.PI / 180);
+    const speed = rand(420, 600);
+    const long = Math.random() < 0.2;
     return {
-      x: leftward ? rand(420, 680) : rand(140, 380),
-      y: rand(10, 60),
+      x: leftward ? rand(400, 680) : rand(140, 400),
+      y: rand(10, 70),
       vx: Math.cos(angle) * speed * (leftward ? -1 : 1),
       vy: Math.sin(angle) * speed,
       life: 0,
-      span: rand(650, 900),
+      span: long ? rand(1000, 1300) : rand(600, 900),
+      tail: long ? 150 : 90,
     };
   };
 
@@ -329,29 +407,31 @@ export function campScene(backdropUrl: string | null): Scene {
     context.fill();
   };
 
-  const drawPuffs = (context: CanvasRenderingContext2D, puffs: Puff[], band: 'valley' | 'ground', now: number, dt: number) => {
-    const seconds = dt / 1000;
-    for (let index = 0; index < puffs.length; index += 1) {
-      const puff = puffs[index]!;
-      puff.x += puff.vx * seconds;
-      if (puff.x > IW + puff.rx + 50 || puff.x < -puff.rx - 50) {
-        puffs[index] = seedPuff(band, puff.vx > 0 ? 1 : 0, false);
-        puffs[index]!.x = puff.vx > 0 ? -puff.rx - 40 : IW + puff.rx + 40;
-        continue;
-      }
-      const breath = 0.7 + 0.3 * Math.sin(puff.phase + now / 7000);
-      context.save();
-      context.translate(X(puff.x), Y(puff.y));
-      context.scale(1, puff.ry / puff.rx);
-      const radius = S(puff.rx);
-      const gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);
-      gradient.addColorStop(0, `rgb(206 228 240 / ${puff.alpha * breath})`);
-      gradient.addColorStop(0.55, `rgb(190 216 232 / ${puff.alpha * breath * 0.45})`);
-      gradient.addColorStop(1, 'rgb(190 216 232 / 0)');
-      context.fillStyle = gradient;
-      context.fillRect(-radius, -radius, radius * 2, radius * 2);
-      context.restore();
+  /** A fog bank: its tile laid end to end across the painting, slid by the clock, breathing a little. */
+  const drawBank = (context: CanvasRenderingContext2D, fog: FogBank, now: number) => {
+    if (!fog.texture) return;
+    const seconds = now / 1000;
+    const shift = (((seconds * fog.speed) % fog.tile) + fog.tile) % fog.tile;
+    context.globalAlpha = fog.alpha * (0.8 + 0.2 * Math.sin(fog.phase + now / 8000));
+    const top = Y(fog.y - fog.height / 2);
+    const height = fog.height * scale;
+    // One screen pixel of overlap between tiles, so no seam shows.
+    const width = fog.tile * scale + 1;
+    for (let x = shift - fog.tile; x < IW; x += fog.tile) {
+      context.drawImage(fog.texture, X(x), top, width, height);
     }
+    context.globalAlpha = 1;
+  };
+
+  const drawLeaf = (context: CanvasRenderingContext2D, leaf: Particle, sway: number, rgb: string, alpha: number) => {
+    context.save();
+    context.translate(X(leaf.x + sway), Y(leaf.y));
+    context.rotate(leaf.angle);
+    context.fillStyle = `rgb(${rgb} / ${alpha})`;
+    context.beginPath();
+    context.ellipse(0, 0, S(leaf.size), S(leaf.size * 0.45), 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
   };
 
   return {
@@ -375,68 +455,77 @@ export function campScene(backdropUrl: string | null): Scene {
       glow(context, MOON.x, MOON.y, MOON.r * 2.2, '200 230 255', 0.1 + 0.05 * Math.sin(now / 4000));
       context.globalCompositeOperation = 'source-over';
 
-      // A shooting star.
-      if (!meteor && now >= meteorAt && skyPoints.length) meteor = spawnMeteor();
-      if (meteor) {
+      // Shooting stars: every few seconds, and now and then a second on the first one's heels.
+      if (now >= meteorAt && skyPoints.length) {
+        meteors.push(spawnMeteor());
+        meteorAt = Math.random() < 0.2 ? now + rand(300, 900) : now + rand(3_000, 8_000);
+      }
+      for (let index = meteors.length - 1; index >= 0; index -= 1) {
+        const meteor = meteors[index]!;
         meteor.life += dt;
         meteor.x += meteor.vx * seconds;
         meteor.y += meteor.vy * seconds;
         if (meteor.life > meteor.span) {
-          meteor = null;
-          meteorAt = now + rand(9_000, 24_000);
-        } else {
-          const t = meteor.life / meteor.span;
-          const bright = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
-          const norm = Math.hypot(meteor.vx, meteor.vy);
-          const tail = 90 * bright + 20;
-          const gradient = context.createLinearGradient(
-            X(meteor.x),
-            Y(meteor.y),
-            X(meteor.x - (meteor.vx / norm) * tail),
-            Y(meteor.y - (meteor.vy / norm) * tail),
-          );
-          gradient.addColorStop(0, `rgb(240 248 255 / ${0.95 * bright})`);
-          gradient.addColorStop(1, 'rgb(240 248 255 / 0)');
-          context.strokeStyle = gradient;
-          context.lineWidth = S(1.3);
-          context.lineCap = 'round';
-          context.beginPath();
-          context.moveTo(X(meteor.x), Y(meteor.y));
-          context.lineTo(X(meteor.x - (meteor.vx / norm) * tail), Y(meteor.y - (meteor.vy / norm) * tail));
-          context.stroke();
-          dot(context, meteor.x, meteor.y, 1.4, `rgb(255 255 255 / ${bright})`);
+          meteors.splice(index, 1);
+          continue;
         }
+        const t = meteor.life / meteor.span;
+        const bright = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
+        const norm = Math.hypot(meteor.vx, meteor.vy);
+        const tail = meteor.tail * bright + 20;
+        const gradient = context.createLinearGradient(
+          X(meteor.x),
+          Y(meteor.y),
+          X(meteor.x - (meteor.vx / norm) * tail),
+          Y(meteor.y - (meteor.vy / norm) * tail),
+        );
+        gradient.addColorStop(0, `rgb(240 248 255 / ${0.95 * bright})`);
+        gradient.addColorStop(1, 'rgb(240 248 255 / 0)');
+        context.strokeStyle = gradient;
+        context.lineWidth = S(1.3);
+        context.lineCap = 'round';
+        context.beginPath();
+        context.moveTo(X(meteor.x), Y(meteor.y));
+        context.lineTo(X(meteor.x - (meteor.vx / norm) * tail), Y(meteor.y - (meteor.vy / norm) * tail));
+        context.stroke();
+        dot(context, meteor.x, meteor.y, 1.4, `rgb(255 255 255 / ${bright})`);
       }
 
-      // Birds.
-      if (!flock && now >= flockAt) flock = spawnFlock();
-      if (flock) {
+      // Cloud across the moon.
+      drawBank(context, cloud, now);
+
+      // Birds: a new flock every few seconds, two in the air at most.
+      if (flocks.length < 2 && now >= flockAt) {
+        flocks.push(spawnFlock());
+        flockAt = now + rand(4_000, 11_000);
+      }
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      for (let index = flocks.length - 1; index >= 0; index -= 1) {
+        const flock = flocks[index]!;
+        const far = flock.lane === FAR;
+        context.strokeStyle = far ? 'rgb(20 32 42 / 0.7)' : 'rgb(8 14 20 / 0.85)';
         let gone = true;
-        context.strokeStyle = 'rgb(8 14 20 / 0.85)';
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
         for (const bird of flock.birds) {
           bird.x += flock.vx * seconds;
           bird.y += flock.vy * seconds + Math.sin(now / 600 + bird.flap) * 0.08;
           bird.flap += bird.rate * seconds;
-          if (bird.x > SKY.left - 120 && bird.x < SKY.right + 120) gone = false;
+          if (bird.x > flock.lane.left - 120 && bird.x < flock.lane.right + 120) gone = false;
           const wing = Math.sin(bird.flap);
           const span = bird.size;
-          context.lineWidth = S(1.2);
+          context.lineWidth = S(far ? 0.9 : 1.2);
           context.beginPath();
           context.moveTo(X(bird.x - span), Y(bird.y - wing * span * 0.6));
           context.quadraticCurveTo(X(bird.x - span * 0.4), Y(bird.y - wing * span * 0.2 - 1), X(bird.x), Y(bird.y));
           context.quadraticCurveTo(X(bird.x + span * 0.4), Y(bird.y - wing * span * 0.2 - 1), X(bird.x + span), Y(bird.y - wing * span * 0.6));
           context.stroke();
         }
-        if (gone) {
-          flock = null;
-          flockAt = now + rand(15_000, 35_000);
-        }
+        if (gone) flocks.splice(index, 1);
       }
 
-      // Fog through the valley, and low over the clearing.
-      drawPuffs(context, valley, 'valley', now, dt);
+      // Mist rolling through the valley, both ways.
+      drawBank(context, valleyFar, now);
+      drawBank(context, valleyNear, now);
 
       // Smoke off the fire.
       if (smoke.length < 9 && Math.random() < dt / 700) smoke.push(spawnSmoke());
@@ -461,18 +550,21 @@ export function campScene(backdropUrl: string | null): Scene {
         0.08 * Math.sin(now / 211 + 0.4) +
         rand(-0.05, 0.05);
       context.globalCompositeOperation = 'screen';
-      glow(context, FIRE.x, FIRE.y - 10, 300, '255 140 50', 0.2 * flicker);
-      glow(context, FIRE.x, FIRE.y - 20, 80, '255 200 110', 0.45 * flicker);
+      glow(context, FIRE.x, FIRE.y, 260, '255 140 50', 0.2 * flicker);
+      glow(context, FIRE.x, FIRE.y - 16, 55, '255 200 110', 0.45 * flicker);
       context.globalCompositeOperation = 'source-over';
-      drawPuffs(context, ground, 'ground', now, dt);
+
+      // Mist drifting across the clearing, and low over the grass.
+      drawBank(context, clearing, now);
+      drawBank(context, grass, now);
 
       // Sparks.
-      while (embers.length < 90) embers.push(spawnEmber());
+      while (embers.length < 80) embers.push(spawnEmber());
       age(embers, dt);
       context.globalCompositeOperation = 'lighter';
       for (const ember of embers) {
         const t = ember.life / ember.span;
-        ember.vx += Math.sin(ember.angle) * 12 * seconds;
+        ember.vx += Math.sin(ember.angle) * 10 * seconds;
         const alpha = t < 0.1 ? t / 0.1 : 1 - (t - 0.1) / 0.9;
         // Yellow when fresh, orange, then red as it cools.
         const g = Math.round(210 - t * 150);
@@ -480,15 +572,15 @@ export function campScene(backdropUrl: string | null): Scene {
         dot(context, ember.x, ember.y, ember.size * (1 - t * 0.5), `rgb(255 ${g} ${b} / ${alpha * 0.95})`);
       }
 
-      // The wizard's crystal: a pulse, motes spiralling up, and now and then a cast.
+      // The wizard's staff: a pulse, motes spiralling up, and now and then a cast.
       const pulse = 0.75 + 0.25 * Math.sin(now / 600);
-      glow(context, WIZARD.x, WIZARD.y, 60, '110 170 255', 0.55 * pulse);
-      glow(context, WIZARD.x, WIZARD.y, 16, '220 240 255', 0.95 * pulse);
-      if (motes.length < 32 && Math.random() < dt / 90) motes.push(spawnMote());
+      glow(context, WIZARD.x, WIZARD.y, 36, '110 170 255', 0.55 * pulse);
+      glow(context, WIZARD.x, WIZARD.y, 10, '220 240 255', 0.95 * pulse);
+      if (motes.length < 28 && Math.random() < dt / 100) motes.push(spawnMote());
       age(motes, dt);
       for (const mote of motes) {
         const t = mote.life / mote.span;
-        const radius = 4 + t * 16;
+        const radius = 3 + t * 11;
         const x = mote.x + Math.cos(mote.angle) * radius;
         const alpha = t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85;
         glow(context, x, mote.y, mote.size * 4, '140 200 255', alpha * 0.5);
@@ -497,9 +589,9 @@ export function campScene(backdropUrl: string | null): Scene {
       if (now >= castAt) {
         castRing = 0;
         castAt = now + rand(10_000, 20_000);
-        for (let index = 0; index < 26; index += 1) {
-          const angle = (index / 26) * Math.PI * 2 + rand(-0.1, 0.1);
-          const speed = rand(30, 70);
+        for (let index = 0; index < 22; index += 1) {
+          const angle = (index / 22) * Math.PI * 2 + rand(-0.1, 0.1);
+          const speed = rand(22, 50);
           burst.push({
             x: WIZARD.x,
             y: WIZARD.y,
@@ -507,7 +599,7 @@ export function campScene(backdropUrl: string | null): Scene {
             vy: Math.sin(angle) * speed,
             life: 0,
             span: rand(900, 1600),
-            size: rand(0.9, 1.8),
+            size: rand(0.8, 1.5),
             spin: 0,
             angle: 0,
           });
@@ -518,11 +610,11 @@ export function campScene(backdropUrl: string | null): Scene {
         const t = castRing / 1200;
         if (t >= 1) castRing = -1;
         else {
-          glow(context, WIZARD.x, WIZARD.y, 60 + t * 60, '140 200 255', 0.5 * (1 - t));
+          glow(context, WIZARD.x, WIZARD.y, 36 + t * 40, '140 200 255', 0.5 * (1 - t));
           context.strokeStyle = `rgb(190 225 255 / ${0.8 * (1 - t)})`;
-          context.lineWidth = S(1.4);
+          context.lineWidth = S(1.2);
           context.beginPath();
-          context.arc(X(WIZARD.x), Y(WIZARD.y), S(8 + t * 70), 0, Math.PI * 2);
+          context.arc(X(WIZARD.x), Y(WIZARD.y), S(6 + t * 46), 0, Math.PI * 2);
           context.stroke();
         }
       }
@@ -534,18 +626,18 @@ export function campScene(backdropUrl: string | null): Scene {
         dot(context, spark.x, spark.y, spark.size, `rgb(200 230 255 / ${1 - t})`);
       }
 
-      // The warlock's staff burns violet.
-      glow(context, WARLOCK.x, WARLOCK.y, 44, '170 90 255', 0.5 * (0.7 + 0.3 * Math.sin(now / 430 + 2)));
-      if (wisps.length < 26 && Math.random() < dt / 60) wisps.push(spawnWisp());
+      // The tiefling's horns smoulder violet.
+      glow(context, HORNS.x, HORNS.y, 20, '170 90 255', 0.45 * (0.7 + 0.3 * Math.sin(now / 430 + 2)));
+      if (wisps.length < 20 && Math.random() < dt / 80) wisps.push(spawnWisp());
       age(wisps, dt);
       for (const wisp of wisps) {
         const t = wisp.life / wisp.span;
-        const x = wisp.x + Math.sin(wisp.angle) * 3;
-        dot(context, x, wisp.y, wisp.size * (1 - t * 0.7), `rgb(190 120 255 / ${(1 - t) * 0.8})`);
+        const x = wisp.x + Math.sin(wisp.angle) * 2.5;
+        dot(context, x, wisp.y, wisp.size * (1 - t * 0.7), `rgb(190 120 255 / ${(1 - t) * 0.75})`);
       }
 
       // The druid's staff glows green.
-      glow(context, DRUID.x, DRUID.y, 44, '120 230 120', 0.45 * (0.7 + 0.3 * Math.sin(now / 900 + 4)));
+      glow(context, DRUID.x, DRUID.y, 30, '120 230 120', 0.45 * (0.7 + 0.3 * Math.sin(now / 900 + 4)));
       context.globalCompositeOperation = 'source-over';
       if (now >= leafAt) {
         leaves.push(spawnLeaf());
@@ -554,30 +646,24 @@ export function campScene(backdropUrl: string | null): Scene {
       age(leaves, dt);
       for (const leaf of leaves) {
         const t = leaf.life / leaf.span;
-        const sway = Math.sin(leaf.life / 500 + leaf.angle) * 10;
         const alpha = t < 0.1 ? t / 0.1 : 1 - Math.max(0, (t - 0.6) / 0.4);
-        context.save();
-        context.translate(X(leaf.x + sway), Y(leaf.y));
-        context.rotate(leaf.angle);
-        context.fillStyle = `rgb(150 220 110 / ${alpha * 0.9})`;
-        context.beginPath();
-        context.ellipse(0, 0, S(leaf.size), S(leaf.size * 0.45), 0, 0, Math.PI * 2);
-        context.fill();
-        context.restore();
+        drawLeaf(context, leaf, Math.sin(leaf.life / 500 + leaf.angle) * 7, '150 220 110', alpha * 0.9);
       }
 
-      // The wolf's eye catches the firelight, and blinks now and then.
-      let open = 1;
-      if (now >= blinkAt) {
-        const since = now - blinkAt;
-        if (since > 220) blinkAt = now + rand(3_000, 9_000);
-        else open = Math.abs(since - 110) / 110;
+      // Now and then the oak lets a leaf go, and it drifts down, rocking.
+      if (now >= oakLeafAt) {
+        oakLeaves.push(spawnOakLeaf());
+        oakLeafAt = now + rand(2_500, 7_000);
       }
-      context.globalCompositeOperation = 'lighter';
-      glow(context, WOLF_EYE.x, WOLF_EYE.y, 6, '255 210 120', 0.55 * open * flicker);
-      dot(context, WOLF_EYE.x, WOLF_EYE.y, 1.1 * open, `rgb(255 230 160 / ${0.9 * open})`);
+      age(oakLeaves, dt);
+      for (const leaf of oakLeaves) {
+        const t = leaf.life / leaf.span;
+        const alpha = t < 0.08 ? t / 0.08 : 1 - Math.max(0, (t - 0.7) / 0.3);
+        drawLeaf(context, leaf, Math.sin(leaf.life / 900 + leaf.angle) * 18, '196 150 80', alpha * 0.85);
+      }
 
       // Fireflies in the undergrowth.
+      context.globalCompositeOperation = 'lighter';
       for (const fly of fireflies) {
         fly.vx += rand(-6, 6) * seconds;
         fly.vy += rand(-5, 5) * seconds;
@@ -587,7 +673,7 @@ export function campScene(backdropUrl: string | null): Scene {
         fly.y += fly.vy * seconds;
         if (fly.x < -10) fly.x = IW + 10;
         if (fly.x > IW + 10) fly.x = -10;
-        if (fly.y < 460) fly.vy += 8 * seconds;
+        if (fly.y < 510) fly.vy += 8 * seconds;
         if (fly.y > IH) fly.vy -= 8 * seconds;
         const t = ((now / 1000 + fly.phase) % fly.period) / fly.period;
         const on = t < 0.35 ? Math.sin((t / 0.35) * Math.PI) : 0;

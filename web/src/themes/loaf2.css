@@ -1,12 +1,15 @@
 /*
  * Loaf v2: the party at rest. A campfire in the woods under a full moon, a
- * ruined castle across the valley, five lace-cut silhouettes around the fire
- * (rogue, tiefling warlock, dragonborn paladin, druid and wolf, wizard).
+ * ruined castle across the valley, and the party small in the clearing with
+ * their backs to us, facing the fire: the rogue on the grass, then the wizard,
+ * the wolf, the druid, the dragonborn and the tiefling along a fallen log.
  *
  * Made for Loaf, from his brief (2026-09-25: "a starry night in the woods,
  * like a dnd campfire resting at night vibe") and his notes on seven rounds
- * of paintings; the painting is `assets/gen/loaf2-a.jpg`, made through
- * imagegen. Wes: "go absolutely nuts with the effects and alive feel."
+ * of paintings; the painting is `assets/gen/loaf2-b.jpg` (2026-09-26, his
+ * pick after two more rounds: backs to the viewer, "D - smaller"; the first
+ * was `loaf2-a.jpg`), made through imagegen. Wes: "go absolutely nuts with
+ * the effects and alive feel."
  *
  * Surfaces are the valley's night blue, the accent is the fire, and
  * moonlight stands where the other themes have gold. Dim text is the mist,
@@ -67,7 +70,7 @@
   --backdrop-position: center 70%;
   /* The hearth layer breathes on the fire; camp-scene draws the flicker. */
   --glow-color: rgb(240 145 63 / 0.18);
-  --glow-position: 43% 80%;
+  --glow-position: 49% 76%;
   --ambient-motion: camp;
   --star-color: 236 246 255;
   --star-depth: 0.3;

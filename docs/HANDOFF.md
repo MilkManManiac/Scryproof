@@ -3132,3 +3132,27 @@ still gets through, the next steps are firm (headroom 10) or a transient
 ducker. Still to tell Seth: Windows Mic Boost to 0 dB, and turn off
 Automatic volume.
 
+
+## 2026-09-26 afternoon: Loaf v2's new painting, moving fog (built, not deployed)
+
+Loaf asked for the party facing the fire with their backs to the viewer, in
+round 7's "half-lit" style. Rounds 8 and 9 are in `Downloads\Campfire theme
+options\`; Wes picked 9D ("smaller"): the party small on a log, backs to us,
+the tiefling with no staff. It is `assets/gen/loaf2-b.jpg`, served as
+`/backdrops/loaf2.jpg` (no-store, so no rename needed). Gemini's edit mode
+changes what one figure does but will not move or resize people; "bigger"
+and "circle" only came out as fresh paintings or a crop.
+
+Wes: "for effects for the alive feel. Everything. Then are we able to make
+the fog move on the screen? Then maybe have the birds fly by and shooting
+stars apear more often." In `camp-scene.ts`, every point re-measured on the
+new painting. The fog is now tiles of generated mist texture sliding
+sideways (cloud over the moon, two valley banks opposite ways, one across
+the clearing, one over the grass) instead of the old faint puffs. Birds:
+a flock, pair or lone bird every 4-11 s, high by the moon or small over the
+valley. Shooting stars every 3-8 s, one in five followed by a second. The
+wolf faces away now, so its eye is gone; the tiefling's violet moved from a
+staff to his horns; new: leaves falling from the oak. Web tests 408.
+
+![Loaf v2, the new painting](shots/theme-loaf2.png)
+![The scene alone](shots/theme-loaf2-scene.png)

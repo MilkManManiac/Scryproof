@@ -22,7 +22,7 @@
  *             drifting across the room, spinning slowly, bouncing off the
  *             edges the way a screensaver logo does
  *   camp      Loaf v2's whole scene, pinned to points in its painting
- *             (camp-scene.ts): fire, fog, birds, staffs, a wolf, and more
+ *             (camp-scene.ts): fire, rolling fog, birds, staffs, and more
  *
  * The rules that keep it from being a screensaver: everything is small and
  * dim, it runs at thirty frames a second and not sixty, it stops dead when
