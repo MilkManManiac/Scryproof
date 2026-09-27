@@ -3384,3 +3384,33 @@ sidebar-width rule applied everywhere. Scoped to `.voice-dock`.
 Tests: server 282 (new `kicks-and-invites.test.ts`, voice-move +2), web 413,
 `test:voice` 67/67, typecheck clean. Shots: `docs/shots/member-kick.png`,
 `soundboard-manage.png`, `soundboard-dock.png`, `soundboard-to-settings.png`.
+
+## 2026-09-27: Purdle (built, not deployed)
+
+Wes: "Make a game called purdle that acts like wordle that everyone can play
+once a day. make it act like wordle."
+
+- **Rules** in `shared/src/purdle.ts`: Wordle marking (repeated letters
+  handled), the day number (Purdle #1 = 2026-09-27, turns over at midnight
+  America/New_York), next-word time across clock changes, streaks, share text.
+- **Words:** guesses are ENABLE's 8,6xx five-letter words (public domain,
+  vendored in `shared/src/purdle-words.ts`, its own entry point so the app
+  lazy-loads it as a 43 KB chunk). Answers are 1,208 hand-picked common words
+  in `server/src/purdle/answers.ts`, shuffled once with an HMAC of
+  SESSION_SECRET (`server/src/purdle/purdle.ts`): the source does not reveal
+  tomorrow's word. Changing the list or the secret reshuffles every day.
+- **Server is the referee** (`routes/purdle.ts`): `GET /api/purdle/today`,
+  `POST /api/purdle/guess`, `GET /api/purdle/servers/:id` (members only). The
+  answer is sent only after you finish. Table `purdle_plays` (migration 0027)
+  keeps each day's guesses so the board follows you across devices. Finishing
+  broadcasts `purdle_done` (tries, solved, streak, never letters) to every
+  server you are in.
+- **App:** `components/Purdle.tsx` (rail tile under the bell, dot until you
+  start today's), `lib/purdle.ts`. Tile flips, shake, win bounce, Wordle
+  keyboard colours, result with stats and spread, "Copy result" and "Put in
+  #channel" (sets the channel's draft; Composer now follows outside draft
+  changes). Wordle's fixed green/gold across all themes on purpose.
+- Tests: server 291 (new `purdle.test.ts`, 9), web 413, typecheck clean, web
+  build splits the word list. Shots: `docs/shots/purdle-*.png`.
+- Not proven: phones (layout shot at 390 px only), and the day turning over
+  live at midnight.

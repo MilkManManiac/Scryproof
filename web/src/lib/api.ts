@@ -37,6 +37,7 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
+import type { PurdleFinish, PurdleToday } from '@scryproof/shared';
 
 /** How long a new invite lasts. Two days is the most there is (`LIMITS.inviteLifetimeMs`). */
 export type InviteLife = '30m' | '6h' | '1d' | '2d';
@@ -591,6 +592,12 @@ export const api = {
       throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
     }
     return payload.attachment as Attachment;
+  },
+
+  purdle: {
+    today: () => get<PurdleToday>('/api/purdle/today'),
+    guess: (word: string) => post<PurdleToday>('/api/purdle/guess', { word }),
+    server: (serverId: string) => get<{ day: number; finishes: PurdleFinish[] }>(`/api/purdle/servers/${serverId}`),
   },
 
   /** The locked bytes of a sealed attachment, to be opened with the key in its message. */

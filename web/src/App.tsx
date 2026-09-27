@@ -47,6 +47,7 @@ import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
 import { Walkthrough } from './components/Walkthrough';
 import { GuideGate } from './components/Guide';
+import { PurdleGate } from './components/Purdle';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
@@ -454,6 +455,7 @@ function Shell() {
       {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
       <WalkthroughGate />
       <GuideGate />
+      <PurdleGate />
       </div>
 
       {channelSettings && server && channel ? (

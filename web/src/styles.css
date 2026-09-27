@@ -7069,3 +7069,457 @@ kbd {
     white-space: nowrap;
   }
 }
+
+/* ---------------------------------------------------------------- purdle */
+/* Wordle, one word a day (Purdle.tsx). The colours are Wordle's own green and
+   gold, fixed across themes: they are the game's language, and a theme that
+   tinted them would make the shared squares mean something else. */
+
+.purdle-backdrop {
+  --purdle-hit: #538d4e;
+  --purdle-near: #b59f3b;
+  --purdle-miss: #3a3a3c;
+  --purdle-tile: min(58px, calc((100vw - 64px) / 5));
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(var(--bg-rgb) / 0.72);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.purdle {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 10px 16px 18px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.purdle-head {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.purdle-title {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.purdle-number {
+  margin-left: 8px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+/* Done for the day: the board steps down so the result fits beside it. */
+.purdle.done {
+  --purdle-tile: min(40px, calc((100vw - 64px) / 5));
+}
+.purdle-loading {
+  padding: 60px 0;
+}
+
+.purdle-toast {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--panel-solid);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.purdle-toast.long {
+  letter-spacing: 0.06em;
+}
+
+.purdle-grid {
+  display: grid;
+  gap: 5px;
+}
+.purdle-row {
+  display: grid;
+  grid-template-columns: repeat(5, var(--purdle-tile));
+  gap: 5px;
+}
+.purdle-tile {
+  width: var(--purdle-tile);
+  height: var(--purdle-tile);
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: calc(var(--purdle-tile) * 0.55);
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+}
+.purdle-tile.filled {
+  border-color: var(--text-muted);
+  animation: purdle-pop 110ms ease-out;
+}
+.purdle-tile.hit,
+.purdle-tile.near,
+.purdle-tile.miss {
+  border-color: transparent;
+  color: #fff;
+}
+.purdle-tile.hit {
+  background: var(--purdle-hit);
+}
+.purdle-tile.near {
+  background: var(--purdle-near);
+}
+.purdle-tile.miss {
+  background: var(--purdle-miss);
+}
+
+/* The row just guessed turns over one tile at a time. Until its turn a tile
+   still looks typed (the 0% frame, held through the delay), and it takes its
+   colour at the half-way point, edge on, where nobody can see the swap. */
+.purdle-row.flipping .purdle-tile {
+  animation: purdle-flip 500ms ease-in-out both;
+  animation-delay: calc(var(--at) * 300ms);
+}
+.purdle-row.flipping .purdle-tile.hit {
+  --flip-to: var(--purdle-hit);
+}
+.purdle-row.flipping .purdle-tile.near {
+  --flip-to: var(--purdle-near);
+}
+.purdle-row.flipping .purdle-tile.miss {
+  --flip-to: var(--purdle-miss);
+}
+@keyframes purdle-flip {
+  0% {
+    transform: rotateX(0);
+    background: transparent;
+    border-color: var(--text-muted);
+    color: var(--text);
+  }
+  49.9% {
+    transform: rotateX(90deg);
+    background: transparent;
+    border-color: var(--text-muted);
+    color: var(--text);
+  }
+  50% {
+    transform: rotateX(90deg);
+    background: var(--flip-to);
+    border-color: transparent;
+    color: #fff;
+  }
+  100% {
+    transform: rotateX(0);
+    background: var(--flip-to);
+    border-color: transparent;
+    color: #fff;
+  }
+}
+@keyframes purdle-pop {
+  50% {
+    transform: scale(1.12);
+  }
+}
+.purdle-row.shake {
+  animation: purdle-shake 480ms ease-in-out;
+}
+@keyframes purdle-shake {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(4px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-6px);
+  }
+  40%,
+  60% {
+    transform: translateX(6px);
+  }
+}
+.purdle-row.winning .purdle-tile {
+  animation: purdle-jump 600ms ease-out both;
+  animation-delay: calc(var(--at) * 100ms);
+}
+@keyframes purdle-jump {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-26px);
+  }
+  60% {
+    transform: translateY(4px);
+  }
+  80% {
+    transform: translateY(-4px);
+  }
+}
+
+.purdle-keys {
+  align-self: stretch;
+  display: grid;
+  gap: 7px;
+  touch-action: manipulation;
+}
+.purdle-key-row {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.purdle-key {
+  flex: 1 1 0;
+  max-width: 40px;
+  height: 54px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  /* Unused keys light, used-and-wrong keys dark: Wordle's keyboard, so a
+     glance says which letters are left. */
+  background: #818384;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background 200ms ease,
+    filter var(--t-fast) var(--ease);
+}
+.purdle-key:hover {
+  filter: brightness(1.15);
+}
+.purdle-key:active {
+  transform: translateY(1px);
+}
+.purdle-key.wide {
+  flex: 1.5 1 0;
+  max-width: 64px;
+  font-size: 12px;
+}
+.purdle-key.hit,
+.purdle-key.near,
+.purdle-key.miss {
+  color: #fff;
+}
+.purdle-key.hit {
+  background: var(--purdle-hit);
+}
+.purdle-key.near {
+  background: var(--purdle-near);
+}
+.purdle-key.miss {
+  background: var(--purdle-miss);
+}
+
+.purdle-result {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.purdle-verdict {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.purdle-answer {
+  font-family: var(--font);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--purdle-hit);
+}
+.purdle-stats {
+  display: flex;
+  gap: 18px;
+}
+.purdle-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 48px;
+}
+.purdle-stat-value {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.purdle-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.purdle-spread {
+  align-self: stretch;
+  display: grid;
+  gap: 4px;
+  padding: 0 8px;
+}
+.purdle-spread-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.purdle-spread-n {
+  width: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.purdle-bar {
+  min-width: 20px;
+  padding: 2px 6px;
+  background: var(--purdle-miss);
+  color: #fff;
+  font-weight: 700;
+  text-align: right;
+  border-radius: 2px;
+}
+.purdle-bar.today {
+  background: var(--purdle-hit);
+}
+.purdle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.purdle-next {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.purdle-next b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.purdle-board {
+  align-self: stretch;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.purdle-board-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.purdle-board-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.purdle-board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.purdle-board-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.purdle-board-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.purdle-board-streak {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.purdle-board-score {
+  min-width: 34px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--purdle-hit);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.purdle-board-score.lost {
+  background: var(--purdle-miss);
+}
+
+/* The rail's tile: four squares in the game's colours, and a dot until today's is played. */
+.rail-purdle .glyph-hit {
+  fill: #538d4e;
+}
+.rail-purdle .glyph-near {
+  fill: #b59f3b;
+}
+.rail-purdle .glyph-miss {
+  fill: currentColor;
+  opacity: 0.45;
+}
+.rail-purdle-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #b59f3b;
+  box-shadow: 0 0 0 2px var(--panel-solid);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .purdle-row.flipping .purdle-tile,
+  .purdle-row.winning .purdle-tile,
+  .purdle-row.shake,
+  .purdle-tile.filled {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}

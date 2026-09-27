@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-27-purdle',
+    date: '2026-09-27',
+    title: 'Purdle: one word a day, for everyone',
+    notes: [
+      'Purdle is Wordle, here. Everyone gets the same five-letter word, six tries, once a day. Open it from the little green and yellow squares under the bell on the left.',
+      'Green is the right letter in the right spot, yellow is in the word somewhere else, gray is not in it. Type on your keyboard or tap the letters.',
+      'A new word every midnight Eastern. The yellow dot on the squares means today’s is still waiting for you.',
+      'Under the board: who in this server has done today’s and in how many tries. Never their letters, so nothing gets spoiled.',
+      'When you finish, Copy result gives you the colored squares, or Put in #channel drops them in the message box for you to send.',
+      'Your streak, win rate and how many tries your wins usually take are kept, on any device you sign in on.',
+    ],
+  },
+  {
     id: '2026-09-27-kick',
     date: '2026-09-27',
     title: 'Kick, two-day invites, and moves that don’t drop people',

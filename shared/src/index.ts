@@ -8,3 +8,4 @@ export * from './polls.js';
 export * from './initiative.js';
 export * from './channel-e2ee.js';
 export * from './ogg.js';
+export * from './purdle.js';

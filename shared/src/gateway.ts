@@ -154,6 +154,8 @@ export type ServerEvent =
    * this is still taken out.
    */
   | { t: 'voice_move'; d: { serverId: Snowflake; fromChannelId: Snowflake; channelId: Snowflake; by: Snowflake } }
+  /** Someone who shares this server finished today's Purdle. How many tries, never the letters. */
+  | { t: 'purdle_done'; d: { serverId: Snowflake; day: number; userId: Snowflake; tries: number; solved: boolean; streak: number } }
   /*
    * There was a `voice_key` event here, carrying a key this server had
    * generated. It is gone. A server that makes the key has the key, which

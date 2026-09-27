@@ -206,6 +206,25 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     if (replyingTo) input.current?.focus();
   }, [replyingTo]);
 
+  // Something outside the box put text in it (Purdle's "Put in #channel"):
+  // show it. The box's own typing sets the same draft, so that is a no-op.
+  useEffect(
+    () =>
+      channelDrafts.subscribe(() => {
+        const draft = channelDrafts.get(channel.id);
+        setText((now) => {
+          if (now === draft || !draft) return now;
+          requestAnimationFrame(() => {
+            input.current?.focus();
+            input.current?.setSelectionRange(draft.length, draft.length);
+            grow();
+          });
+          return draft;
+        });
+      }),
+    [channel.id],
+  );
+
   // Whatever was left unsent in this channel comes back, cursor at the end.
   // Pending attachments are uploads in flight, not draft text, so they are
   // not kept: switching channels mid-upload abandons them, same as before.

@@ -955,6 +955,27 @@ export const channelKeys = pgTable(
 export type ChannelEpochRow = typeof channelEpochs.$inferSelect;
 export type ChannelKeyRow = typeof channelKeys.$inferSelect;
 
+/**
+ * One person's Purdle for one day: the guesses so far, and how it ended.
+ * The words are kept so the board comes back on any device; they are a
+ * game's moves, not a message, and the server has to see them to mark them.
+ */
+export const purdlePlays = pgTable(
+  'purdle_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    guesses: jsonb('guesses').$type<string[]>().notNull(),
+    solved: boolean('solved').notNull().default(false),
+    /** Set on the winning guess or the sixth. Null while still playing. */
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('purdle_plays_day_idx').on(table.day)],
+);
+
+export type PurdlePlayRow = typeof purdlePlays.$inferSelect;
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
 export type DmChannelRow = typeof dmChannels.$inferSelect;
