@@ -10,7 +10,8 @@
  * not cut it off.
  */
 
-import { useSyncExternalStore, type SyntheticEvent } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type SyntheticEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 import { voicePrefs } from '../lib/voice-prefs';
 import { Menu, MenuItem } from './Menu';
@@ -47,21 +48,37 @@ export function VolumeMenu({
   name,
   spot,
   onClose,
+  children,
 }: {
   userId: string;
   name: string;
   spot: MenuSpot;
   onClose: () => void;
+  /** More below the volume: a moderator's actions (`VoiceModItems`). */
+  children?: ReactNode;
 }) {
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
+  // With a moderator's actions it is taller than `spotOf` allows for, so it
+  // is measured once drawn and lifted to fit the window.
+  const box = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState(spot.y);
+  useLayoutEffect(() => {
+    // The box itself is a zero-size anchor; the menu hangs below it.
+    const height = (box.current?.querySelector('.menu') as HTMLElement | null)?.offsetHeight ?? 0;
+    setTop(Math.max(4, Math.min(spot.y, window.innerHeight - height - 8)));
+  });
   const volume = prefs.volumes[userId] ?? 1;
   const percent = Math.round(volume * 100);
   const silent = volume === 0;
 
-  return (
+  // On the page itself, not inside the row: a frosted sidebar is the box a
+  // fixed element is placed in and cut off by, so a menu opened low in the
+  // channel list lost its bottom half.
+  return createPortal(
     <div
+      ref={box}
       className="volume-menu"
-      style={{ left: spot.x, top: spot.y }}
+      style={{ left: spot.x, top }}
       onClick={keep}
       onKeyDown={(event) => {
         // Escape is for the menu's own window listener, which closes it.
@@ -101,7 +118,9 @@ export function VolumeMenu({
         >
           {silent ? 'Unmute for me' : 'Mute for me'}
         </MenuItem>
+        {children}
       </Menu>
-    </div>
+    </div>,
+    document.body,
   );
 }

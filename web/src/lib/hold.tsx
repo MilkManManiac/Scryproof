@@ -112,17 +112,19 @@ export function usePressHold() {
   };
   useEffect(() => cancel, []);
 
-  return (onHold: () => void) => ({
+  // `onHold` is told where the finger is, for a menu that opens at the touch.
+  return (onHold: (at: { clientX: number; clientY: number }) => void) => ({
     onTouchStart(event: TouchEvent) {
       fired.current = false;
       if (event.touches.length !== 1) return;
       const touch = event.touches[0]!;
       start.current = { x: touch.clientX, y: touch.clientY };
       if (timer.current !== null) window.clearTimeout(timer.current);
+      const at = { clientX: touch.clientX, clientY: touch.clientY };
       timer.current = window.setTimeout(() => {
         timer.current = null;
         fired.current = true;
-        onHold();
+        onHold(at);
         navigator.vibrate?.(12);
       }, HOLD_MS);
     },

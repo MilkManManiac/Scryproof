@@ -16,7 +16,6 @@ export interface Theme {
 export const THEMES: readonly Theme[] = [
   { id: 'ridge', name: 'The ridge' },
   { id: 'ember', name: 'The ridge, alive' },
-  { id: 'lake', name: 'Lady of the Lake' },
   { id: 'dusk', name: 'Ham' },
   { id: 'forg', name: 'Forg' },
   { id: 'loaf2', name: 'Loaf v2' },
@@ -25,6 +24,13 @@ export const THEMES: readonly Theme[] = [
   { id: 'hall', name: 'The hall' },
   { id: 'plain', name: 'Plain' },
 ];
+
+/*
+ * Built and held: Lady of the Lake (`themes/lake.css`, `lake-scene.ts`), Wes
+ * 2026-09-26: "Hold off on that theme. Its fine just don't want to push now."
+ * To release it, add { id: 'lake', name: 'Lady of the Lake' } after 'ember',
+ * and put its What's new entry back (the text is in docs/HANDOFF.md).
+ */
 
 export const DEFAULT_THEME = 'ridge';
 

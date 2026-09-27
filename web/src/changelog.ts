@@ -20,13 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-09-26-lake',
-    date: '2026-09-26',
-    title: 'A new theme: Lady of the Lake',
+    id: '2026-09-27-mod',
+    date: '2026-09-27',
+    title: 'Channel settings from the list, and moving people between calls',
     notes: [
-      'A flooded stone court in a forest at night, with a fountain and a small blue tree in the middle of the pool. Settings, Themes.',
-      'It is alive: the lanterns flicker, moths circle them, mist drifts through, the tree drops glowing petals that land and ripple on the water, and now and then a fish slides by under the surface.',
-      'Wait a minute and watch the front of the pool.',
+      'Anyone who can manage a channel now gets a gear beside it in the list, and Edit channel on its right-click (on a phone, press and hold it). Voice channels too, without joining the call: who can see it, who can get in, and what each role may do.',
+      'Right-click someone in a voice channel (on a phone, press and hold) and a moderator can mute or deafen them for everyone, move them to another voice channel, or disconnect them.',
+      'Or drag them from one voice channel onto another, like Discord. Their app follows them in by itself, encrypted as always, and nobody can be moved into a channel they are not allowed in.',
+      'Fixed: opening a voice channel’s settings said "Unsaved changes" straight away, and saving would have turned "General" into "general".',
     ],
   },
   {

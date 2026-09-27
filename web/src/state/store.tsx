@@ -1154,6 +1154,21 @@ export function StoreProvider({
         currentCall.current = null;
         voice.fail(event.d.message);
       }
+      // A moderator moved us. Only the device in that call follows, and it
+      // joins the ordinary way, so its keys are made here as for any join.
+      // The server takes us out of the old channel right after; that
+      // departure names the old room, not this one, so it does not hang up.
+      if (event.t === 'voice_move') {
+        const place = currentCall.current;
+        if (place?.kind === 'channel' && place.id === event.d.fromChannelId) {
+          const next: CallPlace = { kind: 'channel', id: event.d.channelId };
+          currentCall.current = next;
+          if (openChannel.current === event.d.fromChannelId) dispatch({ type: 'select-channel', channelId: event.d.channelId });
+          void voice.join(next, () =>
+            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(next), ...standingVoice() } }),
+          );
+        }
+      }
       if (event.t === 'voice_membership') void voice.onMembership(event.d);
       if (event.t === 'voice_signal') void voice.onSignal(event.d);
       if (event.t === 'voice_state_update' && event.d.userId === selfId.current) {

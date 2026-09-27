@@ -31,6 +31,8 @@ import {
 import { requireDmCallAllowed } from '../services/dm-calls.js';
 import {
   assertNotTimedOut,
+  computePermissionsInChannel,
+  loadMemberContext,
   requireChannelPermission,
   requireHigherThan,
   requireServerPermission,
@@ -178,6 +180,54 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
     const ctx = await requireServerPermission(serverId, actor.id, Permission.MOVE_MEMBERS);
     await requireHigherThan(ctx, userId);
 
+    await disconnectFromVoice(serverId, userId);
+    return { ok: true };
+  });
+
+  /**
+   * Moderator action: move someone from the voice channel they are in to
+   * another. The person moved must be allowed in the new channel (seeing it
+   * and CONNECT, overwrites included): moving is not a way round a private
+   * channel. The mover must be able to see it too, or its id would answer
+   * "does this hidden channel exist".
+   *
+   * The server tells the person first and then takes them out of the old
+   * channel. Their device joins the new one by itself, which is the only way
+   * a join can happen: the call's keys are made on the device. An old client
+   * that does not know the event is simply disconnected.
+   */
+  app.post('/api/servers/:serverId/members/:userId/move', async (request) => {
+    const actor = requireUser(request);
+    const { serverId, userId } = z
+      .object({ serverId: z.string(), userId: z.string() })
+      .parse(request.params);
+    const { channelId } = z.object({ channelId: z.string() }).parse(request.body);
+
+    const ctx = await requireServerPermission(serverId, actor.id, Permission.MOVE_MEMBERS);
+    await requireHigherThan(ctx, userId);
+
+    const [channel] = await getDb().select().from(channels).where(eq(channels.id, channelId)).limit(1);
+    if (!channel || channel.serverId !== serverId) throw notFound('That channel does not exist.', 'unknown_channel');
+    if (!has(await computePermissionsInChannel(ctx, channel.id), Permission.VIEW_CHANNEL)) {
+      throw notFound('That channel does not exist.', 'unknown_channel');
+    }
+    if (channel.type !== 'voice') throw badRequest('That is not a voice channel.', 'not_voice');
+
+    const state = hub.getVoiceState(serverId, userId);
+    if (!state?.channelId) throw badRequest('That person is not in a voice channel.', 'not_in_voice');
+    if (state.channelId === channel.id) return { ok: true };
+
+    const target = await loadMemberContext(serverId, userId);
+    if (!target) throw notFound('That member is not in this server.', 'unknown_member');
+    const theirs = await computePermissionsInChannel(target, channel.id);
+    if (!has(theirs, Permission.VIEW_CHANNEL) || !has(theirs, Permission.CONNECT)) {
+      throw new HttpError(403, 'target_cannot_connect', 'They are not allowed in that channel.');
+    }
+
+    hub.sendToUser(userId, {
+      t: 'voice_move',
+      d: { serverId, fromChannelId: state.channelId, channelId: channel.id, by: actor.id },
+    });
     await disconnectFromVoice(serverId, userId);
     return { ok: true };
   });

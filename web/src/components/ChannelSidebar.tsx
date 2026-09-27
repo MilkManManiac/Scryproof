@@ -23,12 +23,14 @@ import { ComingUp } from './ComingUp';
 import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { CategorySettings } from './settings/CategorySettings';
+import { ChannelSettings } from './settings/ChannelSettings';
 import { PUBLIC, PrivacyPicker } from './settings/PrivacyPicker';
 import type { PrivacyChoice } from './settings/PrivacyPicker';
 import { ServerSettings } from './settings/ServerSettings';
 import { authorityFor } from './settings/authority';
 import { UserPanel } from './UserPanel';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
+import { VoiceModItems } from './VoiceModItems';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, HeadphonesGlyph, MicGlyph, ScreenGlyph } from './glyphs';
 import { useProfileCard } from './ProfileCard';
@@ -45,6 +47,13 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   // from a heading rather than from the top of the sidebar.
   const [newChannelIn, setNewChannelIn] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  /** The channel whose settings are open, from its gear or its menu. */
+  const [editingChannel, setEditingChannel] = useState<string | null>(null);
+  /** A person being dragged out of one voice channel, and the channel under them. */
+  const [dragging, setDragging] = useState<{ userId: string; from: string } | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  /** Why a drag to move someone was refused, under the channel it was dropped on. */
+  const [moveProblem, setMoveProblem] = useState<{ channelId: string; text: string } | null>(null);
   // Which channel's right-click menu (mute/unmute) is open, if any.
   const [channelMenu, setChannelMenu] = useState<string | null>(null);
   const hold = usePressHold();
@@ -60,6 +69,10 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   useSyncExternalStore(channelDrafts.subscribe, channelDrafts.getVersion);
 
   const canManage = canOnServer(server, Permission.MANAGE_CHANNELS);
+  // Channel settings hold the permissions too, which Manage roles may edit
+  // without Manage channels. The same test as the gear over an open channel.
+  const canEdit = canManage || canOnServer(server, Permission.MANAGE_ROLES);
+  const canMove = canOnServer(server, Permission.MOVE_MEMBERS);
   const canInvite = canOnServer(server, Permission.CREATE_INVITE);
   // An empty category is only ever sent to someone who may manage channels, and
   // they need to see the one they just made.
@@ -70,6 +83,15 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
 
   const members = state.members[server.id] ?? [];
   const category = server.categories.find((entry) => entry.id === editingCategory) ?? null;
+  const editing = server.channels.find((entry) => entry.id === editingChannel) ?? null;
+
+  const moveInto = (channelId: string, userId: string) => {
+    setMoveProblem(null);
+    api.voice.move(server.id, userId, channelId).catch((problem: unknown) => {
+      setMoveProblem({ channelId, text: problem instanceof ApiError ? problem.message : 'Could not move them.' });
+      window.setTimeout(() => setMoveProblem((now) => (now?.channelId === channelId ? null : now)), 5000);
+    });
+  };
   const voiceOccupantName = (userId: string) => {
     const member = members.find((entry) => entry.userId === userId);
     return nameFor(userId, member?.nickname ?? member?.user.displayName ?? 'Someone');
@@ -216,11 +238,35 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     if (unread) classes.push('unread');
                     if (muted) classes.push('muted');
 
+                    if (dropOn === channel.id) classes.push('drop-target');
+                    // A person from another voice channel can be dropped here.
+                    const takesDrop = channel.type === 'voice' && dragging !== null && dragging.from !== channel.id;
+
                     return (
-                      <div key={channel.id} style={{ position: 'relative' }}>
+                      <div key={channel.id} className="channel-row" style={{ position: 'relative' }}>
                         <button
                           type="button"
                           className={classes.join(' ')}
+                          onDragOver={
+                            takesDrop
+                              ? (event) => {
+                                  event.preventDefault();
+                                  event.dataTransfer.dropEffect = 'move';
+                                  if (dropOn !== channel.id) setDropOn(channel.id);
+                                }
+                              : undefined
+                          }
+                          onDragLeave={takesDrop ? () => setDropOn((now) => (now === channel.id ? null : now)) : undefined}
+                          onDrop={
+                            takesDrop
+                              ? (event) => {
+                                  event.preventDefault();
+                                  setDropOn(null);
+                                  if (dragging) moveInto(channel.id, dragging.userId);
+                                  setDragging(null);
+                                }
+                              : undefined
+                          }
                           title={muted ? `${channel.name} — muted` : undefined}
                           onClick={() => {
                             selectChannel(channel.id);
@@ -258,6 +304,19 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                           ) : null}
                         </button>
 
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="icon-button channel-gear"
+                            title={channel.type === 'voice' ? `Edit ${channel.name}` : `Edit #${channel.name}`}
+                            aria-label={`Channel settings for ${channel.name}`}
+                            onClick={() => setEditingChannel(channel.id)}
+                          >
+                            &#9881;
+                          </button>
+                        ) : null}
+                        {moveProblem?.channelId === channel.id ? <p className="channel-note">{moveProblem.text}</p> : null}
+
                         {channelMenu === channel.id ? (
                           <Menu
                             onClose={() => {
@@ -275,6 +334,17 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                             >
                               {muted ? 'Unmute channel' : 'Mute channel'}
                             </MenuItem>
+                            {canEdit ? (
+                              <MenuItem
+                                note="Name, who can see it and get in, and what each role may do."
+                                onClick={() => {
+                                  setChannelMenu(null);
+                                  setEditingChannel(channel.id);
+                                }}
+                              >
+                                Edit channel
+                              </MenuItem>
+                            ) : null}
                             {/* Deleting lives in the channel's settings too, at the
                                 bottom. Wes could not find it there, so it is here as
                                 well, with the same two steps. Hidden without Manage
@@ -321,10 +391,33 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                               // room we are in. From outside, nobody is ringed.
                               const speaking =
                                 live.channelId === channel.id && live.speaking.includes(voice.userId);
+                              const draggable = canMove && voice.userId !== state.user?.id;
+                              const openMenu = (at: { clientX: number; clientY: number }) =>
+                                setVolumeMenu({ userId: voice.userId, spot: spotOf(at) });
                               return (
                                 <div
                                   className={speaking ? 'voice-member speaking' : 'voice-member'}
                                   key={voice.userId}
+                                  draggable={draggable || undefined}
+                                  title={draggable ? 'Drag onto another voice channel to move them' : undefined}
+                                  onDragStart={
+                                    draggable
+                                      ? (event) => {
+                                          event.dataTransfer.effectAllowed = 'move';
+                                          event.dataTransfer.setData('text/plain', voiceOccupantName(voice.userId));
+                                          setDragging({ userId: voice.userId, from: channel.id });
+                                        }
+                                      : undefined
+                                  }
+                                  onDragEnd={
+                                    draggable
+                                      ? () => {
+                                          setDragging(null);
+                                          setDropOn(null);
+                                        }
+                                      : undefined
+                                  }
+                                  {...(voice.userId !== state.user?.id ? hold(openMenu) : {})}
                                   role={member ? 'button' : undefined}
                                   tabIndex={member ? 0 : undefined}
                                   style={member ? { cursor: 'pointer' } : undefined}
@@ -340,7 +433,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                     voice.userId !== state.user?.id
                                       ? (event) => {
                                           event.preventDefault();
-                                          setVolumeMenu({ userId: voice.userId, spot: spotOf(event) });
+                                          openMenu(event);
                                         }
                                       : undefined
                                   }
@@ -378,7 +471,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                       name={voiceOccupantName(voice.userId)}
                                       spot={volumeMenu.spot}
                                       onClose={() => setVolumeMenu(null)}
-                                    />
+                                    >
+                                      <VoiceModItems server={server} voice={voice} onDone={() => setVolumeMenu(null)} />
+                                    </VolumeMenu>
                                   ) : null}
                                 </div>
                               );
@@ -404,6 +499,15 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
       ) : null}
       {dialog === 'category' ? (
         <NewCategoryDialog server={server} onClose={() => setDialog(null)} />
+      ) : null}
+      {editing ? (
+        <ChannelSettings
+          channel={editing}
+          server={server}
+          members={members}
+          authority={authorityFor(server, members, state.user?.id ?? null)}
+          onClose={() => setEditingChannel(null)}
+        />
       ) : null}
       {category ? (
         <CategorySettings

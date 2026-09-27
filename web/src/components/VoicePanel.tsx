@@ -28,6 +28,7 @@ import { noPictureLabel } from '../lib/frame-watch';
 import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
+import { VoiceModItems } from './VoiceModItems';
 import { CallQuality } from './CallQuality';
 import { VoiceSettings } from './VoiceSettings';
 import { SoundBoard } from './SoundBoard';
@@ -316,6 +317,14 @@ export function VoiceStage(
     setVolumeMenu({ userId, spot: spotOf(event) });
   };
 
+  // A server call's moderator actions go under the volume; a conversation's
+  // call has no moderators.
+  const modServer =
+    place.kind === 'channel'
+      ? Object.values(state.servers).find((server) => server.channels.some((channel) => channel.id === place.id)) ?? null
+      : null;
+  const occupantState = volumeMenu ? occupants.find((entry) => entry.userId === volumeMenu.userId) ?? null : null;
+
   /** One tile, in the grid or in the strip under the big picture. */
   const renderTile = (tile: Tile) => {
     if (tile.kind === 'screen') {
@@ -406,7 +415,11 @@ export function VoiceStage(
           </span>
         ) : null}
         {volumeMenu?.userId === userId ? (
-          <VolumeMenu userId={userId} name={name} spot={volumeMenu.spot} onClose={() => setVolumeMenu(null)} />
+          <VolumeMenu userId={userId} name={name} spot={volumeMenu.spot} onClose={() => setVolumeMenu(null)}>
+            {modServer && occupantState ? (
+              <VoiceModItems server={modServer} voice={occupantState} onDone={() => setVolumeMenu(null)} />
+            ) : null}
+          </VolumeMenu>
         ) : null}
       </div>
     );

@@ -517,6 +517,79 @@ async function main() {
   const after = await wes.listenTo(alex.userId);
   check('and they can still hear each other', after.energy > 0.001, `+${after.energy.toFixed(4)} energy`);
 
+  // ---- a moderator moves someone -----------------------------------------------
+  // Wes owns the seeded server, so he has Move members. He right-clicks alex
+  // under the voice channel, opens Move to, and picks a second room. Alex's
+  // own app must follow him there and connect, encrypted, by itself; the
+  // room he left must move on to a key he never gets.
+  const general = (await wes.snapshot()).channelId;
+  const serverId = await wes.evaluate(`fetch('/api/channels/${general}', { credentials: 'include' }).then((r) => r.json()).then((b) => b.channel.serverId)`);
+  const side = await wes.evaluate(`fetch('/api/servers/${serverId}/channels', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Side room', type: 'voice' }),
+  }).then((r) => r.json()).then((b) => b.channel.id)`);
+  await wes.until(`Array.from(document.querySelectorAll('.channel.voice')).some((el) => el.textContent.includes('Side room'))`, 10_000);
+  const rightClick = (name) => `(() => {
+    const row = Array.from(document.querySelectorAll('.voice-member')).find((el) => el.textContent.includes('${name}'));
+    if (!row) return false;
+    const box = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: box.left + 10, clientY: box.top + 5 }));
+    return true;
+  })()`;
+  const pick = (label) => `(() => {
+    const item = Array.from(document.querySelectorAll('.volume-menu .menu-item')).find((el) => el.firstElementChild?.textContent.trim() === '${label}');
+    if (!item) return false;
+    item.click();
+    return true;
+  })()`;
+  const epochBeforeMove = (await wes.snapshot()).epoch;
+  const menuOpened = await wes.evaluate(rightClick('Alex'));
+  const heading = await wes.until(`document.querySelector('.volume-menu .menu-heading')?.textContent`, 5000);
+  check('wes right-clicks alex in the call and finds the moderator actions', menuOpened && heading === 'Moderator', String(heading));
+  await wes.evaluate(pick('Move to…'));
+  await sleep(300);
+  await shoot(wes, 'move-menu');
+  check('Move to lists the other voice room', await wes.evaluate(pick('♫ Side room')));
+  const followed = await alex.until(`(() => { const s = window.__voice.getSnapshot(); return s.channelId === '${side}' && s.phase === 'connected' && s.encrypted; })()`, 30_000);
+  check('alex\'s own app follows him into Side room and connects, encrypted', Boolean(followed),
+    JSON.stringify(await alex.evaluate(`(() => { const s = window.__voice.getSnapshot(); return { channelId: s.channelId, phase: s.phase, error: s.error }; })()`)));
+  const shown = await wes.until(`(() => {
+    const row = Array.from(document.querySelectorAll('.channel-row')).find((el) => el.querySelector('.channel.voice')?.textContent.includes('Side room'));
+    return Boolean(row && row.querySelector('.voice-members')?.textContent.includes('Alex'));
+  })()`, 10_000);
+  check('wes sees alex listed under Side room now', Boolean(shown));
+  const leftBehind = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 15_000);
+  check('the room alex was moved out of rotates to a key he never gets', Boolean(leftBehind) && (await wes.snapshot()).epoch > epochBeforeMove,
+    `epoch ${epochBeforeMove} -> ${(await wes.snapshot()).epoch}`);
+  await shoot(wes, 'moved');
+
+  // And back by dragging him onto General, the other way to do it, so the
+  // rest runs as before. Real drag events, with their own DataTransfer.
+  const dragged = await wes.evaluate(`(async () => {
+    const pause = () => new Promise((done) => setTimeout(done, 80));
+    const person = Array.from(document.querySelectorAll('.voice-member[draggable="true"]')).find((el) => el.textContent.includes('Alex'));
+    const target = Array.from(document.querySelectorAll('.channel.voice')).find((el) => el.textContent.trim().endsWith('General'));
+    if (!person || !target) return false;
+    const dataTransfer = new DataTransfer();
+    const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer }));
+    fire(person, 'dragstart');
+    await pause();
+    fire(target, 'dragenter');
+    fire(target, 'dragover');
+    await pause();
+    const lit = target.classList.contains('drop-target');
+    fire(target, 'drop');
+    fire(person, 'dragend');
+    return lit;
+  })()`);
+  check('alex can be dragged onto General, which lights up to take him', Boolean(dragged));
+  const reunited = await Promise.all([wes.until(connected, 30_000), alex.until(connected, 30_000)]);
+  check('moved back, both are together again on one key', reunited.every(Boolean) &&
+    (await alex.snapshot()).channelId === general && (await wes.snapshot()).epoch === (await alex.snapshot()).epoch);
+  await wes.evaluate(`fetch('/api/channels/${side}', { method: 'DELETE', credentials: 'include' })`);
+
   // ---- a call inside a direct message ------------------------------------------
   // Wes and alex are still in the server's voice channel. Starting the DM call
   // from there is also the one-call-at-a-time check: the channel must lose them.

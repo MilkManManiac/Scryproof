@@ -448,6 +448,13 @@ export const api = {
       }>(`/api/dms/${dmId}/voice/token`),
     states: (serverId: string) =>
       get<{ voiceStates: VoiceState[] }>(`/api/servers/${serverId}/voice-states`),
+    /** Moderator actions on someone in a call. The server checks every one. */
+    move: (serverId: string, userId: string, channelId: string) =>
+      post<{ ok: true }>(`/api/servers/${serverId}/members/${userId}/move`, { channelId }),
+    disconnect: (serverId: string, userId: string) =>
+      post<{ ok: true }>(`/api/servers/${serverId}/members/${userId}/disconnect`),
+    moderate: (serverId: string, userId: string, change: { serverMute?: boolean; serverDeaf?: boolean }) =>
+      patch<{ ok: true }>(`/api/servers/${serverId}/members/${userId}/voice`, change),
   },
 
   /** Direct messages. The bodies here are sealed before they reach this file. */

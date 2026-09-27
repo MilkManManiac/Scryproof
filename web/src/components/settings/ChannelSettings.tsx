@@ -158,7 +158,12 @@ function ChannelOverview({
   }, [channel.id, editable]);
 
   const categories = [...server.categories].sort((a, b) => a.position - b.position);
-  const slug = slugifyChannelName(name);
+  // Text channels are slugs ("game-night"); voice channels keep their
+  // capitals and spaces ("Game Night"), the way the server stores them. Run
+  // through the slug, a voice channel's own name read as changed the moment
+  // its settings opened, and saving renamed "General" to "general".
+  const voice = channel.type === 'voice';
+  const slug = voice ? name.trim().slice(0, 48) : slugifyChannelName(name);
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
   const privacyDirty =
     wasPrivacy !== null &&
@@ -175,8 +180,12 @@ function ChannelOverview({
   const shortening = expiry !== 0 && (channel.expireAfterSeconds === 0 || expiry < channel.expireAfterSeconds);
 
   async function save() {
-    const valid = validateChannelName(slug);
-    if (!valid.ok) return setError(valid.error);
+    if (voice) {
+      if (slug === '') return setError('A voice channel needs a name.');
+    } else {
+      const valid = validateChannelName(slug);
+      if (!valid.ok) return setError(valid.error);
+    }
 
     setSaving(true);
     setError(null);
@@ -222,7 +231,7 @@ function ChannelOverview({
           maxLength={LIMITS.channelName.max}
           onChange={(event) => setName(event.target.value)}
         />
-        {slug !== name ? <p className="field-note">Saved as #{slug}.</p> : null}
+        {!voice && slug !== name ? <p className="field-note">Saved as #{slug}.</p> : null}
       </div>
 
       <div className="field">
@@ -372,7 +381,7 @@ function ChannelOverview({
       {editable ? (
         <div className="danger-zone">
           <div>
-            <strong>Delete #{channel.name}</strong>
+            <strong>Delete {voice ? channel.name : `#${channel.name}`}</strong>
             <p className="field-note">
               The channel and its messages go with it. There is no undo and no archive.
             </p>

@@ -3283,3 +3283,60 @@ Web tests 413.
 
 ![Lady of the Lake](shots/theme-lake.png)
 ![The scene, sword up](shots/theme-lake-scene.png)
+
+**Held (Wes, 2026-09-26: "Hold off on that theme. Its fine just don't want
+to push now").** Lady of the Lake is taken off the list in `lib/themes.ts`
+so a release does not carry it; the files stay. To release: add
+`{ id: 'lake', name: 'Lady of the Lake' }` after 'ember', and put back its
+What's new entry: "A new theme: Lady of the Lake" / "A flooded stone court
+in a forest at night, with a fountain and a small blue tree in the middle
+of the pool. Settings, Themes." / "It is alive: the lanterns flicker, moths
+circle them, mist drifts through, the tree drops glowing petals that land
+and ripple on the water, and now and then a fish slides by under the
+surface." / "Wait a minute and watch the front of the pool."
+
+## 2026-09-27: channel settings from the list, moving people between calls (staged, not released)
+
+Wes: "we need is the ability as a admin to click on each channel and
+customize the settings aka who is allowed in and all that stuff. Also i
+think an admid should be able to move who is in voice calls kinda like
+disc."
+
+**Channel settings** already had everything (name, privacy picker, the
+per-role and per-member permission editor, slow mode, lifetime), but the
+only door was the gear over an open channel, and opening a voice channel
+joins its call. Now every channel row has a gear on hover and Edit channel
+on its right-click / hold menu, for Manage channels or Manage roles
+(`ChannelSidebar.tsx`). Found on the way: `ChannelSettings` ran a voice
+channel's name through the text-channel slug, so its settings opened on
+"Unsaved changes" and saving renamed "General" to "general". Fixed; the
+server already stored voice names properly.
+
+**Moving people.** Server mute, deafen and disconnect existed on the server
+with no button anywhere. New: `POST /api/servers/:id/members/:userId/move`
+(`routes/voice.ts`): Move members, outranking them, a voice channel the
+mover can see, and the person moved must be allowed in it (View + Connect,
+overwrites included), so moving is no way round a private channel. The
+server sends `voice_move` to them and then clears them from the old channel
+(which rotates its key); the device in that call joins the new one itself,
+the ordinary way, so keys are still made only on devices. An old client
+that ignores the event is just disconnected. UI: right-click or hold a
+person in a voice channel (sidebar or call tile) for Moderator: Mute for
+everyone, Deafen, Move to (a list of rooms), Disconnect
+(`VoiceModItems.tsx`); or drag them onto another voice channel. The menu is
+now portalled to the page: inside the frosted sidebar it was cut off.
+
+Proven: `server/src/tests/voice-move.test.ts` (5: the move and its event
+order; no Move members; a channel they may not join; not in a call / not
+voice; cannot move the owner). `test:voice` 67/67, new: Wes right-clicks
+Alex, Move to, Side room; Alex's own app follows and connects encrypted;
+Wes sees him there; General rotates to a key Alex never gets; Alex dragged
+back onto General; both on one key again. Server tests 276, web 413. One
+earlier `test:voice` run showed 5 failures while I was also running the
+server suite and editing a file the dev server hot-reloaded; its log was
+cut, so which five is unknown. Three clean runs since, all pass.
+Not proven: press-and-hold on a real phone for the new menus.
+
+![The gear on a channel](shots/channel-gear.png)
+![A voice channel's settings](shots/voice-channel-settings.png)
+![Moving someone](shots/voice-move-menu.png)

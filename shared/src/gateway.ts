@@ -146,6 +146,14 @@ export type ServerEvent =
    */
   | { t: 'permissions_stale'; d: { serverId: Snowflake } }
   | { t: 'voice_state_update'; d: VoiceState }
+  /**
+   * A moderator moved you from one voice channel to another. Sent to you
+   * alone, just before the server takes you out of `fromChannelId`: the
+   * device that is in that call joins `channelId` itself, the ordinary way,
+   * so its keys are made on the device as for any join. A device that ignores
+   * this is still taken out.
+   */
+  | { t: 'voice_move'; d: { serverId: Snowflake; fromChannelId: Snowflake; channelId: Snowflake; by: Snowflake } }
   /*
    * There was a `voice_key` event here, carrying a key this server had
    * generated. It is gone. A server that makes the key has the key, which

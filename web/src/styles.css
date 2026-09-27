@@ -541,6 +541,43 @@ select {
   background: var(--panel-3);
   color: var(--text);
 }
+
+/* A channel's gear, for whoever may edit it: shown while the pointer is on
+   the row, over the right end of it (Discord's place). On a phone, hold the
+   channel instead; its menu has Edit channel. */
+.channel-gear {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  opacity: 0;
+  background: var(--panel-3);
+  transition: opacity var(--t-fast) var(--ease);
+}
+.channel-row:hover .channel-gear,
+.channel-gear:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .channel-gear {
+    display: none;
+  }
+}
+
+/* A voice channel someone is being dragged onto. */
+.channel.drop-target {
+  background: var(--accent-wash);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.channel-note {
+  margin: 2px 8px 4px 28px;
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .channel.active {
   background: var(--panel-4);
   color: var(--text);
@@ -4836,6 +4873,25 @@ kbd {
   font-size: 12px;
   line-height: 1.35;
 }
+/* A heading inside a menu: "Moderator" over the actions on someone in a call. */
+.menu-heading {
+  margin: 6px 9px 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.menu-problem {
+  margin: 2px 9px 4px;
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.menu-indent {
+  padding-left: 10px;
+}
 .menu-item.danger {
   color: var(--danger, #e5484d);
 }
@@ -6826,7 +6882,8 @@ kbd {
 
   /* Holding a channel or a server opens its menu (mute), as a right-click does. */
   .channel,
-  .rail-item {
+  .rail-item,
+  .voice-member {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
