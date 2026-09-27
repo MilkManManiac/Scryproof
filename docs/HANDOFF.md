@@ -3295,7 +3295,7 @@ circle them, mist drifts through, the tree drops glowing petals that land
 and ripple on the water, and now and then a fish slides by under the
 surface." / "Wait a minute and watch the front of the pool."
 
-## 2026-09-27: channel settings from the list, moving people between calls (staged, not released)
+## LIVE 2026-09-27 00:30 ET: channel settings from the list, moving people between calls (client 1790483322586)
 
 Wes: "we need is the ability as a admin to click on each channel and
 customize the settings aka who is allowed in and all that stuff. Also i
