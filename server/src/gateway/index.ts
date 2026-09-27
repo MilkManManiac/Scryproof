@@ -125,6 +125,14 @@ export function attachGateway(httpServer: HttpServer): () => void {
   };
 }
 
+function followsMoves(request: IncomingMessage): boolean {
+  try {
+    return new URL(request.url ?? '/', 'http://gateway').searchParams.get('follows') === 'move';
+  } catch {
+    return false;
+  }
+}
+
 async function onConnection(
   ws: WebSocket,
   userId: string,
@@ -141,6 +149,8 @@ async function onConnection(
     status: 'online',
     lastSeenAt: Date.now(),
     alive: true,
+    followsMoves: followsMoves(request),
+    callChannelId: null,
   };
 
   hub.addConnection(connection);

@@ -45,8 +45,11 @@ async function person(username: string): Promise<Person> {
   return { id: user.id, cookie: `${config.cookieName}=${session.token}` };
 }
 
-/** A stand-in for someone's open window, keeping what the server sends it. */
-function listen(userId: string, serverId: string): ServerEvent[] {
+/**
+ * A stand-in for someone's open window, keeping what the server sends it.
+ * `followsMoves` is what an app from 2026-09-27 on says when it connects.
+ */
+function listen(userId: string, serverId: string, followsMoves = true): ServerEvent[] {
   const heard: ServerEvent[] = [];
   hub.addConnection({
     id: `test-${userId}`,
@@ -58,6 +61,7 @@ function listen(userId: string, serverId: string): ServerEvent[] {
     status: 'online',
     lastSeenAt: Date.now(),
     alive: true,
+    followsMoves,
   });
   return heard;
 }
@@ -168,6 +172,17 @@ describe('moving someone between voice channels', () => {
     assert.ok(heard.slice(1).some((event) => event.t === 'voice_state_update' && event.d.channelId === null));
   });
 
+  it('refuses to move someone whose app cannot follow, rather than drop them', async () => {
+    // Wes, 2026-09-27: the one friend whose app was out of date was dropped.
+    listen(other.id, server.id, false);
+    seat(server.id, other.id, lounge);
+    const response = await move(owner, other.id, den);
+    assert.equal(response.statusCode, 409, response.body);
+    assert.equal(response.json().code, 'outdated_app');
+    assert.equal(hub.getVoiceState(server.id, other.id)?.channelId, lounge);
+    hub.setVoiceState({ ...hub.getVoiceState(server.id, other.id)!, channelId: null });
+  });
+
   it('refuses without Move members', async () => {
     seat(server.id, friend.id, lounge);
     const response = await move(other, friend.id, den);
@@ -208,5 +223,21 @@ describe('moving someone between voice channels', () => {
     const response = await move(friend, owner.id, den);
     assert.equal(response.statusCode, 403, response.body);
     assert.equal(hub.getVoiceState(server.id, owner.id)?.channelId, lounge);
+  });
+
+  it('a kick takes them out of the call first, and tells them', async () => {
+    seat(server.id, friend.id, lounge);
+    heard.length = 0;
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/servers/${server.id}/members/${friend.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(hub.getVoiceState(server.id, friend.id), null);
+    const left = heard.findIndex((event) => event.t === 'voice_state_update' && event.d.userId === friend.id && event.d.channelId === null);
+    const gone = heard.findIndex((event) => event.t === 'server_delete');
+    assert.ok(left >= 0, 'their app hears it is out of the call, so it hangs up');
+    assert.ok(gone > left, 'before the server disappears from their list');
   });
 });

@@ -206,6 +206,27 @@ export const bans = pgTable(
   (table) => [primaryKey({ columns: [table.serverId, table.userId] })],
 );
 
+/**
+ * The last time each person was kicked from each server. A kick is not a
+ * ban: a new invite brings them back. But not an old one, or a kick would
+ * last as long as it takes to click the link still in their messages
+ * (Wes, 2026-09-27: "make sure they cannot join again until they get a new
+ * invite"). An invite made before this moment does not work for them.
+ */
+export const kicks = pgTable(
+  'kicks',
+  {
+    serverId: text('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kickedAt: timestamp('kicked_at', { withTimezone: true, mode: 'date' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.serverId, table.userId] })],
+);
+
 export const categories = pgTable(
   'categories',
   {

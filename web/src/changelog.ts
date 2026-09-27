@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-27-kick',
+    date: '2026-09-27',
+    title: 'Kick, two-day invites, and moves that don’t drop people',
+    notes: [
+      'Kick someone from the member list (right-click, or the ⋯ on their row) or from their right-click menu in a call. It asks once more before it happens. If they were in a call, they’re taken out of it.',
+      'A kicked person can’t come back on an old invite, not even the one they joined with. Someone has to send them a new one.',
+      'Every invite now stops working after two days at most, including the ones already sent. The longest you can pick is 2 days.',
+      'Moving someone whose app is out of date used to drop them out of the call. Now it says they need to click Reload first, and leaves them where they are.',
+      'The soundboard has a Manage sounds link at the bottom for whoever can manage the server. It opens the Sounds screen to rename, change the volume of, or delete a sound.',
+      'Fixed: the soundboard opened from the buttons under a call came out as a thin sliver.',
+    ],
+  },
+  {
     id: '2026-09-27-mod',
     date: '2026-09-27',
     title: 'Channel settings from the list, and moving people between calls',

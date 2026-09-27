@@ -43,6 +43,7 @@ export async function handleVoiceStateIntent(
 
   // Leaving: clear every voice state this user holds and tell whoever could see it.
   if (intent.channelId === null) {
+    connection.callChannelId = null;
     await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
     return;
   }
@@ -114,6 +115,9 @@ export async function handleVoiceStateIntent(
   };
 
   hub.setVoiceState(state);
+  // This device is the one in the call now, whichever was before.
+  for (const other of hub.connectionsForUser(connection.userId)) other.callChannelId = null;
+  connection.callChannelId = channel.id;
   await hub.announceVoiceState(channel.serverId, channel.id, state);
 
   logger.debug(
@@ -175,6 +179,7 @@ async function handleDmCallIntent(
   };
 
   hub.setVoiceState(state);
+  connection.callChannelId = null;
   await hub.announceDmVoiceState(dmId, state);
 
   logger.debug({ userId: connection.userId, dmId }, 'dm call state updated');

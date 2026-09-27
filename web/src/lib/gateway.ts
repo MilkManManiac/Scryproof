@@ -28,6 +28,12 @@ export interface GatewayHandlers {
 
 const MAX_BACKOFF_MS = 30_000;
 
+function withParam(url: string, name: string, value: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set(name, value);
+  return parsed.toString();
+}
+
 export class Gateway {
   private socket: WebSocket | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -41,7 +47,9 @@ export class Gateway {
     this.closedByUs = false;
     this.clearTimers();
 
-    const url = gatewayUrl(GATEWAY_PATH);
+    // `follows=move`: this app joins the channel a moderator moves it to by
+    // itself, so the server may move it (routes/voice.ts).
+    const url = withParam(gatewayUrl(GATEWAY_PATH), 'follows', 'move');
 
     this.handlers.onStatus(this.attempt === 0 ? 'connecting' : 'reconnecting');
 

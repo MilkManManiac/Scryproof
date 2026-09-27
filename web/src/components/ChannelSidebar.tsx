@@ -10,7 +10,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react';
 import { LIMITS, Permission, slugifyChannelName, validateChannelName } from '@scryproof/shared';
 import type { ServerDetail } from '@scryproof/shared';
 
-import { ApiError, api } from '../lib/api';
+import { ApiError, INVITE_LIVES, api, type InviteLife } from '../lib/api';
 import { groupChannels } from '../lib/channel-order';
 import { channelDrafts, isShortDraft } from '../lib/drafts';
 import { usePressHold } from '../lib/hold';
@@ -744,7 +744,7 @@ function InviteDialog({ server, onClose }: { server: ServerDetail; onClose: () =
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  async function mint(expiresIn: '30m' | '6h' | '1d' | '7d' | 'never') {
+  async function mint(expiresIn: InviteLife) {
     setBusy(true);
     setError(null);
     try {
@@ -793,19 +793,19 @@ function InviteDialog({ server, onClose }: { server: ServerDetail; onClose: () =
         <div className="field">
           <label>Expires after</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {(['30m', '6h', '1d', '7d', 'never'] as const).map((option) => (
+            {INVITE_LIVES.map((option) => (
               <button
-                key={option}
+                key={option.id}
                 type="button"
                 className="button secondary inline"
                 disabled={busy}
-                onClick={() => void mint(option)}
+                onClick={() => void mint(option.id)}
               >
-                {option === 'never' ? 'Never' : option}
+                {option.label}
               </button>
             ))}
           </div>
-          <p className="field-note">Short-lived links are the safer default. Pick one to mint it.</p>
+          <p className="field-note">Pick one to make the link. Every invite stops working within two days.</p>
         </div>
       )}
     </Modal>

@@ -11,9 +11,10 @@ import type { Member } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { bans, memberRoles, members, servers, users } from '../db/schema.js';
+import { bans, kicks, memberRoles, members, servers, users } from '../db/schema.js';
 import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import * as hub from '../gateway/hub.js';
+import { disconnectFromVoice } from '../gateway/voice.js';
 import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import {
@@ -315,8 +316,18 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       .parse(request.params);
 
     const ctx = await requireServerPermission(serverId, actor.id, Permission.KICK_MEMBERS);
+    // Also refuses anyone who is not a member, so no stranger is recorded below.
     await requireHigherThan(ctx, userId);
 
+    // Every invite made before now stops working for them (routes/invites.ts).
+    const kickedAt = new Date();
+    await getDb()
+      .insert(kicks)
+      .values({ serverId, userId, kickedAt })
+      .onConflictDoUpdate({ target: [kicks.serverId, kicks.userId], set: { kickedAt } });
+    // Out of any call first, while they can still hear it said: their app
+    // hangs up on it, and the call's key moves on without them.
+    await disconnectFromVoice(serverId, userId);
     await removeMember(serverId, userId);
     await audit.record({
       serverId,
@@ -348,6 +359,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       .insert(bans)
       .values({ serverId, userId, bannedBy: actor.id, reason: body.reason ?? null })
       .onConflictDoNothing();
+    await disconnectFromVoice(serverId, userId);
     await removeMember(serverId, userId);
 
     await audit.record({

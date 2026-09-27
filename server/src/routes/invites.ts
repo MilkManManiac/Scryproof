@@ -10,13 +10,13 @@ import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { Permission } from '@scryproof/shared';
+import { LIMITS, Permission } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import { invites, members, servers } from '../db/schema.js';
-import { badRequest, forbidden, notFound } from '../lib/http-error.js';
+import { invites, kicks, members, servers } from '../db/schema.js';
+import { HttpError, badRequest, forbidden, notFound } from '../lib/http-error.js';
 import { inviteCode } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
@@ -26,13 +26,20 @@ import { loadMemberContext, requireMember, requireServerPermission } from '../se
 import { buildServerDetail } from '../services/server-detail.js';
 import { addMember, canCreateServers } from '../services/servers.js';
 
+/**
+ * Every invite is dead within two days (`LIMITS.inviteLifetimeMs`). `7d` and
+ * `never` are what an app from before 2026-09-27 still asks for; they get the
+ * longest there is now rather than an error.
+ */
 const EXPIRY_PRESETS = {
   '30m': 30 * 60 * 1000,
   '6h': 6 * 60 * 60 * 1000,
   '1d': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
-  never: null,
+  '2d': LIMITS.inviteLifetimeMs,
+  '7d': LIMITS.inviteLifetimeMs,
+  never: LIMITS.inviteLifetimeMs,
 } as const;
+const EXPIRY = z.enum(['30m', '6h', '1d', '2d', '7d', 'never']).default('2d');
 
 export async function registerInviteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/servers/:serverId/invites', async (request) => {
@@ -41,7 +48,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
     const body = z
       .object({
         maxUses: z.number().int().min(1).max(1000).nullable().optional(),
-        expiresIn: z.enum(['30m', '6h', '1d', '7d', 'never']).default('7d'),
+        expiresIn: EXPIRY,
       })
       .parse(request.body ?? {});
 
@@ -57,7 +64,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
         serverId,
         createdBy: user.id,
         maxUses: body.maxUses ?? null,
-        expiresAt: ttl === null ? null : new Date(Date.now() + ttl),
+        expiresAt: new Date(Date.now() + ttl),
       })
       .returning();
 
@@ -158,6 +165,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
     const alreadyMember = request.user
       ? (await loadMemberContext(row.serverId, request.user.id)) !== null
       : false;
+    if (request.user && !alreadyMember) await refuseIfKickedSince(row, request.user.id);
 
     return {
       kind: 'server' as const,
@@ -180,6 +188,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
       throw badRequest('That invite is for creating an account, not joining a server.', 'instance_invite');
     }
 
+    await refuseIfKickedSince(row, user.id);
     await addMember(row.serverId, user.id);
 
     await getDb()
@@ -227,7 +236,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
     const body = z
       .object({
         maxUses: z.number().int().min(1).max(100).nullable().optional(),
-        expiresIn: z.enum(['30m', '6h', '1d', '7d', 'never']).default('7d'),
+        expiresIn: EXPIRY,
       })
       .parse(request.body ?? {});
 
@@ -241,7 +250,7 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
         serverId: null,
         createdBy: user.id,
         maxUses: body.maxUses ?? 1,
-        expiresAt: ttl === null ? null : new Date(Date.now() + ttl),
+        expiresAt: new Date(Date.now() + ttl),
       })
       .returning();
 
@@ -252,4 +261,26 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
       url: `${config.publicUrl}/join/${code}`,
     };
   });
+}
+
+/**
+ * A kicked person needs an invite made after the kick. The one they joined
+ * with, or any other already out, is refused for them and still works for
+ * everyone else. `kicks` keeps the last kick for good, so this also holds
+ * after they come back and later leave.
+ */
+async function refuseIfKickedSince(row: typeof invites.$inferSelect, userId: string): Promise<void> {
+  if (!row.serverId) return;
+  const [kick] = await getDb()
+    .select()
+    .from(kicks)
+    .where(and(eq(kicks.serverId, row.serverId), eq(kicks.userId, userId)))
+    .limit(1);
+  if (kick && row.createdAt.getTime() <= kick.kickedAt.getTime()) {
+    throw new HttpError(
+      403,
+      'kicked',
+      'You were kicked from this server. This invite is from before that, so you need a new one.',
+    );
+  }
 }

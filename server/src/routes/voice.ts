@@ -193,8 +193,13 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
    *
    * The server tells the person first and then takes them out of the old
    * channel. Their device joins the new one by itself, which is the only way
-   * a join can happen: the call's keys are made on the device. An old client
-   * that does not know the event is simply disconnected.
+   * a join can happen: the call's keys are made on the device.
+   *
+   * An app from before moves existed does not know the event, and moving it
+   * only dropped the person from the call (Wes, 2026-09-27: the one friend
+   * it dropped was the one whose app never asked for the new room). So the
+   * device in the call has to have said it follows moves, and a move is
+   * refused otherwise, with what to do.
    */
   app.post('/api/servers/:serverId/members/:userId/move', async (request) => {
     const actor = requireUser(request);
@@ -219,6 +224,16 @@ export async function registerVoiceRoutes(app: FastifyInstance): Promise<void> {
 
     const target = await loadMemberContext(serverId, userId);
     if (!target) throw notFound('That member is not in this server.', 'unknown_member');
+
+    const devices = hub.connectionsForUser(userId);
+    const inCall = devices.filter((device) => device.callChannelId === state.channelId);
+    if (!(inCall.length > 0 ? inCall : devices).some((device) => device.followsMoves)) {
+      throw new HttpError(
+        409,
+        'outdated_app',
+        'Their app is out of date, so a move would only drop them from the call. They need to click Reload now (or Restart to install) first.',
+      );
+    }
     const theirs = await computePermissionsInChannel(target, channel.id);
     if (!has(theirs, Permission.VIEW_CHANNEL) || !has(theirs, Permission.CONNECT)) {
       throw new HttpError(403, 'target_cannot_connect', 'They are not allowed in that channel.');

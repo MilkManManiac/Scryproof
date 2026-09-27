@@ -17,6 +17,11 @@
  *
  * Each sound plays at the volume whoever added it chose, then this person's
  * slider turns every sound down for them.
+ *
+ * "Manage sounds" at the bottom opens Server settings on Sounds, to rename,
+ * re-volume or delete (Wes, 2026-09-27: "let us get to the sounds screen from
+ * the soundboard, at least if you are an admin"). The board steps aside for
+ * it and closes with it.
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -29,6 +34,7 @@ import { voicePrefs } from '../lib/voice-prefs';
 import { useStore } from '../state/store';
 import { VoiceGlyph } from './glyphs';
 import { SoundClipper } from './SoundClipper';
+import { ServerSettings } from './settings/ServerSettings';
 
 export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose: () => void }) {
   const { voice, state } = useStore();
@@ -37,9 +43,12 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [managing, setManaging] = useState(false);
   const loudness = useSyncExternalStore(voicePrefs.subscribe, () => voicePrefs.get().soundboardVolume);
 
   useEffect(() => {
+    // Settings are a window of their own; a click in them is not a click away.
+    if (managing) return;
     const onDown = (event: MouseEvent) => {
       if (!box.current?.contains(event.target as Node)) onClose();
     };
@@ -53,7 +62,7 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, managing]);
 
   const list = server.sounds ?? [];
   const manages = server.ownerId === state.user?.id || canOnServer(server, Permission.MANAGE_SERVER);
@@ -72,6 +81,8 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
     setLoading((current) => (current === soundId ? null : current));
     if (!result.ok) setError(result.reason);
   }
+
+  if (managing) return <ServerSettings server={server} start="sounds" onClose={onClose} />;
 
   return (
     <div className="spawner soundboard" ref={box} role="dialog" aria-label="Play a sound into the call">
@@ -143,6 +154,11 @@ export function SoundBoard({ server, onClose }: { server: ServerDetail; onClose:
           hidden
           onChange={(event) => choose(event.target.files?.[0] ?? null)}
         />
+      ) : null}
+      {manages && !file ? (
+        <button type="button" className="soundboard-manage" onClick={() => setManaging(true)}>
+          Manage sounds
+        </button>
       ) : null}
       {file ? (
         <SoundClipper

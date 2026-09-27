@@ -15,15 +15,20 @@ import { Permission } from '@scryproof/shared';
 import type { ServerDetail, VoiceState } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
+import { nameOf } from '../lib/mentions';
 import { canOnServer } from '../lib/usePermissions';
+import { useStore } from '../state/store';
+import { KickItem } from './KickItem';
 import { MenuItem } from './Menu';
+import { authorityFor } from './settings/authority';
 
 /** Whether this person may do anything here at all, so callers can skip the menu. */
 export function canModerateVoice(server: ServerDetail): boolean {
   return (
     canOnServer(server, Permission.MUTE_MEMBERS) ||
     canOnServer(server, Permission.DEAFEN_MEMBERS) ||
-    canOnServer(server, Permission.MOVE_MEMBERS)
+    canOnServer(server, Permission.MOVE_MEMBERS) ||
+    canOnServer(server, Permission.KICK_MEMBERS)
   );
 }
 
@@ -36,13 +41,19 @@ export function VoiceModItems({
   voice: VoiceState;
   onDone: () => void;
 }) {
+  const { state } = useStore();
   const [moving, setMoving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const mute = canOnServer(server, Permission.MUTE_MEMBERS);
   const deafen = canOnServer(server, Permission.DEAFEN_MEMBERS);
   const move = canOnServer(server, Permission.MOVE_MEMBERS);
-  if (!mute && !deafen && !move) return null;
+  // Kick is offered only when it would work: the member list's rule.
+  const members = state.members[server.id] ?? [];
+  const member = members.find((entry) => entry.userId === voice.userId) ?? null;
+  const authority = authorityFor(server, members, state.user?.id ?? null);
+  const kick = member !== null && authority.can(Permission.KICK_MEMBERS) && authority.canActOnMember(member);
+  if (!mute && !deafen && !move && !kick) return null;
 
   const elsewhere = server.channels
     .filter((channel) => channel.type === 'voice' && channel.id !== voice.channelId)
@@ -91,6 +102,12 @@ export function VoiceModItems({
         <MenuItem danger note="Out of the call. They can come back." onClick={() => act(api.voice.disconnect(server.id, voice.userId))}>
           Disconnect
         </MenuItem>
+      ) : null}
+      {kick ? (
+        <KickItem
+          name={nameOf(member)}
+          onKick={() => act(api.servers.kick(server.id, voice.userId))}
+        />
       ) : null}
     </>
   );

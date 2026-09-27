@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { LIMITS, Permission, toNames, decodeMask } from '@scryproof/shared';
 import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@scryproof/shared';
 
-import { ApiError, api } from '../../lib/api';
+import { ApiError, INVITE_LIVES, api } from '../../lib/api';
 import { publicOrigin } from '../../lib/desktop';
 import { useLocalNames } from '../../lib/local-names';
 import { nameOf } from '../../lib/mentions';
@@ -32,7 +32,7 @@ import { authorityFor } from './authority';
 import type { Authority } from './authority';
 import { useLayer } from '../../lib/back';
 
-type Section =
+export type Section =
   | 'overview'
   | 'layout'
   | 'roles'
@@ -47,9 +47,12 @@ type Section =
 export function ServerSettings({
   server,
   onClose,
+  start = 'overview',
 }: {
   server: ServerDetail;
   onClose: () => void;
+  /** Where it opens: the soundboard opens it on Sounds. */
+  start?: Section;
 }) {
   const { state } = useStore();
   useLocalNames();
@@ -59,7 +62,7 @@ export function ServerSettings({
     [server, members, state.user?.id],
   );
 
-  const [section, setSection] = useState<Section>('overview');
+  const [section, setSection] = useState<Section>(start);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -615,8 +618,8 @@ function InvitesPane({
     <>
       <h2 className="settings-heading">Invites</h2>
       <p className="settings-note">
-        Every link here lets someone join this server. Revoking one stops it working immediately,
-        including for anyone who already has it open.
+        Every link here lets someone join this server, for two days at most. Revoking one stops it
+        working immediately, including for anyone who already has it open.
       </p>
 
       {error ? <div className="error">{error}</div> : null}
@@ -624,7 +627,7 @@ function InvitesPane({
       <div className="field">
         <label>Create a link</label>
         <div className="swatches">
-          {(['30m', '6h', '1d', '7d', 'never'] as const).map((option) => (
+          {INVITE_LIVES.map(({ id: option, label }) => (
             <button
               key={option}
               type="button"
@@ -643,7 +646,7 @@ function InvitesPane({
                   .finally(() => setBusy(false));
               }}
             >
-              {option === 'never' ? 'Never expires' : option}
+              {label}
             </button>
           ))}
         </div>
@@ -663,7 +666,9 @@ function InvitesPane({
                   {invite.uses} use{invite.uses === 1 ? '' : 's'}
                   {invite.maxUses ? ` of ${invite.maxUses}` : ''}
                   {invite.expiresAt
-                    ? ` · expires ${new Date(invite.expiresAt).toLocaleString()}`
+                    ? new Date(invite.expiresAt).getTime() < Date.now()
+                      ? ' · expired'
+                      : ` · expires ${new Date(invite.expiresAt).toLocaleString()}`
                     : ' · never expires'}
                 </span>
               </span>

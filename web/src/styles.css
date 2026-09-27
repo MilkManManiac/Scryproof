@@ -6181,10 +6181,12 @@ kbd {
 /* The soundboard: the same board, hung from the voice bar at the bottom of
    the sidebar, so it opens to the right over the channel rather than off the
    left edge of the window. */
-.spawner.soundboard {
+/* In the sidebar's dock: as wide as the sidebar, which clips anything wider.
+   Only there: the call's own button bar anchors it to one 48px button, and
+   this rule made that board 48px wide (found 2026-09-27). */
+.voice-dock .spawner.soundboard {
   left: 0;
   right: 0;
-  /* As wide as the sidebar, which clips anything wider. */
   width: auto;
 }
 .soundboard-tile {
@@ -6224,6 +6226,25 @@ kbd {
   padding: 4px 4px 6px;
   font-size: 13px;
   color: var(--text-muted);
+}
+/* A quiet link under the grid, for the people who can edit the sounds. */
+.soundboard-manage {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 4px 3px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+.soundboard-manage:hover,
+.soundboard-manage:focus-visible {
+  color: var(--text);
 }
 
 /* On a narrow screen the volume and buttons go under the name rather than squeezing it. */

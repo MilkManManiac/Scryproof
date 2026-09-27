@@ -57,6 +57,11 @@ export const LIMITS = {
    */
   soundVolume: { min: 0, max: 200, default: 100 },
   /**
+   * No invite lives longer than two days, server or account, old ones included (Wes, 2026-09-27: "make all
+   * invites expire after 48 hours"). A leaked link is dead by the weekend.
+   */
+  inviteLifetimeMs: 48 * 60 * 60 * 1000,
+  /**
    * Everyone in a group conversation, the person asking included. Every
    * message is locked once per device of everyone in it, in the sender's
    * browser, so this is kept to a size that stays quick to send.

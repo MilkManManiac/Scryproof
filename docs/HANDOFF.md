@@ -3340,3 +3340,47 @@ Not proven: press-and-hold on a real phone for the new menus.
 ![The gear on a channel](shots/channel-gear.png)
 ![A voice channel's settings](shots/voice-channel-settings.png)
 ![Moving someone](shots/voice-move-menu.png)
+
+## 2026-09-27: kick, two-day invites, moves that refuse instead of drop (built, not deployed)
+
+Wes, after the moderation release: "moving someone who isnt an admin just
+disconnects them. Also, let us get to the sounds screen from the soundboard,
+at least if you are an admin. Also add an ability to kick someone ... cannot
+join again until they get a new invite. also make all invites expire after 48
+hours".
+
+**The move that dropped someone.** The box journal (05:19 to 05:22 UTC) shows
+every moved person's app taking a token for the new room within a second,
+milky and Hamothy included, except LicensedBoxhed, the only one without the
+Admins role. His app never asked for the new room. Nothing in the code path
+depends on the moved person's roles (checked: gateway intent, token route,
+client handler), so the evidence points at his app being from before the
+release (no Reload clicked), which the route's own comment said would simply
+disconnect him. Inference, not proven: ask him whether he had clicked Reload.
+Fix either way: the app now connects with `?follows=move`; the server notes
+which device is in the call (`Connection.callChannelId`) and refuses a move
+with 409 `outdated_app` ("They need to click Reload now") unless that device
+follows moves. Every app from before this release is refused rather than
+dropped. `test:voice` 67/67 proves an updated app still follows.
+
+**Kick.** Already existed in Server settings, Members. Now also on the member
+list's menu and a call's right-click menu (`KickItem.tsx`, asks twice). New
+`kicks` table (migration 0026, backfilled from the audit log): an invite made
+at or before someone's last kick is refused for them (403 `kicked`, also on the
+invite preview), and still works for everyone else. Kick and ban now take the
+person out of voice first (`disconnectFromVoice`), so their app hangs up; before,
+the state was dropped silently and their app sat in a dead call.
+
+**Invites.** `LIMITS.inviteLifetimeMs` = 48 h. Choices are 30m, 6h, 1d, 2d;
+an old app's `7d`/`never` get 2 days. Migration 0026 clamps every existing
+invite; `consumeInvitePreflight` also refuses anything older than 48 h. Account
+(instance) invites too.
+
+**Soundboard.** "Manage sounds" at the bottom for MANAGE_SERVER opens Server
+settings on Sounds (`ServerSettings start`). Found on the way: the board opened
+from the call's button bar was 48 px wide, because `.spawner.soundboard`'s
+sidebar-width rule applied everywhere. Scoped to `.voice-dock`.
+
+Tests: server 282 (new `kicks-and-invites.test.ts`, voice-move +2), web 413,
+`test:voice` 67/67, typecheck clean. Shots: `docs/shots/member-kick.png`,
+`soundboard-manage.png`, `soundboard-dock.png`, `soundboard-to-settings.png`.

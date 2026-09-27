@@ -46,6 +46,14 @@ export interface Connection {
    * stays quiet: they are already reading it.
    */
   attending?: boolean;
+  /**
+   * This app follows a moderator's move by itself (`?follows=move` on the
+   * gateway URL). One from before 2026-09-27 does not, and a move would only
+   * drop it from the call.
+   */
+  followsMoves?: boolean;
+  /** The server voice channel this device joined, if any: which device is in the call. */
+  callChannelId?: string | null;
 }
 
 const connections = new Map<string, Connection>();

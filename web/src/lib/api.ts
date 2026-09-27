@@ -38,6 +38,15 @@ import type {
   VoiceState,
 } from '@scryproof/shared';
 
+/** How long a new invite lasts. Two days is the most there is (`LIMITS.inviteLifetimeMs`). */
+export type InviteLife = '30m' | '6h' | '1d' | '2d';
+export const INVITE_LIVES: { id: InviteLife; label: string }[] = [
+  { id: '30m', label: '30 minutes' },
+  { id: '6h', label: '6 hours' },
+  { id: '1d', label: '1 day' },
+  { id: '2d', label: '2 days' },
+];
+
 export interface EventInput {
   title: string;
   note: string;
@@ -412,7 +421,7 @@ export const api = {
   },
 
   invites: {
-    create: (serverId: string, expiresIn: '30m' | '6h' | '1d' | '7d' | 'never' = '7d') =>
+    create: (serverId: string, expiresIn: InviteLife = '2d') =>
       post<{ invite: Invite; url: string }>(`/api/servers/${serverId}/invites`, { expiresIn }),
     list: (serverId: string) => get<{ invites: Invite[] }>(`/api/servers/${serverId}/invites`),
     revoke: (code: string) => del<{ ok: true }>(`/api/invites/${code}`),

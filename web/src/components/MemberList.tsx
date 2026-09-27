@@ -17,6 +17,7 @@ import { timeoutEndsAt } from '../lib/usePermissions';
 import { dmWaiting, pairWith, useDms } from '../state/dms';
 import { badgeText, useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { KickItem } from './KickItem';
 import { Menu, MenuItem } from './Menu';
 import { authorityFor } from './settings/authority';
 import { useVoice } from '../state/useVoice';
@@ -70,6 +71,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
 
   const authority = authorityFor(server, members ?? [], state.user?.id ?? null);
   const mayModerate = authority.can(Permission.MODERATE_MEMBERS);
+  const mayKick = authority.can(Permission.KICK_MEMBERS);
 
   async function run(work: Promise<unknown>, failure: string) {
     setMenu(null);
@@ -154,6 +156,7 @@ export function MemberList({ server }: { server: ServerDetail }) {
             // The server checks all of this again. Offering the menu only when
             // it would succeed keeps the list from handing out dead choices.
             const moderatable = mayModerate && !self && authority.canActOnMember(member);
+            const kickable = mayKick && !self && authority.canActOnMember(member);
             const open = menu?.userId === member.userId ? menu : null;
             // Unread messages from this person in your DMs with them.
             const pair = self ? null : pairWith(dmState, state.user?.id ?? null, member.userId);
@@ -319,6 +322,12 @@ export function MemberList({ server }: { server: ServerDetail }) {
                           >
                             End timeout
                           </MenuItem>
+                        ) : null}
+                        {kickable ? (
+                          <KickItem
+                            name={nameOf(member)}
+                            onKick={() => void run(api.servers.kick(server.id, member.userId), 'Could not kick them.')}
+                          />
                         ) : null}
                       </>
                     )}

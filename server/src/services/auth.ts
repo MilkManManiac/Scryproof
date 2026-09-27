@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 
 import { and, eq, gt, isNull } from 'drizzle-orm';
 
-import { validatePassword, validateUsername, validateDisplayName } from '@scryproof/shared';
+import { LIMITS, validatePassword, validateUsername, validateDisplayName } from '@scryproof/shared';
 
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
@@ -205,7 +205,9 @@ export async function consumeInvitePreflight(code: string): Promise<typeof invit
     .limit(1);
 
   if (!row) throw badRequest('That invite code is not valid.', 'invalid_invite');
-  if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
+  // The ceiling holds even for a row that somehow escaped it.
+  const ends = Math.min(row.expiresAt?.getTime() ?? Infinity, row.createdAt.getTime() + LIMITS.inviteLifetimeMs);
+  if (ends < Date.now()) {
     throw badRequest('That invite has expired.', 'invalid_invite');
   }
   if (row.maxUses !== null && row.uses >= row.maxUses) {
