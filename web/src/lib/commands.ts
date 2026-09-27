@@ -82,6 +82,15 @@ export function isInitCommand(content: string): boolean {
   return /^\/init$/i.test(content.trim());
 }
 
+/**
+ * `/purdle`, exactly. Like `/init` it never becomes a message: it opens
+ * today's game, the same as the tile on the server rail. Nothing reaches the
+ * server, so it works in an encrypted channel too.
+ */
+export function isPurdleCommand(content: string): boolean {
+  return /^\/purdle$/i.test(content.trim());
+}
+
 /** A message that is a spawn command, or null. Exact: no other words. */
 export function spawnOf(content: string | null | undefined): Character | null {
   if (!content) return null;
@@ -142,6 +151,7 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
       note: 'ask the room: /poll Which night? | Friday | Saturday',
     },
     { key: 'init', written: '/init', name: '/init', note: 'start an initiative tracker for this channel' },
+    { key: 'purdle', written: '/purdle', name: '/purdle', note: "open today's Purdle (only you see it)" },
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,

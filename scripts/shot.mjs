@@ -214,7 +214,15 @@ try {
 
   const type = flag('type', null);
   if (type) {
+    // A newline in it is the Enter key, to photograph what sending does.
     for (const letter of type) {
+      if (letter === '\n') {
+        const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', ...enter });
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', ...enter });
+        await sleep(40);
+        continue;
+      }
       await send('Input.dispatchKeyEvent', { type: 'keyDown', text: letter });
       await send('Input.dispatchKeyEvent', { type: 'keyUp' });
       await sleep(40);

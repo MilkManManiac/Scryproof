@@ -3385,7 +3385,7 @@ Tests: server 282 (new `kicks-and-invites.test.ts`, voice-move +2), web 413,
 `test:voice` 67/67, typecheck clean. Shots: `docs/shots/member-kick.png`,
 `soundboard-manage.png`, `soundboard-dock.png`, `soundboard-to-settings.png`.
 
-## 2026-09-27: Purdle (built, not deployed)
+## 2026-09-27: Purdle (shipped 2026-09-27, with the kick/invite/move batch)
 
 Wes: "Make a game called purdle that acts like wordle that everyone can play
 once a day. make it act like wordle."
@@ -3412,5 +3412,10 @@ once a day. make it act like wordle."
   changes). Wordle's fixed green/gold across all themes on purpose.
 - Tests: server 291 (new `purdle.test.ts`, 9), web 413, typecheck clean, web
   build splits the word list. Shots: `docs/shots/purdle-*.png`.
+- **`/purdle`** in any message box opens it (`isPurdleCommand` in
+  `lib/commands.ts`): client-only, sends nothing, works in encrypted
+  channels, and Enter on the suggestion opens it at once. Wes asked how you
+  start it ("is it a command?"), so it is one now. `shot.mjs --type` takes a
+  newline as Enter. Shots: `purdle-command-offer.png`, `purdle-command-open.png`.
 - Not proven: phones (layout shot at 390 px only), and the day turning over
   live at midnight.

@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { commandOffers, commandQueryAt, expandTextCommand, spawnOf } from '../lib/commands';
+import { commandOffers, commandQueryAt, expandTextCommand, isPurdleCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 
 describe('spawnOf', () => {
@@ -12,6 +12,16 @@ describe('spawnOf', () => {
     assert.equal(spawnOf('/nobody-jump'), null);
     assert.equal(spawnOf('tang-jump'), null);
     assert.equal(spawnOf(null), null);
+  });
+});
+
+describe('isPurdleCommand', () => {
+  it('is /purdle on its own, any case', () => {
+    assert.equal(isPurdleCommand('/purdle'), true);
+    assert.equal(isPurdleCommand(' /Purdle '), true);
+    assert.equal(isPurdleCommand('/purdle today'), false);
+    assert.equal(isPurdleCommand('purdle'), false);
+    assert.equal(commandOffers('pur')[0]?.written, '/purdle');
   });
 });
 

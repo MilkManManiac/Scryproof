@@ -24,7 +24,7 @@ export const CHANGELOG: readonly Release[] = [
     date: '2026-09-27',
     title: 'Purdle: one word a day, for everyone',
     notes: [
-      'Purdle is Wordle, here. Everyone gets the same five-letter word, six tries, once a day. Open it from the little green and yellow squares under the bell on the left.',
+      'Purdle is Wordle, here. Everyone gets the same five-letter word, six tries, once a day. Open it from the little green and yellow squares under the bell on the left, or type /purdle in any message box.',
       'Green is the right letter in the right spot, yellow is in the word somewhere else, gray is not in it. Type on your keyboard or tap the letters.',
       'A new word every midnight Eastern. The yellow dot on the squares means today’s is still waiting for you.',
       'Under the board: who in this server has done today’s and in how many tries. Never their letters, so nothing gets spoiled.',
