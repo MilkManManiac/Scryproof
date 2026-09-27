@@ -1,0 +1,91 @@
+/*
+ * Lady of the Lake: a flooded stone court in a forest at night, lanterns on
+ * the columns, and a round fountain with a small blue tree in the middle of
+ * the pool.
+ *
+ * From Wes's picture (2026-09-26, `assets/gen/lake-a.jpg`, square), widened
+ * to the screen's shape through imagegen with the middle kept
+ * (`assets/gen/lake-b.jpg`). Wes: "Call it Lady of the Lake. Do the same
+ * thing with the Alive effects", meaning Loaf v2's whole-scene treatment.
+ *
+ * Surfaces are the deep water, the accent is the lit turquoise of the pool,
+ * and lantern amber stands where the other themes have gold. Dim text is
+ * 7.9:1 on the solid panel. Every token the hall sets is set here.
+ *
+ * What moves is one word, `lake` (lake-scene.ts), pinned to points in the
+ * painting the way `camp` is.
+ */
+
+:root[data-theme='lake'] {
+  --bg: #061215;
+  --bg-rgb: 6 18 21;
+
+  --panel-rgb: 11 29 32;
+  --panel-alpha: 0.55;
+  --panel-solid: #0b1d20;
+  --panel-2: #10272b;
+  --panel-3: #173237;
+  --panel-4: #1f3f45;
+
+  --line: #1b3438;
+  --line-strong: #2a4a4f;
+  --edge: inset 0 0 0 1px rgb(200 245 240 / 0.07);
+  --hi: inset 0 1px 0 rgb(200 245 240 / 0.06);
+
+  --text: #eef8f7;
+  --text-muted: #cfe1df;
+  --text-dim: #9fc0bd;
+  --text-faint: #779693;
+
+  /* The pool where the light is on it. */
+  --accent: #37cfc2;
+  --accent-bright: #62e6da;
+  --accent-dim: #1d7c74;
+  --accent-wash: rgb(55 207 194 / 0.13);
+  --on-accent: #03201d;
+
+  /* Lantern light, where the other themes have gold. */
+  --gold: #e9b86a;
+  --gold-dim: #9a7a45;
+
+  --good: #56c48c;
+  --warn: #e3b04d;
+  --bad: #e46a5c;
+  --speaking: #5fd39a;
+
+  --shadow-1: 0 1px 1px hsl(186 55% 3% / 0.55), 0 4px 10px -3px hsl(186 55% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(186 55% 3% / 0.55), 0 8px 18px -6px hsl(186 55% 3% / 0.65),
+    0 22px 44px -14px hsl(186 55% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(186 55% 3% / 0.55), 0 16px 32px -8px hsl(186 55% 3% / 0.7),
+    0 40px 80px -20px hsl(186 55% 3% / 0.75);
+
+  /* The painting, a little below centre so the front of the pool, where the
+     sword comes up, stays in the picture on a wide window. */
+  --backdrop: url('/backdrops/lake.jpg');
+  --backdrop-position: center 58%;
+  /* The hearth layer breathes on the fountain; lake-scene draws the rest. */
+  --glow-color: rgb(90 210 220 / 0.12);
+  --glow-position: 52% 50%;
+  --ambient-motion: lake;
+  --star-color: 220 250 250;
+  --star-depth: 0.3;
+  --ambient-sprite: none;
+
+  color-scheme: dark;
+}
+
+/* The shared room darkens the bottom third hard. Here the front of the pool
+   is in that third, so the fall to dark starts later and stops short. */
+:root[data-theme='lake'] .ambient,
+:root[data-theme='lake'] .settings-backdrop {
+  background-image:
+    radial-gradient(120% 90% at 50% 20%, transparent 45%, rgb(0 0 0 / 0.35) 100%),
+    linear-gradient(
+      180deg,
+      rgb(var(--bg-rgb) / 0.08) 0%,
+      rgb(var(--bg-rgb) / 0.14) 55%,
+      rgb(var(--bg-rgb) / 0.42) 86%,
+      rgb(var(--bg-rgb) / 0.72) 100%
+    ),
+    var(--backdrop);
+}

@@ -16,6 +16,7 @@ export interface Theme {
 export const THEMES: readonly Theme[] = [
   { id: 'ridge', name: 'The ridge' },
   { id: 'ember', name: 'The ridge, alive' },
+  { id: 'lake', name: 'Lady of the Lake' },
   { id: 'dusk', name: 'Ham' },
   { id: 'forg', name: 'Forg' },
   { id: 'loaf2', name: 'Loaf v2' },

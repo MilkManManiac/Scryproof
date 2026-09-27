@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-26-lake',
+    date: '2026-09-26',
+    title: 'A new theme: Lady of the Lake',
+    notes: [
+      'A flooded stone court in a forest at night, with a fountain and a small blue tree in the middle of the pool. Settings, Themes.',
+      'It is alive: the lanterns flicker, moths circle them, mist drifts through, the tree drops glowing petals that land and ripple on the water, and now and then a fish slides by under the surface.',
+      'Wait a minute and watch the front of the pool.',
+    ],
+  },
+  {
     id: '2026-09-26-guide',
     date: '2026-09-26',
     title: 'A guide to how it all works',

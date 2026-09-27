@@ -3258,3 +3258,28 @@ then `npm run seed --workspace server`. The broken copy was moved to
 **Wes's to-dos added today** (BUILD-ORDER top): next week = route audit,
 backups, Mac/Linux builds. Sound upgrade with a pick-your-sounds artifact
 from free high-quality assets.
+
+## 2026-09-26: Lady of the Lake (staged, not released)
+
+Wes: "Got a saved photo. WE can start to make a new theme. Call it Lady of
+the Lake. Do the same thing with the Alive effects." The photo is
+`Downloads\Lake 3.jpg`, kept as `assets/gen/lake-a.jpg` (736 x 736). Square
+and small, so on a wide window it would have been a cropped strip at twice
+its size; imagegen `--image` widened it to 1376 x 768 with the middle kept
+(`lake-b.jpg`, served as `/backdrops/lake.jpg`).
+
+`themes/lake.css`: deep-water surfaces, turquoise accent, lantern amber for
+gold. One Ambient word, `lake` (`lake-scene.ts`), pinned to the painting
+like `camp`: 11 lanterns flickering on their own clocks (and the two
+reflections painted in the water), moths round the six near ones, mist in
+four banks, the tree breathing blue and dropping petals that ring the water
+and float, threads of light turning in the fountain's basin, glints and
+rings on the surface, a pale koi now and then, wisps over the pool, gold
+specks low. And the name: 12-20 s after load, then every 50-100 s, the
+front of the pool lights from below and a sword of light rises, holds, and
+sinks. The water map (`isWater`) was drawn by hand over the painting and is
+tested (`lake-scene.test.ts`). `camp-scene.ts`'s mist now takes a colour.
+Web tests 413.
+
+![Lady of the Lake](shots/theme-lake.png)
+![The scene, sword up](shots/theme-lake-scene.png)

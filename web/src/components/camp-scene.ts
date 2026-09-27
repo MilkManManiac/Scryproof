@@ -74,7 +74,7 @@ interface Particle extends Point {
 }
 
 /** A band of mist: one tile of fog texture, repeated across the painting and sliding sideways. */
-interface FogBank {
+export interface FogBank {
   texture: HTMLCanvasElement | null;
   y: number;
   height: number;
@@ -114,9 +114,10 @@ const rand = (low: number, high: number) => low + Math.random() * (high - low);
 /**
  * One tile of fog: soft blobs of mist that wrap around left to right, so the
  * tile repeats with no seam, fading out toward its top and bottom. `flat`
- * squashes the blobs into streaks, for cloud.
+ * squashes the blobs into streaks, for cloud. `tint` colours the mist (the
+ * lake's is teal); left out, it is the camp's moonlit grey-blue.
  */
-function fogTexture(width: number, height: number, flat: number): HTMLCanvasElement | null {
+function fogTexture(width: number, height: number, flat: number, tint?: string): HTMLCanvasElement | null {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(width);
   canvas.height = Math.round(height);
@@ -133,9 +134,9 @@ function fogTexture(width: number, height: number, flat: number): HTMLCanvasElem
       context.translate(x + shift, y);
       context.scale(1, flat);
       const gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);
-      gradient.addColorStop(0, `rgb(218 234 244 / ${alpha})`);
-      gradient.addColorStop(0.5, `rgb(200 222 236 / ${alpha * 0.5})`);
-      gradient.addColorStop(1, 'rgb(200 222 236 / 0)');
+      gradient.addColorStop(0, `rgb(${tint ?? '218 234 244'} / ${alpha})`);
+      gradient.addColorStop(0.5, `rgb(${tint ?? '200 222 236'} / ${alpha * 0.5})`);
+      gradient.addColorStop(1, `rgb(${tint ?? '200 222 236'} / 0)`);
       context.fillStyle = gradient;
       context.fillRect(-radius, -radius, radius * 2, radius * 2);
       context.restore();
@@ -153,8 +154,16 @@ function fogTexture(width: number, height: number, flat: number): HTMLCanvasElem
   return canvas;
 }
 
-const bank = (y: number, height: number, tile: number, speed: number, alpha: number, flat = 1): FogBank => ({
-  texture: fogTexture(tile, height, flat),
+export const bank = (
+  y: number,
+  height: number,
+  tile: number,
+  speed: number,
+  alpha: number,
+  flat = 1,
+  tint?: string,
+): FogBank => ({
+  texture: fogTexture(tile, height, flat, tint),
   y,
   height,
   tile,
