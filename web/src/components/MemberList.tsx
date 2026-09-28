@@ -17,7 +17,7 @@ import { timeoutEndsAt } from '../lib/usePermissions';
 import { dmWaiting, pairWith, useDms } from '../state/dms';
 import { badgeText, useStore } from '../state/store';
 import { Avatar } from './Avatar';
-import { KickItem } from './KickItem';
+import { KickItem, RemoveFromAppItem } from './KickItem';
 import { Menu, MenuItem } from './Menu';
 import { authorityFor } from './settings/authority';
 import { useVoice } from '../state/useVoice';
@@ -327,6 +327,14 @@ export function MemberList({ server }: { server: ServerDetail }) {
                           <KickItem
                             name={nameOf(member)}
                             onKick={() => void run(api.servers.kick(server.id, member.userId), 'Could not kick them.')}
+                          />
+                        ) : null}
+                        {state.canCreateServers && !self ? (
+                          <RemoveFromAppItem
+                            name={nameOf(member)}
+                            onRemove={() =>
+                              void run(api.servers.removeFromApp(member.userId), 'Could not remove them.')
+                            }
                           />
                         ) : null}
                       </>

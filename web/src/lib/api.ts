@@ -153,6 +153,9 @@ export const api = {
     remove: (id: string) => del<{ ok: true }>(`/api/servers/${id}`),
     leave: (id: string) => post<{ ok: true }>(`/api/servers/${id}/leave`),
     members: (id: string) => get<{ members: Member[] }>(`/api/servers/${id}/members`),
+    /** Host only: out of every server, signed out everywhere, and cannot sign in again. */
+    removeFromApp: (userId: string) =>
+      post<{ ok: true; servers: number }>('/api/host/remove-account', { userId }),
     kick: (serverId: string, userId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/members/${userId}`),
     ban: (serverId: string, userId: string, reason?: string) =>
