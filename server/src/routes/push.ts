@@ -38,6 +38,7 @@ export async function registerPushRoutes(app: FastifyInstance): Promise<void> {
         // Absent from a page loaded before these existed: the old behaviour.
         mentions: z.boolean().default(true),
         messages: z.boolean().default(false),
+        evenWhileAttending: z.boolean().default(true),
       })
       .parse(request.body);
     const settings = {
@@ -45,6 +46,7 @@ export async function registerPushRoutes(app: FastifyInstance): Promise<void> {
       mutedChannels: body.mutedChannels,
       mentions: body.mentions,
       messages: body.messages,
+      evenWhileAttending: body.evenWhileAttending,
     };
     if (!isRelayEndpoint(body.endpoint)) {
       throw badRequest('That is not a notification service this server knows.', 'push_endpoint');

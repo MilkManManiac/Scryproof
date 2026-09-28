@@ -668,6 +668,12 @@ export const pushSubscriptions = pgTable(
     mentions: boolean('mentions').notNull().default(true),
     /** Every other message in a channel it can see: its "message" setting is not off. */
     messages: boolean('messages').notNull().default(false),
+    /**
+     * Woken even while its person is at another window, like a computer left
+     * open all day while they are out. On unless the phone says otherwise
+     * (Wes, 2026-09-27: "make it go through unless they select otherwise").
+     */
+    evenWhileAttending: boolean('even_while_attending').notNull().default(true),
     createdAt: createdAt(),
   },
   (table) => [

@@ -32,6 +32,12 @@ export interface NotifyPrefs {
    * thing switched off (Wes, 2026-09-26).
    */
   pushEvery: boolean;
+  /**
+   * Phone notifications even while this person is at their computer. On by
+   * default: plenty of computers stay open all day while their people are out
+   * (Wes, 2026-09-27).
+   */
+  pushWhileAttending: boolean;
 }
 
 const DEFAULTS: NotifyPrefs = {
@@ -41,6 +47,7 @@ const DEFAULTS: NotifyPrefs = {
   mutedChannels: [],
   volume: 1,
   pushEvery: false,
+  pushWhileAttending: true,
 };
 
 /** A stored volume is trusted only if it is a number on the slider's range. */

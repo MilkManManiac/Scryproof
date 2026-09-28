@@ -16,7 +16,7 @@ import type { NotifyPrefs, SoundContext } from '../lib/notify';
 const ME = 'me';
 const THEM = 'them';
 
-const prefs: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false };
+const prefs: NotifyPrefs = { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false, pushWhileAttending: true };
 
 const base: SoundContext = {
   authorId: THEM,
@@ -126,7 +126,7 @@ describe('loading saved prefs', () => {
     const previous = globalWithStorage.localStorage;
     globalWithStorage.localStorage = fakeStorage(JSON.stringify({ mention: false, message: 'off' }));
     try {
-      assert.deepEqual(load(), { mention: false, message: 'off', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false });
+      assert.deepEqual(load(), { mention: false, message: 'off', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false, pushWhileAttending: true });
     } finally {
       globalWithStorage.localStorage = previous;
     }
@@ -152,7 +152,7 @@ describe('loading saved prefs', () => {
     const previous = globalWithStorage.localStorage;
     globalWithStorage.localStorage = fakeStorage(null);
     try {
-      assert.deepEqual(load(), { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false });
+      assert.deepEqual(load(), { mention: true, message: 'unfocused', mutedServers: [], mutedChannels: [], volume: 1, pushEvery: false, pushWhileAttending: true });
     } finally {
       globalWithStorage.localStorage = previous;
     }

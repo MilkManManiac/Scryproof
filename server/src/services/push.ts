@@ -21,8 +21,10 @@
  * Nothing about who pinged whom is written to the database (GAMEPLAN 1b: no
  * record of who talks to whom that we did not decide to keep).
  *
- * Nobody is woken while they are sitting at another of their windows
- * (`hub.isAttending`): the in-app sound and pop-up are already telling them.
+ * A phone is never woken while it is itself the window being looked at. While
+ * its person is at another window (a computer), it is still woken unless that
+ * phone switched it off: plenty of computers sit open all day while their
+ * people are out (Wes, 2026-09-27).
  */
 
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
@@ -110,6 +112,8 @@ async function subscriptionsOf(userIds: string[]) {
       mutedChannels: pushSubscriptions.mutedChannels,
       mentions: pushSubscriptions.mentions,
       messages: pushSubscriptions.messages,
+      evenWhileAttending: pushSubscriptions.evenWhileAttending,
+      sessionId: pushSubscriptions.sessionId,
     })
     .from(pushSubscriptions)
     .innerJoin(sessions, eq(sessions.id, pushSubscriptions.sessionId))
@@ -130,10 +134,16 @@ async function subscriptionsOf(userIds: string[]) {
 export async function pushTo(userIds: readonly string[], notice: PingNotice): Promise<void> {
   if (!config.push || userIds.length === 0) return;
   try {
-    const away = userIds.filter((userId) => !hub.isAttending(userId));
-    if (away.length === 0) return;
-
-    const rows = await subscriptionsOf(away);
+    const all = await subscriptionsOf([...userIds]);
+    // Not the phone in their hand, and not while they are at another window
+    // unless this phone asked for that too.
+    const looking = new Map<string, Set<string>>();
+    const rows = all.filter((row) => {
+      let sessions = looking.get(row.userId);
+      if (!sessions) looking.set(row.userId, (sessions = hub.attendingSessions(row.userId)));
+      if (sessions.has(row.sessionId)) return false;
+      return sessions.size === 0 || row.evenWhileAttending;
+    });
     if (rows.length === 0) return;
 
     const now = Date.now();
@@ -178,7 +188,7 @@ export async function pushToReaders(input: {
   if (!config.push) return;
   try {
     const skip = new Set([...input.alreadyPinged, input.senderId]);
-    const candidates = [...input.memberIds].filter((userId) => !skip.has(userId) && !hub.isAttending(userId));
+    const candidates = [...input.memberIds].filter((userId) => !skip.has(userId));
     if (candidates.length === 0) return;
 
     const listening = await getDb()

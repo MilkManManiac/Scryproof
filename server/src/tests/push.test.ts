@@ -106,7 +106,13 @@ describe('phone notifications', () => {
 
   const subscribe = (
     person: Person,
-    settings: { mutedServers?: string[]; mutedChannels?: string[]; mentions?: boolean; messages?: boolean } = {},
+    settings: {
+      mutedServers?: string[];
+      mutedChannels?: string[];
+      mentions?: boolean;
+      messages?: boolean;
+      evenWhileAttending?: boolean;
+    } = {},
   ) =>
     call(person, 'PUT', '/api/push/subscription', {
       endpoint: person.endpoint,
@@ -114,6 +120,7 @@ describe('phone notifications', () => {
       mutedChannels: settings.mutedChannels ?? [],
       mentions: settings.mentions ?? true,
       messages: settings.messages ?? false,
+      evenWhileAttending: settings.evenWhileAttending ?? true,
     });
 
   const mention = (from: Person, to: Person) =>
@@ -281,32 +288,74 @@ describe('phone notifications', () => {
     await subscribe(wes);
   });
 
-  it('leaves the phone alone while its person is at another window', async () => {
-    const connection = {
-      id: 'wes-desk',
+  const windowOf = (person: Person, sessionId: string) =>
+    ({
+      id: `${person.id}-${sessionId}`,
       ws: { readyState: 1, send: () => {} },
-      userId: wes.id,
-      sessionId: 'desk',
+      userId: person.id,
+      sessionId,
       servers: new Set<string>(),
       permissionCache: new Map(),
       status: 'online',
       lastSeenAt: Date.now(),
       alive: true,
       attending: true,
-    } as unknown as Parameters<typeof hub.addConnection>[0];
-    hub.addConnection(connection);
+    }) as unknown as Parameters<typeof hub.addConnection>[0];
+
+  it('still wakes the phone while its person is at their computer, unless that phone said not to', async () => {
+    const desk = windowOf(wes, 'desk');
+    hub.addConnection(desk);
     try {
+      await subscribe(wes);
+      await mention(alex, wes);
+      await settle();
+      assert.equal(pings.length, 1);
+
+      pings.length = 0;
+      await subscribe(wes, { evenWhileAttending: false });
       await mention(alex, wes);
       await settle();
       assert.equal(pings.length, 0);
 
       // Walked away from the desk: the phone gets it again.
-      connection.attending = false;
+      desk.attending = false;
       await mention(alex, wes);
       await settle();
       assert.equal(pings.length, 1);
     } finally {
-      hub.removeConnection(connection);
+      hub.removeConnection(desk);
+    }
+  });
+
+  it('never wakes the phone that is itself being looked at', async () => {
+    await subscribe(wes);
+    const phone = windowOf(wes, wes.sessionId);
+    hub.addConnection(phone);
+    try {
+      await mention(alex, wes);
+      await settle();
+      assert.equal(pings.length, 0);
+    } finally {
+      hub.removeConnection(phone);
+    }
+  });
+
+  it('defaults a phone from before the switch existed to being woken', async () => {
+    await call(wes, 'PUT', '/api/push/subscription', {
+      endpoint: wes.endpoint,
+      mutedServers: [],
+      mutedChannels: [],
+      mentions: true,
+      messages: false,
+    });
+    const desk = windowOf(wes, 'desk');
+    hub.addConnection(desk);
+    try {
+      await mention(alex, wes);
+      await settle();
+      assert.equal(pings.length, 1);
+    } finally {
+      hub.removeConnection(desk);
     }
   });
 

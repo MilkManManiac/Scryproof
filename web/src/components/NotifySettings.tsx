@@ -250,8 +250,8 @@ function PushSection() {
             Notify this device
             <span className="field-note">
               &ldquo;Someone messaged you&rdquo; or &ldquo;Someone mentioned you&rdquo;, never who or what, with a
-              sound and a number on the app&rsquo;s icon. Mentions follow the switch at the top, muted places stay
-              quiet, and nothing comes while you are using Scryproof somewhere else.
+              sound and a number on the app&rsquo;s icon. Mentions follow the switch at the top, and muted places
+              stay quiet.
               {problem ? ` ${problem}` : ''}
             </span>
           </span>
@@ -285,7 +285,12 @@ function PushSection() {
           />
         </label>
       )}
-      {availability === 'ready' && on === true ? <EveryMessage /> : null}
+      {availability === 'ready' && on === true ? (
+        <>
+          <EveryMessage />
+          <WhileAttending />
+        </>
+      ) : null}
     </>
   );
 }
@@ -307,6 +312,28 @@ function EveryMessage() {
         className="perm-switch"
         checked={every}
         onChange={(event) => notifyPrefs.set({ pushEvery: event.target.checked })}
+      />
+    </label>
+  );
+}
+
+function WhileAttending() {
+  const [value, setValue] = useState(notifyPrefs.get().pushWhileAttending);
+  useEffect(() => notifyPrefs.subscribe(() => setValue(notifyPrefs.get().pushWhileAttending)), []);
+  return (
+    <label className="toggle-row">
+      <span>
+        Even while I am on my computer
+        <span className="field-note">
+          Off keeps this device quiet while you are using Scryproof on another screen. Either way, nothing comes
+          while you are looking at it here.
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        className="perm-switch"
+        checked={value}
+        onChange={(event) => notifyPrefs.set({ pushWhileAttending: event.target.checked })}
       />
     </label>
   );

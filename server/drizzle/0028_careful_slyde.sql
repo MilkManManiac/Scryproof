@@ -1,0 +1,1 @@
+ALTER TABLE "push_subscriptions" ADD COLUMN "even_while_attending" boolean DEFAULT true NOT NULL;

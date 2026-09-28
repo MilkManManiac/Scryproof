@@ -539,6 +539,7 @@ export const api = {
       mutedChannels: string[];
       mentions: boolean;
       messages: boolean;
+      evenWhileAttending: boolean;
     }) =>
       put<{ ok: true }>('/api/push/subscription', body),
     unsubscribe: (endpoint: string) => request<{ ok: true }>('DELETE', '/api/push/subscription', { endpoint }),

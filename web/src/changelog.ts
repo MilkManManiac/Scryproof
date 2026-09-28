@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-27-phone-while-at-desk',
+    date: '2026-09-27',
+    title: 'Your phone buzzes even when your computer is open',
+    notes: [
+      'Phone notifications used to stop whenever you were using Scryproof on a computer. Now they come through either way, so a computer left on at home doesn’t swallow them while you’re out.',
+      'Rather have the phone stay quiet while you’re at your desk? On that phone: Notifications, turn off Even while I am on my computer. Each phone has its own switch.',
+      'Nothing buzzes the phone you’re actually looking at.',
+    ],
+  },
+  {
     id: '2026-09-27-purdle',
     date: '2026-09-27',
     title: 'Purdle: one word a day, for everyone',

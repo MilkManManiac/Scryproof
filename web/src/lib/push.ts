@@ -2,8 +2,8 @@
  * Phone notifications, this device's half: turning them on, keeping the
  * server's copy of this device's mutes and sound settings current, clearing the number on the
  * icon when the app is opened, and telling the server whether anybody is
- * looking at this window (so a phone is not woken for a message its person is
- * already reading at their desk).
+ * looking at this window (so a phone is not woken for a message on its own
+ * screen, or, if it asked, one its person is reading at their desk).
  *
  * The server's half, and the rule that the ping carries nothing, are in
  * `server/src/services/push.ts`. The service worker (`public/sw.js`) draws
@@ -96,6 +96,7 @@ const settings = () => {
     mutedChannels: prefs.mutedChannels,
     mentions: prefs.mention,
     messages: prefs.pushEvery,
+    evenWhileAttending: prefs.pushWhileAttending,
   };
 };
 

@@ -245,8 +245,8 @@ const PAGES: Record<GuideTopic, ReactNode> = {
       <h3>When nothing comes</h3>
       <ul>
         <li>
-          Nothing arrives while you&apos;re using Scryproof on a computer. Step away for a few minutes, or close it, and
-          your phone takes over.
+          Nothing arrives while you have Scryproof open on the phone itself. If you turned off <b>Even while I am on my
+          computer</b> on that phone, nothing arrives while you&apos;re using it on a computer either.
         </li>
         <li>Nothing comes from a muted channel or server.</li>
         <li>

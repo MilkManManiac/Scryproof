@@ -42,8 +42,8 @@ export interface Connection {
   /**
    * Somebody is looking at this window right now: it is on screen, focused,
    * and was touched in the last few minutes. Reported by the client
-   * (`attention`). While any of a person's windows is attended, their phone
-   * stays quiet: they are already reading it.
+   * (`attention`). A phone is never woken while it is the window being
+   * looked at, and stays quiet while another one is only if it asked to.
    */
   attending?: boolean;
   /**
@@ -89,11 +89,11 @@ export function isOnline(userId: string): boolean {
   return byUser.has(userId);
 }
 
-export function isAttending(userId: string): boolean {
-  const set = byUser.get(userId);
-  if (!set) return false;
-  for (const connection of set) if (connection.attending) return true;
-  return false;
+/** Which of this person's sessions somebody is looking at right now. */
+export function attendingSessions(userId: string): Set<string> {
+  const found = new Set<string>();
+  for (const connection of byUser.get(userId) ?? []) if (connection.attending) found.add(connection.sessionId);
+  return found;
 }
 
 export function onlineUserIds(): string[] {
