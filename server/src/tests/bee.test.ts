@@ -68,7 +68,7 @@ describe('bee rules', () => {
   it('shares where you got to and no word', () => {
     assert.equal(
       beeShare({ day: 3, score: 20, rank: 4, words: ['aground', 'noon', 'round'] }),
-      'Smelling Pee #3\nSolid: 20 points\n3 words, 1 with all seven',
+      'Spelling Pea #3\nSolid: 20 points\n3 words, 1 with all seven',
     );
   });
 

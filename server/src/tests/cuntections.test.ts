@@ -55,7 +55,7 @@ describe('cuntections rules', () => {
   });
 
   it('shares colours only', () => {
-    assert.equal(cuntectionsShare(4, [[0, 0, 1, 0], [0, 0, 0, 0]]), 'Cuntections #4\n🟨🟨🟩🟨\n🟨🟨🟨🟨');
+    assert.equal(cuntectionsShare(4, [[0, 0, 1, 0], [0, 0, 0, 0]]), 'Conniptions #4\n🟨🟨🟩🟨\n🟨🟨🟨🟨');
   });
 
   it('every puzzle is four groups of four, sixteen different words, easiest first', () => {

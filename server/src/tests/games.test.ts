@@ -89,7 +89,7 @@ describe('queefs rules', () => {
   it('tells the time', () => {
     assert.equal(queensClock(67), '1:07');
     assert.equal(queensClock(3727), '1:02:07');
-    assert.equal(queensShare(2, 67), 'Queefs #2\n👑 1:07');
+    assert.equal(queensShare(2, 67), 'Queenies #2\n👑 1:07');
     assert.equal(queensDay(new Date('2026-09-30T04:00:00Z')), 2);
   });
 });
@@ -136,7 +136,7 @@ describe('travhole rules', () => {
       { code: 'AND', mark: 'near' as const },
       { code: 'FRA', mark: 'good' as const },
     ];
-    assert.equal(travleShare({ day: 1, guesses, between: 2, allowed: 6, state: 'won' }), 'Travhole #1\n🟩🟧🟩 +1');
+    assert.equal(travleShare({ day: 1, guesses, between: 2, allowed: 6, state: 'won' }), 'Trundle #1\n🟩🟧🟩 +1');
     assert.equal(travleDay(new Date('2026-09-29T04:00:00Z')), 1);
   });
 });
@@ -174,7 +174,7 @@ describe('threeway rules', () => {
   });
 
   it('shares what each question came to', () => {
-    assert.equal(thriceShare(3, [3, 0, 1, 2, 3]), 'Threeway #3\n3️⃣❌1️⃣2️⃣3️⃣ 9/15');
+    assert.equal(thriceShare(3, [3, 0, 1, 2, 3]), 'Third Degree #3\n3️⃣❌1️⃣2️⃣3️⃣ 9/15');
     assert.equal(thriceDay(new Date('2026-09-29T04:00:00Z')), 1);
   });
 });

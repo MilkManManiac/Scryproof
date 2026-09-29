@@ -740,7 +740,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       <div className="composer-hint">
         <span>
           {text.startsWith('/') ? (
-            channel.encrypted ? 'Commands: /tang-jump, /purdle, /cuntections, /pee, /queefs, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /purdle, /cuntections, /pee, /queefs, /shrug'
+            channel.encrypted ? 'Commands: /tang-jump, /purdle, /conniptions, /pea, /queenies, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /purdle, /conniptions, /pea, /queenies, /shrug'
           ) : (
             <>
               {channel.expireAfterSeconds > 0 ? `Messages here last ${expiryLabel(channel.expireAfterSeconds)}. ` : ''}

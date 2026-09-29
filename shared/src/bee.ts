@@ -14,7 +14,7 @@ import { dailyNumber } from './purdle.js';
 
 export const BEE = {
   /** What it is called everywhere it is shown. */
-  name: 'Smelling Pee',
+  name: 'Spelling Pea',
   letters: 7,
   shortest: 4,
   /** On top of its length, for a word that uses all seven. */
@@ -47,7 +47,7 @@ export const BEE_RANKS = [
   { name: 'Great', at: 0.4 },
   { name: 'Amazing', at: 0.5 },
   { name: 'Genius', at: 0.7 },
-  { name: 'Golden shower', at: 1 },
+  { name: 'Queen Bee', at: 1 },
 ] as const;
 
 export const BEE_GENIUS = 8;

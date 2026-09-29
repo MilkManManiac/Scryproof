@@ -13,7 +13,7 @@
 import { dailyNumber } from './purdle.js';
 
 export const QUEENS = {
-  name: 'Queefs',
+  name: 'Queenies',
   size: 8,
   /** #1. */
   firstDay: '2026-09-29',

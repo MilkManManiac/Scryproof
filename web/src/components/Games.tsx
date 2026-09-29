@@ -66,7 +66,7 @@ const GAMES: readonly Game[] = [
   },
   {
     id: 'cuntections',
-    name: 'Cuntections',
+    name: 'Conniptions',
     about: 'Four groups of four',
     glyph: glyph(
       <>

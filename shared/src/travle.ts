@@ -15,7 +15,7 @@ import { dailyNumber } from './purdle.js';
 import { TRAVLE_COUNTRIES, type TravleCountry } from './travle-countries.js';
 
 export const TRAVLE = {
-  name: 'Travhole',
+  name: 'Trundle',
   /** A day's shortest way has this many countries in between, at least and at most. */
   fewest: 2,
   most: 6,

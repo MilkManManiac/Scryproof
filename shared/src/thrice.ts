@@ -14,7 +14,7 @@
 import { dailyNumber } from './purdle.js';
 
 export const THRICE = {
-  name: 'Threeway',
+  name: 'Third Degree',
   questions: 5,
   clues: 3,
   /** #1. */

@@ -32,10 +32,15 @@ describe('isPurdleCommand', () => {
     assert.equal(gameCommand('/Queefs'), 'queens');
     assert.equal(gameCommand('/travhole'), 'travle');
     assert.equal(gameCommand('/threeway'), 'thrice');
+    assert.equal(gameCommand('/conniptions'), 'cuntections');
+    assert.equal(gameCommand('/pea'), 'bee');
+    assert.equal(gameCommand('/queenies'), 'queens');
+    assert.equal(gameCommand('/trundle'), 'travle');
+    assert.equal(gameCommand('/degree'), 'thrice');
     assert.equal(gameCommand('/shrug'), null);
     assert.equal(gameCommand('/cuntections now'), null);
     assert.equal(gameCommand('/tang-jump'), null);
-    assert.equal(commandOffers('cunt')[0]?.written, '/cuntections');
+    assert.equal(commandOffers('conn')[0]?.written, '/conniptions');
   });
 });
 

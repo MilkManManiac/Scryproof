@@ -173,10 +173,10 @@ function Cuntections({ today }: { today: CuntectionsToday | null }) {
         className="purdle cx"
         role="dialog"
         aria-modal="true"
-        aria-label="Cuntections"
+        aria-label={CUNTECTIONS.name}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <GameHead game="cuntections" name="Cuntections" day={today?.day ?? null} onClose={() => cuntections.close()} />
+        <GameHead game="cuntections" name={CUNTECTIONS.name} day={today?.day ?? null} onClose={() => cuntections.close()} />
 
         {toast ? (
           <div className="purdle-toast" role="status">

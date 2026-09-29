@@ -12,6 +12,8 @@
 import { dailyNumber } from './purdle.js';
 
 export const CUNTECTIONS = {
+  /** What it is called everywhere it is shown. */
+  name: 'Conniptions',
   /** Words in a group, and groups in a puzzle. */
   size: 4,
   mistakes: 4,
@@ -142,5 +144,5 @@ export function cuntectionsStanding(
 /** What "Copy result" copies: a row of colours per guess, never the words. */
 export function cuntectionsShare(day: number, grid: readonly (readonly CuntectionsLevel[])[]): string {
   const square = ['🟨', '🟩', '🟦', '🟪'] as const;
-  return `Cuntections #${day}\n${grid.map((row) => row.map((level) => square[level]).join('')).join('\n')}`;
+  return `${CUNTECTIONS.name} #${day}\n${grid.map((row) => row.map((level) => square[level]).join('')).join('\n')}`;
 }

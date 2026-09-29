@@ -98,6 +98,12 @@ export type Game = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thr
 /** What is typed to open each daily game. */
 const GAME_COMMANDS: Record<string, Game> = {
   purdle: 'purdle',
+  conniptions: 'cuntections',
+  pea: 'bee',
+  queenies: 'queens',
+  trundle: 'travle',
+  degree: 'thrice',
+  // The names they had first still open them.
   cuntections: 'cuntections',
   pee: 'bee',
   bee: 'bee',
@@ -109,7 +115,7 @@ const GAME_COMMANDS: Record<string, Game> = {
   thrice: 'thrice',
 };
 
-/** The daily game a command opens (`/purdle`, `/queefs`, ...). Null for anything else. */
+/** The daily game a command opens (`/purdle`, `/queenies`, ...). Null for anything else. */
 export function gameCommand(content: string): Game | null {
   const match = /^\/([a-z]+)$/i.exec(content.trim());
   return (match && GAME_COMMANDS[match[1]!.toLowerCase()]) || null;
@@ -176,11 +182,11 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
     },
     { key: 'init', written: '/init', name: '/init', note: 'start an initiative tracker for this channel' },
     { key: 'purdle', written: '/purdle', name: '/purdle', note: "open today's Purdle (only you see it)" },
-    { key: 'cuntections', written: '/cuntections', name: '/cuntections', note: "open today's Cuntections (only you see it)" },
-    { key: 'bee', written: '/pee', name: '/pee', note: `open today's ${BEE.name} (only you see it)` },
-    { key: 'queens', written: '/queefs', name: '/queefs', note: `open today's ${QUEENS.name} (only you see it)` },
-    { key: 'travle', written: '/travhole', name: '/travhole', note: `open today's ${TRAVLE.name} (only you see it)` },
-    { key: 'thrice', written: '/threeway', name: '/threeway', note: `open today's ${THRICE.name} (only you see it)` },
+    { key: 'cuntections', written: '/conniptions', name: '/conniptions', note: "open today's Conniptions (only you see it)" },
+    { key: 'bee', written: '/pea', name: '/pea', note: `open today's ${BEE.name} (only you see it)` },
+    { key: 'queens', written: '/queenies', name: '/queenies', note: `open today's ${QUEENS.name} (only you see it)` },
+    { key: 'travle', written: '/trundle', name: '/trundle', note: `open today's ${TRAVLE.name} (only you see it)` },
+    { key: 'thrice', written: '/degree', name: '/degree', note: `open today's ${THRICE.name} (only you see it)` },
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,
