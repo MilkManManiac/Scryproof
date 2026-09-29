@@ -20,8 +20,8 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-09-28-cuntections',
-    date: '2026-09-28',
+    id: '2026-09-29-cuntections',
+    date: '2026-09-29',
     title: 'Cuntections: sixteen words, four groups, once a day',
     notes: [
       'Cuntections is Connections, here. Sixteen words hide four groups of four. Pick four you think go together and hit Submit. Four mistakes and you’re out.',
