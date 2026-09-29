@@ -15,6 +15,7 @@ import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { GameBoard, type StandingLine } from './GameBoard';
+import { GameHead, type GameId } from './GameHead';
 import { useCountdown } from './Purdle';
 
 export type Say = (text: string, good?: boolean) => void;
@@ -32,6 +33,7 @@ export function useToast(): { toast: { text: string; good: boolean } | null; say
 }
 
 export function GameShell({
+  game,
   name,
   kind,
   day,
@@ -40,6 +42,7 @@ export function GameShell({
   onClose,
   children,
 }: {
+  game: GameId;
   name: string;
   /** The game's own class on the card, for its colours and width. */
   kind: string;
@@ -61,15 +64,7 @@ export function GameShell({
   return createPortal(
     <div className="purdle-backdrop" role="presentation" onMouseDown={onClose}>
       <div className={`purdle ${kind}`} role="dialog" aria-modal="true" aria-label={name} onMouseDown={(event) => event.stopPropagation()}>
-        <header className="purdle-head">
-          <div className="purdle-title">
-            {name}
-            {day !== null ? <span className="purdle-number">#{day}</span> : null}
-          </div>
-          <button type="button" className="icon-button purdle-close" aria-label="Close" title="Close" onClick={onClose}>
-            &#10005;
-          </button>
-        </header>
+        <GameHead game={game} name={name} day={day} onClose={onClose} />
         {toast ? (
           <div className={`purdle-toast${toast.good ? ' game-toast-good' : ''}`} role="status">
             {toast.text}

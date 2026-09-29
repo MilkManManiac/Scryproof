@@ -25,6 +25,29 @@ const QUEEN: Mark = 2;
 
 const key = (day: number) => `scryproof.queens.${day}`;
 
+/** The regions' colours by number, as `.qn-cell.c0` and on have them. */
+const COLOURS = ['Purple', 'Orange', 'Blue', 'Green', 'Grey', 'Red', 'Yellow', 'Teal', 'Pink'];
+
+/**
+ * The first row, column or colour that has no queen and no square left open
+ * for one. Nothing is said about where the mistake is: only that there is one.
+ */
+function stuck(regions: number[][], marks: Mark[]): string | null {
+  const size = regions.length;
+  const lines: { name: string; cells: number[] }[] = [];
+  for (let at = 0; at < size; at += 1) {
+    const colour: number[] = [];
+    regions.forEach((row, r) => row.forEach((region, c) => region === at && colour.push(r * size + c)));
+    lines.push({ name: COLOURS[at] ?? `Colour ${at + 1}`, cells: colour });
+  }
+  for (let at = 0; at < size; at += 1) {
+    lines.push({ name: `Row ${at + 1}`, cells: Array.from({ length: size }, (_, c) => at * size + c) });
+    lines.push({ name: `Column ${at + 1}`, cells: Array.from({ length: size }, (_, r) => r * size + at) });
+  }
+  const shut = lines.find((line) => line.cells.length > 0 && line.cells.every((cell) => marks[cell] === CROSS));
+  return shut ? shut.name : null;
+}
+
 function kept(day: number, cells: number): Mark[] {
   try {
     const marks = JSON.parse(localStorage.getItem(key(day)) ?? 'null') as unknown;
@@ -56,7 +79,7 @@ function Queens({ today }: { today: QueensToday | null }) {
   }
 
   return (
-    <GameShell name={QUEENS.name} kind="qn" day={today?.day ?? null} toast={toast} loading={today === null} onClose={queens.close}>
+    <GameShell game="queens" name={QUEENS.name} kind="qn" day={today?.day ?? null} toast={toast} loading={today === null} onClose={queens.close}>
       {today === null ? null : today.state === 'waiting' ? (
         <div className="qn-door">
           <p>
@@ -173,6 +196,8 @@ function Board({ today, say }: { today: QueensToday; say: (text: string, good?: 
     setMarks((before) => before.map((mark, at) => (at === cell ? (((mark + 1) % 3) as Mark) : mark)));
   };
 
+  const shut = done || clashes.size > 0 ? null : stuck(regions, marks);
+
   const elapsed = done ? today.seconds ?? 0 : Math.max(0, (now - new Date(today.startedAt!).getTime()) / 1000);
 
   return (
@@ -243,6 +268,14 @@ function Board({ today, say }: { today: QueensToday; say: (text: string, good?: 
             onTurnover={() => void queens.load()}
           />
         </div>
+      ) : clashes.size > 0 ? (
+        <p className="qn-hint bad" role="status">
+          The red queens break a rule: same row, column or colour, or touching.
+        </p>
+      ) : shut ? (
+        <p className="qn-hint bad" role="status">
+          {shut} has no queen and no square left for one. A queen or a cross is in the wrong place.
+        </p>
       ) : (
         <p className="qn-hint">Tap once to cross a square off, twice for a queen. Drag to cross off a run.</p>
       )}

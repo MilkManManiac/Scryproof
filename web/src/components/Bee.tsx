@@ -22,6 +22,7 @@ import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { GameBoard, average } from './GameBoard';
+import { GameHead } from './GameHead';
 import { useCountdown } from './Purdle';
 
 /** No word in the list is longer, and the line has to fit a phone. */
@@ -121,6 +122,8 @@ function Bee({ today }: { today: BeeToday | null }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') return bee.close();
+      // A key pressed on the rules or the buttons by them is theirs, not a letter.
+      if (event.target instanceof HTMLElement && event.target.closest('.purdle-head, .game-rules')) return;
       if (event.ctrlKey || event.metaKey || event.altKey || showing !== 'play') return;
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -150,15 +153,7 @@ function Bee({ today }: { today: BeeToday | null }) {
   return createPortal(
     <div className="purdle-backdrop" role="presentation" onMouseDown={() => bee.close()}>
       <div className="purdle bee" role="dialog" aria-modal="true" aria-label={BEE.name} onMouseDown={(event) => event.stopPropagation()}>
-        <header className="purdle-head">
-          <div className="purdle-title">
-            {BEE.name}
-            {today ? <span className="purdle-number">#{today.day}</span> : null}
-          </div>
-          <button type="button" className="icon-button purdle-close" aria-label="Close" title="Close" onClick={() => bee.close()}>
-            &#10005;
-          </button>
-        </header>
+        <GameHead game="bee" name={BEE.name} day={today?.day ?? null} onClose={() => bee.close()} />
 
         {toast ? (
           <div className={`purdle-toast${toast.good ? ' bee-toast-good' : ''}`} role="status">

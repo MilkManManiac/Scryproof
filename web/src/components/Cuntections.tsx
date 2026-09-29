@@ -23,6 +23,7 @@ import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { GameBoard, average } from './GameBoard';
+import { GameHead } from './GameHead';
 import { Stat, useCountdown } from './Purdle';
 
 /** The four picked tiles hop one after another while the guess goes in. */
@@ -175,14 +176,7 @@ function Cuntections({ today }: { today: CuntectionsToday | null }) {
         aria-label="Cuntections"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="purdle-head">
-          <div className="purdle-title">
-            Cuntections{today ? <span className="purdle-number">#{today.day}</span> : null}
-          </div>
-          <button type="button" className="icon-button purdle-close" aria-label="Close" title="Close" onClick={() => cuntections.close()}>
-            &#10005;
-          </button>
-        </header>
+        <GameHead game="cuntections" name="Cuntections" day={today?.day ?? null} onClose={() => cuntections.close()} />
 
         {toast ? (
           <div className="purdle-toast" role="status">

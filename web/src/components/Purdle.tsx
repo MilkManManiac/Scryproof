@@ -24,6 +24,7 @@ import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { GameBoard, average } from './GameBoard';
+import { GameHead } from './GameHead';
 
 /** How long each tile takes to turn over, and the gap before the next starts. */
 const FLIP_MS = 500;
@@ -124,6 +125,8 @@ function Purdle({ today }: { today: PurdleToday | null }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.key === 'Escape') return purdle.close();
+      // A key pressed on the rules or the buttons by them is theirs, not a letter.
+      if (event.target instanceof HTMLElement && event.target.closest('.purdle-head, .game-rules')) return;
       const key = event.key === 'Enter' ? 'enter' : event.key === 'Backspace' ? 'back' : event.key.toLowerCase();
       if (key === 'enter' || key === 'back' || /^[a-z]$/.test(key)) {
         event.preventDefault();
@@ -160,14 +163,7 @@ function Purdle({ today }: { today: PurdleToday | null }) {
   return createPortal(
     <div className="purdle-backdrop" role="presentation" onMouseDown={() => purdle.close()}>
       <div className={over ? 'purdle done' : 'purdle'} role="dialog" aria-modal="true" aria-label="Purdle" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="purdle-head">
-          <div className="purdle-title">
-            Purdle{today ? <span className="purdle-number">#{today.day}</span> : null}
-          </div>
-          <button type="button" className="icon-button purdle-close" aria-label="Close" title="Close" onClick={() => purdle.close()}>
-            &#10005;
-          </button>
-        </header>
+        <GameHead game="purdle" name="Purdle" day={today?.day ?? null} onClose={() => purdle.close()} />
 
         {toast ? (
           <div className={toast.long ? 'purdle-toast long' : 'purdle-toast'} role="status">

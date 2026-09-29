@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-29-how-to-play',
+    date: '2026-09-29',
+    title: 'How to play, on every game, and a map you can zoom',
+    notes: [
+      'Every game has a How to play button at the top now. It opens the rules right there and the game keeps going underneath. The first time you open a game, the rules are already open.',
+      'Queefs tells you when you’re stuck. If a row, column or color has no queen and nowhere left to put one, it says which. It won’t say which queen is wrong.',
+      'Queefs also says what red means when two queens break a rule.',
+      'Travhole’s map zooms. Use the buttons on the map, the mouse wheel, or two fingers on a phone, and drag to move around. Fit takes you back.',
+      'Fixed: a game board could get squashed when the window was short.',
+    ],
+  },
+  {
     id: '2026-09-29-four-more-games',
     date: '2026-09-29',
     title: 'Four more daily games, and one place for all of them',

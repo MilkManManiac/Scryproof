@@ -8816,3 +8816,160 @@ kbd {
     animation-delay: 0ms;
   }
 }
+
+/* ------------------------------------------------------- how to play */
+/* The rules behind every game's name (GameHead.tsx). */
+
+.purdle-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.game-how {
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+.game-how:hover,
+.game-how.open {
+  color: var(--text);
+  background: var(--line);
+}
+.game-rules {
+  align-self: stretch;
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(var(--bg-rgb) / 0.5);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.game-rules-goal {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.game-rules ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+.game-rules li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 9px;
+  align-items: start;
+}
+.game-rules-chip {
+  margin-top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.game-rules-dot {
+  margin: 8px 5px 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.game-rules.purdle .hit {
+  background: var(--purdle-hit);
+}
+.game-rules.purdle .near {
+  background: var(--purdle-near);
+}
+.game-rules.purdle .miss {
+  background: var(--purdle-miss);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.game-rules.cuntections .l0 {
+  background: var(--cx-yellow);
+}
+.game-rules.cuntections .l3 {
+  background: var(--cx-purple);
+}
+.game-rules.bee .centre {
+  background: var(--bee-yellow);
+}
+.game-rules.queens .clash {
+  background: #c81e1e;
+}
+.game-rules.travle .good {
+  background: var(--tv-good);
+}
+.game-rules.travle .near {
+  background: var(--tv-near);
+}
+.game-rules.travle .off {
+  background: var(--tv-off);
+}
+.qn-hint.bad {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Looking around the Travhole map. */
+.tv-map {
+  position: relative;
+}
+.tv-map svg {
+  cursor: grab;
+  /* At the day's frame a finger still scrolls the card; zoomed in, it moves the map. */
+  touch-action: pan-y;
+  user-select: none;
+}
+.tv-map.in svg {
+  touch-action: none;
+}
+.tv-map svg:active {
+  cursor: grabbing;
+}
+.tv-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+.tv-zoom button {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgb(10 18 26 / 0.82);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  color: #e9e4d8;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+.tv-zoom button.fit {
+  font-size: 12px;
+}
+.tv-zoom button:hover:not(:disabled) {
+  background: rgb(30 48 64 / 0.95);
+}
+.tv-zoom button:disabled {
+  opacity: 0.4;
+}
+
+/* The card scrolls when it is full. Nothing in it gives up height to fit: a board squashed is a board broken. */
+.purdle > * {
+  flex-shrink: 0;
+}

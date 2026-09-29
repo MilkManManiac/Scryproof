@@ -3549,3 +3549,14 @@ release carried on. Nothing was lost; the old release was never replaced.
 - Rule from this: never vendor a big string as a `+` chain. Use an array joined, or one literal.
 - The `NODE_OPTIONS` heap cap in `02_build.sh` does not cover esbuild, which is not Node. A build that
   needs more than the box has still freezes the live site. Building off the box would end that for good.
+
+## How to play, on every game, and a map you can zoom (2026-09-29, built, NOT deployed)
+
+Wes could not finish Queefs and the board gave him no reason: "make sure instructions are pretty clear. Even when you are in the game. And the travl one i feel like you should be able to zoom in".
+
+- `components/GameHead.tsx` is now the top of all six games: name, a "How to play" button, close. The rules open in the card above the game, which carries on underneath. They are open by themselves the first time a game is opened on a device (`scryproof.rules.<game>` in localStorage). Every claim in the rules was checked against the code that scores it.
+- Queefs says so when you are stuck: a row, column or colour with no queen and every square crossed off is named under the board, and red queens get a line saying what red means. It never says which queen is wrong.
+- Travhole's map (`Chart` in `Travle.tsx`): plus, minus and Fit buttons, the wheel, a drag to move, two fingers to pinch. A new guess that moves the frame puts the view back.
+- Found on the way: anything in a game card could be squashed when the card was fuller than the screen (the Queefs board lost its rows). `.purdle > *` no longer shrinks.
+
+Shots: `docs/shots/game-rules.png`, `docs/shots/queefs-stuck.png`, `docs/shots/travhole-zoom.png`. Typecheck clean, 415 web tests pass. **Not proven:** the pinch and the drag on a real phone; only the buttons were driven in a browser.

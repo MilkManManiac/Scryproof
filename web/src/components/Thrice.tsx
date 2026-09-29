@@ -54,7 +54,7 @@ function Thrice({ today }: { today: ThriceToday | null }) {
   const question = questions[showing];
 
   return (
-    <GameShell name={THRICE.name} kind="tw" day={today?.day ?? null} toast={toast} loading={today === null} onClose={thrice.close}>
+    <GameShell game="thrice" name={THRICE.name} kind="tw" day={today?.day ?? null} toast={toast} loading={today === null} onClose={thrice.close}>
       {today === null ? null : (
         <>
           <Pips questions={questions} at={question ? showing : -1} />
