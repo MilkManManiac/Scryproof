@@ -3561,7 +3561,7 @@ Wes could not finish Queefs and the board gave him no reason: "make sure instruc
 
 Shots: `docs/shots/game-rules.png`, `docs/shots/queefs-stuck.png`, `docs/shots/travhole-zoom.png`. Typecheck clean, 415 web tests pass. **Not proven:** the pinch and the drag on a real phone; only the buttons were driven in a browser.
 
-## Cleaner game names (2026-09-29, built, NOT deployed)
+## Cleaner game names (2026-09-29, LIVE)
 
 Wes: "Maybe clean up the titles a bit. I like them but don't want to scare off others. Don't have to announce in the whats new". No What's new entry; release with `SKIP_NOTES` not needed today because the newest entry is already dated today.
 
@@ -3575,7 +3575,7 @@ Wes: "Maybe clean up the titles a bit. I like them but don't want to scare off o
 
 Purdle keeps its name. The top Spelling Pea rank is Queen Bee. Only what people see changed: the names are in `shared/src/*.ts` (`CUNTECTIONS.name` is new), the command list, the composer hint and the older What's new entries. The old commands still open the games but are no longer listed. Routes, tables, files and changelog ids keep the old words, so nothing played is lost. `docs/shots/game-names.png`.
 
-## Click to watch streams (2026-09-29, built, NOT deployed)
+## Click to watch streams (2026-09-29, LIVE)
 
 Ask (a friend, then Wes): a screen share or camera should not play until the viewer clicks it, and "default is muted for watchers".
 
@@ -3589,4 +3589,4 @@ Ask (a friend, then Wes): a screen share or camera should not play until the vie
 
 **Phone check (2026-09-29, later).** A throwaway two-browser run with the watcher at 390x844, touch on, `(hover: none)` and `(pointer: coarse)` true: 22 of 22 pass after one fix. It found the Stop watching link under a big screen pushed off the right edge by the volume slider; `.voice-focus-bar` now wraps. Also moved the tile's Speaker and Stop watching to the top right (on a narrow tile they sat over the name), put any stalled or held note below them (`.under-actions`), and gave those buttons and Watch a 32px height on a coarse pointer. Camera off and on again: while off it leaves the list, and when it comes back it is still watched and plays (60 frames), no black tile. `npm run test:voice` still ALL PASS (86) after the CSS change, web 426/426, typecheck clean. Shots: `docs/shots/stream-watch-phone.png` (card), `docs/shots/stream-watch-phone-big.png` (big screen with the bar wrapped).
 
-**Not done / unverified.** Nothing committed or deployed. The sound itself was never listened to (headless is muted; Wes, 2026-09-29: sound worked before, no need). Desktop shell and iPhone PWA not tried on a device; the phone check is Chrome emulating one.
+**Live 2026-09-29 15:11 ET**, client 1790708967202, together with the game names; the live bundle carries both. **Not done / unverified.** The sound itself was never listened to (headless is muted; Wes, 2026-09-29: sound worked before, no need). Desktop shell and iPhone PWA not tried on a device; the phone check is Chrome emulating one.
