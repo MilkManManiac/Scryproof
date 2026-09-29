@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { commandOffers, commandQueryAt, expandTextCommand, isPurdleCommand, spawnOf } from '../lib/commands';
+import { commandOffers, commandQueryAt, expandTextCommand, gameCommand, isPurdleCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 
 describe('spawnOf', () => {
@@ -22,6 +22,14 @@ describe('isPurdleCommand', () => {
     assert.equal(isPurdleCommand('/purdle today'), false);
     assert.equal(isPurdleCommand('purdle'), false);
     assert.equal(commandOffers('pur')[0]?.written, '/purdle');
+  });
+
+  it('knows which game a command opens', () => {
+    assert.equal(gameCommand('/purdle'), 'purdle');
+    assert.equal(gameCommand(' /Cuntections '), 'cuntections');
+    assert.equal(gameCommand('/cuntections now'), null);
+    assert.equal(gameCommand('/tang-jump'), null);
+    assert.equal(commandOffers('cunt')[0]?.written, '/cuntections');
   });
 });
 

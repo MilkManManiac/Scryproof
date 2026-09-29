@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PURDLE, PURDLE_PRAISE, purdleShare } from '@scryproof/shared';
-import type { PurdleFinish, PurdleMark, PurdleToday } from '@scryproof/shared';
+import type { PurdleFinish, PurdleMark, PurdleStanding, PurdleToday } from '@scryproof/shared';
 import { createPortal } from 'react-dom';
 
 import { ApiError, api } from '../lib/api';
@@ -23,6 +23,7 @@ import { purdle } from '../lib/purdle';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
+import { GameBoard, average } from './GameBoard';
 
 /** How long each tile takes to turn over, and the gap before the next starts. */
 const FLIP_MS = 500;
@@ -352,7 +353,7 @@ function Result({
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+export function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="purdle-stat">
       <span className="purdle-stat-value">{value}</span>
@@ -361,7 +362,8 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
-function useCountdown(until: string): string {
+/** Time left until `until`, ticking; `onZero` runs once it gets there. */
+export function useCountdown(until: string, onZero: () => void = () => void purdle.load()): string {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -369,7 +371,8 @@ function useCountdown(until: string): string {
   }, []);
   const left = Math.max(0, new Date(until).getTime() - now);
   useEffect(() => {
-    if (left === 0) void purdle.load();
+    if (left === 0) onZero();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left]);
   const hours = Math.floor(left / 3_600_000);
   const minutes = Math.floor((left % 3_600_000) / 60_000);
@@ -377,26 +380,36 @@ function useCountdown(until: string): string {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-/** Who in this server has done today's, live as they finish. */
+/** Who in this server has done today's, live as they finish, and everyone's record here. */
 function ServerToday({ serverId, serverName, day }: { serverId: string; serverName: string; day: number }) {
   const { state } = useStore();
   const [finishes, setFinishes] = useState<PurdleFinish[] | null>(null);
+  const [standings, setStandings] = useState<PurdleStanding[] | null>(null);
 
   useEffect(() => {
     let live = true;
     setFinishes(null);
-    api.purdle
-      .server(serverId)
-      .then((result) => {
-        if (live) setFinishes(result.day === day ? result.finishes : []);
-      })
-      .catch(() => live && setFinishes([]));
+    setStandings(null);
+    const fetchBoard = () =>
+      api.purdle
+        .server(serverId)
+        .then((result) => {
+          if (!live) return;
+          setFinishes(result.day === day ? result.finishes : []);
+          setStandings(result.standings);
+        })
+        .catch(() => {
+          if (live) setFinishes((now) => now ?? []);
+        });
+    void fetchBoard();
     const stop = purdle.onDone((done) => {
       if (done.serverId !== serverId || done.day !== day) return;
       setFinishes((now) => [
         ...(now ?? []).filter((entry) => entry.userId !== done.userId),
         { userId: done.userId, tries: done.tries, solved: done.solved, streak: done.streak },
       ]);
+      // Someone's record moved: the all-time numbers come fresh.
+      void fetchBoard();
     });
     return () => {
       live = false;
@@ -409,29 +422,46 @@ function ServerToday({ serverId, serverName, day }: { serverId: string; serverNa
     (a, b) => Number(b.solved) - Number(a.solved) || a.tries - b.tries || b.streak - a.streak,
   );
 
+  // Most wins first; between equal wins, fewer tries on average.
+  const ranked =
+    standings === null
+      ? null
+      : [...standings]
+          .sort((a, b) => b.wins - a.wins || (a.averageTries ?? 9) - (b.averageTries ?? 9) || b.best - a.best)
+          .map((entry) => ({
+            userId: entry.userId,
+            cells: [`${entry.wins}/${entry.played}`, average(entry.averageTries), entry.streak, entry.best],
+          }));
+
+  const today =
+    finishes === null ? null : ordered.length === 0 ? (
+      <p className="purdle-board-empty">Nobody here has done today&apos;s yet.</p>
+    ) : (
+      <ul className="purdle-board-list">
+        {ordered.map((entry) => {
+          const member = members.find((candidate) => candidate.userId === entry.userId);
+          if (!member) return null;
+          return (
+            <li key={entry.userId} className="purdle-board-row">
+              <Avatar user={member.user} name={nameOf(member)} small />
+              <span className="purdle-board-name">{nameOf(member)}</span>
+              {entry.streak > 1 ? <span className="purdle-board-streak">{entry.streak} in a row</span> : null}
+              <span className={entry.solved ? 'purdle-board-score' : 'purdle-board-score lost'}>
+                {entry.solved ? entry.tries : 'X'}/{PURDLE.tries}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+
   return (
-    <section className="purdle-board" aria-label={`Today in ${serverName}`}>
-      <div className="purdle-board-head">Today in {serverName}</div>
-      {finishes === null ? null : ordered.length === 0 ? (
-        <p className="purdle-board-empty">Nobody here has done today&apos;s yet.</p>
-      ) : (
-        <ul className="purdle-board-list">
-          {ordered.map((entry) => {
-            const member = members.find((candidate) => candidate.userId === entry.userId);
-            if (!member) return null;
-            return (
-              <li key={entry.userId} className="purdle-board-row">
-                <Avatar user={member.user} name={nameOf(member)} small />
-                <span className="purdle-board-name">{nameOf(member)}</span>
-                {entry.streak > 1 ? <span className="purdle-board-streak">{entry.streak} in a row</span> : null}
-                <span className={entry.solved ? 'purdle-board-score' : 'purdle-board-score lost'}>
-                  {entry.solved ? entry.tries : 'X'}/{PURDLE.tries}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+    <GameBoard
+      serverId={serverId}
+      serverName={serverName}
+      today={today}
+      columns={['Won', 'Avg tries', 'Streak', 'Best']}
+      standings={ranked}
+    />
   );
 }

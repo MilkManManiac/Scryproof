@@ -11,8 +11,8 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { PURDLE, markGuess, nextPurdleAt, purdleDay, purdleStats } from '@scryproof/shared';
-import type { PurdleFinish, PurdleToday } from '@scryproof/shared';
+import { PURDLE, markGuess, nextPurdleAt, purdleDay, purdleStanding, purdleStats } from '@scryproof/shared';
+import type { PurdleFinish, PurdleStanding, PurdleToday } from '@scryproof/shared';
 import { purdleWords } from '@scryproof/shared/purdle-words';
 
 import { requireUser } from '../app.js';
@@ -125,7 +125,7 @@ export async function registerPurdleRoutes(app: FastifyInstance): Promise<void> 
     return today;
   });
 
-  /** Who in this server has finished today, and how. Members only. */
+  /** Who in this server has finished today, and how, and everyone's record here. Members only. */
   app.get('/api/purdle/servers/:serverId', async (request) => {
     const user = requireUser(request);
     const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
@@ -138,11 +138,14 @@ export async function registerPurdleRoutes(app: FastifyInstance): Promise<void> 
     const days = await finishedDays(memberIds);
 
     const finishes: PurdleFinish[] = [];
+    const standings: PurdleStanding[] = [];
     for (const [userId, finished] of days) {
+      if (finished.size === 0) continue;
+      const stats = purdleStats(finished, day);
+      standings.push(purdleStanding(userId, stats));
       const today = finished.get(day);
-      if (!today) continue;
-      finishes.push({ userId, tries: today.tries, solved: today.solved, streak: purdleStats(finished, day).streak });
+      if (today) finishes.push({ userId, tries: today.tries, solved: today.solved, streak: stats.streak });
     }
-    return { day, finishes };
+    return { day, finishes, standings };
   });
 }

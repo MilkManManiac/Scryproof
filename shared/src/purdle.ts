@@ -56,9 +56,17 @@ function utcDays(date: string): number {
   return Date.UTC(year, month - 1, day) / 86_400_000;
 }
 
+/**
+ * Which day of a daily game it is at this moment, counting `first` as 1.
+ * Every daily game here turns over at the same midnight, Purdle's.
+ */
+export function dailyNumber(first: string, at: Date = new Date()): number {
+  return utcDays(dateIn(PURDLE.zone, at)) - utcDays(first) + 1;
+}
+
 /** Which Purdle it is at this moment: 1 on the first day. */
 export function purdleDay(at: Date = new Date()): number {
-  return utcDays(dateIn(PURDLE.zone, at)) - utcDays(PURDLE.firstDay) + 1;
+  return dailyNumber(PURDLE.firstDay, at);
 }
 
 /** Minutes `zone` is ahead of UTC at this moment (negative in America). */
@@ -120,6 +128,31 @@ export interface PurdleToday {
   /** When the next word starts, ISO. */
   nextAt: string;
   stats: PurdleStats;
+}
+
+/**
+ * Someone's record since they started, for the all-time board. `averageTries`
+ * counts wins only (a loss has no number of tries); null before the first win.
+ */
+export interface PurdleStanding {
+  userId: string;
+  played: number;
+  wins: number;
+  streak: number;
+  best: number;
+  averageTries: number | null;
+}
+
+export function purdleStanding(userId: string, stats: PurdleStats): PurdleStanding {
+  const tries = stats.spread.reduce((sum, count, at) => sum + count * (at + 1), 0);
+  return {
+    userId,
+    played: stats.played,
+    wins: stats.wins,
+    streak: stats.streak,
+    best: stats.best,
+    averageTries: stats.wins ? Math.round((tries / stats.wins) * 100) / 100 : null,
+  };
 }
 
 /** Someone in a server who has finished today's word. Never their letters. */

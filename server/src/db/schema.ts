@@ -982,6 +982,37 @@ export const purdlePlays = pgTable(
 );
 
 export type PurdlePlayRow = typeof purdlePlays.$inferSelect;
+
+/**
+ * Which Cuntections puzzle a day got, picked the first time that day is
+ * opened and kept, with the order its sixteen words are dealt in. Kept rather
+ * than worked out, so puzzles can be added without moving a day already played.
+ */
+export const cuntectionsDays = pgTable('cuntections_days', {
+  day: integer('day').primaryKey(),
+  /** `puzzleId` in `server/src/cuntections/cuntections.ts`: a hash of the puzzle's words. */
+  puzzleId: text('puzzle_id').notNull(),
+  words: jsonb('words').$type<string[]>().notNull(),
+});
+
+/** One person's Cuntections for one day: every four they tried, and how it ended. */
+export const cuntectionsPlays = pgTable(
+  'cuntections_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    guesses: jsonb('guesses').$type<string[][]>().notNull(),
+    solved: boolean('solved').notNull().default(false),
+    mistakes: integer('mistakes').notNull().default(0),
+    /** Set on the fourth group found or the fourth mistake. Null while still playing. */
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('cuntections_plays_day_idx').on(table.day)],
+);
+
+export type CuntectionsPlayRow = typeof cuntectionsPlays.$inferSelect;
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;
 export type DmChannelRow = typeof dmChannels.$inferSelect;

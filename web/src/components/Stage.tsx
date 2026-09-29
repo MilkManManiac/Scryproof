@@ -40,6 +40,13 @@ interface Runner {
 let nextKey = 1;
 
 const HOP_MS = 520;
+/**
+ * The most crossing at once; more are dropped (the line stays in the history).
+ * The server holds each person to ten jumps in thirty seconds where it can
+ * read the channel; this is the guard where it cannot, an encrypted channel
+ * or a DM, whatever a sender's own app does.
+ */
+const MOST_AT_ONCE = 6;
 const HOP_PX = 300;
 const RISE_PX = 150;
 
@@ -118,7 +125,7 @@ export function Stage() {
           scale,
           startedAt: performance.now(),
         };
-        setRunners((current) => [...current, runner]);
+        setRunners((current) => (current.length >= MOST_AT_ONCE ? current : [...current, runner]));
       }),
     [],
   );

@@ -55,6 +55,11 @@ const REPLY_PREVIEW_LENGTH = 140;
 /** `/roll 2d6+3` or `/r 2d6+3`. The expression, if any, is the rest of the line. */
 const ROLL_COMMAND_RE = /^\/(?:roll|r)(?:\s+([\s\S]+))?$/i;
 
+/** A character's jump (`web/src/lib/commands.ts`), and how many one person gets: sent and "again" together. */
+const JUMP = /^\/[a-z0-9-]+-jump$/i;
+const JUMPS_PER_WINDOW = 10;
+const JUMP_WINDOW_MS = 30_000;
+
 /**
  * How many messages sit either side of the one a jump landed on. Both halves
  * together are a page, so a window paged upward or downward behaves like any
@@ -369,6 +374,15 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     );
     if (!limit.allowed) {
       throw tooManyRequests('You are sending messages too quickly.', limit.retryAfterSeconds);
+    }
+
+    // A character's jump is held to the same count as "again" on one, so
+    // pasting `/tang-jump` and holding Enter is no way round it. Wes,
+    // 2026-09-28: "when someone just copy/paste the command... it still
+    // works". Only in a channel the server can read; see the stage for the rest.
+    if (typeof body.content === 'string' && JUMP.test(body.content.trim())) {
+      const jumps = consume(`replays:${user.id}`, JUMPS_PER_WINDOW, JUMP_WINDOW_MS);
+      if (!jumps.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', jumps.retryAfterSeconds);
     }
 
     const db = getDb();
@@ -948,9 +962,9 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     // It passes the id along and each client checks what the message says.
     const sealed = existing.ciphertext !== null;
     const content = sealed ? null : (existing.content ?? '').trim();
-    if (content !== null && !/^\/[a-z0-9-]+-jump$/i.test(content)) throw badRequest('That message is not a jump.', 'not_a_jump');
+    if (content !== null && !JUMP.test(content)) throw badRequest('That message is not a jump.', 'not_a_jump');
 
-    const limit = consume(`replays:${user.id}`, 10, 30_000);
+    const limit = consume(`replays:${user.id}`, JUMPS_PER_WINDOW, JUMP_WINDOW_MS);
     if (!limit.allowed) throw tooManyRequests('That is a lot of jumping. Wait a moment.', limit.retryAfterSeconds);
 
     await hub.broadcastToChannel(

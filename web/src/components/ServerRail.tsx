@@ -20,6 +20,7 @@ import { Menu, MenuItem } from './Menu';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
 import { PurdleButton } from './Purdle';
+import { CuntectionsButton } from './Cuntections';
 
 function tile(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -126,6 +127,7 @@ export function ServerRail() {
       })}
       <NoticeBell />
       <PurdleButton />
+      <CuntectionsButton />
       <div className="rail-divider" />
 
       {state.serverOrder.map((id) => {

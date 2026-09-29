@@ -37,7 +37,15 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
-import type { PurdleFinish, PurdleToday } from '@scryproof/shared';
+import type {
+  CuntectionsFinish,
+  CuntectionsOutcome,
+  CuntectionsStanding,
+  CuntectionsToday,
+  PurdleFinish,
+  PurdleStanding,
+  PurdleToday,
+} from '@scryproof/shared';
 
 /** How long a new invite lasts. Two days is the most there is (`LIMITS.inviteLifetimeMs`). */
 export type InviteLife = '30m' | '6h' | '1d' | '2d';
@@ -601,7 +609,16 @@ export const api = {
   purdle: {
     today: () => get<PurdleToday>('/api/purdle/today'),
     guess: (word: string) => post<PurdleToday>('/api/purdle/guess', { word }),
-    server: (serverId: string) => get<{ day: number; finishes: PurdleFinish[] }>(`/api/purdle/servers/${serverId}`),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: PurdleFinish[]; standings: PurdleStanding[] }>(`/api/purdle/servers/${serverId}`),
+  },
+
+  cuntections: {
+    today: () => get<CuntectionsToday>('/api/cuntections/today'),
+    guess: (words: string[]) =>
+      post<CuntectionsToday & { outcome: CuntectionsOutcome }>('/api/cuntections/guess', { words }),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: CuntectionsFinish[]; standings: CuntectionsStanding[] }>(`/api/cuntections/servers/${serverId}`),
   },
 
   /** The locked bytes of a sealed attachment, to be opened with the key in its message. */

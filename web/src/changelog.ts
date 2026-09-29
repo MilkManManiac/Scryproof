@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-28-cuntections',
+    date: '2026-09-28',
+    title: 'Cuntections: sixteen words, four groups, once a day',
+    notes: [
+      'Cuntections is Connections, here. Sixteen words hide four groups of four. Pick four you think go together and hit Submit. Four mistakes and you’re out.',
+      'Yellow is the easiest group, then green, blue, and purple, which is usually a trick. “One away” means three of your four belong together.',
+      'Open it from the four colored bars under Purdle on the left, or type /cuntections in any message box. Same puzzle for everyone, new one at midnight Eastern.',
+      'Under both games there’s now an All time tab: everyone in the server ranked by wins since they started, with streaks, and average tries for Purdle or average misses for Cuntections.',
+      'Characters jumping: pasting /tang-jump over and over now runs into the same limit as the again button, ten every thirty seconds.',
+    ],
+  },
+  {
     id: '2026-09-27-phone-while-at-desk',
     date: '2026-09-27',
     title: 'Your phone buzzes even when your computer is open',

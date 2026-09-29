@@ -91,6 +91,12 @@ export function isPurdleCommand(content: string): boolean {
   return /^\/purdle$/i.test(content.trim());
 }
 
+/** The daily games a command opens: `/purdle`, `/cuntections`. Null for anything else. */
+export function gameCommand(content: string): 'purdle' | 'cuntections' | null {
+  const match = /^\/(purdle|cuntections)$/i.exec(content.trim());
+  return match ? (match[1]!.toLowerCase() as 'purdle' | 'cuntections') : null;
+}
+
 /** A message that is a spawn command, or null. Exact: no other words. */
 export function spawnOf(content: string | null | undefined): Character | null {
   if (!content) return null;
@@ -152,6 +158,7 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
     },
     { key: 'init', written: '/init', name: '/init', note: 'start an initiative tracker for this channel' },
     { key: 'purdle', written: '/purdle', name: '/purdle', note: "open today's Purdle (only you see it)" },
+    { key: 'cuntections', written: '/cuntections', name: '/cuntections', note: "open today's Cuntections (only you see it)" },
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,

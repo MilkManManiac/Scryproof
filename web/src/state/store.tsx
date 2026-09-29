@@ -39,6 +39,7 @@ import type {
 import { voiceRoomOf } from '@scryproof/shared';
 
 import { purdle } from '../lib/purdle';
+import { cuntections } from '../lib/cuntections';
 import { api } from '../lib/api';
 import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
 import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
@@ -1221,6 +1222,7 @@ export function StoreProvider({
       }
 
       if (event.t === 'purdle_done') purdle.done(event.d);
+      if (event.t === 'cuntections_done') cuntections.done(event.d);
 
       if (event.t === 'sounds_changed') {
         const serverId = event.d.serverId;

@@ -204,6 +204,13 @@
       "when": 1790559236367,
       "tag": "0028_careful_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790651031676,
+      "tag": "0029_wealthy_zarek",
+      "breakpoints": true
     }
   ]
 }

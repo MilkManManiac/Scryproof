@@ -7523,3 +7523,327 @@ kbd {
     animation-delay: 0ms;
   }
 }
+
+/* ------------------------------------------------------------ cuntections */
+/* Connections, one puzzle a day (Cuntections.tsx). The shell (backdrop, card,
+   title, toast, result, board) is Purdle's; this is the grid and the bars.
+   The four group colours are Connections' own, fixed across themes for the
+   same reason as Purdle's: the shared squares have to mean the same thing. */
+
+.purdle.cx {
+  --cx-yellow: #f9df6d;
+  --cx-green: #a0c35a;
+  --cx-blue: #b0c4ef;
+  --cx-purple: #ba81c5;
+  --cx-on: #121212;
+  --cx-gap: 7px;
+  width: min(560px, 100%);
+}
+.cx-hint {
+  margin: -4px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.cx-board {
+  align-self: stretch;
+  display: grid;
+  gap: var(--cx-gap);
+}
+.cx-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cx-gap);
+}
+.cx-tile {
+  position: relative;
+  height: 76px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--panel-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    transform 90ms ease;
+}
+.cx-tile.long {
+  font-size: 13px;
+}
+.cx-tile.longer {
+  font-size: 11px;
+}
+.cx-tile:hover:not(:disabled):not(.picked) {
+  background: var(--panel-4);
+}
+.cx-tile:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.cx-tile.picked {
+  background: var(--text);
+  color: var(--panel-solid);
+}
+.cx-tile:disabled {
+  cursor: default;
+}
+/* The four going in hop one after another, in the order they were picked. */
+.cx-tile.hop {
+  animation: cx-hop 320ms ease-out both;
+  animation-delay: calc(var(--at) * 90ms);
+}
+@keyframes cx-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-9px);
+  }
+}
+.cx-tile.shake {
+  animation: purdle-shake 480ms ease-in-out;
+}
+
+.cx-bar {
+  height: 76px;
+  display: grid;
+  place-content: center;
+  gap: 3px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--cx-on);
+  text-align: center;
+  text-transform: uppercase;
+}
+.cx-bar.arrive {
+  animation: cx-arrive 420ms var(--ease) both;
+}
+@keyframes cx-arrive {
+  0% {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.cx-bar-name {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.cx-bar-words {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+.cx-bar.yellow,
+.cx-share-cell.yellow {
+  background: var(--cx-yellow);
+}
+.cx-bar.green,
+.cx-share-cell.green {
+  background: var(--cx-green);
+}
+.cx-bar.blue,
+.cx-share-cell.blue {
+  background: var(--cx-blue);
+}
+.cx-bar.purple,
+.cx-share-cell.purple {
+  background: var(--cx-purple);
+}
+
+.cx-mistakes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.cx-dots {
+  display: flex;
+  gap: 7px;
+}
+.cx-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  transition:
+    transform 260ms var(--ease),
+    opacity 260ms var(--ease);
+}
+.cx-dot.gone {
+  transform: scale(0);
+  opacity: 0;
+}
+.cx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.cx-share {
+  display: grid;
+  gap: 3px;
+}
+.cx-share-row {
+  display: flex;
+  gap: 3px;
+}
+.cx-share-cell {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+}
+.purdle-board-score.cx-score {
+  background: var(--cx-purple);
+  color: var(--cx-on);
+}
+
+/* The rail's tile: the four group colours stacked. */
+.rail-cuntections .glyph-yellow {
+  fill: #f9df6d;
+}
+.rail-cuntections .glyph-green {
+  fill: #a0c35a;
+}
+.rail-cuntections .glyph-blue {
+  fill: #b0c4ef;
+}
+.rail-cuntections .glyph-purple {
+  fill: #ba81c5;
+}
+.rail-cuntections-dot {
+  background: #ba81c5;
+}
+
+@media (max-width: 520px) {
+  .cx-tile,
+  .cx-bar {
+    height: 64px;
+  }
+  .cx-tile {
+    font-size: 13px;
+  }
+  .cx-tile.long {
+    font-size: 11px;
+  }
+  .cx-tile.longer {
+    font-size: 9.5px;
+  }
+  .cx-bar-name {
+    font-size: 13px;
+  }
+  .cx-bar-words {
+    font-size: 12px;
+  }
+}
+
+/* ------------------------------------------------------ game board tabs */
+/* Today / All time under Purdle and Cuntections (GameBoard.tsx). */
+
+.game-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.game-board-head .purdle-board-head {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-tabs {
+  display: flex;
+  flex: none;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+.game-tabs button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.game-tabs button.on {
+  background: var(--panel-4);
+  color: var(--text);
+}
+.game-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.game-standings th {
+  padding: 0 4px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+.game-standings td {
+  padding: 4px;
+  color: var(--text);
+  text-align: right;
+  white-space: nowrap;
+}
+.game-standings th.who,
+.game-standings td.who {
+  width: 100%;
+  text-align: left;
+}
+.game-standings .purdle-board-name {
+  max-width: 180px;
+}
+.game-standings td.place {
+  padding-left: 0;
+  color: var(--text-muted);
+  text-align: left;
+}
+.game-standings-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.game-standings tr.me {
+  background: var(--accent-wash);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-tile.hop,
+  .cx-tile.shake,
+  .cx-bar.arrive {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}

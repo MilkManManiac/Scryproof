@@ -11,7 +11,8 @@ import { LIMITS, Permission, emojiToken, houseRules } from '@scryproof/shared';
 import type { Attachment, Channel, SealedFileRef } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
-import { commandOffers, commandQueryAt, expandTextCommand, isInitCommand, isPurdleCommand, spawnOf } from '../lib/commands';
+import { commandOffers, commandQueryAt, expandTextCommand, gameCommand, isInitCommand, spawnOf } from '../lib/commands';
+import { cuntections } from '../lib/cuntections';
 import { channelDrafts } from '../lib/drafts';
 import { purdle } from '../lib/purdle';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
@@ -272,9 +273,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   async function send(override?: string) {
     const typed = override ?? text.trim();
     // Opens the game and sends nothing, so none of the checks below apply.
-    if (!override && isPurdleCommand(typed)) {
+    const game = override ? null : gameCommand(typed);
+    if (game) {
       updateText('');
-      purdle.open();
+      (game === 'purdle' ? purdle : cuntections).open();
       return;
     }
     // Before anything is cleared or sent. A channel this device has seen
@@ -637,9 +639,10 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
                 event.preventDefault();
                 // It takes no words after it, so Enter opens the game at once
                 // rather than filling in the box for a second Enter.
-                if (event.key === 'Enter' && isPurdleCommand(offer.written)) {
+                const game = gameCommand(offer.written);
+                if (event.key === 'Enter' && game) {
                   updateText('');
-                  purdle.open();
+                  (game === 'purdle' ? purdle : cuntections).open();
                   return;
                 }
                 complete(offer.written);
@@ -735,7 +738,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       <div className="composer-hint">
         <span>
           {text.startsWith('/') ? (
-            channel.encrypted ? 'Commands: /tang-jump, /purdle, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /purdle, /shrug'
+            channel.encrypted ? 'Commands: /tang-jump, /purdle, /cuntections, /shrug' : 'Commands: /tang-jump, /roll 2d6+3, /init, /purdle, /cuntections, /shrug'
           ) : (
             <>
               {channel.expireAfterSeconds > 0 ? `Messages here last ${expiryLabel(channel.expireAfterSeconds)}. ` : ''}
