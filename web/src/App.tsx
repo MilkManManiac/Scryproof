@@ -49,6 +49,10 @@ import { Walkthrough } from './components/Walkthrough';
 import { GuideGate } from './components/Guide';
 import { PurdleGate } from './components/Purdle';
 import { CuntectionsGate } from './components/Cuntections';
+import { BeeGate } from './components/Bee';
+import { QueensGate } from './components/Queens';
+import { TravleGate } from './components/Travle';
+import { ThriceGate } from './components/Thrice';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
@@ -458,6 +462,10 @@ function Shell() {
       <GuideGate />
       <PurdleGate />
       <CuntectionsGate />
+      <BeeGate />
+      <QueensGate />
+      <TravleGate />
+      <ThriceGate />
       </div>
 
       {channelSettings && server && channel ? (

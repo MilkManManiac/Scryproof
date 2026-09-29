@@ -1,6 +1,6 @@
 /**
  * Cuntections: Connections, one puzzle a day for everyone here (Wes,
- * 2026-09-28). Opened from its tile under Purdle's in the rail, or `/cuntections`.
+ * 2026-09-28). Opened from the games folder in the rail, or `/cuntections`.
  *
  * Plays like Connections because everybody already knows how: pick four,
  * Submit, a found group becomes a coloured bar, "one away" when three of the
@@ -50,35 +50,6 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export function CuntectionsGate() {
   const view = useSyncExternalStore(cuntections.subscribe, cuntections.get);
   return view.open ? <Cuntections today={view.today} /> : null;
-}
-
-/** The rail's tile: a dot on it until you have started today's. */
-export function CuntectionsButton() {
-  const view = useSyncExternalStore(cuntections.subscribe, cuntections.get);
-  const { state } = useStore();
-  const signedIn = Boolean(state.user);
-  useEffect(() => {
-    if (signedIn) void cuntections.load();
-  }, [signedIn]);
-  const today = view.today;
-  const waiting = today?.state === 'playing' && today.found.length === 0 && today.mistakes === 0;
-  return (
-    <button
-      type="button"
-      className={`rail-item rail-cuntections${view.open ? ' active' : ''}`}
-      title={waiting ? "Cuntections: today's puzzle is waiting" : 'Cuntections'}
-      aria-label="Cuntections"
-      onClick={() => (view.open ? cuntections.close() : cuntections.open())}
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="2" y="2.5" width="20" height="4" rx="1.5" className="glyph-yellow" />
-        <rect x="2" y="7.5" width="20" height="4" rx="1.5" className="glyph-green" />
-        <rect x="2" y="12.5" width="20" height="4" rx="1.5" className="glyph-blue" />
-        <rect x="2" y="17.5" width="20" height="4" rx="1.5" className="glyph-purple" />
-      </svg>
-      {waiting ? <span className="rail-purdle-dot rail-cuntections-dot" aria-hidden="true" /> : null}
-    </button>
-  );
 }
 
 function Cuntections({ today }: { today: CuntectionsToday | null }) {

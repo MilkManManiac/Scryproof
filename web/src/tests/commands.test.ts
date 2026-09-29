@@ -27,6 +27,12 @@ describe('isPurdleCommand', () => {
   it('knows which game a command opens', () => {
     assert.equal(gameCommand('/purdle'), 'purdle');
     assert.equal(gameCommand(' /Cuntections '), 'cuntections');
+    assert.equal(gameCommand('/pee'), 'bee');
+    assert.equal(gameCommand('/bee'), 'bee');
+    assert.equal(gameCommand('/Queefs'), 'queens');
+    assert.equal(gameCommand('/travhole'), 'travle');
+    assert.equal(gameCommand('/threeway'), 'thrice');
+    assert.equal(gameCommand('/shrug'), null);
     assert.equal(gameCommand('/cuntections now'), null);
     assert.equal(gameCommand('/tang-jump'), null);
     assert.equal(commandOffers('cunt')[0]?.written, '/cuntections');

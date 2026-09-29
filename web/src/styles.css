@@ -7756,8 +7756,977 @@ kbd {
   }
 }
 
+/* ------------------------------------------------------------------- bee */
+/* Spelling Bee, one board a day (Bee.tsx). The shell is Purdle's; this is the
+   comb, the line you type on, and the ranks. The yellow is the game's own,
+   fixed across themes like the other two. */
+
+.purdle.bee {
+  --bee-yellow: #f7da21;
+  --bee-on: #121212;
+  --bee-cell: min(92px, calc((100vw - 84px) / 3));
+  width: min(480px, 100%);
+}
+
+.bee-rank {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 2px;
+}
+.bee-rank-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+.bee-rank-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+}
+.bee-rank-line::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 1px;
+  background: var(--line-strong);
+}
+.bee-rank-line .stop {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+.bee-rank-line .stop.last {
+  border-radius: 0;
+}
+.bee-rank-line .stop.past {
+  background: var(--bee-yellow);
+}
+.bee-rank-line .stop.here {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: var(--bee-yellow);
+  color: var(--bee-on);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: transform 200ms var(--ease);
+}
+.bee-rank-next {
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bee-found {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.bee-found:hover {
+  background: var(--panel-3);
+}
+.bee-found-count {
+  flex: 1;
+  color: var(--text-muted);
+}
+.bee-found-line {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-transform: capitalize;
+  mask-image: linear-gradient(to right, #000 80%, transparent);
+}
+.bee-found-line .all,
+.bee-words .all {
+  font-weight: 700;
+  color: var(--bee-yellow);
+}
+.bee-found-arrow {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 160ms var(--ease);
+}
+.bee-found.open .bee-found-arrow {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.bee-words {
+  align-self: stretch;
+  min-height: 300px;
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+  columns: 3;
+  column-gap: 18px;
+  font-size: 14px;
+}
+.bee-words.whole {
+  min-height: 0;
+}
+.bee-words li {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  text-transform: capitalize;
+  break-inside: avoid;
+}
+.bee-words .extra {
+  font-style: italic;
+  color: var(--text-muted);
+}
+.bee-words .missed {
+  opacity: 0.45;
+}
+
+.bee-typed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  font-size: 30px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+.bee-typed .centre {
+  color: var(--bee-yellow);
+}
+.bee-typed .bad {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.bee-typed-hint {
+  font-size: 18px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.bee-caret {
+  width: 2px;
+  height: 34px;
+  margin-left: 2px;
+  background: var(--bee-yellow);
+  animation: bee-blink 1s steps(1) infinite;
+}
+.bee-typed.shake {
+  animation: purdle-shake 450ms ease-in-out;
+}
+@keyframes bee-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Seven hexagons, flat on top: one in the middle and one on each of its sides. */
+.bee-comb {
+  --w: var(--bee-cell);
+  --h: calc(var(--w) * 0.866);
+  --gap: 6px;
+  position: relative;
+  width: calc(var(--w) * 2.5 + var(--gap) * 2);
+  height: calc(var(--h) * 3 + var(--gap) * 2);
+  flex: none;
+}
+.bee-cell {
+  position: absolute;
+  left: calc(50% - var(--w) / 2);
+  top: calc(50% - var(--h) / 2);
+  width: var(--w);
+  height: var(--h);
+  padding: 0;
+  border: 0;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: var(--panel-4);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(var(--w) * 0.34);
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translate(var(--x, 0), var(--y, 0));
+  transition:
+    transform 90ms var(--ease),
+    opacity 160ms var(--ease);
+}
+.bee-cell.centre {
+  background: var(--bee-yellow);
+  color: var(--bee-on);
+}
+.bee-cell:hover {
+  filter: brightness(1.12);
+}
+.bee-cell:active {
+  transform: translate(var(--x, 0), var(--y, 0)) scale(0.88);
+}
+.bee-cell.at-0 {
+  --y: calc(-1 * (var(--h) + var(--gap)));
+}
+.bee-cell.at-1 {
+  --x: calc(var(--w) * 0.75 + var(--gap));
+  --y: calc(-0.5 * (var(--h) + var(--gap)));
+}
+.bee-cell.at-2 {
+  --x: calc(var(--w) * 0.75 + var(--gap));
+  --y: calc(0.5 * (var(--h) + var(--gap)));
+}
+.bee-cell.at-3 {
+  --y: calc(var(--h) + var(--gap));
+}
+.bee-cell.at-4 {
+  --x: calc(-1 * (var(--w) * 0.75 + var(--gap)));
+  --y: calc(0.5 * (var(--h) + var(--gap)));
+}
+.bee-cell.at-5 {
+  --x: calc(-1 * (var(--w) * 0.75 + var(--gap)));
+  --y: calc(-0.5 * (var(--h) + var(--gap)));
+}
+/* A shuffle: the six letters go out and come back somewhere else. */
+.bee-comb.turning .bee-cell:not(.centre) {
+  opacity: 0;
+  color: transparent;
+}
+
+.bee-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+.bee-actions .button {
+  min-width: 92px;
+}
+.bee-actions .bee-shuffle {
+  min-width: 0;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.purdle-toast.bee-toast-good {
+  background: var(--bee-yellow);
+  color: var(--bee-on);
+}
+
+.bee-foot {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.bee-yesterday {
+  align-self: stretch;
+  display: grid;
+  gap: 12px;
+}
+.bee-yesterday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  color: var(--text);
+}
+.bee-yesterday-letters {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.bee-yesterday-letters .centre {
+  color: var(--bee-yellow);
+}
+.bee-yesterday-count {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.purdle-board-score.bee-score {
+  background: var(--bee-yellow);
+  color: var(--bee-on);
+}
+
+/* The rail's tile: one cell of the comb. */
+.rail-bee .glyph-comb {
+  fill: #f7da21;
+}
+.rail-bee-dot {
+  background: #f7da21;
+}
+
+@media (max-width: 520px) {
+  .bee-words {
+    columns: 2;
+  }
+  .bee-rank {
+    column-gap: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bee-caret,
+  .bee-typed.shake {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------- games folder */
+/* One tile in the rail for every daily game, and the list it opens (Games.tsx). */
+
+.rail-games-badge {
+  background: #b59f3b;
+  color: #121212;
+}
+.games-menu {
+  position: fixed;
+  z-index: 54;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-2);
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.games-menu-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 8px 10px 10px;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+}
+.games-menu-sub {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.games-menu-item {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.games-menu-item:hover,
+.games-menu-item:focus-visible {
+  background: var(--panel-3);
+}
+.games-menu-glyph {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--text-muted);
+}
+.games-menu-text {
+  display: grid;
+  min-width: 0;
+}
+.games-menu-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+.games-menu-about {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.games-menu-standing {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.games-menu-standing.fresh {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #b59f3b;
+  color: #121212;
+  font-weight: 700;
+}
+.games-menu-standing.done {
+  color: var(--text);
+  font-weight: 600;
+}
+@media (max-width: 700px) {
+  .games-menu {
+    left: 12px !important;
+  }
+}
+
+.purdle-toast.game-toast-good {
+  background: #538d4e;
+  color: #fff;
+}
+.purdle-board-score.game-score {
+  min-width: 44px;
+}
+
+/* ---------------------------------------------------------------- queefs */
+/* Queens, one board a day (Queens.tsx). Eight colours of its own, fixed
+   across themes: a region has to be the same colour for everyone. */
+
+.purdle.qn {
+  --qn-cell: min(52px, calc((100vw - 66px) / var(--qn-size, 8)));
+  width: min(500px, 100%);
+}
+.qn-door {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 380px;
+  padding: 14px 0 6px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.qn-door p {
+  margin: 0;
+}
+.qn-top {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.qn-clock {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.qn-count {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.qn-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--n), var(--qn-cell));
+  border: 2px solid #121212;
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.qn-cell {
+  display: grid;
+  place-items: center;
+  width: var(--qn-cell);
+  height: var(--qn-cell);
+  padding: 0;
+  border: 0;
+  border-top: 1px solid rgb(18 18 18 / 0.28);
+  border-left: 1px solid rgb(18 18 18 / 0.28);
+  border-radius: 0;
+  color: #121212;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.qn-cell.t {
+  border-top: 2px solid #121212;
+}
+.qn-cell.l {
+  border-left: 2px solid #121212;
+}
+.qn-cell:disabled {
+  cursor: default;
+}
+.qn-cell:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.qn-cell.c0 {
+  background: #b9a2e0;
+}
+.qn-cell.c1 {
+  background: #f4c98b;
+}
+.qn-cell.c2 {
+  background: #93b8ea;
+}
+.qn-cell.c3 {
+  background: #aed49a;
+}
+.qn-cell.c4 {
+  background: #dfdfdf;
+}
+.qn-cell.c5 {
+  background: #f08f7c;
+}
+.qn-cell.c6 {
+  background: #e4ef86;
+}
+.qn-cell.c7 {
+  background: #a9d9d0;
+}
+.qn-cell.c8 {
+  background: #e7a6cf;
+}
+.qn-cross {
+  position: relative;
+  width: 30%;
+  height: 30%;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.qn-cross::before,
+.qn-cross::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -10%;
+  width: 2px;
+  height: 120%;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #121212;
+  transform: rotate(45deg);
+}
+.qn-cross::after {
+  transform: rotate(-45deg);
+}
+.qn-crown {
+  width: 62%;
+  height: 62%;
+  fill: #121212;
+  pointer-events: none;
+  animation: qn-land 160ms var(--ease);
+}
+.qn-cell.clash {
+  box-shadow: inset 0 0 0 100px rgb(200 30 30 / 0.35);
+}
+.qn-cell.clash .qn-crown {
+  fill: #a01414;
+}
+.qn-grid.done .qn-crown {
+  animation: purdle-jump 600ms ease-out both;
+}
+@keyframes qn-land {
+  from {
+    transform: scale(0.4);
+  }
+}
+.qn-hint {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------- travhole */
+/* Travle, one route a day (Travle.tsx). */
+
+.purdle.tv {
+  --tv-good: #538d4e;
+  --tv-near: #d08a2e;
+  --tv-off: #a63a3a;
+  --tv-end: #e9e4d8;
+  width: min(560px, 100%);
+}
+.tv-ask {
+  margin: -2px 0 0;
+  font-size: 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.tv-ask b {
+  color: var(--text);
+}
+.tv-map {
+  align-self: stretch;
+  aspect-ratio: 3 / 2;
+  border-radius: 10px;
+  background: #14222e;
+  overflow: hidden;
+}
+.tv-map.loading {
+  display: grid;
+  place-items: center;
+}
+.tv-map svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tv-map .land {
+  fill: #2c3e4d;
+  stroke: #14222e;
+  stroke-width: 0.6px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.tv-map .land.end {
+  fill: var(--tv-end);
+}
+.tv-map .land.good {
+  fill: var(--tv-good);
+}
+.tv-map .land.near {
+  fill: var(--tv-near);
+}
+.tv-map .land.off {
+  fill: var(--tv-off);
+}
+.tv-map .land.route {
+  fill: #6f8aa0;
+}
+.tv-map .land.good,
+.tv-map .land.near,
+.tv-map .land.off,
+.tv-map .land.route {
+  animation: tv-light 380ms var(--ease);
+}
+@keyframes tv-light {
+  from {
+    fill: #2c3e4d;
+  }
+}
+.tv-guess {
+  align-self: stretch;
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+.tv-guess form,
+.tw-form {
+  display: flex;
+  gap: 8px;
+}
+.game-input {
+  flex: 1;
+  min-width: 0;
+  background: rgb(var(--bg-rgb) / 0.7);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.game-input:focus {
+  border-color: var(--accent-dim);
+}
+.tv-offers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px;
+  z-index: 3;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-2);
+}
+.tv-offers button {
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.tv-offers button.picked {
+  background: var(--panel-3);
+}
+.tv-offers button.taken {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.tv-left {
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.tv-guesses {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tv-guesses li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tv-guesses .good {
+  background: var(--tv-good);
+}
+.tv-guesses .near {
+  background: var(--tv-near);
+}
+.tv-guesses .off {
+  background: var(--tv-off);
+}
+.tv-way {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text);
+}
+.tv-way-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------- threeway */
+/* Thrice, five questions a day (Thrice.tsx). */
+
+.purdle.tw {
+  --tw-3: #538d4e;
+  --tw-2: #8aa644;
+  --tw-1: #b59f3b;
+  --tw-0: #6b3a3a;
+  width: min(520px, 100%);
+}
+.tw-pips {
+  display: flex;
+  gap: 8px;
+}
+.tw-pip {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  flex: none;
+}
+.tw-pip.here {
+  border-color: var(--text);
+  color: var(--text);
+}
+.tw-pip.p0,
+.tw-pip.p1,
+.tw-pip.p2,
+.tw-pip.p3 {
+  border-color: transparent;
+  color: #fff;
+}
+.tw-pip.p3 {
+  background: var(--tw-3);
+}
+.tw-pip.p2 {
+  background: var(--tw-2);
+}
+.tw-pip.p1 {
+  background: var(--tw-1);
+}
+.tw-pip.p0 {
+  background: var(--tw-0);
+}
+.tw-question {
+  align-self: stretch;
+  display: grid;
+  gap: 12px;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.tw-category {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tw-worth {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+.tw-clues {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tw-clues li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.4;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.tw-clues li.newest {
+  background: var(--panel-3);
+  color: var(--text);
+  font-size: 17px;
+}
+.tw-clue-worth {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tw-clue {
+  display: grid;
+  gap: 4px;
+}
+.tw-tried {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.tw-form.shake {
+  animation: purdle-shake 450ms ease-in-out;
+}
+.tw-answer {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--tw-0);
+  color: #fff;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.tw-answer.right {
+  background: var(--tw-3);
+}
+.tw-answer-label {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.tw-answer-text {
+  font-size: 18px;
+  font-weight: 700;
+}
+.tw-total {
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.tw-recap {
+  align-self: stretch;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tw-recap li {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+.tw-recap-category {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+@media (max-width: 520px) {
+  .tw-answer {
+    grid-template-columns: auto 1fr;
+  }
+  .tw-answer .button {
+    grid-column: 1 / -1;
+  }
+  .tv-guess form,
+  .tw-form {
+    flex-wrap: wrap;
+  }
+  .tw-form .game-input {
+    flex-basis: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qn-crown,
+  .tw-form.shake,
+  .tv-map .land {
+    animation: none !important;
+  }
+}
+
 /* ------------------------------------------------------ game board tabs */
-/* Today / All time under Purdle and Cuntections (GameBoard.tsx). */
+/* Today / All time under each daily game (GameBoard.tsx). */
 
 .game-board-head {
   display: flex;

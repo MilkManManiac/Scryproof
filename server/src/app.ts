@@ -41,6 +41,10 @@ import { registerDownloadRoutes } from './routes/downloads.js';
 import { registerPushRoutes } from './routes/push.js';
 import { registerPurdleRoutes } from './routes/purdle.js';
 import { registerCuntectionsRoutes } from './routes/cuntections.js';
+import { registerBeeRoutes } from './routes/bee.js';
+import { registerQueensRoutes } from './routes/queens.js';
+import { registerTravleRoutes } from './routes/travle.js';
+import { registerThriceRoutes } from './routes/thrice.js';
 import { registerHostRoutes } from './routes/host.js';
 
 declare module 'fastify' {
@@ -256,6 +260,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerPushRoutes(app);
   await registerPurdleRoutes(app);
   await registerCuntectionsRoutes(app);
+  await registerBeeRoutes(app);
+  await registerQueensRoutes(app);
+  await registerTravleRoutes(app);
+  await registerThriceRoutes(app);
   await registerHostRoutes(app);
 
   // This process serves the API and the gateway only. The built web client is

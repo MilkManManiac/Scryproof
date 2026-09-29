@@ -38,40 +38,6 @@ export function PurdleGate() {
   return view.open ? <Purdle today={view.today} /> : null;
 }
 
-/** The rail's tile: a dot on it until you have played today's. */
-export function PurdleButton() {
-  const view = useSyncExternalStore(purdle.subscribe, purdle.get);
-  const { state } = useStore();
-  const signedIn = Boolean(state.user);
-  useEffect(() => {
-    if (signedIn) void purdle.load();
-  }, [signedIn]);
-  const waiting = view.today?.state === 'playing' && view.today.guesses.length === 0;
-  return (
-    <button
-      type="button"
-      className={`rail-item rail-purdle${view.open ? ' active' : ''}`}
-      title={waiting ? "Purdle: today's word is waiting" : 'Purdle'}
-      aria-label="Purdle"
-      onClick={() => (view.open ? purdle.close() : purdle.open())}
-    >
-      <PurdleMarkGlyph />
-      {waiting ? <span className="rail-purdle-dot" aria-hidden="true" /> : null}
-    </button>
-  );
-}
-
-function PurdleMarkGlyph() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="2" y="2" width="9" height="9" rx="2" className="glyph-hit" />
-      <rect x="13" y="2" width="9" height="9" rx="2" className="glyph-near" />
-      <rect x="2" y="13" width="9" height="9" rx="2" className="glyph-miss" />
-      <rect x="13" y="13" width="9" height="9" rx="2" className="glyph-hit" />
-    </svg>
-  );
-}
-
 function Purdle({ today }: { today: PurdleToday | null }) {
   const { state } = useStore();
   const dms = useDms();

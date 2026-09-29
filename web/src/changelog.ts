@@ -20,6 +20,20 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-29-four-more-games',
+    date: '2026-09-29',
+    title: 'Four more daily games, and one place for all of them',
+    notes: [
+      'All the games now live behind one button at the top left. The number on it is how many of today’s you haven’t started. Open it to see all six and where you stand in each.',
+      'Smelling Pee is Spelling Bee. Seven letters, the middle one has to be in every word, four letters or more. Work your way up from Beginner to Genius, and past it if you find every word. Type /pee.',
+      'Queefs is Queens. One queen in every row, column and color, none touching. It’s a race, and the clock starts when you see the board and doesn’t stop if you close it. Type /queefs.',
+      'Travhole is Travle. Get from one country to another by naming the ones in between. Green is on the way, amber is out of the way, red is no help. Type /travhole.',
+      'Threeway is five trivia questions a day. Each has three clues, hardest first: three points if you get it on the first, one if you need all three. Type /threeway.',
+      'Every game has the same boards underneath: who in the server has done today’s, and everyone’s record since they started.',
+      'Cuntections got 65 more puzzles, so it’s good into January.',
+    ],
+  },
+  {
     id: '2026-09-29-cuntections',
     date: '2026-09-29',
     title: 'Cuntections: sixteen words, four groups, once a day',

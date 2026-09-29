@@ -3477,3 +3477,61 @@ is in `/root/.ssh/authorized_keys` beside the deploy key, with a backup of the
 old file next to it. Wes chose root over a limited login after being told what
 root can see and change. To remove it: `sed -i '/mattmascolo/d'
 /root/.ssh/authorized_keys` on the box.
+
+---
+
+## Four more daily games and a games folder (built 2026-09-29)
+
+Wes, 2026-09-29: "Spelling be", then "queens travle and thrice. Then lets put those basically in like a folder at the top left", then "and bee. you get the naming construct lol".
+
+Runs on the dev copy. Waiting on Wes to play them and say push. Nothing here is on the box.
+
+| Game | Code name | What it is | Score | Puzzles come from |
+|---|---|---|---|---|
+| Smelling Pee | `bee` | Spelling Bee. Seven letters, the middle one in every word. Open all day. | Points, ranks up to Genius then Golden shower | Made from the word list on the day (`server/src/bee/`) |
+| Queefs | `queens` | Queens. One queen per row, column and colour, none touching. | Time, kept by the server | Made on the day, always one answer (`server/src/queens/queens.ts`) |
+| Travhole | `travle` | Travle. Join two countries by naming the ones between. | Guesses beyond the shortest way | Two countries picked on the day from the border map |
+| Threeway | `thrice` | Thrice. Five questions, three clues each, 3/2/1 points. | Out of 15 | **Hand-written**: 20 days in `server/src/thrice/questions.ts` |
+
+**The folder.** `web/src/components/Games.tsx`. One tile in the rail replaces the three game tiles. It carries a count of today's games not started, and opens a list of all six with where you stand in each. A new game is a new entry in `GAMES` there. Commands: `/pee`, `/queefs`, `/travhole`, `/threeway` (the plain names work too).
+
+**Names are one line each**: `name` in `shared/src/bee.ts`, `queens.ts`, `travle.ts`, `thrice.ts`.
+
+**Vendored data, nothing fetched at runtime:**
+- `server/src/bee/words.ts`: SCOWL (permissive, notice kept in the file) sizes 10 to 40 as the common list a day is scored against, SCOWL 50 to 70 and ENABLE (public domain) as "deep cuts" that score but are not needed, plus about 90 crude and gamer words added by hand. No board has an S.
+- `shared/src/travle-countries.ts`: borders from mledoze/countries (ODbL 1.0). 198 countries, 158 with a land border.
+- `web/src/lib/travle-map.ts`: outlines from Natural Earth 1:50m (public domain), thinned to 223 KB and loaded only when Travhole opens.
+
+**Migrations:** `0030` (bee), `0031` (queens, travle, thrice). Two tables a game: the day's puzzle, and each person's play.
+
+**Tests:** server 338 pass (`bee.test.ts` 14, `games.test.ts` 15), web 415 pass, typecheck clean.
+
+**Shots:** `docs/shots/games-folder.png`, `bee-*.png`, `queens-playing.png`, `travle-playing.png`, `thrice-playing.png`.
+
+![The games folder](shots/games-folder.png)
+
+**Before it ships:** a changelog entry dated the day of the release (release.sh insists), and Wes's word.
+
+**Owed later:** Threeway runs out of fresh questions after 20 days and then repeats; it needs more written, by me or by the group. Queefs' drag-to-cross has been tried with a mouse only by reading the code, not on a real phone.
+
+
+## Games stocked through the end of the year (2026-09-29)
+
+Wes asked for every game to be filled so nobody has to think about it until the new year.
+
+| Game | Stock | Runs out |
+|---|---|---|
+| Purdle | 1,208 words | 2030 |
+| Cuntections | 105 puzzles (was 40) | after 2027-01-11, then repeats |
+| Threeway | 105 days, 525 questions (was 20 days) | after 2027-01-11, then repeats |
+| Smelling Pee, Queefs, Travhole | made fresh each day | never (400 days simulated, no repeats) |
+
+- Threeway: the 425 new questions were written, then every file was fact-checked with web lookups, the
+  original 100 too. About 35 clues or accepted answers were corrected. A day is one question from each of
+  five letter ranges, so a day's answers never share a first letter.
+- Threeway's matcher was tightened: a slip is forgiven only in answers of six letters or more and never in
+  the first letter (Wario is not Mario).
+- The tests now fail if either hand-written list drops under 100.
+- To add more later: puzzles go on the end of `server/src/cuntections/puzzles.ts`, questions on the end of
+  `server/src/thrice/questions.ts`. Days already played never move.
+- Next refill is due before 2027-01-11.

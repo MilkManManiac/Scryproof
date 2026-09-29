@@ -1012,6 +1012,108 @@ export const cuntectionsPlays = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.day] }), index('cuntections_plays_day_idx').on(table.day)],
 );
 
+/**
+ * The bee's board for a day, picked the first time that day is opened and
+ * kept. `max` is what the day's common words come to, kept with it so a
+ * change to the word list moves no day already played.
+ */
+export const beeDays = pgTable('bee_days', {
+  day: integer('day').primaryKey(),
+  /** Seven letters, lower case, the middle one first. */
+  letters: text('letters').notNull(),
+  max: integer('max').notNull(),
+});
+
+/** One person's bee for one day: the words they found, and what those come to. */
+export const beePlays = pgTable(
+  'bee_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    words: jsonb('words').$type<string[]>().notNull(),
+    score: integer('score').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('bee_plays_day_idx').on(table.day)],
+);
+
+export type BeePlayRow = typeof beePlays.$inferSelect;
+
+/** The board a day of Queefs got, made the first time that day is opened and kept. */
+export const queensDays = pgTable('queens_days', {
+  day: integer('day').primaryKey(),
+  /** The region of each cell, a row at a time. */
+  regions: jsonb('regions').$type<number[][]>().notNull(),
+});
+
+/** One person's Queefs for one day: when their clock started, and how long it ran. */
+export const queensPlays = pgTable(
+  'queens_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+    seconds: integer('seconds'),
+    /** Where the queens stood when it was solved. */
+    queens: jsonb('queens').$type<number[]>(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('queens_plays_day_idx').on(table.day)],
+);
+
+/** The two countries a day of Travhole got, picked the first time that day is opened and kept. */
+export const travleDays = pgTable('travle_days', {
+  day: integer('day').primaryKey(),
+  from: text('from_code').notNull(),
+  to: text('to_code').notNull(),
+});
+
+/** One person's Travhole for one day: every country they named, and how it ended. */
+export const travlePlays = pgTable(
+  'travle_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    guesses: jsonb('guesses').$type<string[]>().notNull(),
+    solved: boolean('solved').notNull().default(false),
+    /** Guesses beyond what the shortest way needs. */
+    extra: integer('extra').notNull().default(0),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('travle_plays_day_idx').on(table.day)],
+);
+
+/** Which five questions a day of Threeway got, picked the first time that day is opened and kept. */
+export const thriceDays = pgTable('thrice_days', {
+  day: integer('day').primaryKey(),
+  /** `setId` in `server/src/thrice/thrice.ts`: a hash of the set's answers. */
+  setId: text('set_id').notNull(),
+});
+
+/** One person's Threeway for one day: what they said to each clue, question by question. */
+export const thricePlays = pgTable(
+  'thrice_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    /** A list for each question reached. An empty string is a pass. */
+    tries: jsonb('tries').$type<string[][]>().notNull(),
+    score: integer('score').notNull().default(0),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('thrice_plays_day_idx').on(table.day)],
+);
+
+export type QueensPlayRow = typeof queensPlays.$inferSelect;
+export type TravlePlayRow = typeof travlePlays.$inferSelect;
+export type ThricePlayRow = typeof thricePlays.$inferSelect;
 export type CuntectionsPlayRow = typeof cuntectionsPlays.$inferSelect;
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;

@@ -40,6 +40,8 @@ import { voiceRoomOf } from '@scryproof/shared';
 
 import { purdle } from '../lib/purdle';
 import { cuntections } from '../lib/cuntections';
+import { bee } from '../lib/bee';
+import { queens, thrice, travle } from '../lib/daily';
 import { api } from '../lib/api';
 import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
 import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
@@ -1223,6 +1225,8 @@ export function StoreProvider({
 
       if (event.t === 'purdle_done') purdle.done(event.d);
       if (event.t === 'cuntections_done') cuntections.done(event.d);
+      if (event.t === 'bee_score') bee.moved(event.d);
+      if (event.t === 'game_done') ({ queens, travle, thrice })[event.d.game].done(event.d);
 
       if (event.t === 'sounds_changed') {
         const serverId = event.d.serverId;

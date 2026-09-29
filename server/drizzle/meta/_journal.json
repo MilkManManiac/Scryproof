@@ -211,6 +211,20 @@
       "when": 1790651031676,
       "tag": "0029_wealthy_zarek",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790660512217,
+      "tag": "0030_overrated_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790661998621,
+      "tag": "0031_far_skreet",
+      "breakpoints": true
     }
   ]
 }

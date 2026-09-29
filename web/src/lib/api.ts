@@ -38,6 +38,10 @@ import type {
   VoiceState,
 } from '@scryproof/shared';
 import type {
+  BeeScore,
+  BeeStanding,
+  BeeTaken,
+  BeeToday,
   CuntectionsFinish,
   CuntectionsOutcome,
   CuntectionsStanding,
@@ -45,6 +49,15 @@ import type {
   PurdleFinish,
   PurdleStanding,
   PurdleToday,
+  QueensFinish,
+  QueensStanding,
+  QueensToday,
+  ThriceFinish,
+  ThriceStanding,
+  ThriceToday,
+  TravleFinish,
+  TravleStanding,
+  TravleToday,
 } from '@scryproof/shared';
 
 /** How long a new invite lasts. Two days is the most there is (`LIMITS.inviteLifetimeMs`). */
@@ -619,6 +632,34 @@ export const api = {
       post<CuntectionsToday & { outcome: CuntectionsOutcome }>('/api/cuntections/guess', { words }),
     server: (serverId: string) =>
       get<{ day: number; finishes: CuntectionsFinish[]; standings: CuntectionsStanding[] }>(`/api/cuntections/servers/${serverId}`),
+  },
+
+  bee: {
+    today: () => get<BeeToday>('/api/bee/today'),
+    word: (word: string) => post<BeeToday & { taken: BeeTaken }>('/api/bee/word', { word }),
+    server: (serverId: string) => get<{ day: number; scores: BeeScore[]; standings: BeeStanding[] }>(`/api/bee/servers/${serverId}`),
+  },
+
+  queens: {
+    today: () => get<QueensToday>('/api/queens/today'),
+    start: () => post<QueensToday>('/api/queens/start'),
+    solve: (queens: number[]) => post<QueensToday>('/api/queens/solve', { queens }),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: QueensFinish[]; standings: QueensStanding[] }>(`/api/queens/servers/${serverId}`),
+  },
+
+  travle: {
+    today: () => get<TravleToday>('/api/travle/today'),
+    guess: (code: string) => post<TravleToday>('/api/travle/guess', { code }),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: TravleFinish[]; standings: TravleStanding[] }>(`/api/travle/servers/${serverId}`),
+  },
+
+  thrice: {
+    today: () => get<ThriceToday>('/api/thrice/today'),
+    answer: (said: string) => post<ThriceToday>('/api/thrice/answer', { said }),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: ThriceFinish[]; standings: ThriceStanding[] }>(`/api/thrice/servers/${serverId}`),
   },
 
   /** The locked bytes of a sealed attachment, to be opened with the key in its message. */

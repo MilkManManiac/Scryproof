@@ -59,7 +59,7 @@ describe('cuntections rules', () => {
   });
 
   it('every puzzle is four groups of four, sixteen different words, easiest first', () => {
-    assert.ok(PUZZLES.length >= 30, `only ${PUZZLES.length} puzzles`);
+    assert.ok(PUZZLES.length >= 100, `only ${PUZZLES.length} puzzles`);
     const ids = new Set<string>();
     for (const puzzle of PUZZLES) {
       assert.deepEqual(puzzle.map((group) => group.level), [0, 1, 2, 3], puzzle[0].name);
