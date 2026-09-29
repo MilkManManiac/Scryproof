@@ -2643,8 +2643,9 @@ video.mirrored {
 }
 .voice-focus-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 7px 12px;
   background: var(--panel-2);
   font-size: 13px;
@@ -2824,6 +2825,78 @@ video.mirrored {
   top: auto;
   bottom: 8px;
   right: 8px;
+}
+/* Below Speaker and Stop watching, which have the corner. */
+.call-tile-note.under-actions {
+  top: 48px;
+}
+
+/* A stream nobody here pressed Watch on: who, what, and the button. Nothing is fetched behind it. */
+.call-tile.screen.card {
+  background: color-mix(in srgb, var(--tile-accent) 32%, #121110);
+  cursor: default;
+}
+.call-tile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  text-align: center;
+}
+.call-tile-card .call-tile-avatar {
+  width: clamp(32px, 22%, 56px);
+  font-size: clamp(13px, 1.4vw, 20px);
+}
+.call-tile-say {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.call-tile-note .button.inline {
+  margin-left: 6px;
+  padding: 1px 8px;
+}
+/* Speaker and Stop watching, on a picture that is playing. Top right, so a
+   narrow tile does not lay them over the name. */
+.call-tile-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.call-tile:hover .call-tile-actions,
+.call-tile:focus-within .call-tile-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .call-tile-actions {
+    opacity: 1;
+  }
+}
+/* A finger needs more to aim at than a mouse does. */
+@media (pointer: coarse) {
+  .call-tile-action,
+  .call-tile-note .button.inline {
+    min-height: 32px;
+    padding: 4px 12px;
+  }
+}
+.call-tile-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.call-tile-action:hover {
+  background: rgba(0, 0, 0, 0.82);
 }
 
 /* Under the big picture: everyone else, small, in a row. */

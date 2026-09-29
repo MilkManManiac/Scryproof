@@ -73,6 +73,16 @@ export function HeadphonesGlyph({ size, off }: { size?: number; off?: boolean } 
   );
 }
 
+/** A speaker with its sound waves; struck through when its sound is off. */
+export function SpeakerGlyph({ size, off }: { size?: number; off?: boolean } = {}) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M2 6h2.5L8 3v10l-3.5-3H2z" />
+      {off ? <path d="M2 2l12 12" /> : <path d="M10.5 5.5a3.5 3.5 0 010 5M12.5 3.5a6.5 6.5 0 010 9" />}
+    </svg>
+  );
+}
+
 /** A handset lying down: hang up. */
 export function HangUpGlyph({ size }: { size?: number } = {}) {
   return (

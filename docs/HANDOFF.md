@@ -3560,3 +3560,33 @@ Wes could not finish Queefs and the board gave him no reason: "make sure instruc
 - Found on the way: anything in a game card could be squashed when the card was fuller than the screen (the Queefs board lost its rows). `.purdle > *` no longer shrinks.
 
 Shots: `docs/shots/game-rules.png`, `docs/shots/queefs-stuck.png`, `docs/shots/travhole-zoom.png`. Typecheck clean, 415 web tests pass. **Not proven:** the pinch and the drag on a real phone; only the buttons were driven in a browser.
+
+## Cleaner game names (2026-09-29, built, NOT deployed)
+
+Wes: "Maybe clean up the titles a bit. I like them but don't want to scare off others. Don't have to announce in the whats new". No What's new entry; release with `SKIP_NOTES` not needed today because the newest entry is already dated today.
+
+| Was | Now | Typed |
+|---|---|---|
+| Cuntections | Conniptions | /conniptions |
+| Smelling Pee | Spelling Pea | /pea |
+| Queefs | Queenies | /queenies |
+| Travhole | Trundle | /trundle |
+| Threeway | Third Degree | /degree |
+
+Purdle keeps its name. The top Spelling Pea rank is Queen Bee. Only what people see changed: the names are in `shared/src/*.ts` (`CUNTECTIONS.name` is new), the command list, the composer hint and the older What's new entries. The old commands still open the games but are no longer listed. Routes, tables, files and changelog ids keep the old words, so nothing played is lost. `docs/shots/game-names.png`.
+
+## Click to watch streams (2026-09-29, built, NOT deployed)
+
+Ask (a friend, then Wes): a screen share or camera should not play until the viewer clicks it, and "default is muted for watchers".
+
+**Design.** The room connects with `autoSubscribe: false`. Nothing is fetched unless `shouldSubscribe()` (new pure file `web/src/lib/stream-watch.ts`, tests in `web/src/tests/stream-watch.test.ts`) says so: microphones and the soundboard always; a camera, a screen and its sound only after this viewer pressed Watch (and a hidden camera never). `VoiceSession.syncSubscriptions()` applies the rule to every remote publication on connect, on TrackPublished, on ParticipantConnected, and after every Watch / Stop watching / Hide. Each `VoiceVideo` now carries `state` ('waiting' card | 'loading' | 'playing') and `soundOn`. Screen sound joins the mix at volume 0 and only follows the saved volume once the speaker button is pressed; a share ending resets it, so each new share starts muted.
+
+**Behaviour.** Card ("Sharing their screen" / "Camera on" + Watch) until pressed; then Starting..., then the picture. A share starting never takes the stage: only a screen that is playing can be big, and Watch on the first one makes it big (a second Watch puts everything back in the grid, as before). Screen sound starts muted; the speaker button (on the tile, and in the big picture's bar next to the slider) turns it on and the saved per-person volume applies from then. Stop watching (tile, big picture bar) goes back to the card and unsubscribes. Hide for me still works (it also stops watching); Show counts as Watch. Watch state and sound reset when that share is unpublished or the person leaves, so each new share is a new card, muted. Mics and the soundboard are subscribed by hand, so they still play by themselves. Your own preview is untouched. Stalled-screen detection only looks at screens being watched. E2EE and adaptiveStream/capPicture untouched.
+
+**Files.** New: `web/src/lib/stream-watch.ts` (pure rules), `web/src/tests/stream-watch.test.ts`, `docs/shots/stream-watch.png`. Changed: `web/src/lib/voice-session.ts` (autoSubscribe off, watching/screenSoundOn sets, syncSubscriptions, watch/stopStream/setScreenSound, refreshVideos states, debugSubscriptions for the test), `web/src/components/VoicePanel.tsx` (cards, buttons, stage rules), `web/src/components/glyphs.tsx` (SpeakerGlyph), `web/src/styles.css` (card and tile buttons), `web/src/changelog.ts` (top entry `2026-09-29-click-to-watch`), `scripts/voice-check.mjs` (new checks, tour skipped in shots). The game-rename edits in the tree were left alone.
+
+**Done and verified (2026-09-29).** `npm run typecheck` clean. web tests 426/426, server tests 338/338. `npm run test:voice` (real Chromium x3 + local LiveKit) ALL PASS, 86 checks, including: camera and screen are listed as waiting with `isSubscribed` false and zero packets/frames, the screen did not take the stage, voices still decode; after Watch frames decode (camera 60, screen 60 at 1920px); sound starts off and the speaker toggles it; Stop watching drops to zero packets and Watch again decodes; a second share is a fresh card; the three-person two-screens case needs a Watch each.
+
+**Phone check (2026-09-29, later).** A throwaway two-browser run with the watcher at 390x844, touch on, `(hover: none)` and `(pointer: coarse)` true: 22 of 22 pass after one fix. It found the Stop watching link under a big screen pushed off the right edge by the volume slider; `.voice-focus-bar` now wraps. Also moved the tile's Speaker and Stop watching to the top right (on a narrow tile they sat over the name), put any stalled or held note below them (`.under-actions`), and gave those buttons and Watch a 32px height on a coarse pointer. Camera off and on again: while off it leaves the list, and when it comes back it is still watched and plays (60 frames), no black tile. `npm run test:voice` still ALL PASS (86) after the CSS change, web 426/426, typecheck clean. Shots: `docs/shots/stream-watch-phone.png` (card), `docs/shots/stream-watch-phone-big.png` (big screen with the bar wrapped).
+
+**Not done / unverified.** Nothing committed or deployed. The sound itself was never listened to (headless is muted; Wes, 2026-09-29: sound worked before, no need). Desktop shell and iPhone PWA not tried on a device; the phone check is Chrome emulating one.

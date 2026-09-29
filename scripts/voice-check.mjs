@@ -68,6 +68,8 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 /** A picture of one person's window, into VOICE_CHECK_SHOTS if it is set. */
 async function shoot(person, name) {
   if (!process.env.VOICE_CHECK_SHOTS) return;
+  // A fresh profile opens the "How Scryproof works" tour over everything.
+  await person.clickButton('Skip');
   await sleep(600);
   const shot = await person.send('Page.captureScreenshot', { format: 'png' });
   const path = join(process.env.VOICE_CHECK_SHOTS, `${name}.png`);
@@ -214,6 +216,26 @@ class Person {
 
   snapshot() {
     return this.evaluate(`window.__voice.getSnapshot()`);
+  }
+
+  /** Press Watch on the card whose text includes `text` ("Camera on", "Alex's screen"). */
+  clickWatch(text) {
+    return this.evaluate(`(() => {
+      const card = Array.from(document.querySelectorAll('.call-tile')).find((tile) => tile.textContent.includes(${JSON.stringify(text)}) && Array.from(tile.querySelectorAll('button')).some((b) => b.textContent.trim() === 'Watch'));
+      const button = card && Array.from(card.querySelectorAll('button')).find((b) => b.textContent.trim() === 'Watch');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+  }
+
+  /** The state of one picture on this person's list: "waiting", "loading", "playing", or null when it is not listed. */
+  streamState(userId, source) {
+    return this.evaluate(`window.__voice.getSnapshot().videos.find((v) => v.userId === '${userId}' && v.source === '${source}')?.state ?? null`);
+  }
+
+  subscriptions() {
+    return this.evaluate(`window.__voice.debugSubscriptions()`);
   }
 
   inbound() {
@@ -387,6 +409,19 @@ async function main() {
   check('alex has a camera button and presses it', await alex.clickButton('Turn camera on'));
   const cameraKey = `${alex.userId}:camera`;
   await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'camera')`, 15_000);
+  // Click to watch: the camera is on, and wes is not receiving a byte of it.
+  await sleep(2500);
+  const cameraSubs = await wes.subscriptions();
+  const idle = await wes.watch(cameraKey, 2000);
+  check('alex\'s camera is a card for wes: listed as waiting, nothing subscribed, nothing decoded',
+    (await wes.streamState(alex.userId, 'camera')) === 'waiting' && cameraSubs[`${alex.userId}:camera`] === false && idle.packets === 0 && idle.frames === 0,
+    `state ${await wes.streamState(alex.userId, 'camera')}, subscribed ${cameraSubs[`${alex.userId}:camera`]}, +${idle.packets} packets`);
+  check('the card says the camera is on and offers Watch, with no picture behind it',
+    await wes.evaluate(`Array.from(document.querySelectorAll('.call-tile')).some((t) => t.textContent.includes('Camera on') && Array.from(t.querySelectorAll('button')).some((b) => b.textContent.trim() === 'Watch')) && document.querySelector('video.voice-tile-video, video.voice-focus-video') === null`));
+  check('voices still play on their own while the camera waits', (await wes.listenTo(alex.userId, 2000)).energy > 0.001);
+  await shoot(wes, 'stream-watch');
+  check('wes presses Watch on the camera', await wes.clickWatch('Camera on'));
+  await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'camera' && v.state === 'playing')`, 15_000);
   await sleep(1500);
   const seen = await wes.watch(cameraKey);
   check('wes is decoding real pictures from the camera alex turned on', seen.frames > 20 && seen.width > 0,
@@ -400,15 +435,33 @@ async function main() {
   check('alex has a share button and presses it', await alex.clickButton('Share your screen'));
   const screenKey = `${alex.userId}:screen`;
   const sharing = await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen')`, 15_000);
+  await sleep(2500);
+  // A share starting must not take over the stage or cost anything until wes asks.
+  const screenIdle = await wes.watch(screenKey, 2000);
+  const screenSubs = await wes.subscriptions();
+  check('alex\'s screen is a card for wes: nothing subscribed, no frames, and it did not take over the stage',
+    (await wes.streamState(alex.userId, 'screen')) === 'waiting' && screenSubs[`${alex.userId}:screen_share`] === false &&
+      screenIdle.packets === 0 && screenIdle.frames === 0 &&
+      (await wes.evaluate(`document.querySelector('video.voice-focus-video') === null && Array.from(document.querySelectorAll('.call-tile.card')).some((t) => t.textContent.includes('Sharing their screen'))`)),
+    `state ${await wes.streamState(alex.userId, 'screen')}, subscribed ${JSON.stringify(screenSubs)}`);
+  await shoot(wes, 'stream-watch-screen');
+  check('wes presses Watch on the screen', await wes.clickWatch('Sharing their screen'));
+  await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen' && v.state === 'playing')`, 15_000);
   await sleep(1500);
   const shared = sharing ? await wes.watch(screenKey) : { frames: 0, width: 0, packets: 0 };
   const alexMedia = await alex.snapshot();
+  check('a screen\'s sound starts muted', (await wes.evaluate(`window.__voice.getSnapshot().videos.filter((v) => v.source === 'screen').every((v) => v.soundOn === false)`)));
   check('both lists show the screen mark beside alex',
     await wes.evaluate(`document.querySelector('.voice-member .voice-flag.sharing') !== null && document.querySelector('.member .voice-flag.sharing') !== null`));
-  check('wes is decoding the screen alex shared, and it took over the stage',
+  check('after Watch, wes is decoding the screen alex shared, and it comes up big',
     shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
     `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);
   await shoot(wes, 'focus');
+  // The speaker button turns the screen's sound on and back off; the fake screen carries sound.
+  const soundOf = `window.__voice.getSnapshot().videos.find((v) => v.userId === '${alex.userId}' && v.source === 'screen')`;
+  check('the screen has a sound to turn on, and it is off', await wes.evaluate(`${soundOf}?.sound === true && ${soundOf}?.soundOn === false`));
+  check('the speaker button turns the sound on', (await wes.clickButton('Unmute screen sound')) && Boolean(await wes.until(`${soundOf}?.soundOn === true`, 5000)));
+  check('and off again', (await wes.clickButton('Mute screen sound')) && Boolean(await wes.until(`${soundOf}?.soundOn === false`, 5000)));
   check('the stream quality menu opens from inside the call', await wes.clickButton('Stream quality') &&
     Boolean(await wes.until(`Boolean(document.querySelector('.call-quality'))`, 3000)));
   await shoot(wes, 'quality');
@@ -425,6 +478,25 @@ async function main() {
   await wes.evaluate(`window.__voicePrefs.set({ receiveQuality: 'auto' })`);
   const regrown = await wes.until(`window.__voice.debugVideo().then((v) => (v['${screenKey}']?.width ?? 0) > ${smaller} ? v['${screenKey}'].width : 0)`, 15_000);
   check('back on Sharp, the picture grows again', Boolean(smaller) && Boolean(regrown), `${regrown || 'stayed small'}px wide`);
+
+  // Stop watching puts the card back and unsubscribes; Watch brings it back.
+  check('wes presses Stop watching on the big screen', await wes.evaluate(`(() => {
+    const button = Array.from(document.querySelectorAll('.voice-focus-bar button')).find((b) => b.textContent.trim() === 'Stop watching');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`));
+  await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen' && v.state === 'waiting')`, 10_000);
+  await sleep(1500);
+  const stopped = await wes.watch(screenKey, 2000);
+  check('the screen is a card again, unsubscribed, and no more packets arrive', (await wes.subscriptions())[`${alex.userId}:screen_share`] === false && stopped.packets === 0 && stopped.frames === 0,
+    `+${stopped.packets} packets`);
+  check('the camera, which was not stopped, is still playing', (await wes.streamState(alex.userId, 'camera')) === 'playing');
+  check('wes presses Watch on the screen again', await wes.clickWatch('Sharing their screen'));
+  await wes.until(`window.__voice.getSnapshot().videos.some((v) => v.userId === '${alex.userId}' && v.source === 'screen' && v.state === 'playing')`, 15_000);
+  await sleep(1500);
+  const resumed = await wes.watch(screenKey);
+  check('frames decode again after watching again', resumed.frames > 5, `+${resumed.frames} frames`);
 
   if (process.env.VOICE_CHECK_VIDEO_SHOT) {
     const shot = await wes.send('Page.captureScreenshot', { format: 'png' });
@@ -499,6 +571,19 @@ async function main() {
     JSON.stringify((await mara.snapshot()).videos.map((v) => `${v.userId === wes.userId ? 'wes' : v.userId === alex.userId ? 'alex' : v.userId}:${v.source}`))
       + `  wes: ${ws2.sharing ?? ''} ${ws2.mediaError ?? ''}  alex: ${as2.sharing ?? ''} ${as2.mediaError ?? ''}`);
   await sleep(1500);
+  // Mara has pressed nothing yet: both shares are cards, and neither is on her stage.
+  const maraSubs = await mara.subscriptions();
+  check('mara sees both shares as cards, with nothing subscribed and nothing big',
+    maraSubs[`${alex.userId}:screen_share`] === false && maraSubs[`${wes.userId}:screen_share`] === false &&
+      (await mara.evaluate(`document.querySelector('video.voice-focus-video') === null`)),
+    JSON.stringify(maraSubs));
+  check('mara presses Watch on both', (await mara.clickWatch(`Alex's screen`)) && (await mara.clickWatch(`Wes's screen`)));
+  await mara.until(`window.__voice.getSnapshot().videos.filter((v) => v.source === 'screen' && v.state === 'playing').length === 2`, 15_000);
+  // Alex's earlier share ended, so wes and alex each get a fresh card for the new one.
+  check('the second share is a new card for wes: pressing Watch once did not carry over',
+    (await wes.streamState(alex.userId, 'screen')) === 'waiting');
+  check('wes and alex press Watch on each other\'s screens', (await wes.clickWatch(`Alex's screen`)) && (await alex.clickWatch(`Wes's screen`)));
+  await sleep(2500);
   const [maraSeesAlex, maraSeesWes] = await Promise.all([mara.watch(alexScreen), mara.watch(wesScreen)]);
   check('mara decodes both screens at once', maraSeesAlex.frames > 5 && maraSeesWes.frames > 5,
     `alex +${maraSeesAlex.frames} frames ${maraSeesAlex.width}px, wes +${maraSeesWes.frames} frames ${maraSeesWes.width}px`);

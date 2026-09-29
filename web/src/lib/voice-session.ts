@@ -43,6 +43,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
+import { screenGain, shouldSubscribe, streamState, type PublicationFacts, type StreamState } from './stream-watch';
 import { loadSound, soundGain } from './sounds';
 import { HOLD_MS, MicGate, OutputMix, audioContext, sounds, withHold } from './voice-audio';
 import { MicProcessor, isVoiceEffect, needsProcessor, type MicChoice } from './voice-effects';
@@ -88,6 +89,13 @@ export interface VoiceVideo {
   sid: string;
   /** A screen that carries sound, so its volume slider has something to turn. Always false for a camera. */
   sound: boolean;
+  /**
+   * Someone else's picture starts as a card with a Watch button and nothing
+   * fetched; ours is always playing. See `stream-watch.ts`.
+   */
+  state: StreamState;
+  /** This viewer turned the screen's sound on. It starts off, for every new share. */
+  soundOn: boolean;
 }
 
 /** Why this device's own screen share ended without Stop being pressed, and when. */
@@ -319,6 +327,10 @@ export class VoiceSession {
   private frameWatch = new Map<string, FrameWatch>();
   /** Cameras this device has asked not to fetch, by user id. Until undone or the call ends. */
   private readonly hiddenCameras = new Set<string>();
+  /** Pictures this device pressed Watch on, as "<userId>:camera" or "<userId>:screen". Nothing else is fetched. */
+  private readonly watching = new Set<string>();
+  /** Screens whose sound this device turned on, by user id. Off again when the share ends. */
+  private readonly screenSoundOn = new Set<string>();
   /** True while our own Stop is taking the share down, so that is not reported as the share dying. */
   private stoppingShare = false;
   /** Set when the screen track itself ended (the window closed, the browser's own Stop bar). */
@@ -447,8 +459,11 @@ export class VoiceSession {
       if (stale()) return;
       this.update({ can: grant.can });
 
-      await room.connect(grant.url, grant.token);
+      // Nothing is fetched on its own: voices are subscribed by hand (see
+      // `syncSubscriptions`) and pictures wait for Watch.
+      await room.connect(grant.url, grant.token, { autoSubscribe: false });
       if (stale()) return;
+      this.syncSubscriptions();
 
       if (grant.can.speak) await this.publishMicrophone(room);
       if (stale()) return;
@@ -492,6 +507,8 @@ export class VoiceSession {
     this.previousLoss = null;
     this.frameWatch = new Map();
     this.hiddenCameras.clear();
+    this.watching.clear();
+    this.screenSoundOn.clear();
     this.stoppingShare = false;
     this.shareEnded = null;
     this.stopWatching?.();
@@ -710,10 +727,82 @@ export class VoiceSession {
    * the bandwidth of a picture nobody here wants.
    */
   setCameraHidden(userId: string, hidden: boolean): void {
-    if (hidden) this.hiddenCameras.add(userId);
-    else this.hiddenCameras.delete(userId);
-    this.room?.remoteParticipants.get(userId)?.getTrackPublication(Track.Source.Camera)?.setSubscribed(!hidden);
+    if (hidden) {
+      this.hiddenCameras.add(userId);
+      this.watching.delete(`${userId}:camera`);
+    } else {
+      // Show is a click on a picture, so it counts as Watch.
+      this.hiddenCameras.delete(userId);
+      this.watching.add(`${userId}:camera`);
+    }
+    this.syncSubscriptions();
     this.refreshVideos();
+  }
+
+  /**
+   * Start fetching one person's camera or screen. Until this is pressed the
+   * picture is not downloaded at all, and a screen's sound is not either.
+   * The sound starts off; `setScreenSound` turns it on.
+   */
+  watch(userId: string, source: VoiceVideo['source']): void {
+    if (userId === this.userId) return;
+    if (source === 'camera') this.hiddenCameras.delete(userId);
+    this.watching.add(`${userId}:${source}`);
+    if (source === 'screen') this.screenSoundOn.delete(userId);
+    this.syncSubscriptions();
+    this.refreshVideos();
+  }
+
+  /** Back to the card: the picture and the screen's sound stop arriving. */
+  stopStream(userId: string, source: VoiceVideo['source']): void {
+    this.watching.delete(`${userId}:${source}`);
+    if (source === 'screen') this.screenSoundOn.delete(userId);
+    this.syncSubscriptions();
+    this.refreshVideos();
+  }
+
+  /** Hear a screen's sound, or not. Only this device changes. It follows the saved volume once on. */
+  setScreenSound(userId: string, on: boolean): void {
+    if (on) this.screenSoundOn.add(userId);
+    else this.screenSoundOn.delete(userId);
+    this.mix?.setVolumeFor(screenSound(userId), screenGain(voicePrefs.get().volumes[screenSound(userId)] ?? 1, on));
+    this.refreshVideos();
+  }
+
+  /**
+   * Fetch what this device should be fetching and nothing else. Safe to call
+   * as often as anything changes: it only talks to the server about a
+   * publication whose answer differs from what it was already told.
+   */
+  private syncSubscriptions(): void {
+    for (const participant of this.room?.remoteParticipants.values() ?? []) {
+      for (const publication of participant.trackPublications.values()) {
+        this.syncSubscription(publication, participant.identity);
+      }
+    }
+  }
+
+  private syncSubscription(publication: RemoteTrackPublication, userId: string): void {
+    const source = publication.source;
+    const facts: PublicationFacts = {
+      source:
+        source === Track.Source.Microphone
+          ? 'microphone'
+          : source === Track.Source.Camera
+            ? 'camera'
+            : source === Track.Source.ScreenShare
+              ? 'screen'
+              : source === Track.Source.ScreenShareAudio
+                ? 'screen-audio'
+                : 'other',
+      kind: publication.kind === Track.Kind.Video ? 'video' : 'audio',
+    };
+    const want = shouldSubscribe(facts, {
+      camera: this.watching.has(`${userId}:camera`),
+      screen: this.watching.has(`${userId}:screen`),
+      cameraHidden: this.hiddenCameras.has(userId),
+    });
+    if (publication.isDesired !== want) publication.setSubscribed(want);
   }
 
   /** Show one person's camera or screen in a <video>. Returns the undo. */
@@ -765,7 +854,7 @@ export class VoiceSession {
         ) {
           hiddenCameras.push(participant.identity);
         }
-        if (publication.kind !== Track.Kind.Video || !publication.track || publication.isMuted) continue;
+        if (publication.kind !== Track.Kind.Video || publication.isMuted) continue;
         const source =
           publication.source === Track.Source.ScreenShare
             ? 'screen'
@@ -773,8 +862,24 @@ export class VoiceSession {
               ? 'camera'
               : null;
         if (!source) continue;
+        const own = participant === room.localParticipant;
+        // A hidden camera is not offered: it has its own line on the person's tile.
+        if (!own && source === 'camera' && this.hiddenCameras.has(participant.identity)) continue;
+        const state = own
+          ? publication.track
+            ? 'playing'
+            : null
+          : streamState({ watching: this.watching.has(`${participant.identity}:${source}`), hasTrack: Boolean(publication.track) });
+        if (!state) continue;
         const sound = source === 'screen' && Boolean(participant.getTrackPublication(Track.Source.ScreenShareAudio)?.track);
-        videos.push({ userId: participant.identity, source, sid: publication.trackSid, sound });
+        videos.push({
+          userId: participant.identity,
+          source,
+          sid: publication.trackSid,
+          sound,
+          state,
+          soundOn: sound && this.screenSoundOn.has(participant.identity),
+        });
       }
     }
     this.update({
@@ -1011,7 +1116,10 @@ export class VoiceSession {
     for (const person of this.room?.remoteParticipants.values() ?? []) {
       const volume = now.volumes[person.identity] ?? 1;
       this.mix?.setVolumeFor(person.identity, volume);
-      this.mix?.setVolumeFor(screenSound(person.identity), now.volumes[screenSound(person.identity)] ?? 1);
+      this.mix?.setVolumeFor(
+        screenSound(person.identity),
+        screenGain(now.volumes[screenSound(person.identity)] ?? 1, this.screenSoundOn.has(person.identity)),
+      );
       this.mix?.setVolumeFor(boardSound(person.identity), volume * now.soundboardVolume);
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
@@ -1263,7 +1371,11 @@ export class VoiceSession {
         const speaker = voicePrefs.get().outputDeviceId;
         if (speaker) void this.mix.setOutputDevice(speaker);
       }
-      const volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
+      let volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
+      // A screen's sound arrives silent. The speaker button on its tile is what turns it up.
+      if (publication.source === Track.Source.ScreenShareAudio) {
+        volume = screenGain(volume, this.screenSoundOn.has(participant.identity));
+      }
       const voice = publication.source === Track.Source.Microphone;
       this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume, voice);
       // A screen's sound arriving is what puts a volume slider on its tile.
@@ -1278,12 +1390,26 @@ export class VoiceSession {
     // Someone turning a camera on while it is hidden here: do not fetch it.
     // Either way the list of hidden cameras may have changed.
     room.on(RoomEvent.TrackPublished, (publication, participant) => {
-      if (publication.source === Track.Source.Camera && this.hiddenCameras.has(participant.identity)) {
-        publication.setSubscribed(false);
-      }
+      this.syncSubscription(publication, participant.identity);
       this.refreshVideos();
     });
-    room.on(RoomEvent.TrackUnpublished, () => this.refreshVideos());
+    // A share that ended is over: the next one from the same person is a new
+    // card, and its sound starts off again.
+    room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        this.watching.delete(`${participant.identity}:screen`);
+        this.screenSoundOn.delete(participant.identity);
+      }
+      if (publication.source === Track.Source.Camera) this.watching.delete(`${participant.identity}:camera`);
+      this.refreshVideos();
+    });
+    // People already in the call when we arrive, and people arriving after.
+    room.on(RoomEvent.ParticipantConnected, () => this.syncSubscriptions());
+    room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      this.watching.delete(`${participant.identity}:camera`);
+      this.watching.delete(`${participant.identity}:screen`);
+      this.screenSoundOn.delete(participant.identity);
+    });
 
     // Our own share ending without our Stop. The track's own "ended" comes
     // from the window closing or the browser's Stop bar; LiveKit answers it
@@ -1348,6 +1474,7 @@ export class VoiceSession {
         reports.push(report);
         // A screen paused because its tile is out of sight is not a stalled one.
         if (publication.source !== Track.Source.ScreenShare || !publication.isEnabled) continue;
+        if (!this.watching.has(`${participant.identity}:screen`)) continue;
         const inbound = inboundVideo(report);
         if (!inbound) continue;
         const now = Date.now();
@@ -1530,6 +1657,21 @@ export class VoiceSession {
         const report = await publication.track?.getRTCStatsReport();
         const inbound = report ? inboundVideo(report) : null;
         if (inbound) result[`${participant.identity}:${source}`] = inbound;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Every remote publication and whether this device is receiving it, by
+   * "<userId>:<source>". What the click-to-watch check reads to prove that
+   * nothing is fetched before Watch.
+   */
+  debugSubscriptions(): Record<string, boolean> {
+    const result: Record<string, boolean> = {};
+    for (const participant of this.room?.remoteParticipants.values() ?? []) {
+      for (const publication of participant.trackPublications.values()) {
+        result[`${participant.identity}:${publication.source}`] = publication.isSubscribed;
       }
     }
     return result;
