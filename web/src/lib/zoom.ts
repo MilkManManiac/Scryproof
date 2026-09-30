@@ -49,3 +49,29 @@ export function zoomAround(view: View, next: number, at: { x: number; y: number 
 export function wheelFactor(deltaY: number): number {
   return Math.exp(-deltaY * 0.0022);
 }
+
+/**
+ * The size a picture is drawn at inside a box with `object-fit: contain`:
+ * as big as fits, larger or smaller than its own size.
+ */
+export function contained(picture: Size, box: Size): Size {
+  if (picture.width === 0 || picture.height === 0) return box;
+  const k = Math.min(box.width / picture.width, box.height / picture.height);
+  return { width: picture.width * k, height: picture.height * k };
+}
+
+/**
+ * Keep a zoomed picture over its box. `shown` is its size at scale 1. It can
+ * be moved only as far as it overhangs, so an edge never comes in past the
+ * box's edge, and a side that does not overhang stays centred.
+ */
+export function clampOffset(view: View, shown: Size, box: Size): View {
+  const slackX = Math.max(0, (shown.width * view.scale - box.width) / 2);
+  const slackY = Math.max(0, (shown.height * view.scale - box.height) / 2);
+  // `|| 0` turns the -0 that clamping a small negative to zero leaves into 0.
+  return {
+    scale: view.scale,
+    x: Math.min(slackX, Math.max(-slackX, view.x)) || 0,
+    y: Math.min(slackY, Math.max(-slackY, view.y)) || 0,
+  };
+}

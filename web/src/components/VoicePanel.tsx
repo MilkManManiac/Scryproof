@@ -27,6 +27,8 @@ import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
 import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
+import { useStreamZoom, ZOOM_STEP } from '../lib/useStreamZoom';
+import { MAX_SCALE } from '../lib/zoom';
 import { VolumeMenu, spotOf, type MenuSpot } from './VolumeMenu';
 import { VoiceModItems } from './VoiceModItems';
 import { CallQuality } from './CallQuality';
@@ -318,6 +320,7 @@ export function VoiceStage(
     tile.kind === 'screen' ? (tile.video.state === 'playing' ? tile.key : null) : tile.camera ? videoKey(tile.camera) : null;
   const big = focused === null ? null : (tiles.find((tile) => focusKeyOf(tile) === focused) ?? null);
   const bigVideo = big ? (big.kind === 'screen' ? big.video : (big.camera ?? null)) : null;
+  const zoom = useStreamZoom(picture, bigVideo?.sid);
 
   const labelOf = (video: VoiceVideo): string => {
     const own = video.userId === selfId;
@@ -534,8 +537,18 @@ export function VoiceStage(
 
       {big && bigVideo ? (
         <div className="voice-focus" ref={focusFrame}>
-          <div className="voice-focus-frame">
-            <VideoView key={bigVideo.sid} video={bigVideo} className="voice-focus-video" onPicture={setPicture} />
+          <div
+            ref={zoom.frameRef}
+            className={`voice-focus-frame${zoom.zoomed ? ' zoomed' : ''}${zoom.dragging ? ' dragging' : ''}`}
+            title={zoom.zoomed ? undefined : 'Scroll or double-click to zoom in'}
+            {...zoom.handlers}
+          >
+            <div
+              className="voice-focus-zoom"
+              style={{ transform: `translate(${zoom.view.x}px, ${zoom.view.y}px) scale(${zoom.view.scale})` }}
+            >
+              <VideoView key={bigVideo.sid} video={bigVideo} className="voice-focus-video" onPicture={setPicture} />
+            </div>
           </div>
           <div className="voice-focus-bar">
             <span className="voice-focus-label">{labelOf(bigVideo)}</span>
@@ -575,6 +588,37 @@ export function VoiceStage(
                 Hide for me
               </button>
             ) : null}
+            <span className="voice-focus-zoom-controls">
+              <button
+                type="button"
+                className="icon-button"
+                title="Zoom out"
+                aria-label="Zoom out"
+                disabled={!zoom.zoomed}
+                onClick={() => zoom.zoomBy(1 / ZOOM_STEP)}
+              >
+                &minus;
+              </button>
+              <button
+                type="button"
+                className="link-button voice-focus-zoom-level"
+                title={zoom.zoomed ? 'Back to the whole picture' : 'Scroll on the picture to zoom, drag to move around'}
+                disabled={!zoom.zoomed}
+                onClick={zoom.reset}
+              >
+                {Math.round(zoom.view.scale * 100)}%
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                title="Zoom in"
+                aria-label="Zoom in"
+                disabled={zoom.view.scale >= MAX_SCALE}
+                onClick={() => zoom.zoomBy(ZOOM_STEP)}
+              >
+                +
+              </button>
+            </span>
             <button
               type="button"
               className="icon-button"

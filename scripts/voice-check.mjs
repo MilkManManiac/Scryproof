@@ -457,6 +457,33 @@ async function main() {
     shared.frames > 5 && (await wes.evaluate(`Boolean(document.querySelector('video.voice-focus-video'))`)),
     `+${shared.frames} frames at ${shared.width}px wide${alexMedia.mediaError ? `, alex: ${alexMedia.mediaError}` : ''}`);
   await shoot(wes, 'focus');
+
+  // Zoom, driven with real mouse input through the browser, not faked events.
+  const zoomOf = `(() => { const layer = document.querySelector('.voice-focus-zoom'); const m = layer && getComputedStyle(layer).transform; if (!m || m === 'none') return { scale: 1, x: 0, y: 0 }; const [a, , , , e, f] = m.slice(7, -1).split(',').map(Number); return { scale: a, x: e, y: f }; })()`;
+  const frame = await wes.evaluate(`(() => { const r = document.querySelector('.voice-focus-frame').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width }; })()`);
+  const mouse = (type, x, y, extra = {}) => wes.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
+  await mouse('mouseWheel', frame.x + frame.width / 4, frame.y, { deltaX: 0, deltaY: -400 });
+  await sleep(300);
+  const zoomedIn = await wes.evaluate(zoomOf);
+  check('scrolling up on the big screen zooms in around the pointer',
+    zoomedIn.scale > 1.5 && zoomedIn.x < 0 && (await wes.evaluate(`document.querySelector('.voice-focus-zoom-level').textContent`)) !== '100%',
+    JSON.stringify(zoomedIn));
+  await mouse('mousePressed', frame.x, frame.y, { button: 'left', clickCount: 1 });
+  await mouse('mouseMoved', frame.x + 60, frame.y, { button: 'left' });
+  await mouse('mouseReleased', frame.x + 60, frame.y, { button: 'left', clickCount: 1 });
+  await sleep(200);
+  const panned = await wes.evaluate(zoomOf);
+  check('dragging moves the zoomed picture', Math.abs(panned.x - zoomedIn.x - 60) < 2, `${zoomedIn.x} to ${panned.x}`);
+  await shoot(wes, 'focus-zoomed');
+  check('the percentage button puts the whole picture back',
+    (await wes.evaluate(`(() => { const b = document.querySelector('.voice-focus-zoom-level'); b.click(); return true; })()`)) &&
+      Boolean(await wes.until(`${zoomOf}.scale === 1`, 2000)));
+  check('the + button zooms in', (await wes.clickButton('Zoom in')) && Boolean(await wes.until(`${zoomOf}.scale > 1.4`, 2000)));
+  await mouse('mousePressed', frame.x, frame.y, { button: 'left', clickCount: 1 });
+  await mouse('mouseReleased', frame.x, frame.y, { button: 'left', clickCount: 1 });
+  await mouse('mousePressed', frame.x, frame.y, { button: 'left', clickCount: 2 });
+  await mouse('mouseReleased', frame.x, frame.y, { button: 'left', clickCount: 2 });
+  check('a double-click when zoomed goes back to the whole picture', Boolean(await wes.until(`${zoomOf}.scale === 1`, 2000)));
   // The speaker button turns the screen's sound on and back off; the fake screen carries sound.
   const soundOf = `window.__voice.getSnapshot().videos.find((v) => v.userId === '${alex.userId}' && v.source === 'screen')`;
   check('the screen has a sound to turn on, and it is off', await wes.evaluate(`${soundOf}?.sound === true && ${soundOf}?.soundOn === false`));

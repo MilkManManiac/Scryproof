@@ -2633,6 +2633,53 @@ video.mirrored {
   min-height: 0;
   position: relative;
 }
+/* Zoom (useStreamZoom): the frame stays put and clips; the layer inside it
+   is drawn bigger and moved. touch-action: none hands two fingers to the
+   pinch instead of to the page. */
+.voice-focus-frame {
+  overflow: hidden;
+  touch-action: none;
+}
+.voice-focus-frame.zoomed {
+  cursor: grab;
+}
+.voice-focus-frame.dragging {
+  cursor: grabbing;
+}
+.voice-focus-zoom {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  will-change: transform;
+}
+.voice-focus-frame.dragging .voice-focus-zoom {
+  user-select: none;
+}
+.voice-focus-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.voice-focus-zoom-controls .icon-button {
+  font-size: 17px;
+  line-height: 1;
+}
+.voice-focus-zoom-controls .icon-button:disabled,
+.voice-focus-zoom-level:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.voice-focus-zoom-level {
+  min-width: 46px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-focus-zoom-level:disabled {
+  opacity: 1;
+  color: var(--text-dim);
+  text-decoration: none;
+}
 .voice-focus-video {
   position: absolute;
   inset: 0;
