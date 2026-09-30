@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-29-trundle-pins',
+    date: '2026-09-29',
+    title: 'Pins on Trundle’s start and finish',
+    notes: [
+      'The two countries you are getting between each have a pin with their name on it, so a small one is easy to find even if you don’t know where it is.',
+      'The pins stay the same size when you zoom in or out.',
+    ],
+  },
+  {
     id: '2026-09-29-click-to-watch',
     date: '2026-09-29',
     title: 'Streams and cameras wait for a click, and start muted',
