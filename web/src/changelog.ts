@@ -22,11 +22,12 @@ export const CHANGELOG: readonly Release[] = [
   {
     id: '2026-09-30-whereabouts-lowball',
     date: '2026-09-30',
-    title: 'Two new games: Whereabouts and Lowball',
+    title: 'Two new games, and three Trundles a day',
     notes: [
       'Whereabouts: five street photos from somewhere in the world. Click the map where you think each was taken. The closer you are, the more points, up to 25,000 a day. Scroll on the photo to zoom in on signs and number plates.',
       'Lowball: five real US homes that sold recently. Look at the photos and the facts, then guess the price. Type it any way you like: 450k, $450,000, 1.2m.',
       'Both are in the games folder, or type /whereabouts or /lowball. Everyone gets the same five, new ones come at midnight, and your server has a board.',
+      'Trundle now has three routes a day instead of one. They are the 1 2 3 at the top; finish one and it offers the next. Your streak counts routes won in a row.',
     ],
   },
   {
