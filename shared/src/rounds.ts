@@ -32,6 +32,14 @@ export const LOWBALL = {
 
 export const ROUNDS = { whereabouts: WHEREABOUTS, lowball: LOWBALL } as const;
 
+/**
+ * Whether a game is out for people to play. Lowball waits for its homes:
+ * Redfin started turning the photo script away after seven (2026-09-30), and
+ * Wes chose to ship Whereabouts without it. Closed, its routes answer 404 and
+ * the app shows it nowhere.
+ */
+export const ROUNDS_OPEN: Record<RoundsGame, boolean> = { whereabouts: true, lowball: false };
+
 export const ROUND_MAX = 5000;
 export const ROUNDS_MAX = ROUND_MAX * 5;
 

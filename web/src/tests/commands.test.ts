@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
+import { ROUNDS_OPEN } from '@scryproof/shared';
 import { commandOffers, commandQueryAt, expandTextCommand, gameCommand, isPurdleCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 
@@ -39,8 +40,9 @@ describe('isPurdleCommand', () => {
     assert.equal(gameCommand('/degree'), 'thrice');
     assert.equal(gameCommand('/whereabouts'), 'whereabouts');
     assert.equal(gameCommand('/GeoGuesser'), 'whereabouts');
-    assert.equal(gameCommand('/lowball'), 'lowball');
-    assert.equal(gameCommand('/houses'), 'lowball');
+    // Lowball is not out yet (ROUNDS_OPEN): its commands open nothing until it is.
+    assert.equal(gameCommand('/lowball'), ROUNDS_OPEN.lowball ? 'lowball' : null);
+    assert.equal(gameCommand('/houses'), ROUNDS_OPEN.lowball ? 'lowball' : null);
     assert.equal(gameCommand('/shrug'), null);
     assert.equal(gameCommand('/cuntections now'), null);
     assert.equal(gameCommand('/tang-jump'), null);

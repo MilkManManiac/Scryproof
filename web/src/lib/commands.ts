@@ -16,7 +16,7 @@
  * 2026-09-22: "do a /Tang-jump and the character jumps across the screen".
  */
 
-import { BEE, LOWBALL, QUEENS, THRICE, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
+import { BEE, LOWBALL, QUEENS, ROUNDS_OPEN, THRICE, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
 
 export interface Character {
   /** What is typed: `/<id>-jump`. Also the sheet's file name. */
@@ -126,7 +126,9 @@ const GAME_COMMANDS: Record<string, Game> = {
 /** The daily game a command opens (`/purdle`, `/queenies`, ...). Null for anything else. */
 export function gameCommand(content: string): Game | null {
   const match = /^\/([a-z]+)$/i.exec(content.trim());
-  return (match && GAME_COMMANDS[match[1]!.toLowerCase()]) || null;
+  const game = (match && GAME_COMMANDS[match[1]!.toLowerCase()]) || null;
+  // A game not out yet opens nothing.
+  return game === 'lowball' && !ROUNDS_OPEN.lowball ? null : game;
 }
 
 /** A message that is a spawn command, or null. Exact: no other words. */
@@ -196,7 +198,9 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
     { key: 'travle', written: '/trundle', name: '/trundle', note: `open today's ${TRAVLE.name} (only you see it)` },
     { key: 'thrice', written: '/degree', name: '/degree', note: `open today's ${THRICE.name} (only you see it)` },
     { key: 'whereabouts', written: '/whereabouts', name: '/whereabouts', note: `open today's ${WHEREABOUTS.name} (only you see it)` },
-    { key: 'lowball', written: '/lowball', name: '/lowball', note: `open today's ${LOWBALL.name} (only you see it)` },
+    ...(ROUNDS_OPEN.lowball
+      ? [{ key: 'lowball', written: '/lowball', name: '/lowball', note: `open today's ${LOWBALL.name} (only you see it)` }]
+      : []),
     ...TEXT_COMMANDS.map((command) => ({
       key: `text:${command.name}`,
       written: `/${command.name}`,

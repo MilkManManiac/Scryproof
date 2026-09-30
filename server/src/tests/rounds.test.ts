@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { kmBetween, lowballPoints, parsePrice, priceText, roundsDay, roundsShare, wherePoints } from '@scryproof/shared';
+import { kmBetween, lowballPoints, parsePrice, priceText, ROUNDS_OPEN, roundsDay, roundsShare, wherePoints } from '@scryproof/shared';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-rounds-'));
 process.env.DATA_DIR = dataDir;
@@ -124,6 +124,8 @@ describe('rounds routes', () => {
     app.inject({ method: 'POST', url, headers: { cookie: people[who]!.cookie }, payload });
 
   before(async () => {
+    // Played here whether or not it is out yet; one test below closes it on purpose.
+    ROUNDS_OPEN.lowball = true;
     await initDatabase();
     await runMigrations(MIGRATIONS_FOLDER);
     app = await buildApp();
@@ -201,6 +203,19 @@ describe('rounds routes', () => {
     const board = (await get('flop', `/api/rounds/whereabouts/servers/${serverId}`)).json();
     assert.deepEqual(board.finishes, [{ userId: people.ace!.id, score: 5000 + 4 * degree, points: [5000, degree, degree, degree, degree] }]);
     assert.equal(board.standings[0].total, 5000 + 4 * degree);
+  });
+
+  it('a game that is not out is not there: no day, no board, no photos', async () => {
+    const was = ROUNDS_OPEN.lowball;
+    ROUNDS_OPEN.lowball = false;
+    try {
+      assert.equal((await get('flop', '/api/rounds/lowball/today')).statusCode, 400);
+      assert.equal((await post('flop', '/api/rounds/lowball/guess', { guess: 100_000 })).statusCode, 400);
+      assert.equal((await get('flop', `/api/rounds/lowball/servers/${serverId}`)).statusCode, 400);
+      assert.equal((await get('flop', `/api/rounds/photo/h_${hex(0)}_1.jpg`)).statusCode, 404);
+    } finally {
+      ROUNDS_OPEN.lowball = was;
+    }
   });
 
   it('lowball: the price only with the guess, and the photos only of homes reached', async () => {

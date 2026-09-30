@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { BEE, BEE_RANKS, LOWBALL, PURDLE, QUEENS, ROUNDS_MAX, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS, queensClock } from '@scryproof/shared';
+import { BEE, BEE_RANKS, LOWBALL, PURDLE, QUEENS, ROUNDS_MAX, ROUNDS_OPEN, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS, queensClock } from '@scryproof/shared';
 import { createPortal } from 'react-dom';
 
 import { bee } from '../lib/bee';
@@ -50,7 +50,7 @@ function roundsStanding(store: { get: () => { today: { rounds: { points: number 
   return { fresh: guessed === 0, done: false, says: guessed === 0 ? 'Not played' : `On round ${guessed + 1} of ${WHEREABOUTS.rounds}` };
 }
 
-const GAMES: readonly Game[] = [
+const ALL_GAMES: readonly Game[] = [
   {
     id: 'purdle',
     name: 'Purdle',
@@ -199,6 +199,9 @@ const GAMES: readonly Game[] = [
     standing: () => roundsStanding(lowball),
   },
 ];
+
+/** The ones that are out. */
+const GAMES = ALL_GAMES.filter((game) => game.id !== 'lowball' || ROUNDS_OPEN.lowball);
 
 /** Every game's state, as one thing to subscribe to. */
 function subscribeAll(listener: () => void): () => void {

@@ -16,7 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { nextPurdleAt, roundsDay, roundsStanding } from '@scryproof/shared';
+import { nextPurdleAt, ROUNDS_OPEN, roundsDay, roundsStanding } from '@scryproof/shared';
 import type { RoundsFinish, RoundsGame, RoundsStanding, RoundsToday } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
@@ -30,7 +30,8 @@ import { itemsFor, pointsFor, readGuess, shown } from '../rounds/rounds.js';
 import { PHOTO_FOLDER, STOCK } from '../rounds/stock.js';
 import { requireMember } from '../services/permissions.js';
 
-const Game = z.enum(['whereabouts', 'lowball']);
+/** A game that is out; one that is not is not there. */
+const Game = z.enum(['whereabouts', 'lowball']).refine((game) => ROUNDS_OPEN[game]);
 
 async function scoresOf(game: RoundsGame, userIds: string[]): Promise<Map<string, Map<number, number>>> {
   const byUser = new Map<string, Map<number, number>>(userIds.map((id) => [id, new Map()]));
@@ -82,7 +83,7 @@ function readPhotoName(file: string): { game: RoundsGame; id: string } | null {
   const place = /^(g_[0-9a-f]{12})\.jpg$/.exec(file);
   if (place) return { game: 'whereabouts', id: place[1]! };
   const home = /^(h_[0-9a-f]{12})_[1-9]\.jpg$/.exec(file);
-  if (home) return { game: 'lowball', id: home[1]! };
+  if (home && ROUNDS_OPEN.lowball) return { game: 'lowball', id: home[1]! };
   return null;
 }
 

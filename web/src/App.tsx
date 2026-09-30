@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Permission } from '@scryproof/shared';
+import { Permission, ROUNDS_OPEN } from '@scryproof/shared';
 import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
@@ -468,7 +468,7 @@ function Shell() {
       <TravleGate />
       <ThriceGate />
       <WhereaboutsGate />
-      <LowballGate />
+      {ROUNDS_OPEN.lowball ? <LowballGate /> : null}
       </div>
 
       {channelSettings && server && channel ? (
