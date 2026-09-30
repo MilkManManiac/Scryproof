@@ -161,7 +161,7 @@ export type ServerEvent =
   /** Someone who shares this server found a word in today's bee. Where that puts them, never the word. */
   | { t: 'bee_score'; d: { serverId: Snowflake; day: number; userId: Snowflake; score: number; words: number; rank: number } }
   /** Someone who shares this server finished one of the other daily games. That they did, and nothing of how. */
-  | { t: 'game_done'; d: { game: 'queens' | 'travle' | 'thrice'; serverId: Snowflake; day: number; userId: Snowflake } }
+  | { t: 'game_done'; d: { game: 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball'; serverId: Snowflake; day: number; userId: Snowflake } }
   /*
    * There was a `voice_key` event here, carrying a key this server had
    * generated. It is gone. A server that makes the key has the key, which

@@ -2,7 +2,7 @@
  * The state of a daily game in the app: whether it is open, your day as the
  * server last told it, and news of other people finishing. Purdle,
  * Cuntections and the bee each have their own, written before there were
- * six; Queefs, Travhole and Threeway are made from this.
+ * six; Queefs, Travhole, Threeway, Whereabouts and Lowball are made from this.
  */
 
 import { api } from './api';
@@ -72,3 +72,5 @@ function daily<Today extends { nextAt: string }>(fetchToday: () => Promise<Today
 export const queens = daily(() => api.queens.today());
 export const travle = daily(() => api.travle.today());
 export const thrice = daily(() => api.thrice.today());
+export const whereabouts = daily(() => api.whereabouts.today());
+export const lowball = daily(() => api.lowball.today());

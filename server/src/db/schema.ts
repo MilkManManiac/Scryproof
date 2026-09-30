@@ -1111,7 +1111,43 @@ export const thricePlays = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.day] }), index('thrice_plays_day_idx').on(table.day)],
 );
 
+/**
+ * Which five photos a day of Whereabouts or Lowball got, picked the first
+ * time that day is opened and kept. `items` are ids from the game's stock
+ * (`server/src/rounds/stock.ts`).
+ */
+export const roundsDays = pgTable(
+  'rounds_days',
+  {
+    game: text('game').notNull(),
+    day: integer('day').notNull(),
+    items: jsonb('items').$type<string[]>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.game, table.day] })],
+);
+
+/** One person's Whereabouts or Lowball for one day: a guess for each round played. */
+export const roundsPlays = pgTable(
+  'rounds_plays',
+  {
+    game: text('game').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    /** Whereabouts: `{ lat, lng }` each. Lowball: a price in dollars each. */
+    guesses: jsonb('guesses').$type<unknown[]>().notNull(),
+    score: integer('score').notNull().default(0),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.game, table.userId, table.day] }),
+    index('rounds_plays_game_day_idx').on(table.game, table.day),
+  ],
+);
+
 export type QueensPlayRow = typeof queensPlays.$inferSelect;
+export type RoundsPlayRow = typeof roundsPlays.$inferSelect;
 export type TravlePlayRow = typeof travlePlays.$inferSelect;
 export type ThricePlayRow = typeof thricePlays.$inferSelect;
 export type CuntectionsPlayRow = typeof cuntectionsPlays.$inferSelect;

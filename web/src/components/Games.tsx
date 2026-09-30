@@ -10,12 +10,12 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { BEE, BEE_RANKS, PURDLE, QUEENS, THRICE, THRICE_MAX, TRAVLE, queensClock } from '@scryproof/shared';
+import { BEE, BEE_RANKS, LOWBALL, PURDLE, QUEENS, ROUNDS_MAX, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS, queensClock } from '@scryproof/shared';
 import { createPortal } from 'react-dom';
 
 import { bee } from '../lib/bee';
 import { cuntections } from '../lib/cuntections';
-import { queens, thrice, travle } from '../lib/daily';
+import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { purdle } from '../lib/purdle';
 import { useStore } from '../state/store';
 
@@ -40,6 +40,15 @@ const glyph = (children: ReactNode) => (
     {children}
   </svg>
 );
+
+/** Where you stand in Whereabouts or Lowball: same five rounds, same words. */
+function roundsStanding(store: { get: () => { today: { rounds: { points: number | null }[]; score: number; state: 'playing' | 'done' } | null } }): Standing | null {
+  const today = store.get().today;
+  if (!today) return null;
+  if (today.state === 'done') return { fresh: false, done: true, says: `${today.score.toLocaleString('en-US')} of ${ROUNDS_MAX.toLocaleString('en-US')}` };
+  const guessed = today.rounds.filter((round) => round.points !== null).length;
+  return { fresh: guessed === 0, done: false, says: guessed === 0 ? 'Not played' : `On round ${guessed + 1} of ${WHEREABOUTS.rounds}` };
+}
 
 const GAMES: readonly Game[] = [
   {
@@ -160,6 +169,33 @@ const GAMES: readonly Game[] = [
       const fresh = closed === 0 && (today.questions[0]?.tries.length ?? 0) === 0;
       return { fresh, done: false, says: fresh ? 'Not played' : `On question ${Math.min(closed + 1, THRICE.questions)} of ${THRICE.questions}` };
     },
+  },
+  {
+    id: 'whereabouts',
+    name: WHEREABOUTS.name,
+    about: 'Where in the world is this street?',
+    glyph: glyph(
+      <>
+        <path d="M12 2.5c-3.9 0-7 3-7 6.9 0 4.9 7 12.1 7 12.1s7-7.2 7-12.1c0-3.9-3.1-6.9-7-6.9z" fill="#d9534f" />
+        <circle cx="12" cy="9.4" r="2.6" fill="#fff" opacity="0.9" />
+      </>,
+    ),
+    store: whereabouts,
+    standing: () => roundsStanding(whereabouts),
+  },
+  {
+    id: 'lowball',
+    name: LOWBALL.name,
+    about: 'What did this house go for?',
+    glyph: glyph(
+      <>
+        <path d="M3 11.5 12 4l9 7.5" fill="none" stroke="#5cb85c" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5.5 10v10h13V10" fill="#5cb85c" opacity="0.35" />
+        <text x="12" y="18.6" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#5cb85c">$</text>
+      </>,
+    ),
+    store: lowball,
+    standing: () => roundsStanding(lowball),
   },
 ];
 

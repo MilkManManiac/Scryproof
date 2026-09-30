@@ -15,3 +15,4 @@ export * from './queens.js';
 export * from './travle-countries.js';
 export * from './travle.js';
 export * from './thrice.js';
+export * from './rounds.js';

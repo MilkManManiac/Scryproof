@@ -87,6 +87,11 @@ export const config = {
   databaseUrl: optional('DATABASE_URL', ''),
   dataDir,
   pgliteDir: resolve(dataDir, 'pg'),
+  /**
+   * Whereabouts and Lowball photos: `geo/` and `homes/` under this. Not in the
+   * backups; `scripts/publish-game-photos.sh` puts them back from Wes's PC.
+   */
+  gamePhotosDir: resolve(dataDir, optional('GAME_PHOTOS_PATH', 'game-photos')),
 
   sessionSecret: sessionSecret(),
   sessionTtlDays: optionalNumber('SESSION_TTL_DAYS', 30),

@@ -53,6 +53,7 @@ import { BeeGate } from './components/Bee';
 import { QueensGate } from './components/Queens';
 import { TravleGate } from './components/Travle';
 import { ThriceGate } from './components/Thrice';
+import { LowballGate, WhereaboutsGate } from './components/Rounds';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
@@ -466,6 +467,8 @@ function Shell() {
       <QueensGate />
       <TravleGate />
       <ThriceGate />
+      <WhereaboutsGate />
+      <LowballGate />
       </div>
 
       {channelSettings && server && channel ? (

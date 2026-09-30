@@ -13,7 +13,7 @@ import type { Attachment, Channel, SealedFileRef } from '@scryproof/shared';
 import { ApiError, api } from '../lib/api';
 import { commandOffers, commandQueryAt, expandTextCommand, gameCommand, isInitCommand, spawnOf } from '../lib/commands';
 import { bee } from '../lib/bee';
-import { queens, thrice, travle } from '../lib/daily';
+import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { cuntections } from '../lib/cuntections';
 import { channelDrafts } from '../lib/drafts';
 import { purdle } from '../lib/purdle';
@@ -278,7 +278,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     const game = override ? null : gameCommand(typed);
     if (game) {
       updateText('');
-      ({ purdle, cuntections, bee, queens, travle, thrice })[game].open();
+      ({ purdle, cuntections, bee, queens, travle, thrice, whereabouts, lowball })[game].open();
       return;
     }
     // Before anything is cleared or sent. A channel this device has seen
@@ -644,7 +644,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
                 const game = gameCommand(offer.written);
                 if (event.key === 'Enter' && game) {
                   updateText('');
-                  ({ purdle, cuntections, bee, queens, travle, thrice })[game].open();
+                  ({ purdle, cuntections, bee, queens, travle, thrice, whereabouts, lowball })[game].open();
                   return;
                 }
                 complete(offer.written);

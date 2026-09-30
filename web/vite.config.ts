@@ -25,10 +25,15 @@ function buildStamp(): string {
  * cookies are SameSite and httpOnly, and a split origin in development would
  * mean testing a different security posture than the one we ship.
  */
-/** The API and the gateway, reached through whichever Vite server is up. */
+/**
+ * The API and the gateway, reached through whichever Vite server is up.
+ * API_PORT points a worktree's web server at that worktree's own API, so two
+ * branches can run side by side.
+ */
+const apiPort = process.env.API_PORT ?? '8787';
 const proxy: Record<string, ProxyOptions> = {
   '/api': {
-    target: 'http://127.0.0.1:8787',
+    target: `http://127.0.0.1:${apiPort}`,
     changeOrigin: false,
     // The API's CSRF check admits localhost:5173 in development. A
     // worktree photographing itself runs this server on another port,
@@ -44,7 +49,7 @@ const proxy: Record<string, ProxyOptions> = {
     },
   },
   '/gateway': {
-    target: 'ws://127.0.0.1:8787',
+    target: `ws://127.0.0.1:${apiPort}`,
     ws: true,
     changeOrigin: false,
   },
@@ -54,7 +59,7 @@ export default defineConfig({
   plugins: [react()],
   define: { __BUILD__: buildStamp() },
   server: {
-    port: 5173,
+    port: Number(process.env.WEB_PORT ?? 5173),
     strictPort: true,
     proxy,
   },

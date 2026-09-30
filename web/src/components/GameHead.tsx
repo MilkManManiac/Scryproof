@@ -9,9 +9,9 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { BEE, CUNTECTIONS, PURDLE, QUEENS, THRICE, THRICE_MAX, TRAVLE } from '@scryproof/shared';
+import { BEE, CUNTECTIONS, LOWBALL, PURDLE, QUEENS, ROUND_MAX, ROUNDS_MAX, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
 
-export type GameId = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice';
+export type GameId = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball';
 
 interface Rule {
   /** A square of the colour the line is about. */
@@ -83,6 +83,24 @@ const RULES: Record<GameId, { goal: string; rules: Rule[] }> = {
       { text: 'A wrong answer or a pass brings the next clue. Clues get easier.' },
       { text: 'After the third clue the answer is shown and you get nothing.' },
       { text: 'A typo is forgiven in a long answer, never in a short one. Capitals and “the” do not matter.' },
+    ],
+  },
+  whereabouts: {
+    goal: `${WHEREABOUTS.rounds} photos from somewhere in the world. Click where you think each was taken.`,
+    rules: [
+      { text: `Up to ${ROUND_MAX.toLocaleString('en-US')} a photo, ${ROUNDS_MAX.toLocaleString('en-US')} for a perfect day. On the spot is full marks; about 1,000 km off is half; another continent is next to nothing.` },
+      { text: 'Scroll or double-click the photo to zoom in on signs, plates and road lines. Drag to look around it.' },
+      { text: 'Zoom the map the same way. Click to drop your pin, click again to move it, then press Guess.' },
+      { text: 'One guess a photo. After it you see where it really was.' },
+    ],
+  },
+  lowball: {
+    goal: `${LOWBALL.rounds} US homes. Guess what each one sold for.`,
+    rules: [
+      { text: `Up to ${ROUND_MAX.toLocaleString('en-US')} a home, ${ROUNDS_MAX.toLocaleString('en-US')} for a perfect day. Within 2% is full marks.` },
+      { text: 'It goes by how far off you are, not by dollars: 10% off is about 3,700, a quarter off about 2,600, double or half about 600.' },
+      { text: 'Type it how you like: 450000, $450,000, 450k or 1.2m.' },
+      { text: 'Most are the price it actually sold for. A few are the asking price, and say so.' },
     ],
   },
 };

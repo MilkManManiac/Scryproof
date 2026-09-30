@@ -45,6 +45,7 @@ import { registerBeeRoutes } from './routes/bee.js';
 import { registerQueensRoutes } from './routes/queens.js';
 import { registerTravleRoutes } from './routes/travle.js';
 import { registerThriceRoutes } from './routes/thrice.js';
+import { registerRoundsRoutes } from './routes/rounds.js';
 import { registerHostRoutes } from './routes/host.js';
 
 declare module 'fastify' {
@@ -264,6 +265,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerQueensRoutes(app);
   await registerTravleRoutes(app);
   await registerThriceRoutes(app);
+  await registerRoundsRoutes(app);
   await registerHostRoutes(app);
 
   // This process serves the API and the gateway only. The built web client is

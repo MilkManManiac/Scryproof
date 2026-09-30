@@ -52,6 +52,11 @@ import type {
   QueensFinish,
   QueensStanding,
   QueensToday,
+  RoundsFinish,
+  RoundsGame,
+  RoundsStanding,
+  LowballToday,
+  WhereToday,
   ThriceFinish,
   ThriceStanding,
   ThriceToday,
@@ -132,6 +137,10 @@ const post = <T,>(path: string, body?: unknown) => request<T>('POST', path, body
 const patch = <T,>(path: string, body?: unknown) => request<T>('PATCH', path, body);
 const put = <T,>(path: string, body?: unknown) => request<T>('PUT', path, body);
 const del = <T,>(path: string) => request<T>('DELETE', path);
+
+/** Whereabouts and Lowball share their board. */
+const roundsServer = (game: RoundsGame, serverId: string) =>
+  get<{ day: number; finishes: RoundsFinish[]; standings: RoundsStanding[] }>(`/api/rounds/${game}/servers/${serverId}`);
 
 export const api = {
   auth: {
@@ -660,6 +669,18 @@ export const api = {
     answer: (said: string) => post<ThriceToday>('/api/thrice/answer', { said }),
     server: (serverId: string) =>
       get<{ day: number; finishes: ThriceFinish[]; standings: ThriceStanding[] }>(`/api/thrice/servers/${serverId}`),
+  },
+
+  whereabouts: {
+    today: () => get<WhereToday>('/api/rounds/whereabouts/today'),
+    guess: (at: { lat: number; lng: number }) => post<WhereToday>('/api/rounds/whereabouts/guess', { guess: at }),
+    server: (serverId: string) => roundsServer('whereabouts', serverId),
+  },
+
+  lowball: {
+    today: () => get<LowballToday>('/api/rounds/lowball/today'),
+    guess: (price: number) => post<LowballToday>('/api/rounds/lowball/guess', { guess: price }),
+    server: (serverId: string) => roundsServer('lowball', serverId),
   },
 
   /** The locked bytes of a sealed attachment, to be opened with the key in its message. */

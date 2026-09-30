@@ -37,6 +37,10 @@ describe('isPurdleCommand', () => {
     assert.equal(gameCommand('/queenies'), 'queens');
     assert.equal(gameCommand('/trundle'), 'travle');
     assert.equal(gameCommand('/degree'), 'thrice');
+    assert.equal(gameCommand('/whereabouts'), 'whereabouts');
+    assert.equal(gameCommand('/GeoGuesser'), 'whereabouts');
+    assert.equal(gameCommand('/lowball'), 'lowball');
+    assert.equal(gameCommand('/houses'), 'lowball');
     assert.equal(gameCommand('/shrug'), null);
     assert.equal(gameCommand('/cuntections now'), null);
     assert.equal(gameCommand('/tang-jump'), null);

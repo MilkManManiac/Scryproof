@@ -9136,3 +9136,290 @@ kbd {
 .purdle > * {
   flex-shrink: 0;
 }
+
+/* ------------------------------------------------ Whereabouts and Lowball */
+
+/* Five rounds of up to 5000. A round's colour goes by the same bands as the
+   squares a result is shared with (roundSquare in shared/src/rounds.ts). */
+.purdle.rd {
+  --rd-3: #538d4e;
+  --rd-2: #8aa644;
+  --rd-1: #b59f3b;
+  --rd-0: #6b3a3a;
+}
+.purdle.rd-where {
+  width: min(980px, 100%);
+}
+.purdle.rd-home {
+  width: min(760px, 100%);
+}
+.rd-pips .tw-pip {
+  font-size: 11px;
+}
+.tw-pip.b3,
+.tw-pip.b2,
+.tw-pip.b1,
+.tw-pip.b0 {
+  border-color: transparent;
+  color: #fff;
+}
+.tw-pip.b3,
+.tw-answer.b3 {
+  background: var(--rd-3);
+}
+.tw-pip.b2,
+.tw-answer.b2 {
+  background: var(--rd-2);
+}
+.tw-pip.b1,
+.tw-answer.b1 {
+  background: var(--rd-1);
+}
+.tw-pip.b0,
+.tw-answer.b0 {
+  background: var(--rd-0);
+}
+.rd-round {
+  align-self: stretch;
+  display: grid;
+  gap: 12px;
+  animation: arrive var(--t-arrive) var(--ease);
+}
+.rd-answer-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.88;
+}
+
+/* The photo. The frame stays put and clips; the layer inside it is drawn
+   bigger and moved (useStreamZoom), the same as a stream in a call. */
+.rd-photo {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.rd-where .rd-photo {
+  height: min(62dvh, 580px);
+}
+.rd-home .rd-photo {
+  height: min(50dvh, 440px);
+}
+.rd-photo-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+.rd-photo-frame.zoomed {
+  cursor: grab;
+}
+.rd-photo-frame.dragging {
+  cursor: grabbing;
+}
+.rd-photo-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  will-change: transform;
+}
+.rd-photo-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.rd-zoom {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+}
+.rd-zoom button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgb(10 18 26 / 0.78);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  color: #e9e4d8;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+}
+.rd-zoom button.level {
+  min-width: 50px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.rd-zoom button:hover:not(:disabled) {
+  background: rgb(30 48 64 / 0.95);
+}
+.rd-zoom button:disabled {
+  opacity: 0.55;
+}
+
+/* The map in the corner, GeoGuessr's way: small and see-through until you go
+   to it, then big enough to aim with. */
+.rd-minimap {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  width: 32%;
+  min-width: 220px;
+  display: grid;
+  gap: 6px;
+  opacity: 0.82;
+  transition:
+    width 200ms var(--ease),
+    opacity 200ms var(--ease);
+}
+.rd-minimap:hover,
+.rd-minimap:focus-within,
+.rd-minimap.open {
+  width: 64%;
+  opacity: 1;
+}
+.rd-minimap .tv-map {
+  border: 1px solid rgb(255 255 255 / 0.2);
+  box-shadow: 0 6px 22px rgb(0 0 0 / 0.55);
+}
+.rd-minimap-bar .button {
+  width: 100%;
+}
+.tv-map.picking svg {
+  cursor: crosshair;
+}
+.rd-map-toggle {
+  display: none;
+}
+/* No hover on a phone: the map is a button away, and fills the photo when open. */
+@media (hover: none) {
+  .rd-minimap {
+    display: none;
+  }
+  .rd-minimap.open {
+    display: grid;
+    left: 10px;
+    width: auto;
+    min-width: 0;
+  }
+  .rd-map-toggle {
+    display: block;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+  }
+}
+.tv-pin.rd-mine .tv-pin-head {
+  background: #3a7bd5;
+}
+.rd-line {
+  stroke: #fff4e8;
+  stroke-width: 2px;
+  opacity: 0.85;
+  vector-effect: non-scaling-stroke;
+}
+/* After the guess: the map with both pins beside the photo. */
+.rd-after {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.rd-after .rd-photo {
+  height: auto;
+  aspect-ratio: 3 / 2;
+}
+.rd-credit {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rd-credit a {
+  color: inherit;
+  text-decoration: underline;
+}
+@media (max-width: 640px) {
+  .rd-after {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Lowball: the home, its photos, its facts, a box for the price. */
+.rd-home-where {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 16px;
+}
+.rd-home-where span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rd-thumbs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.rd-thumb {
+  padding: 0;
+  aspect-ratio: 3 / 2;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  opacity: 0.65;
+  cursor: pointer;
+}
+.rd-thumb.on {
+  border-color: var(--accent);
+  opacity: 1;
+}
+.rd-thumb:hover {
+  opacity: 1;
+}
+.rd-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rd-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rd-facts span {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 13px;
+}
+.rd-price {
+  flex-wrap: wrap;
+}
+.rd-price-read {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rd-recap li {
+  grid-template-columns: 34px 1fr auto;
+}
+.rd-minimap .tv-map {
+  aspect-ratio: 12 / 5;
+}
+/* Where it really was, lit on the map after the guess. */
+.purdle.rd .tv-map .land.end {
+  fill: #4f7a58;
+}
