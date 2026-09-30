@@ -89,7 +89,7 @@ const RULES: Record<GameId, { goal: string; rules: Rule[] }> = {
   whereabouts: {
     goal: `${WHEREABOUTS.rounds} photos from somewhere in the world. Click where you think each was taken.`,
     rules: [
-      { text: `Up to ${ROUND_MAX.toLocaleString('en-US')} a photo, ${ROUNDS_MAX.toLocaleString('en-US')} for a perfect day. On the spot is full marks; about 1,000 km off is half; another continent is next to nothing.` },
+      { text: `Up to ${ROUND_MAX.toLocaleString('en-US')} a photo, ${ROUNDS_MAX.toLocaleString('en-US')} for a perfect day. On the spot is full marks; about 640 miles off is half; another continent is next to nothing.` },
       { text: 'Scroll or double-click the photo to zoom in on signs, plates and road lines. Drag to look around it.' },
       { text: 'Zoom the map the same way. Click to drop your pin, click again to move it, then press Guess.' },
       { text: 'One guess a photo. After it you see where it really was.' },

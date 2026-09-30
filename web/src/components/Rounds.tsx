@@ -40,6 +40,12 @@ export function LowballGate() {
 
 const thousands = (value: number) => value.toLocaleString('en-US');
 
+/** Scored in kilometres, shown in miles (Wes, 2026-09-30: "we go by freedom units here"). */
+function milesOff(km: number): string {
+  const miles = Math.round(km / 1.609344);
+  return `${thousands(miles)} ${miles === 1 ? 'mile' : 'miles'}`;
+}
+
 /** A round's colour, by the same bands as the shared squares. */
 const band = (points: number) => (points >= 4500 ? 'b3' : points >= 3000 ? 'b2' : points >= 1000 ? 'b1' : 'b0');
 
@@ -264,7 +270,7 @@ function Whereabouts({ today }: { today: WhereToday | null }) {
       renderRound={(props) => <WhereRoundView key={props.round.photo} {...props} outlines={outlines} />}
       recap={(round) => ({
         main: countryName(round.answer?.country ?? null) ?? 'Somewhere',
-        aside: round.km === null ? '' : `${thousands(Math.round(round.km))} km off`,
+        aside: round.km === null ? '' : `${milesOff(round.km)} off`,
       })}
     />
   );
@@ -376,7 +382,7 @@ function WhereRoundView({
           <span className="tw-answer-label">+{thousands(round.points!)}</span>
           <span className="tw-answer-text">
             {countryName(truth.country) ?? 'Out there'}
-            <span className="rd-answer-sub">{round.km !== null && round.km < 1 ? 'Right on it' : `${thousands(Math.round(round.km ?? 0))} km away`}</span>
+            <span className="rd-answer-sub">{round.km !== null && round.km < 1 ? 'Right on it' : `${milesOff(round.km ?? 0)} away`}</span>
           </span>
           <button type="button" ref={next} className="button inline" onClick={onNext}>
             {last ? 'See how you did' : 'Next place'}
