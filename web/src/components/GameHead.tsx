@@ -65,10 +65,11 @@ const RULES: Record<GameId, { goal: string; rules: Rule[] }> = {
     ],
   },
   travle: {
-    goal: 'Get from one country to the other by land, naming the countries in between.',
+    goal: `Three routes a day. For each, get from one country to the other by land, naming the countries in between.`,
     rules: [
       { text: 'Countries join where they share a land border. Name a chain of them that links the two ends.' },
-      { text: 'You can name them in any order. The day is won the moment the chain is whole.' },
+      { text: 'You can name them in any order. A route is won the moment the chain is whole.' },
+      { text: `The ${TRAVLE.legs} routes are the numbers at the top. Play them in any order; finishing one offers the next.` },
       { chip: 'good', text: 'Green: on a shortest way there.' },
       { chip: 'near', text: 'Amber: a way through it works, but is one or two borders longer.' },
       { chip: 'off', text: 'Red: no help.' },

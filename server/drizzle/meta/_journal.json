@@ -232,6 +232,13 @@
       "when": 1790738198578,
       "tag": "0032_rounds_games",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790739396803,
+      "tag": "0033_travle_three_a_day",
+      "breakpoints": true
     }
   ]
 }

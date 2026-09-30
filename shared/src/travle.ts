@@ -1,5 +1,8 @@
 /**
- * Travhole: Travle, one route a day for everyone here (Wes, 2026-09-29).
+ * Travhole: Travle, three routes a day for everyone here (Wes, 2026-09-29;
+ * three since 2026-09-30: "add 3 daily things of the trable things a day").
+ * Each is its own game, a "leg" in the code: `route` was already taken by
+ * the shortest way shown at the end.
  *
  * Two countries. Name the ones between them until there is a way from one to
  * the other over land borders. A guess is green if it is on a shortest way,
@@ -19,6 +22,8 @@ export const TRAVLE = {
   /** A day's shortest way has this many countries in between, at least and at most. */
   fewest: 2,
   most: 6,
+  /** Routes a day. Days before three came in have one, leg 0. */
+  legs: 3,
   /** #1. */
   firstDay: '2026-09-29',
 } as const;
@@ -116,9 +121,22 @@ export interface TravleStats {
   streak: number;
 }
 
-/** Your day, as the server has it. */
+/** How one of the day's routes stands, for the row of three. */
+export interface TravleLeg {
+  state: 'playing' | 'won' | 'lost';
+  /** Guesses made. */
+  said: number;
+  /** Guesses beyond the shortest way. */
+  extra: number;
+}
+
+/** One route of your day, as the server has it. */
 export interface TravleToday {
   day: number;
+  /** Which of the day's routes this is: 0, 1 or 2. */
+  leg: number;
+  /** All of the day's routes, this one included. */
+  legs: TravleLeg[];
   from: string;
   to: string;
   /** Countries between the two on a shortest way. */
@@ -132,42 +150,47 @@ export interface TravleToday {
   stats: TravleStats;
 }
 
+/** Someone's day in a server's board: each route they have finished, or null. */
 export interface TravleFinish {
   userId: string;
-  solved: boolean;
-  /** Guesses beyond the shortest way. */
-  extra: number;
+  legs: ({ solved: boolean; extra: number } | null)[];
 }
 
 export interface TravleStanding extends TravleStats {
   userId: string;
 }
 
-export function travleStats(days: ReadonlyMap<number, { solved: boolean; extra: number }>, today: number): TravleStats {
+/**
+ * Everything over every route finished. The streak is routes won in a row,
+ * back from the latest, broken by a loss or by a whole day not played.
+ */
+export function travleStats(finished: readonly { day: number; leg: number; solved: boolean; extra: number }[], today: number): TravleStats {
   let wins = 0;
   let perfect = 0;
   let extra = 0;
-  for (const entry of days.values()) {
+  for (const entry of finished) {
     if (!entry.solved) continue;
     wins += 1;
     extra += entry.extra;
     if (entry.extra === 0) perfect += 1;
   }
+  const latest = [...finished].sort((a, b) => b.day - a.day || b.leg - a.leg);
   let streak = 0;
-  let day = days.get(today)?.solved ? today : today - 1;
-  while (days.get(day)?.solved) {
+  let last = today;
+  for (const entry of latest) {
+    if (!entry.solved || entry.day < last - 1) break;
     streak += 1;
-    day -= 1;
+    last = entry.day;
   }
-  return { played: days.size, wins, perfect, streak, averageExtra: wins ? Math.round((extra / wins) * 10) / 10 : null };
+  return { played: finished.length, wins, perfect, streak, averageExtra: wins ? Math.round((extra / wins) * 10) / 10 : null };
 }
 
 const SQUARE: Record<TravleMark, string> = { good: '🟩', near: '🟧', off: '🟥' };
 
 /** What "Copy result" copies: a square a guess, never a country. */
-export function travleShare(today: Pick<TravleToday, 'day' | 'guesses' | 'between' | 'state' | 'allowed'>): string {
+export function travleShare(today: Pick<TravleToday, 'day' | 'leg' | 'guesses' | 'between' | 'state' | 'allowed'>): string {
   const squares = today.guesses.map((guess) => SQUARE[guess.mark]).join('');
   const extra = today.guesses.length - today.between;
   const how = today.state === 'won' ? (extra === 0 ? 'Perfect' : `+${extra}`) : `Lost (${today.guesses.length}/${today.allowed})`;
-  return `${TRAVLE.name} #${today.day}\n${squares} ${how}`;
+  return `${TRAVLE.name} #${today.day}, route ${today.leg + 1} of ${TRAVLE.legs}\n${squares} ${how}`;
 }

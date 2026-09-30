@@ -142,11 +142,12 @@ const GAMES: readonly Game[] = [
     standing() {
       const today = travle.get().today;
       if (!today) return null;
-      const said = today.guesses.length;
-      const extra = said - today.between;
-      if (today.state === 'won') return { fresh: false, done: true, says: extra === 0 ? 'Perfect' : `Made it, +${extra}` };
-      if (today.state === 'lost') return { fresh: false, done: true, says: 'Lost on the way' };
-      return { fresh: said === 0, done: false, says: said === 0 ? 'Not played' : `${today.allowed - said} guesses left` };
+      // Three routes a day: where you are across them, not in the one on screen.
+      const finished = today.legs.filter((leg) => leg.state !== 'playing').length;
+      const made = today.legs.filter((leg) => leg.state === 'won').length;
+      if (finished === today.legs.length) return { fresh: false, done: true, says: `Made ${made} of ${today.legs.length}` };
+      const fresh = today.legs.every((leg) => leg.said === 0);
+      return { fresh, done: false, says: fresh ? 'Not played' : `${finished} of ${today.legs.length} routes done` };
     },
   },
   {

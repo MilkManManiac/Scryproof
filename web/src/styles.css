@@ -9423,3 +9423,22 @@ kbd {
 .purdle.rd .tv-map .land.end {
   fill: #4f7a58;
 }
+
+/* Travhole's three routes a day, in a row at the top: green made it, red lost. */
+.tv-legs .tv-leg {
+  background: none;
+  cursor: pointer;
+}
+.tv-legs .tv-leg.won {
+  background: var(--tv-good);
+  border-color: transparent;
+  color: #fff;
+}
+.tv-legs .tv-leg.lost {
+  background: var(--tv-off);
+  border-color: transparent;
+  color: #fff;
+}
+.tv-legs .tv-leg.here {
+  box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--text);
+}

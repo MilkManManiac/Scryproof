@@ -658,8 +658,9 @@ export const api = {
   },
 
   travle: {
-    today: () => get<TravleToday>('/api/travle/today'),
-    guess: (code: string) => post<TravleToday>('/api/travle/guess', { code }),
+    /** The first route of the day not finished, or the one asked for. */
+    today: (leg?: number) => get<TravleToday>(leg === undefined ? '/api/travle/today' : `/api/travle/today?leg=${leg}`),
+    guess: (code: string, leg: number) => post<TravleToday>('/api/travle/guess', { code, leg }),
     server: (serverId: string) =>
       get<{ day: number; finishes: TravleFinish[]; standings: TravleStanding[] }>(`/api/travle/servers/${serverId}`),
   },

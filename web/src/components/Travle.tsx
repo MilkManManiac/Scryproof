@@ -1,6 +1,8 @@
 /**
- * Travhole: Travle, one route a day for everyone here (Wes, 2026-09-29).
- * Opened from the games folder in the rail, or `/travhole`.
+ * Travhole: Travle, three routes a day for everyone here (Wes, 2026-09-29;
+ * three since 2026-09-30). Opened from the games folder in the rail, or
+ * `/travhole`. The three sit in a row at the top; finishing one offers the
+ * next.
  *
  * Two countries lit on a map. Type the ones between them; each lights up
  * green, amber or red, and the map widens to take it in. The day is won when
@@ -71,6 +73,7 @@ function Travle({ today }: { today: TravleToday | null }) {
     <GameShell game="travle" name={TRAVLE.name} kind="tv" day={today?.day ?? null} toast={toast} loading={today === null} onClose={travle.close}>
       {today === null ? null : (
         <>
+          <Legs today={today} say={say} />
           <p className="tv-ask">
             Get from <b>{nameOf(today.from)}</b> to <b>{nameOf(today.to)}</b>
           </p>
@@ -83,13 +86,19 @@ function Travle({ today }: { today: TravleToday | null }) {
             load={api.travle.server}
             day={today.day}
             mine={today.state}
+            // Most routes made first; then fewer guesses to spare over them.
             finishes={(result) =>
               [...result.finishes]
-                .sort((a, b) => Number(b.solved) - Number(a.solved) || a.extra - b.extra)
-                .map((entry) => ({
+                .map((entry) => {
+                  const made = entry.legs.filter((leg) => leg?.solved);
+                  return { entry, made: made.length, extra: made.reduce((sum, leg) => sum + leg!.extra, 0) };
+                })
+                .sort((a, b) => b.made - a.made || a.extra - b.extra)
+                .map(({ entry, made }) => ({
                   userId: entry.userId,
-                  score: entry.solved ? (entry.extra === 0 ? 'Perfect' : `+${entry.extra}`) : 'Lost',
-                  lost: !entry.solved,
+                  note: entry.legs.map((leg) => (leg === null ? '·' : !leg.solved ? 'Lost' : leg.extra === 0 ? 'Perfect' : `+${leg.extra}`)).join('  '),
+                  score: `${made}/${TRAVLE.legs}`,
+                  lost: made === 0,
                 }))
             }
             columns={['Won', 'Perfect', 'Avg extra', 'Streak']}
@@ -202,7 +211,7 @@ function Guess({ today, say }: { today: TravleToday; say: Say }) {
     if (taken.has(code)) return say(code === today.from || code === today.to ? 'That is one of the two ends' : 'You already said that one');
     setBusy(true);
     try {
-      const next = await api.travle.guess(code);
+      const next = await api.travle.guess(code, today.leg);
       travle.apply(next);
       setTyped('');
       setPicked(0);
@@ -293,8 +302,38 @@ function Guesses({ today }: { today: TravleToday }) {
   );
 }
 
+/** The day's three routes: which you are on, and how the others went. A click goes to one. */
+function Legs({ today, say }: { today: TravleToday; say: Say }) {
+  const go = async (leg: number) => {
+    if (leg === today.leg) return;
+    try {
+      travle.apply(await api.travle.today(leg));
+    } catch (problem) {
+      say(problem instanceof ApiError ? problem.message : 'That did not go through. Try again.');
+    }
+  };
+  return (
+    <div className="tw-pips tv-legs" role="tablist" aria-label="Today's routes">
+      {today.legs.map((leg, at) => (
+        <button
+          key={at}
+          type="button"
+          role="tab"
+          aria-selected={at === today.leg}
+          className={`tw-pip tv-leg ${leg.state}${at === today.leg ? ' here' : ''}`}
+          title={leg.state === 'won' ? (leg.extra === 0 ? 'Perfect' : `Made it, +${leg.extra}`) : leg.state === 'lost' ? 'Lost on the way' : leg.said > 0 ? 'Started' : 'Not played'}
+          onClick={() => void go(at)}
+        >
+          {at + 1}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Result({ today, say }: { today: TravleToday; say: Say }) {
   const won = today.state === 'won';
+  const next = today.legs.findIndex((leg) => leg.state === 'playing');
   const extra = today.guesses.length - today.between;
   // The way you went, if you got there; a shortest way either way.
   const open = new Set(today.guesses.map((guess) => guess.code));
@@ -304,6 +343,11 @@ function Result({ today, say }: { today: TravleToday; say: Say }) {
   return (
     <div className="purdle-result">
       <div className="purdle-verdict">{won ? (extra === 0 ? 'Perfect' : `Made it, +${extra}`) : 'Lost on the way'}</div>
+      {next >= 0 ? (
+        <button type="button" className="button inline" onClick={() => void api.travle.today(next).then(travle.apply, () => undefined)}>
+          Next route ({next + 1} of {TRAVLE.legs})
+        </button>
+      ) : null}
       {won ? <Way label={same ? 'Your way, and none is shorter' : 'Your way'} codes={mine} /> : null}
       {won && same ? null : <Way label={won ? 'A shorter way' : 'A way there'} codes={shortest} />}
       <div className="purdle-stats">
@@ -315,7 +359,7 @@ function Result({ today, say }: { today: TravleToday; say: Say }) {
       <ResultActions
         share={travleShare(today)}
         nextAt={today.nextAt}
-        what="Next route"
+        what="New routes"
         say={say}
         onClose={travle.close}
         onTurnover={() => void travle.load()}

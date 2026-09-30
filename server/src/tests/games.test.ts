@@ -33,6 +33,7 @@ import {
   travleMark,
   travleRoute,
   travleShare,
+  travleStats,
 } from '@scryproof/shared';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-games-'));
@@ -136,8 +137,18 @@ describe('travhole rules', () => {
       { code: 'AND', mark: 'near' as const },
       { code: 'FRA', mark: 'good' as const },
     ];
-    assert.equal(travleShare({ day: 1, guesses, between: 2, allowed: 6, state: 'won' }), 'Trundle #1\n🟩🟧🟩 +1');
+    assert.equal(travleShare({ day: 1, leg: 1, guesses, between: 2, allowed: 6, state: 'won' }), 'Trundle #1, route 2 of 3\n🟩🟧🟩 +1');
     assert.equal(travleDay(new Date('2026-09-29T04:00:00Z')), 1);
+  });
+
+  it('counts a streak in routes won, broken by a loss or a day not played', () => {
+    const won = (day: number, leg: number) => ({ day, leg, solved: true, extra: 0 });
+    // Days before three routes had one; they still join the streak.
+    assert.equal(travleStats([won(1, 0), won(2, 0), won(3, 0), won(3, 1)], 3).streak, 4);
+    assert.equal(travleStats([won(1, 0), { day: 2, leg: 0, solved: false, extra: 3 }, won(2, 1)], 2).streak, 1);
+    assert.equal(travleStats([won(1, 0), won(3, 0)], 3).streak, 1, 'day 2 not played');
+    assert.equal(travleStats([won(1, 0), won(1, 1)], 4).streak, 0, 'nothing since');
+    assert.equal(travleStats([won(1, 0), won(1, 1)], 2).streak, 2, 'yesterday still counts');
   });
 });
 
@@ -249,9 +260,10 @@ describe('the three on the server', () => {
 
   it('travhole: counts guesses, wins when the ends are joined, loses when they run out', async () => {
     const day = travleDay();
-    await getDb().insert(travleDays).values({ day, from: 'PRT', to: 'DEU' });
+    await getDb().insert(travleDays).values({ day, leg: 0, from: 'PRT', to: 'DEU' });
     const open = (await get('ace', '/api/travle/today')).json();
-    assert.deepEqual([open.from, open.to, open.between, open.allowed, open.route], ['PRT', 'DEU', 2, 6, null]);
+    assert.deepEqual([open.leg, open.from, open.to, open.between, open.allowed, open.route], [0, 'PRT', 'DEU', 2, 6, null]);
+    assert.equal(open.legs.length, 3);
 
     assert.equal((await post('ace', '/api/travle/guess', { code: 'XXX' })).json().code, 'not_a_country');
     assert.equal((await post('ace', '/api/travle/guess', { code: 'PRT' })).json().code, 'an_end');
@@ -262,9 +274,22 @@ describe('the three on the server', () => {
     const won = (await post('ace', '/api/travle/guess', { code: 'FRA' })).json();
     assert.equal(won.state, 'won');
     assert.deepEqual(won.route, ['PRT', 'ESP', 'FRA', 'DEU']);
+    assert.deepEqual(won.legs[0], { state: 'won', said: 3, extra: 1 });
     assert.equal(won.stats.wins, 1);
     assert.equal(won.stats.averageExtra, 1);
-    assert.equal((await post('ace', '/api/travle/guess', { code: 'ITA' })).json().code, 'finished');
+    assert.equal((await post('ace', '/api/travle/guess', { code: 'ITA', leg: 0 })).json().code, 'finished');
+
+    // The day's next route opens by itself, between two other countries.
+    const second = (await get('ace', '/api/travle/today')).json();
+    assert.equal(second.leg, 1);
+    assert.equal(second.state, 'playing');
+    assert.notDeepEqual([second.from, second.to], ['PRT', 'DEU']);
+    const third = (await get('ace', '/api/travle/today?leg=2')).json();
+    assert.equal(third.leg, 2);
+    assert.notDeepEqual([third.from, third.to], [second.from, second.to]);
+    assert.equal((await get('ace', '/api/travle/today?leg=3')).statusCode, 400);
+    const firstAgain = (await get('ace', '/api/travle/today?leg=0')).json();
+    assert.equal(firstAgain.state, 'won', 'a finished route can be looked at again');
 
     for (const code of ['JPN', 'BRA', 'CHN', 'IND', 'USA']) await post('flop', '/api/travle/guess', { code });
     const lost = (await post('flop', '/api/travle/guess', { code: 'CAN' })).json();
@@ -275,8 +300,7 @@ describe('the three on the server', () => {
     assert.equal(board.finishes.length, 2);
     assert.deepEqual(board.finishes.find((entry: { userId: string }) => entry.userId === people.ace!.id), {
       userId: people.ace!.id,
-      solved: true,
-      extra: 1,
+      legs: [{ solved: true, extra: 1 }, null, null],
     });
   });
 

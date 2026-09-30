@@ -1065,11 +1065,17 @@ export const queensPlays = pgTable(
 );
 
 /** The two countries a day of Travhole got, picked the first time that day is opened and kept. */
-export const travleDays = pgTable('travle_days', {
-  day: integer('day').primaryKey(),
-  from: text('from_code').notNull(),
-  to: text('to_code').notNull(),
-});
+export const travleDays = pgTable(
+  'travle_days',
+  {
+    day: integer('day').notNull(),
+    /** Which of the day's routes: 0, 1, 2 (Wes, 2026-09-30: three a day). Days before that have only 0. */
+    leg: integer('leg').notNull().default(0),
+    from: text('from_code').notNull(),
+    to: text('to_code').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.day, table.leg] })],
+);
 
 /** One person's Travhole for one day: every country they named, and how it ended. */
 export const travlePlays = pgTable(
@@ -1079,13 +1085,15 @@ export const travlePlays = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     day: integer('day').notNull(),
+    /** Which of the day's routes (`travle_days.leg`). */
+    leg: integer('leg').notNull().default(0),
     guesses: jsonb('guesses').$type<string[]>().notNull(),
     solved: boolean('solved').notNull().default(false),
     /** Guesses beyond what the shortest way needs. */
     extra: integer('extra').notNull().default(0),
     finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('travle_plays_day_idx').on(table.day)],
+  (table) => [primaryKey({ name: 'travle_plays_user_id_day_leg_pk', columns: [table.userId, table.day, table.leg] }), index('travle_plays_day_idx').on(table.day)],
 );
 
 /** Which five questions a day of Threeway got, picked the first time that day is opened and kept. */
