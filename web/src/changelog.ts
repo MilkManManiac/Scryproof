@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-09-29-stream-zoom',
+    date: '2026-09-29',
+    title: 'Zoom in on a stream',
+    notes: [
+      "When someone's screen is big, scroll on it to zoom in where your mouse is, then drag to move around. On a phone, pinch.",
+      'Double-click to zoom in, and again to see the whole thing. The - and + by the full screen button do the same, and the percentage takes you back.',
+      'Only you see the zoom. The person sharing is not told and their stream does not change.',
+    ],
+  },
+  {
     id: '2026-09-29-trundle-pins',
     date: '2026-09-29',
     title: 'Pins on Trundle’s start and finish',
