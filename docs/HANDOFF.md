@@ -3599,7 +3599,7 @@ Proven: `npm run test:voice` ALL PASS (91), including five new zoom checks drive
 
 Released by stashing the role-mentions WIP (the section above, another session, untouched since 22:09) and popping it back afterward; its files are as it left them, uncommitted.
 
-## Whereabouts and Lowball (2026-09-29/30) — built on branch `games`, NOT deployed
+## Whereabouts and Lowball (2026-09-29/30) — Whereabouts and three Trundles LIVE 2026-09-30 01:07 ET, client 1790744706500
 
 Wes: "Also add a geoguesser and a house price guesser." His choices (asked): photos from **Panoramax** (open CC-BY-SA street-level photos) for the geo game, **real Redfin listings** for the house game, with the catch said out loud first (scraping is against Redfin's terms and the photos are the listing agents'; he accepted it at our small, private scale). Google Street View was never an option: it would put Google in every player's data path (non-negotiable 1) and the CSP blocks it.
 
@@ -3613,7 +3613,9 @@ Wes: "Also add a geoguesser and a house price guesser." His choices (asked): pho
 
 **Dev.** A second copy runs beside the main one: `web/vite.config.ts` now takes `API_PORT` and `WEB_PORT`, so the games worktree ran its API on 8788 and web on 5174.
 
-**Merging into main.** The role-mentions WIP (section above) also made a migration numbered 0032. Whichever lands second has to be regenerated as 0033: delete its `0032_*.sql`, its `meta/0032_snapshot.json` and its journal entry, then `cd server && npx drizzle-kit generate --name <name>`.
+**Merged and shipped 2026-09-30.** `games` fast-forwarded into main (dd972f1..c1eef8a). Before the deploy, the box was checked read-only: its primary keys were `travle_days_pkey` and `travle_plays_user_id_day_pk`, as 0033 expects, and it stood at migration 0031. After: 34 migrations applied, key now `travle_days_day_leg_pk`, 650 photos in `shared/data/game-photos/geo`, routes answer. Photo stock: 650 places from 144 countries (`scripts/geo-stock.py`, ~5,000 Panoramax requests, zero errors), biggest share Russia at 4.9%, 56% of them park4night campsite snapshots because that is most of what exists outside Europe; 163 rejected by eye off contact sheets, the rest by filters. Shots: `docs/shots/whereabouts.png`, `docs/shots/whereabouts-result.png`.
+
+The role-mentions WIP was set aside as a tagged stash for the deploy and put back after it, so the release built only committed code. Its migration is now `0034_role_mentions` (regenerated with drizzle-kit after 0032/0033 took the numbers), its changelog entry sits **below** the Whereabouts one (still dated 2026-09-29: redate it on the day it ships or `release.sh` refuses), and its `mentions.test.ts` ("turns @Role Name into a token") fails as it did before the merge, which is that work still in progress, not the merge.
 
 **Trundle, three routes a day** (Wes, 2026-09-30: "add 3 daily things of the trable things a day"; read as three Travhole routes a day). Same branch. `travle_days` and `travle_plays` gain `leg` (0-2) in their primary keys, migration `0033_travle_three_a_day`, **hand-written**: drizzle-kit crashed on the composite key change until the new key was named, then put the `ADD CONSTRAINT`s before the `ADD COLUMN`s and could not name the old `travle_days_pkey`. Every route already played becomes leg 0. `today` opens the first unfinished leg (`?leg=` asks for another), `guess` takes `leg`, no country pair repeats across any route, the board shows each person's three, the streak is routes won in a row (a whole day unplayed breaks it). Screen: 1 2 3 at the top, "Next route" after finishing one. Tests: games 16/16, including the migration on a fresh database and a two-route day.
 
