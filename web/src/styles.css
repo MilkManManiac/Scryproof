@@ -9041,6 +9041,49 @@ kbd {
 .tv-zoom button:disabled {
   opacity: 0.4;
 }
+/* Pins on the two ends. The point of each pin is the spot; the map is still dragged through them. */
+.tv-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tv-pin {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.55));
+}
+.tv-pin-name {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgb(10 18 26 / 0.86);
+  color: #e9e4d8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.tv-pin-head {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  /* A square with one sharp corner, turned so the corner points down. */
+  margin-bottom: 4px;
+  border-radius: 50% 50% 50% 0;
+  background: #e0483e;
+  border: 2px solid #fff4e8;
+  transform: rotate(-45deg);
+}
+.tv-pin-head::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #fff4e8;
+}
 
 /* The card scrolls when it is full. Nothing in it gives up height to fit: a board squashed is a board broken. */
 .purdle > * {

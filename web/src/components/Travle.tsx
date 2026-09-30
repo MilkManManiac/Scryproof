@@ -14,10 +14,9 @@ import type { TravleMark, TravleToday } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { travle } from '../lib/daily';
+import { pinAt, type Outlines } from '../lib/travle-pin';
 import { average } from './GameBoard';
 import { GameShell, ResultActions, ServerBoard, StatText, useToast, type Say } from './GameShell';
-
-type Outlines = Record<string, { d: string; box: [number, number, number, number] }>;
 
 const nameOf = (code: string) => travleCountry(code)?.name ?? code;
 
@@ -120,6 +119,12 @@ function Map({ today, outlines }: { today: TravleToday; outlines: Outlines | nul
     return out;
   }, [today]);
 
+  // A small country at the end is a speck at the day's frame (Wes, 2026-09-29: "it was hard to tell where you were supposed to go").
+  const pins = useMemo(
+    () => (outlines ? [today.from, today.to].filter((code) => outlines[code]).map((code) => ({ code, name: nameOf(code), ...pinAt(code, outlines) })) : []),
+    [today.from, today.to, outlines],
+  );
+
   if (!outlines) {
     return (
       <div className="tv-map loading">
@@ -149,7 +154,7 @@ function Map({ today, outlines }: { today: TravleToday; outlines: Outlines | nul
 
   return (
     // A new guess can move the frame, and a zoom into the old one would be a zoom into nowhere.
-    <Chart key={`${x} ${y} ${width}`} frame={{ x, y, width, height }}>
+    <Chart key={`${x} ${y} ${width}`} frame={{ x, y, width, height }} pins={pins}>
       {Object.entries(outlines).map(([code, shape]) => (lit.has(code) ? null : <path key={code} d={shape.d} className="land" />))}
       {[...lit].map(([code, mark]) => {
         const shape = outlines[code];
@@ -170,6 +175,13 @@ interface Frame {
   height: number;
 }
 
+interface Pin {
+  code: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
 /** How far in: 1 is the day's frame. Out is for seeing what lies around it. */
 const CLOSEST = 16;
 const FURTHEST = 0.4;
@@ -180,7 +192,7 @@ const STEP = 1.6;
  * zoom in"). Buttons, the wheel, two fingers, and a drag to move. Zooming
  * keeps whatever is under the pointer where it is.
  */
-function Chart({ frame, children }: { frame: Frame; children: ReactNode }) {
+function Chart({ frame, pins, children }: { frame: Frame; pins: Pin[]; children: ReactNode }) {
   const middle = { k: 1, cx: frame.x + frame.width / 2, cy: frame.y + frame.height / 2 };
   const [view, setView] = useState(middle);
   const svg = useRef<SVGSVGElement>(null);
@@ -267,6 +279,22 @@ function Chart({ frame, children }: { frame: Frame; children: ReactNode }) {
       >
         {children}
       </svg>
+      {/* Laid over the map, not drawn in it, so a pin stays one size at any zoom. */}
+      <div className="tv-pins" aria-hidden="true">
+        {pins.map((pin) => (
+          <div
+            key={pin.code}
+            className="tv-pin"
+            style={{
+              left: `${((pin.x - (view.cx - width / 2)) / width) * 100}%`,
+              top: `${((pin.y - (view.cy - height / 2)) / height) * 100}%`,
+            }}
+          >
+            <span className="tv-pin-name">{pin.name}</span>
+            <span className="tv-pin-head" />
+          </div>
+        ))}
+      </div>
       <div className="tv-zoom">
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={view.k >= CLOSEST} onClick={() => zoom(STEP)}>
           +
