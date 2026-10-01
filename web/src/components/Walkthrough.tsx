@@ -15,7 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 
 import { type Box, closeWalkthrough, placeCard } from '../lib/walkthrough';
 
-interface Step {
+export interface Step {
   title: string;
   /** Where on screen this card is about. Missing or hidden, the card just sits in the middle. */
   target?: string;
@@ -182,7 +182,24 @@ function measure(selector: string | undefined): Box | null {
   };
 }
 
-export function Walkthrough() {
+/**
+ * The cards. With no props, the first-run walkthrough. Given `steps`, any
+ * other tour, such as the one a big update offers from its What's new card;
+ * `clickOffCloses` lets that one be dismissed by clicking anywhere outside
+ * the card (Wes, 2026-10-01: "they can just exit right away... or click off
+ * screen").
+ */
+export function Walkthrough({
+  steps = STEPS,
+  onClose = closeWalkthrough,
+  clickOffCloses = false,
+}: {
+  steps?: readonly Step[];
+  onClose?: () => void;
+  clickOffCloses?: boolean;
+} = {}) {
+  const STEPS = steps;
+  const closeWalkthrough = onClose;
   const [at, setAt] = useState(0);
   const [spot, setSpot] = useState<Box | null>(null);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
@@ -219,14 +236,17 @@ export function Walkthrough() {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, []);
+  }, [STEPS.length, closeWalkthrough]);
 
   useEffect(() => card.current?.querySelector<HTMLElement>('.walkthrough-next')?.focus(), [at]);
 
   return (
     <div className="walkthrough-layer">
       {/* Catches clicks meant for the app underneath, so the screen holds still while it is being described. */}
-      <div className={spot ? 'walkthrough-blocker' : 'walkthrough-blocker shaded'} />
+      <div
+        className={spot ? 'walkthrough-blocker' : 'walkthrough-blocker shaded'}
+        onMouseDown={clickOffCloses ? closeWalkthrough : undefined}
+      />
       {spot ? (
         <div
           className="walkthrough-spot"

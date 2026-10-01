@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-01-notifications',
+    date: '2026-10-01',
+    title: 'Know where that sound came from',
+    notes: [
+      'The bell now keeps everything said while you were looking somewhere else, one line per channel: who was talking, how many messages, and any mention of you picked out. The sentence at the top says what is waiting.',
+      'Channels show how many messages you have not read, in grey. Red is still mentions of you.',
+      'Right-click a channel or a server for Every message, Mentions only or Mute. A channel you watch gets a small eye.',
+      'Pop-ups: a small card in the corner when something is for you. Click it to go there. Pick how much it says, from just who to the first line.',
+      'Notifications settings have a row for each kind of thing (mentions, direct messages, channel messages, people joining a voice room, going live, a stream ending, events, the daily games), each with its own sound and its own pop-up switch.',
+    ],
+  },
+  {
     id: '2026-09-30-whereabouts-lowball',
     date: '2026-09-30',
     title: 'Whereabouts, and three Trundles a day',

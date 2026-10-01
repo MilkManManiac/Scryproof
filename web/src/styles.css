@@ -3258,6 +3258,18 @@ video.mirrored {
   box-shadow: var(--hi);
   animation: arrive var(--t-arrive) var(--ease);
 }
+/* "Show me" on a big update: the tour, under the title. */
+.news-card-tour {
+  margin: 0 10px 10px;
+}
+.release-tour {
+  display: inline-block;
+  margin: -4px 0 8px;
+  font-size: 13px;
+}
+.tour-example {
+  margin: 10px 0;
+}
 .news-card-open {
   display: flex;
   flex-direction: column;
