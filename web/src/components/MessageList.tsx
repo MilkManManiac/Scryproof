@@ -13,16 +13,16 @@
  *     lib/stick-to-bottom.ts for why that was the difference.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Permission, emojiNameFrom, houseRules, splitContent } from '@scryproof/shared';
-import type { Channel, ContentPart, Emoji, Member, Message, Reaction } from '@scryproof/shared';
+import type { Channel, ContentPart, Emoji, Member, Message, Reaction, Role } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { guide, guideTopicOf } from '../lib/guide';
 import { jumpTo } from '../lib/jump';
 import { useLocalNames } from '../lib/local-names';
-import { fromDraft, nameOf, toDraft, toPlainLine } from '../lib/mentions';
+import { DELETED_ROLE, fromDraft, nameOf, pingableRoles, pingsHeldRole, toDraft, toPlainLine } from '../lib/mentions';
 import { CHANNEL_MEMORY_CHANGED, EDIT_LAST, on } from '../lib/signals';
 import { BottomPin } from '../lib/stick-to-bottom';
 import { HoldSheet, releaseAfterAction, releaseHold, useHold } from '../lib/hold';
@@ -443,20 +443,55 @@ export function CustomEmoji({ emoji, className }: { emoji: Emoji; className?: st
 }
 
 /** The plain text a name or link would read as, for the blacked-out state of a spoiler. */
-function plainTextOf(parts: ContentPart[], members: Member[]): string {
+function plainTextOf(parts: ContentPart[], members: Member[], roles: readonly Role[]): string {
   return parts
     .map((part) => {
       if (part.kind === 'text') return part.text;
       if (part.kind === 'emoji') return `:${part.name}:`;
       if (part.kind === 'everyone') return '@everyone';
       if (part.kind === 'link') return part.text;
-      if (part.kind === 'spoiler') return plainTextOf(part.parts, members);
-      if (part.kind === 'style') return plainTextOf(part.parts, members);
+      if (part.kind === 'spoiler') return plainTextOf(part.parts, members, roles);
+      if (part.kind === 'style') return plainTextOf(part.parts, members, roles);
       if (part.kind === 'code') return part.text;
+      if (part.kind === 'roleMention') {
+        const role = roles.find((entry) => entry.id === part.roleId);
+        return role ? `@${role.name}` : DELETED_ROLE;
+      }
       const member = members.find((entry) => entry.userId === part.userId);
       return `@${member ? nameOf(member) : 'someone who left'}`;
     })
     .join('');
+}
+
+/**
+ * What a body's role mentions need to be drawn: the server's roles, and which
+ * of the roles the message pinged the reader holds. Read from here rather than
+ * passed down every level, because a role can sit inside a bold run inside a
+ * spoiler. Outside a channel (a direct message) there are no roles, so a role
+ * token there reads as a deleted one.
+ */
+const RoleMentions = createContext<{ roles: readonly Role[]; pinged: readonly string[]; mine: boolean }>({
+  roles: [],
+  pinged: [],
+  mine: false,
+});
+
+/** A role's chip: its colour, a wash of it behind, and lit up when it reached the reader. */
+function RoleChip({ roleId }: { roleId: string }) {
+  const { roles, pinged, mine } = useContext(RoleMentions);
+  const role = roles.find((entry) => entry.id === roleId);
+  if (!role) return <span className="mention role gone">{DELETED_ROLE}</span>;
+  // Only a role the server accepted as a ping is a chip. The same words from
+  // someone who may not ping it are just words.
+  if (!pinged.includes(roleId)) return <>@{role.name}</>;
+  return (
+    <span
+      className={mine ? 'mention role me' : 'mention role'}
+      style={role.color ? ({ '--role-color': role.color } as React.CSSProperties) : undefined}
+    >
+      @{role.name}
+    </span>
+  );
 }
 
 /** One drawn part of a message body: text, a mention, an emoji, a link, or a spoiler. */
@@ -520,6 +555,7 @@ function ContentPartView({
     if (part.style === 'italic') return <em>{inner}</em>;
     return <s>{inner}</s>;
   }
+  if (part.kind === 'roleMention') return <RoleChip roleId={part.roleId} />;
   const member = members.find((entry) => entry.userId === part.userId);
   return (
     <span className={part.userId === selfId ? 'mention me' : 'mention'}>
@@ -548,6 +584,7 @@ function Spoiler({
   everyone: boolean;
 }) {
   const [revealed, setRevealed] = useState(false);
+  const { roles } = useContext(RoleMentions);
 
   if (revealed) {
     return (
@@ -574,7 +611,7 @@ function Spoiler({
         }
       }}
     >
-      {plainTextOf(parts, members)}
+      {plainTextOf(parts, members, roles)}
     </span>
   );
 }
@@ -839,6 +876,7 @@ function MessageRow({
   const { state, replyTo } = useStore();
   const card = useProfileCard();
   const serverId = members[0]?.serverId ?? null;
+  const serverRoles = serverId ? state.servers[serverId]?.roles : undefined;
   const [editing, setEditing] = useState(false);
   const [editProblem, setEditProblem] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -853,10 +891,10 @@ function MessageRow({
 
   useEffect(() => {
     if (!openEditor || editing) return;
-    setDraft(toDraft(message.content ?? '', members));
+    setDraft(toDraft(message.content ?? '', members, serverRoles ?? []));
     setEditing(true);
     onEditorOpened?.();
-  }, [openEditor, editing, message.content, members, onEditorOpened]);
+  }, [openEditor, editing, message.content, members, serverRoles, onEditorOpened]);
 
   const blocked = state.blocks.has(message.authorId);
   if (blocked && !shown) {
@@ -887,11 +925,13 @@ function MessageRow({
   const reactions = visibleReactions(message.reactions ?? [], state.blocks);
   // A blocked person's mention is not a ping, on the server or here, so the
   // row is not lit up even once it has been shown.
+  const myRoleIds = serverId ? (state.servers[serverId]?.myRoleIds ?? []) : [];
+  const pingsMyRole = pingsHeldRole(message.mentionRoles, myRoleIds);
   const pingsMe =
     !mine &&
     !blocked &&
     !message.deleted &&
-    (message.mentionsEveryone || (selfId ? (message.mentions ?? []).includes(selfId) : false));
+    (message.mentionsEveryone || pingsMyRole || (selfId ? (message.mentions ?? []).includes(selfId) : false));
 
   function toggle(emoji: string) {
     const has = reactions.find((entry) => entry.emoji === emoji)?.userIds.includes(selfId ?? '');
@@ -900,7 +940,7 @@ function MessageRow({
   }
 
   async function saveEdit() {
-    const next = fromDraft(houseRules(draft.trim()), members);
+    const next = fromDraft(houseRules(draft.trim()), members, pingableRoles(serverRoles ?? [], can(mask, Permission.MENTION_EVERYONE)));
     if (!next || next === message.content) {
       setEditing(false);
       return;
@@ -916,6 +956,9 @@ function MessageRow({
           replyAuthorId: parentAuthor,
           memberIds: new Set(members.map((member) => member.userId)),
           canMentionEveryone: can(mask, Permission.MENTION_EVERYONE),
+          pingableRoleIds: new Set(
+            pingableRoles(serverRoles ?? [], can(mask, Permission.MENTION_EVERYONE)).map((role) => role.id),
+          ),
           files: message.sealedFiles,
         });
       } else {
@@ -973,7 +1016,7 @@ function MessageRow({
           className="icon-button"
           title="Edit"
           onClick={() => {
-            setDraft(toDraft(message.content ?? '', members));
+            setDraft(toDraft(message.content ?? '', members, serverRoles ?? []));
             setEditing(true);
           }}
         >
@@ -1011,7 +1054,7 @@ function MessageRow({
           type="button"
           className="icon-button"
           title="Copy text"
-          onClick={() => void navigator.clipboard?.writeText(toDraft(message.content ?? '', members)).catch(() => undefined)}
+          onClick={() => void navigator.clipboard?.writeText(toDraft(message.content ?? '', members, serverRoles ?? [])).catch(() => undefined)}
         >
           &#10697;
         </button>
@@ -1044,7 +1087,7 @@ function MessageRow({
             {parent.deleted
               ? 'Message deleted'
               : parent.content
-                ? toPlainLine(parent.content, members)
+                ? toPlainLine(parent.content, members, serverRoles ?? [])
                 : message.ciphertext
                   ? 'Encrypted message'
                   : // In a channel this device knows is encrypted, a quote it
@@ -1147,13 +1190,17 @@ function MessageRow({
                 (message.attachments.some((file) => !file.sealed && isVoiceFile(file.filename)) ||
                   (message.sealedFiles ?? []).some((file) => isVoiceFile(file.name)))
               ) ? (
-              <MessageContent
-                content={message.content}
-                members={members}
-                emojis={emojis}
-                selfId={selfId}
-                everyone={message.mentionsEveryone ?? false}
-              />
+              <RoleMentions.Provider
+                value={{ roles: serverRoles ?? [], pinged: message.mentionRoles ?? [], mine: pingsMyRole }}
+              >
+                <MessageContent
+                  content={message.content}
+                  members={members}
+                  emojis={emojis}
+                  selfId={selfId}
+                  everyone={message.mentionsEveryone ?? false}
+                />
+              </RoleMentions.Provider>
             ) : null}
 
             {message.editedAt ? <span className="message-edited">edited</span> : null}

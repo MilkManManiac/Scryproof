@@ -30,6 +30,17 @@ export const CHANGELOG: readonly Release[] = [
     ],
   },
   {
+    id: '2026-09-29-role-mentions',
+    date: '2026-09-29',
+    title: 'You can @ a role now',
+    notes: [
+      'Type @ and a role, like @Table Mods, and everyone who has that role gets pinged: the badge, the sound, the pop-up and the phone notice, same as if you had named them.',
+      'Roles show up in the list in their own colour, marked role. You only see roles you are allowed to ping.',
+      'A role can be pinged by anyone if its “Anyone can @mention this role” switch is on in Roles. Otherwise only people who can mention everyone can.',
+      'It works in encrypted channels too. A message that pings a role you have is lit up like one that names you.',
+    ],
+  },
+  {
     id: '2026-09-29-stream-zoom',
     date: '2026-09-29',
     title: 'Zoom in on a stream',

@@ -44,6 +44,7 @@ import { bee } from '../lib/bee';
 import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { api } from '../lib/api';
 import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
+import { pingsHeldRole } from '../lib/mentions';
 import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
@@ -847,6 +848,9 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     }
 
     case 'member_update': {
+      // Your own roles are kept on the server too, for members that are not loaded.
+      const own = event.d.userId === state.user?.id ? state.servers[event.d.serverId] : undefined;
+      if (own) state = { ...state, servers: { ...state.servers, [own.id]: { ...own, myRoleIds: event.d.roleIds } } };
       const existing = state.members[event.d.serverId];
       if (!existing) return state;
       return {
@@ -1052,10 +1056,14 @@ export function StoreProvider({
         const muted = isMuted(notifyPrefs.get(), server?.id ?? null, event.d.channelId);
         const blocked = blocksRef.current.has(event.d.authorId);
 
+        // The server said which roles this pinged; whether one is yours is on
+        // the server's own record of you, which is there for every server.
+        const mentionsMyRole = pingsHeldRole(event.d.mentionRoles, server?.myRoleIds ?? []);
         const sound = soundFor({
           authorId: event.d.authorId,
           mentions: event.d.mentions ?? [],
           mentionsEveryone: event.d.mentionsEveryone ?? false,
+          mentionsMyRole,
           selfId: selfId.current,
           channelId: event.d.channelId,
           serverId: server?.id ?? null,
@@ -1072,7 +1080,9 @@ export function StoreProvider({
           authorId: message.authorId,
           selfId: selfId.current,
           addressedToMe:
-            (message.mentionsEveryone ?? false) || (message.mentions ?? []).includes(selfId.current ?? ''),
+            (message.mentionsEveryone ?? false) ||
+            (message.mentions ?? []).includes(selfId.current ?? '') ||
+            mentionsMyRole,
           watching: focused && message.channelId === openChannel.current,
           windowFocused: focused,
           muted,

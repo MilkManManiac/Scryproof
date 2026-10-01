@@ -205,6 +205,38 @@ describe('messages', () => {
     assert.equal((await open({})).ok, true);
   });
 
+  test('a role ping is signed: it opens with the list, and not with one added, dropped or changed', async () => {
+    const wes = await makeDevice('wes');
+    const { key } = await newEpoch(wes.device);
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key, sender: wes.device,
+      body: { v: 1, text: 'mods, look' }, replyToId: null, mentionIds: [], mentionsEveryone: false,
+      mentionRoleIds: ['role-mods', 'role-mods'],
+    });
+    assert.deepEqual(sealed.mentionRoleIds, ['role-mods']);
+    const frame = { ...frameOf(sealed, 'wes'), mentionRoleIds: sealed.mentionRoleIds };
+    const open = (changed: Partial<MessageFrame>) =>
+      openChannelMessage({ frame: { ...frame, ...changed }, senderDevice: wes.published, key, ...sealed });
+    assert.equal((await open({})).ok, true);
+    for (const changed of [{ mentionRoleIds: [] }, { mentionRoleIds: undefined }, { mentionRoleIds: ['role-mods', 'role-x'] }, { mentionRoleIds: ['role-x'] }]) {
+      assert.equal((await open(changed)).ok, false, JSON.stringify(changed));
+    }
+  });
+
+  test('a message that pings no role verifies from a frame that has never heard of roles', async () => {
+    const wes = await makeDevice('wes');
+    const { key } = await newEpoch(wes.device);
+    const sealed = await sealChannelMessage({
+      channelId: CHANNEL, epoch: 1, key, sender: wes.device,
+      body: { v: 1, text: 'as before' }, replyToId: null, mentionIds: ['sam'], mentionsEveryone: true,
+    });
+    assert.deepEqual(sealed.mentionRoleIds, []);
+    // The frame an older client builds: no mentionRoleIds field at all.
+    const old = frameOf(sealed, 'wes');
+    assert.equal('mentionRoleIds' in old, false);
+    assert.deepEqual(await openChannelMessage({ frame: old, senderDevice: wes.published, key, ...sealed }), { ok: true, body: { v: 1, text: 'as before' } });
+  });
+
   test('a flipped bit anywhere is refused, never shown', async () => {
     const wes = await makeDevice('wes');
     const { key } = await newEpoch(wes.device);

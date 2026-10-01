@@ -83,7 +83,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         name: 'MENTION_EVERYONE',
         bit: Permission.MENTION_EVERYONE,
         label: 'Mention everyone',
-        description: 'Ping the whole server at once. Worth keeping narrow.',
+        description:
+          'Ping the whole server at once, and ping any role, even one that is not set as mentionable. Worth keeping narrow.',
         scope: 'text',
       },
       {

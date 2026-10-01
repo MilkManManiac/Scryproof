@@ -130,6 +130,7 @@ function frameOf(message: Message): string {
     message.replyToId ?? '',
     (message.mentions ?? []).join(','),
     message.mentionsEveryone ? '1' : '0',
+    (message.mentionRoles ?? []).join(','),
     message.nonce ?? '',
     message.ciphertext ?? '',
     message.signature ?? '',
@@ -515,6 +516,7 @@ export class ChannelKeys {
             replyToId: message.replyToId,
             mentionIds: message.mentions,
             mentionsEveryone: message.mentionsEveryone,
+            mentionRoleIds: message.mentionRoles ?? [],
           },
           senderDevice: sender.device,
           key,
@@ -592,6 +594,8 @@ export class ChannelKeys {
     replyAuthorId: string | null;
     memberIds: ReadonlySet<string>;
     canMentionEveryone: boolean;
+    /** The roles this sender may ping (see `pingableRoles`). A role named in the text that is not here is left as text. */
+    pingableRoleIds?: ReadonlySet<string>;
     /** Locked and uploaded already (`sealChannelFile`, `api.uploadSealed`). An edit carries the message's own. */
     files?: readonly ChannelFileRef[];
   }): Promise<SealedChannelMessage> {
@@ -609,6 +613,7 @@ export class ChannelKeys {
       replyToId: input.replyToId,
       mentionIds,
       mentionsEveryone: parsed.everyone && input.canMentionEveryone,
+      mentionRoleIds: parsed.roleIds.filter((id) => input.pingableRoleIds?.has(id)),
     });
   }
 

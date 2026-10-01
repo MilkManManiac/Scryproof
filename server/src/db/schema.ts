@@ -374,6 +374,12 @@ export const messages = pgTable(
      * not guess.
      */
     mentions: jsonb('mentions').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /**
+     * The roles this message pinged, as allowed when it was written: a role the
+     * sender could not ping is not here. Everyone holding one is mentioned.
+     * In an encrypted channel the sender declares them, inside the signature.
+     */
+    mentionRoles: jsonb('mention_roles').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     mentionsEveryone: boolean('mentions_everyone').notNull().default(false),
     createdAt: createdAt(),
     editedAt: timestamp('edited_at', { withTimezone: true, mode: 'date' }),

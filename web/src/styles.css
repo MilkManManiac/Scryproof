@@ -9441,4 +9441,16 @@ kbd {
 }
 .tv-legs .tv-leg.here {
   box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--text);
+/* A role mention: the role's own colour, when it has one. `.me` is the reader holding it. */
+.mention.role {
+  color: var(--role-color, var(--text));
+  background: color-mix(in oklab, var(--role-color, var(--text-muted)) 18%, transparent);
+}
+.mention.role.me {
+  background: color-mix(in oklab, var(--role-color, var(--accent)) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--role-color, var(--accent)) 55%, transparent);
+}
+.mention.role.gone {
+  color: var(--text-dim);
+  font-style: italic;
 }

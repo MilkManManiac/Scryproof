@@ -322,6 +322,8 @@ export interface MessageFrame {
   replyToId: string | null;
   mentionIds: readonly string[];
   mentionsEveryone: boolean;
+  /** Left out (or empty) for a message that pings no role: those are signed exactly as they always were. */
+  mentionRoleIds?: readonly string[];
 }
 
 async function bodyKey(epochKey: Uint8Array, channelId: string, epoch: number, usage: KeyUsage): Promise<CryptoKey> {
@@ -351,6 +353,7 @@ export interface SealedChannelMessage {
   keyEpoch: number;
   mentionIds: string[];
   mentionsEveryone: boolean;
+  mentionRoleIds: string[];
 }
 
 /**
@@ -367,9 +370,11 @@ export async function sealChannelMessage(options: {
   replyToId: string | null;
   mentionIds: readonly string[];
   mentionsEveryone: boolean;
+  mentionRoleIds?: readonly string[];
 }): Promise<SealedChannelMessage> {
   const { sender } = options;
   const mentionIds = [...new Set(options.mentionIds)].filter((id) => id !== sender.userId);
+  const mentionRoleIds = [...new Set(options.mentionRoleIds ?? [])];
   const frame: MessageFrame = {
     channelId: options.channelId,
     epoch: options.epoch,
@@ -378,6 +383,7 @@ export async function sealChannelMessage(options: {
     replyToId: options.replyToId,
     mentionIds,
     mentionsEveryone: options.mentionsEveryone,
+    mentionRoleIds,
   };
   const nonce = randomBytes(12);
   const key = await bodyKey(options.key, options.channelId, options.epoch, 'encrypt');
@@ -401,6 +407,7 @@ export async function sealChannelMessage(options: {
     keyEpoch: options.epoch,
     mentionIds,
     mentionsEveryone: options.mentionsEveryone,
+    mentionRoleIds,
   };
 }
 

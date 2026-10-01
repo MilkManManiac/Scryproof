@@ -12,21 +12,41 @@
  * hidden channel exists and that someone in it is talking about you.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { Permission, has, parseMentions } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
-import { members } from '../db/schema.js';
+import { memberRoles, members, roles } from '../db/schema.js';
 import { blockersOf, withoutBlockers } from './blocks.js';
 import { computePermissionsInChannel, loadMemberContext } from './permissions.js';
 
 export interface ResolvedMentions {
   userIds: string[];
+  /** Roles pinged: every member holding one is reached. Only roles the sender was allowed to ping. */
+  roleIds: string[];
   everyone: boolean;
 }
 
-export const NO_MENTIONS: ResolvedMentions = { userIds: [], everyone: false };
+export const NO_MENTIONS: ResolvedMentions = { userIds: [], roleIds: [], everyone: false };
+
+/** The part of a role this needs to know. */
+export interface PingableRole {
+  id: string;
+  mentionable: boolean;
+  isEveryone: boolean;
+}
+
+/**
+ * The roles this sender may ping: ones marked mentionable, or any at all if
+ * they hold MENTION_EVERYONE. The @everyone role is never one: it has its own
+ * word, and its own permission check, already.
+ */
+export function pingableRoleIds(serverRoles: readonly PingableRole[], canMentionEveryone: boolean): Set<string> {
+  return new Set(
+    serverRoles.filter((role) => !role.isEveryone && (role.mentionable || canMentionEveryone)).map((role) => role.id),
+  );
+}
 
 export function resolveMentions(input: {
   content: string | null;
@@ -34,10 +54,12 @@ export function resolveMentions(input: {
   /** Everyone who belongs to the server the message is in. */
   memberIds: ReadonlySet<string>;
   canMentionEveryone: boolean;
+  /** Every role of the server the message is in. */
+  serverRoles: readonly PingableRole[];
   /** The author of the message being replied to, if this is a reply. */
   replyAuthorId: string | null;
 }): ResolvedMentions {
-  const parsed = input.content ? parseMentions(input.content) : { userIds: [], everyone: false };
+  const parsed = input.content ? parseMentions(input.content) : { userIds: [], roleIds: [], everyone: false };
 
   const userIds = new Set<string>();
   for (const userId of parsed.userIds) {
@@ -49,7 +71,19 @@ export function resolveMentions(input: {
   }
   userIds.delete(input.senderId);
 
-  return { userIds: [...userIds], everyone: parsed.everyone && input.canMentionEveryone };
+  // A role this sender may not ping stays as text in the body: no ping, and
+  // no error, the same as a person who is not here.
+  const pingable = pingableRoleIds(input.serverRoles, input.canMentionEveryone);
+  const roleIds = parsed.roleIds.filter((roleId) => pingable.has(roleId));
+
+  return { userIds: [...userIds], roleIds, everyone: parsed.everyone && input.canMentionEveryone };
+}
+
+export async function serverRoleList(serverId: string): Promise<PingableRole[]> {
+  return getDb()
+    .select({ id: roles.id, mentionable: roles.mentionable, isEveryone: roles.isEveryone })
+    .from(roles)
+    .where(eq(roles.serverId, serverId));
 }
 
 export async function serverMemberIds(serverId: string): Promise<Set<string>> {
@@ -74,7 +108,21 @@ export async function pingTargets(input: {
   mentions: ResolvedMentions;
   memberIds: ReadonlySet<string>;
 }): Promise<string[]> {
-  const wanted = input.mentions.everyone ? [...input.memberIds] : input.mentions.userIds;
+  let wanted: string[];
+  if (input.mentions.everyone) {
+    wanted = [...input.memberIds];
+  } else {
+    const wantedSet = new Set(input.mentions.userIds);
+    if (input.mentions.roleIds.length > 0) {
+      // Everyone holding a pinged role, once, even if they are also named.
+      const holders = await getDb()
+        .select({ userId: memberRoles.userId })
+        .from(memberRoles)
+        .where(and(eq(memberRoles.serverId, input.serverId), inArray(memberRoles.roleId, input.mentions.roleIds)));
+      for (const holder of holders) if (input.memberIds.has(holder.userId)) wantedSet.add(holder.userId);
+    }
+    wanted = [...wantedSet];
+  }
   const candidates = withoutBlockers(wanted, await blockersOf(input.senderId));
 
   const targets: string[] = [];

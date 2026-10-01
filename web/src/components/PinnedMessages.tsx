@@ -82,7 +82,7 @@ export function PinnedMessages({ channelId, onClose }: { channelId: string; onCl
                   {state.blocks.has(pin.authorId)
                     ? 'Blocked message.'
                     : pin.content
-                      ? toPlainLine(pin.content, members)
+                      ? toPlainLine(pin.content, members, state.servers[state.selectedServerId ?? '']?.roles ?? [])
                       : pin.attachments.length > 0
                         ? `${pin.attachments.length} file(s)`
                         : 'A locked message'}

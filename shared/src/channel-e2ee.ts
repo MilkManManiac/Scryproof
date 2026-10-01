@@ -55,9 +55,18 @@ export function messageSignedBytes(input: {
   replyToId: string | null;
   mentionIds: readonly string[];
   mentionsEveryone: boolean;
+  /**
+   * The roles it pings. Signed only when there are some: a message with none
+   * is exactly the bytes it always was, so everything signed before roles could
+   * be pinged (and by devices that have not updated) still verifies. With some,
+   * they are one more part on the end, so the byte string has an extra part an
+   * old message never has, and dropping the list breaks the signature.
+   */
+  mentionRoleIds?: readonly string[];
   nonce: Uint8Array;
   ciphertext: Uint8Array;
 }): Uint8Array {
+  const roles = [...new Set(input.mentionRoleIds ?? [])].sort();
   return concatLabelled(
     CHANNEL_MESSAGE_CONTEXT,
     input.channelId,
@@ -69,5 +78,6 @@ export function messageSignedBytes(input: {
     input.mentionsEveryone ? '1' : '0',
     input.nonce,
     input.ciphertext,
+    ...(roles.length > 0 ? [`roles:${roles.join(',')}`] : []),
   );
 }

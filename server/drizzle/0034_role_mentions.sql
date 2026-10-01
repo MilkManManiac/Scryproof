@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "mention_roles" jsonb DEFAULT '[]'::jsonb NOT NULL;

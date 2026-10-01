@@ -19,7 +19,15 @@ import { channelDrafts } from '../lib/drafts';
 import { purdle } from '../lib/purdle';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { useLocalNames } from '../lib/local-names';
-import { emojiQueryAt, fromDraft, mentionLabel, mentionQueryAt, nameOf, toPlainLine } from '../lib/mentions';
+import {
+  emojiQueryAt,
+  fromDraft,
+  mentionLabel,
+  mentionQueryAt,
+  nameOf,
+  pingableRoles,
+  toPlainLine,
+} from '../lib/mentions';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { ScrubError, scrubImage } from '../lib/scrub-image';
 import { EDIT_LAST, emit } from '../lib/signals';
@@ -49,6 +57,8 @@ interface Offer {
   sheet?: string;
   /** Set for a built-in emoji, drawn as itself. */
   glyph?: string;
+  /** Set for a role: the row is drawn in its colour (or the plain text colour when it has none). */
+  role?: { color: string | null };
 }
 
 /** Commands the server carries out by reading the text: not possible where it cannot read it. */
@@ -96,6 +106,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
   const mayPingEveryone = can(mask, Permission.MENTION_EVERYONE);
 
   const emojis = state.servers[channel.serverId]?.emojis ?? [];
+  // Roles this person may ping: mentionable ones, or all of them with MENTION_EVERYONE.
+  const serverRoles = state.servers[channel.serverId]?.roles;
+  const rolesToPing = useMemo(() => pingableRoles(serverRoles ?? [], mayPingEveryone), [serverRoles, mayPingEveryone]);
   const replyingTo = state.replyingTo[channel.id] ?? null;
 
   // The list under the box while an @name or a :emoji is being typed. Only one
@@ -161,6 +174,18 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         name: `@${nameOf(member)}`,
         note: member.user.username,
       }));
+    const roleOffers: Offer[] = rolesToPing
+      .filter((role) => role.name.toLowerCase().includes(query))
+      .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)))
+      .slice(0, 4)
+      .map((role) => ({
+        key: `role:${role.id}`,
+        written: `@${role.name}`,
+        name: `@${role.name}`,
+        note: 'role',
+        role: { color: role.color },
+      }));
+    people.push(...roleOffers);
     if (mayPingEveryone && 'everyone'.startsWith(query)) {
       people.push({
         key: 'everyone',
@@ -170,7 +195,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       });
     }
     return people;
-  }, [query, emojiQuery, commandQuery, members, emojis, mayPingEveryone]);
+  }, [query, emojiQuery, commandQuery, members, emojis, mayPingEveryone, rolesToPing]);
   const picked = Math.min(chosen, Math.max(0, offers.length - 1));
 
   /**
@@ -327,16 +352,17 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
       if (channel.encrypted) {
         await channelKeysFor(state.user?.id ?? '').send({
           channelId: channel.id,
-          text: fromDraft(houseRules(body), members),
+          text: fromDraft(houseRules(body), members, rolesToPing),
           replyToId: override ? null : (answering?.id ?? null),
           replyAuthorId: override ? null : (answering?.authorId ?? null),
           memberIds: new Set(members.map((member) => member.userId)),
           canMentionEveryone: mayPingEveryone,
+          pingableRoleIds: new Set(rolesToPing.map((role) => role.id)),
           files: files.map((file) => lockedFiles[file.id]).filter((file): file is SealedFileRef => file !== undefined),
         });
       } else {
         await api.messages.send(channel.id, {
-          content: body ? fromDraft(houseRules(body), members) : undefined,
+          content: body ? fromDraft(houseRules(body), members, rolesToPing) : undefined,
           replyToId: override ? undefined : answering?.id,
           attachmentIds: files.length > 0 ? files.map((file) => file.id) : undefined,
         });
@@ -504,7 +530,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         <div
           className="mention-offers"
           role="listbox"
-          aria-label={commandQuery !== undefined ? 'Commands' : emojiQuery === undefined ? 'People to mention' : 'Emoji to insert'}
+          aria-label={commandQuery !== undefined ? 'Commands' : emojiQuery === undefined ? 'People and roles to mention' : 'Emoji to insert'}
         >
           {offers.map((offer, index) => (
             <button
@@ -529,7 +555,9 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
               ) : commandQuery !== undefined ? (
                 <span className="meepo-face" aria-hidden="true" />
               ) : null}
-              <span className="mention-offer-name">{offer.name}</span>
+              <span className="mention-offer-name" style={offer.role?.color ? { color: offer.role.color } : undefined}>
+                {offer.name}
+              </span>
               <span className="mention-offer-note">{offer.note}</span>
             </button>
           ))}
@@ -540,7 +568,7 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
         <div className="composer-reply">
           <span className="composer-reply-text">
             Replying to <strong>{replyingTo.author.displayName}</strong>
-            {replyingTo.content ? <span className="composer-reply-quote">{toPlainLine(replyingTo.content, members)}</span> : null}
+            {replyingTo.content ? <span className="composer-reply-quote">{toPlainLine(replyingTo.content, members, serverRoles ?? [])}</span> : null}
           </span>
           <button type="button" className="link-button" onClick={() => replyTo(channel.id, null)}>
             Cancel

@@ -71,10 +71,21 @@ describe('links in a message body', () => {
         if (part.kind === 'emoji') return emojiToken(part.name);
         if (part.kind === 'spoiler' || part.kind === 'style') return '';
         if (part.kind === 'code') return part.text;
+        if (part.kind === 'roleMention') return `<@&${part.roleId}>`;
         return mentionToken(part.userId);
       })
       .join('');
     assert.equal(rebuilt, body);
+  });
+
+  it('splits a role mention out as its own part', () => {
+    const role = '018f0000-0000-7000-8000-0000000000a1';
+    assert.deepEqual(splitContent(`hi <@&${role}> and ${mentionToken(ALEX)}`), [
+      { kind: 'text', text: 'hi ' },
+      { kind: 'roleMention', roleId: role },
+      { kind: 'text', text: ' and ' },
+      { kind: 'mention', userId: ALEX },
+    ]);
   });
 
   it('reads the same body twice the same way', () => {
@@ -185,6 +196,7 @@ describe('custom emoji in a message body', () => {
         if (part.kind === 'emoji') return emojiToken(part.name);
         if (part.kind === 'spoiler' || part.kind === 'style') return '';
         if (part.kind === 'code') return part.text;
+        if (part.kind === 'roleMention') return `<@&${part.roleId}>`;
         return mentionToken(part.userId);
       })
       .join('');

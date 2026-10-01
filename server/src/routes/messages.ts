@@ -39,7 +39,14 @@ import * as audit from '../services/audit.js';
 import * as serialize from '../services/serialize.js';
 import { publicUrlFor } from '../services/storage.js';
 import { assertNotTimedOut, requireChannelPermission, requireMember } from '../services/permissions.js';
-import { type ResolvedMentions, pingTargets, resolveMentions, serverMemberIds } from '../services/mentions.js';
+import {
+  type ResolvedMentions,
+  pingTargets,
+  pingableRoleIds,
+  resolveMentions,
+  serverMemberIds,
+  serverRoleList,
+} from '../services/mentions.js';
 import { freshEpoch, identitySigned } from '../services/channel-keys.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { setVotes, tallyForMessages } from '../services/polls.js';
@@ -157,6 +164,7 @@ const sealedShape = {
   signature: z.string().max(256).optional(),
   mentionIds: z.array(z.string().max(64)).max(100).optional(),
   mentionsEveryone: z.boolean().optional(),
+  mentionRoleIds: z.array(z.string().max(64)).max(100).optional(),
 };
 
 interface CheckedSeal {
@@ -186,6 +194,7 @@ async function checkSeal(input: {
     signature?: string;
     mentionIds?: string[];
     mentionsEveryone?: boolean;
+    mentionRoleIds?: string[];
   };
   epoch: number | undefined;
   canMentionEveryone: boolean;
@@ -217,6 +226,14 @@ async function checkSeal(input: {
   if (everyone && !input.canMentionEveryone) throw forbidden('You cannot mention everyone in this channel.');
   const memberIds = await serverMemberIds(channel.serverId);
   if (mentionIds.some((id) => !memberIds.has(id))) throw badRequest('That person is not in this server.', 'unknown_member');
+  // Roles get the same treatment as everyone: named by the sender, so refused
+  // when not theirs to ping. A role of another server, or one that is neither
+  // mentionable nor covered by MENTION_EVERYONE, is not a role they may ring.
+  const mentionRoleIds = [...new Set(body.mentionRoleIds ?? [])];
+  if (mentionRoleIds.length > 0) {
+    const pingable = pingableRoleIds(await serverRoleList(channel.serverId), input.canMentionEveryone);
+    if (mentionRoleIds.some((id) => !pingable.has(id))) throw forbidden('You cannot mention that role.');
+  }
 
   const ciphertext = Buffer.from(body.ciphertext, 'base64');
   const nonce = Buffer.from(body.nonce, 'base64');
@@ -229,6 +246,7 @@ async function checkSeal(input: {
     replyToId: input.replyToId,
     mentionIds,
     mentionsEveryone: everyone,
+    mentionRoleIds,
     nonce,
     ciphertext,
   });
@@ -241,7 +259,7 @@ async function checkSeal(input: {
     epoch: current,
     senderDeviceId: body.senderDeviceId,
     signature,
-    mentions: { userIds: mentionIds.filter((id) => id !== input.authorId), everyone },
+    mentions: { userIds: mentionIds.filter((id) => id !== input.authorId), roleIds: mentionRoleIds, everyone },
   };
 }
 
@@ -517,6 +535,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
           senderId: user.id,
           memberIds,
           canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+          serverRoles: await serverRoleList(ctx.serverId),
           replyAuthorId,
         });
 
@@ -538,6 +557,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
         signature: sealed?.signature ?? null,
         replyToId: body.replyToId ?? null,
         mentions: mentions.userIds,
+        mentionRoles: mentions.roleIds,
         mentionsEveryone: mentions.everyone,
       })
       .returning();
@@ -673,6 +693,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
           senderId: user.id,
           memberIds: await serverMemberIds(ctx.serverId),
           canMentionEveryone: has(ctx.channelPermissions, Permission.MENTION_EVERYONE),
+          serverRoles: await serverRoleList(ctx.serverId),
           replyAuthorId,
         });
 
@@ -680,6 +701,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       .update(messages)
       .set({
         mentions: mentions.userIds,
+        mentionRoles: mentions.roleIds,
         mentionsEveryone: mentions.everyone,
         ...(sealed
           ? {

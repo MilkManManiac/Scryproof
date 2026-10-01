@@ -43,6 +43,14 @@ describe('soundFor', () => {
     assert.equal(sound({ mentions: [ME], channelId: 'c2', windowFocused: false }), 'mention');
   });
 
+  it('treats a role of yours that was pinged as naming you, and follows the mention switch', () => {
+    assert.equal(sound({ mentionsMyRole: true }), 'mention');
+    assert.equal(sound({ mentionsMyRole: true, prefs: { ...prefs, mention: false } }), null);
+    assert.equal(sound({ mentionsMyRole: true, prefs: { ...prefs, mutedChannels: ['c1'] } }), null);
+    assert.equal(sound({ mentionsMyRole: true, blocked: true }), null);
+    assert.equal(sound({ mentionsMyRole: false }), null);
+  });
+
   it('treats an accepted @everyone as naming you', () => {
     assert.equal(sound({ mentionsEveryone: true }), 'mention');
   });

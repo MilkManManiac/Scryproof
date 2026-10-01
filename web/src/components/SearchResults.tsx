@@ -147,7 +147,7 @@ export function SearchResults({
                 : result.sealed === 'forged'
                   ? 'Not shown: it was not sealed and signed by the person it names.'
                   : result.content
-                    ? highlight(toPlainLine(result.content, members), words)
+                    ? highlight(toPlainLine(result.content, members, server.roles), words)
                     : result.attachments.length > 0
                       ? `${result.attachments.length} file(s)`
                       : 'A locked message'}

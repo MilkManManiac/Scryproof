@@ -495,9 +495,9 @@ function RoleEditor({
 
                 <label className="toggle-row">
                   <span>
-                    <strong>Allow anyone to @mention this role</strong>
+                    <strong>Anyone can @mention this role</strong>
                     <span className="perm-description">
-                      Off, only people who can already mention everyone can ping it.
+                      On, anyone who can post can ping everyone holding it. Off, only people who can mention everyone can.
                     </span>
                   </span>
                   <input

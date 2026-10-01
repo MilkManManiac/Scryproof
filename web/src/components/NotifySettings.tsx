@@ -70,7 +70,7 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         <span>
           When someone says your name
           <span className="field-note">
-            A mention, or @everyone.{' '}
+            A mention, @everyone, or a role you have.{' '}
             <button
               type="button"
               className="link-button"

@@ -204,7 +204,7 @@ export async function pushToReaders(input: {
       channelId: input.channelId,
       categoryId: input.categoryId,
       senderId: input.senderId,
-      mentions: { userIds: [], everyone: true },
+      mentions: { userIds: [], roleIds: [], everyone: true },
       memberIds: new Set(listening.map((row) => row.userId)),
     });
     await pushTo(readers, {

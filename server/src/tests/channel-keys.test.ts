@@ -13,7 +13,7 @@ import { after, before, describe, it } from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes, webcrypto } from 'node:crypto';
+import { randomBytes, randomUUID, webcrypto } from 'node:crypto';
 
 import { concatLabelled, epochSignedBytes, messageSignedBytes } from '@scryproof/shared';
 import type { ChannelKeyState, ServerEvent } from '@scryproof/shared';
@@ -148,10 +148,15 @@ describe('encrypted channels', () => {
     });
   }
 
-  async function sealed(sender: Person, epoch: number, extra: { mentionIds?: string[]; signer?: CryptoKey } = {}) {
+  async function sealed(
+    sender: Person,
+    epoch: number,
+    extra: { mentionIds?: string[]; mentionRoleIds?: string[]; signer?: CryptoKey; signRoles?: boolean } = {},
+  ) {
     const nonce = randomBytes(12);
     const ciphertext = randomBytes(64);
     const mentionIds = extra.mentionIds ?? [];
+    const mentionRoleIds = extra.mentionRoleIds ?? [];
     const signature = await subtle.sign(
       { name: 'ECDSA', hash: 'SHA-256' },
       extra.signer ?? sender.signing,
@@ -163,6 +168,8 @@ describe('encrypted channels', () => {
         replyToId: null,
         mentionIds,
         mentionsEveryone: false,
+        // Left out of what is signed when a test wants a stripped list.
+        mentionRoleIds: extra.signRoles === false ? [] : mentionRoleIds,
         nonce,
         ciphertext,
       }),
@@ -175,6 +182,7 @@ describe('encrypted channels', () => {
       signature: b64(signature),
       mentionIds,
       mentionsEveryone: false,
+      ...(mentionRoleIds.length > 0 ? { mentionRoleIds } : {}),
     };
   }
 
@@ -253,6 +261,72 @@ describe('encrypted channels', () => {
     assert.equal(wrongKey.json().code, 'bad_signature');
     const strangerPing = await call(wes, 'POST', `/api/channels/${channelId}/messages`, await sealed(wes, 1, { mentionIds: [stranger.id] }));
     assert.equal(strangerPing.json().code, 'unknown_member');
+  });
+
+  it('takes declared role pings only for roles the sender may ping, and refuses the rest', async () => {
+    const { wes, alex, mara } = people;
+    const makeRole = async (name: string, mentionable: boolean) => {
+      const made = await call(wes, 'POST', `/api/servers/${serverId}/roles`, { name });
+      assert.equal(made.statusCode, 200, made.body);
+      const id = made.json().role.id as string;
+      const set = await call(wes, 'PATCH', `/api/roles/${id}`, { mentionable });
+      assert.equal(set.statusCode, 200, set.body);
+      await call(wes, 'PUT', `/api/servers/${serverId}/members/${mara.id}/roles`, { roleIds: [id] });
+      return id;
+    };
+    const open = await makeRole('Table Mods', true);
+    const closed = await makeRole('Officers', false);
+
+    // Alex cannot mention everyone: only the open role is theirs to ping.
+    const ok = await call(alex, 'POST', `/api/channels/${channelId}/messages`, await sealed(alex, 1, { mentionRoleIds: [open] }));
+    assert.equal(ok.statusCode, 200, ok.body);
+    assert.deepEqual(ok.json().message.mentionRoles, [open]);
+
+    const no = await call(alex, 'POST', `/api/channels/${channelId}/messages`, await sealed(alex, 1, { mentionRoleIds: [closed] }));
+    assert.equal(no.statusCode, 403);
+    // Refused whole, not trimmed to the part that was allowed.
+    const mixed = await call(alex, 'POST', `/api/channels/${channelId}/messages`, await sealed(alex, 1, { mentionRoleIds: [open, closed] }));
+    assert.equal(mixed.statusCode, 403);
+
+    // Wes owns the server, so may ping the closed one too.
+    const owner = await call(wes, 'POST', `/api/channels/${channelId}/messages`, await sealed(wes, 1, { mentionRoleIds: [closed] }));
+    assert.equal(owner.statusCode, 200, owner.body);
+
+    // A role that is not in this server at all.
+    const nowhere = await call(wes, 'POST', `/api/channels/${channelId}/messages`, await sealed(wes, 1, { mentionRoleIds: [randomUUID()] }));
+    assert.equal(nowhere.statusCode, 403);
+
+    // The list is inside the signature: a role dropped from, or added to, what was signed does not verify.
+    const stripped = await call(alex, 'POST', `/api/channels/${channelId}/messages`, await sealed(alex, 1, { mentionRoleIds: [open], signRoles: false }));
+    assert.equal(stripped.json().code, 'bad_signature');
+    const forgedIn = { ...(await sealed(alex, 1)), mentionRoleIds: [open] };
+    const added = await call(alex, 'POST', `/api/channels/${channelId}/messages`, forgedIn);
+    assert.equal(added.json().code, 'bad_signature');
+  });
+
+  it('signs a message with no role pings exactly as before roles existed', () => {
+    const nonce = randomBytes(12);
+    const ciphertext = randomBytes(40);
+    const frame = {
+      channelId: 'c1',
+      epoch: 3,
+      authorId: 'a1',
+      senderDeviceId: 'device-a1-0001',
+      replyToId: 'r1',
+      mentionIds: ['u2', 'u1'],
+      mentionsEveryone: true,
+      nonce,
+      ciphertext,
+    };
+    // The layout written out by hand, from before roles: this is what already
+    // stored messages and clients that have not updated sign and verify.
+    const before = concatLabelled('scryproof/channel/message/v1', 'c1', '3', 'a1', 'device-a1-0001', 'r1', 'u1,u2', '1', nonce, ciphertext);
+    assert.deepEqual(messageSignedBytes(frame), before);
+    assert.deepEqual(messageSignedBytes({ ...frame, mentionRoleIds: [] }), before);
+    // With roles it is different bytes, the same whatever order the ids came in.
+    const withRoles = messageSignedBytes({ ...frame, mentionRoleIds: ['r9', 'r8'] });
+    assert.notDeepEqual(withRoles, before);
+    assert.deepEqual(withRoles, messageSignedBytes({ ...frame, mentionRoleIds: ['r8', 'r9'] }));
   });
 
   /** A multipart upload, as a browser's FormData would send it. */

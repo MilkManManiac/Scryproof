@@ -144,7 +144,7 @@ const PAGES: Record<GuideTopic, ReactNode> = {
 
       <h3>When someone wants you</h3>
       <p>
-        A mention (someone typed <b>@</b> and your name), <b>@everyone</b>, or a direct message. These get the louder
+        A mention (someone typed <b>@</b> and your name), <b>@everyone</b>, a role of yours, or a direct message. These get the louder
         sound and reach your phone. Everything else said in a channel you can see is &ldquo;everything else&rdquo;.
       </p>
 
@@ -202,7 +202,7 @@ const PAGES: Record<GuideTopic, ReactNode> = {
           <b>Someone messaged you</b>: a direct message or a group chat.
         </li>
         <li>
-          <b>Someone mentioned you</b>: your name, or @everyone, in a channel.
+          <b>Someone mentioned you</b>: your name, @everyone, or a role of yours, in a channel.
         </li>
         <li>
           <b>New message in a channel</b>: only if you turned on <b>Every channel message too</b>.

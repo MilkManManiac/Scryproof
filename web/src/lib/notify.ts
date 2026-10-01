@@ -16,7 +16,7 @@ import { audioContext } from './voice-audio';
 export type MessageSound = 'off' | 'unfocused' | 'always';
 
 export interface NotifyPrefs {
-  /** Someone said your name, or @everyone and the server allowed it. */
+  /** Someone said your name, or @everyone or a role of yours, and the server allowed it. */
   mention: boolean;
   /** Everything else somebody says where you can see it. */
   message: MessageSound;
@@ -110,6 +110,12 @@ export interface SoundContext {
   /** Who this message pings, as the server worked it out. Never what the body says. */
   mentions: readonly string[];
   mentionsEveryone: boolean;
+  /**
+   * The message pinged a role this person holds. Counts as a mention, and
+   * follows the same switch as one and as @everyone: there is no separate
+   * setting for either.
+   */
+  mentionsMyRole?: boolean;
   selfId: string | null;
   /** The channel this arrived in, and the one being looked at. */
   channelId: string;
@@ -135,7 +141,7 @@ export function soundFor(input: SoundContext): 'mention' | 'message' | null {
   // sound, even for a mention.
   if (isMuted(input.prefs, input.serverId, input.channelId)) return null;
 
-  const pingsMe = input.mentionsEveryone || input.mentions.includes(input.selfId);
+  const pingsMe = input.mentionsEveryone || input.mentions.includes(input.selfId) || (input.mentionsMyRole ?? false);
   if (pingsMe) return input.prefs.mention ? 'mention' : null;
 
   // Being looked at is the same as being heard. A message in the channel on

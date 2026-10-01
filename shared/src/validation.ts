@@ -93,16 +93,27 @@ const CHANNEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
  * a body that said "@alex" would ping whoever is called alex next year.
  */
 const MENTION_RE = /<@([0-9a-fA-F-]{36})>/g;
+/** A role is `<@&role-id>`: the `&` is what tells a role from a person. */
+const ROLE_MENTION_RE = /<@&([0-9a-fA-F-]{36})>/g;
 const EVERYONE_RE = /(^|\s)@everyone(?=$|[\s.,!?])/;
 
 export const mentionToken = (userId: string): string => `<@${userId}>`;
+export const roleMentionToken = (roleId: string): string => `<@&${roleId}>`;
 
-export function parseMentions(content: string): { userIds: string[]; everyone: boolean } {
+/**
+ * What a body asks to ping. It is only a request: whether the sender may ping
+ * a role, or everyone, is the server's call (see `resolveMentions`).
+ */
+export function parseMentions(content: string): { userIds: string[]; roleIds: string[]; everyone: boolean } {
   const userIds = new Set<string>();
   for (const match of content.matchAll(MENTION_RE)) {
     if (match[1]) userIds.add(match[1].toLowerCase());
   }
-  return { userIds: [...userIds], everyone: EVERYONE_RE.test(content) };
+  const roleIds = new Set<string>();
+  for (const match of content.matchAll(ROLE_MENTION_RE)) {
+    if (match[1]) roleIds.add(match[1].toLowerCase());
+  }
+  return { userIds: [...userIds], roleIds: [...roleIds], everyone: EVERYONE_RE.test(content) };
 }
 
 /* ------------------------------- custom emoji ------------------------------- */
@@ -196,6 +207,8 @@ export type ContentPart =
   /** `` `code` ``: drawn in the mono, and nothing inside it is interpreted. */
   | { kind: 'code'; text: string }
   | { kind: 'mention'; userId: string }
+  /** `<@&role-id>`. Whether the role still exists is for the renderer to look up. */
+  | { kind: 'roleMention'; roleId: string }
   | { kind: 'everyone' }
   /**
    * A `:name:` that is shaped like a custom emoji. Whether the server actually
@@ -224,12 +237,12 @@ const BOLD_SOURCE = String.raw`\*\*(?!\s)([\s\S]+?)(?<!\s)\*\*`;
 const STRIKE_SOURCE = String.raw`~~(?!\s)([\s\S]+?)(?<!\s)~~`;
 const ITALIC_SOURCE = String.raw`\*(?!\s)([^*\n]+?)(?<!\s)\*`;
 
-// Group 1 mention, 2 emoji, 3 spoiler, 4 code, 5 bold, 6 strike, 7 italic.
+// Group 1 mention (a role's id carries a leading `&`), 2 emoji, 3 spoiler, 4 code, 5 bold, 6 strike, 7 italic.
 // The spoiler is tried before a link so `||https://…||` hides the link
 // rather than swallowing the second `||`; code before the styles so a star
 // inside backticks is a star.
 const CONTENT_SOURCE =
-  String.raw`<@([0-9a-fA-F-]{36})>|:(${EMOJI_NAME_SOURCE}):|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
+  String.raw`<@(&?[0-9a-fA-F-]{36})>|:(${EMOJI_NAME_SOURCE}):|(?<=^|\s)@everyone(?=$|[\s.,!?])|` +
   [SPOILER_SOURCE, CODE_SOURCE, BOLD_SOURCE, STRIKE_SOURCE, ITALIC_SOURCE].join('|') +
   '|' +
   LINK_SOURCE;
@@ -257,7 +270,8 @@ export function splitContent(content: string): ContentPart[] {
 
     if (match[1]) {
       flushTextUpTo(at);
-      parts.push({ kind: 'mention', userId: match[1].toLowerCase() });
+      const id = match[1].toLowerCase();
+      parts.push(id.startsWith('&') ? { kind: 'roleMention', roleId: id.slice(1) } : { kind: 'mention', userId: id });
       cursor = at + whole.length;
       continue;
     }

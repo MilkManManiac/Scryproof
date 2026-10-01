@@ -132,6 +132,7 @@ export async function buildServerDetail(ctx: MemberContext): Promise<ServerDetai
     events: upcoming,
     memberCount: memberRows.length,
     permissions: encodeMask(ctx.basePermissions),
+    myRoleIds: ctx.roles.map((role) => role.id),
   };
 }
 

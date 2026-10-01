@@ -223,6 +223,12 @@ export interface ServerDetail extends Server {
   memberCount: number;
   /** The caller's own effective server-wide permissions. */
   permissions: MaskString;
+  /**
+   * The ids of the roles the caller holds here, so a message that pinged one
+   * of them can be told apart from another server's without loading every
+   * member of every server.
+   */
+  myRoleIds: Snowflake[];
 }
 
 /**
@@ -341,6 +347,13 @@ export interface Message {
    * Always empty in an encrypted channel, where the server cannot read the body.
    */
   mentions: Snowflake[];
+  /**
+   * The roles this message pinged, as the server allowed them (a role the
+   * sender could not ping is not here). A member holding one of these is
+   * mentioned. In an encrypted channel the sender declares them, inside the
+   * signature.
+   */
+  mentionRoles: Snowflake[];
   /** True only if the body says @everyone AND the sender was allowed to. */
   mentionsEveryone: boolean;
   createdAt: Timestamp;

@@ -3591,6 +3591,23 @@ Ask (a friend, then Wes): a screen share or camera should not play until the vie
 
 **Live 2026-09-29 15:11 ET**, client 1790708967202, together with the game names; the live bundle carries both. **Not done / unverified.** The sound itself was never listened to (headless is muted; Wes, 2026-09-29: sound worked before, no need). Desktop shell and iPhone PWA not tried on a device; the phone check is Chrome emulating one.
 
+## Role mentions (2026-09-29, built, NOT deployed)
+
+Wes: "Need to make sure we can @ a role therefore notifying people in those groups." Built the Discord way. Nothing committed, pushed or deployed.
+
+**Design.** Token in the body: `<@&role-id>` (the `&` tells it from `<@user-id>`). Server decides who it reaches (`resolveMentions` / `pingTargets` in `server/src/services/mentions.ts`): the role must belong to this server, not be the @everyone role, and be `mentionable` or the sender holds MENTION_EVERYONE. A role the sender may not ping is plain text: no ping, no error (plaintext channels). It pings every holder, through the same rules as a direct mention (not the sender, can see the channel, not blockers, deduped with named people). Stored on the message as `messages.mention_roles` (jsonb string[]) and serialised as `Message.mentionRoles`. A member holding one of those roles is treated as mentioned on every path a direct mention takes.
+
+**Migration (runs on prod).** `server/drizzle/0032_role_mentions.sql`: `ALTER TABLE "messages" ADD COLUMN "mention_roles" jsonb DEFAULT '[]'::jsonb NOT NULL;` Additive, no rewrite of data beyond the default.
+
+**Encrypted channels.** The sender declares `mentionRoleIds` (in the clear, like `mentionIds`); the server refuses the message (403) if any is not pingable. Signature: `messageSignedBytes` gets an optional `mentionRoleIds`; when empty the bytes are identical to before, when non-empty one extra trailing part `roles:<sorted ids>` is appended. Old messages and old clients still verify; a test proves it.
+
+**Progress log (update below as work lands).**
+- [x] shared: token, parse, split, types, signed bytes
+- [x] server: mentions service, messages route, schema, migration file, serialize
+- [ ] apply migration to dev DB; server tests
+- [ ] web: composer autocomplete, chip render, highlight, notify/notices/store, e2ee seal, permission text, RolesPane label, changelog
+- [ ] typecheck, web tests, e2e proof, shots (docs/shots/role-mention.png, role-mention-picker.png)
+
 ## Stream zoom (2026-09-29) — LIVE 23:11 ET, client 1790737755954
 
 Wes: "Give the option to zoom in on the stream." The big picture in a call (a screen or a camera) zooms: wheel around the pointer, drag to move once zoomed, two-finger pinch, double-click in (2.5x) and back out, and `−` / `NNN%` / `+` in the focus bar next to full screen (the percentage resets). 100% to 800%. Only the viewer's `<video>` is drawn bigger (a CSS transform on `.voice-focus-zoom` inside `.voice-focus-frame`), so the stream, its quality, and the sharer are untouched. Pan is clamped to the picture as actually drawn (`contained()` + `clampOffset()` in `web/src/lib/zoom.ts`), so letterbox black never slides in. Resets when a different stream becomes big. Hook: `web/src/lib/useStreamZoom.ts`, the same arithmetic as the picture viewer.

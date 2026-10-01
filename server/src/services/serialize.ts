@@ -219,6 +219,7 @@ export function message(
     // A tombstone pings nobody and carries nobody's reactions.
     reactions: deleted ? [] : (extras.reactions ?? []),
     mentions: deleted ? [] : row.mentions,
+    mentionRoles: deleted ? [] : row.mentionRoles,
     mentionsEveryone: deleted ? false : row.mentionsEveryone,
     createdAt: isoRequired(row.createdAt),
     editedAt: iso(row.editedAt),
