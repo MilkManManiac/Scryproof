@@ -1116,7 +1116,10 @@ export function StoreProvider({
       if (now && now !== was) moments.push({ moment: 'joined', channelId: now });
       if (was && !now) moments.push({ moment: 'left', channelId: was });
       const sharedBefore = Boolean(before?.sharingScreen) && was === now;
-      if (now && after.sharingScreen && !sharedBefore) moments.push({ moment: 'live', channelId: now });
+      // Only a change from a known state is news: someone this device never
+      // saw before (a reconnect, a room just made visible) may have been
+      // sharing all along, and "went live" would be wrong.
+      if (before && now && after.sharingScreen && !sharedBefore) moments.push({ moment: 'live', channelId: now });
       if (was && before?.sharingScreen && !(after.sharingScreen && was === now)) {
         moments.push({ moment: 'ended', channelId: was });
       }
@@ -1529,9 +1532,12 @@ export function StoreProvider({
         // nobody is going to move just to generate an event.
         void api.voice
           .states(serverId)
-          .then(({ voiceStates }) =>
-            dispatch({ type: 'voice-states-refreshed', serverId, voiceStates }),
-          )
+          .then(({ voiceStates }) => {
+            // Remembered too, so nobody already sharing reads as "went live".
+            for (const [key, seen] of voiceSeen.current) if (seen.serverId === serverId) voiceSeen.current.delete(key);
+            for (const entry of voiceStates) voiceSeen.current.set(voiceKey(entry.serverId, entry.userId), entry);
+            dispatch({ type: 'voice-states-refreshed', serverId, voiceStates });
+          })
           .catch(() => undefined);
       }
     };
