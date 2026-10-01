@@ -126,26 +126,27 @@ const PAGES: Record<GuideTopic, ReactNode> = {
 
   notifications: (
     <>
-      <h3>Three ways it gets your attention</h3>
+      <h3>Four ways it gets your attention</h3>
       <ul>
         <li>
-          <b>A sound</b>, while Scryproof is open. A two-note sound when someone wants you, a short quiet one for
-          everything else.
+          <b>A sound</b>, while Scryproof is open. Each kind of thing can have its own, or none.
         </li>
         <li>
-          <b>A pop-up on your computer</b>, when Scryproof is open but you&apos;re in another window. Off until you turn
-          it on.
+          <b>A pop-up</b>: a small card in the corner of Scryproof that fades after a few seconds. Click it to go there.
+          With Scryproof behind other windows, the same pop-up can come from your computer instead, if you turn that on.
+        </li>
+        <li>
+          <b>The bell</b>, top of the left column. Everything said while you were looking somewhere else, one line per
+          channel: who was talking, how many messages, and any mention of you picked out. The sentence at the top says
+          what is waiting. If you heard something and don&apos;t know where it came from, it&apos;s here.
         </li>
         <li>
           <b>Your phone</b>, when Scryproof is closed. Off until you turn it on, once on each phone. See{' '}
           <b>Your phone</b>.
         </li>
       </ul>
-
-      <h3>When someone wants you</h3>
       <p>
-        A mention (someone typed <b>@</b> and your name), <b>@everyone</b>, or a direct message. These get the louder
-        sound and reach your phone. Everything else said in a channel you can see is &ldquo;everything else&rdquo;.
+        The grey number beside a channel is how many messages you haven&apos;t read there. A red one is mentions of you.
       </p>
 
       <h3>The settings</h3>
@@ -155,34 +156,43 @@ const PAGES: Record<GuideTopic, ReactNode> = {
       </p>
       <ul>
         <li>
-          <b>When someone says your name</b>: the mention sound, and mentions and direct messages on your phone. Leave it
-          on.
+          <b>How much a pop-up says</b>: who, who and where, or who, where and the first line. There&apos;s a picture of
+          each. A direct message&apos;s words only show in Scryproof&apos;s own pop-up, never your computer&apos;s.
+        </li>
+        <li>
+          <b>What makes a sound or pops up</b>: a row for each kind of thing (mentions, direct messages, channel
+          messages, someone joining or leaving a voice room, someone going live, a stream ending, events, daily games).
+          Pick a sound, press the arrow to hear it, and switch its pop-up on or off.
+        </li>
+        <li>
+          <b>Volume</b>: how loud Scryproof&apos;s sounds are. Your device&apos;s own volume still applies.
         </li>
         <li>
           <b>Notify this device</b>: notifications on this phone when Scryproof is closed. Under it,{' '}
           <b>Every channel message too</b> adds everything else. Off unless you want a lot of buzzing.
         </li>
-        <li>
-          <b>Show a pop-up when I am somewhere else</b>: computer pop-ups for mentions and direct messages. A direct
-          message pop-up says who wrote, never what.
-        </li>
-        <li>
-          <b>Show what a channel message says</b>: puts the words in the pop-up. Off, it only says who and where.
-        </li>
-        <li>
-          <b>Sounds for everything else</b>: <b>Never</b>, <b>When I am somewhere else</b> (the usual choice), or{' '}
-          <b>Every message</b>. A burst of messages makes one sound, not one each.
-        </li>
-        <li>
-          <b>Volume</b>: how loud Scryproof&apos;s sounds are. Your device&apos;s own volume still applies.
-        </li>
       </ul>
 
-      <h3>Muting</h3>
+      <h3>One channel or server, set differently</h3>
+      <p>Right-click a channel or a server (on a phone, press and hold it). Four choices:</p>
+      <ul>
+        <li>
+          <b>Follow my settings</b>: whatever Notifications says.
+        </li>
+        <li>
+          <b>Every message</b>: a sound and a pop-up for everything said there, wherever you are. The channel gets a
+          small eye so you know why it&apos;s noisy. On a voice room, a pop-up when someone joins or goes live.
+        </li>
+        <li>
+          <b>Mentions only</b>: quiet unless someone mentions you.
+        </li>
+        <li>
+          <b>Mute</b>: no sound, no pop-up, nothing on your phone, not even for a mention. It still shows as unread.
+        </li>
+      </ul>
       <p>
-        Right-click a channel or a server (on a phone, press and hold it), then <b>Mute</b>. Muted means no sound, no
-        pop-up and nothing on your phone, not even for a mention. It still shows as unread. Everything you&apos;ve muted
-        is listed at the bottom of Notifications, with an Unmute button.
+        A channel&apos;s own choice beats its server&apos;s. Everything you&apos;ve set is listed at the bottom of
+        Notifications, where you can change it back.
       </p>
 
       <h3>Do not disturb</h3>

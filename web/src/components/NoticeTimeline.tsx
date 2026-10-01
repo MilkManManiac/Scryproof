@@ -298,7 +298,8 @@ function PlaceCard({ place }: { place: Place }) {
         : namesLine(place.names);
 
   return (
-    <div className={`notice-place ${place.kind}${place.mentions.length > 0 ? ' pinged' : ''}`}>
+    // `is-` because a bare `channel` or `dm` class is already taken by the sidebar's rows.
+    <div className={`notice-place is-${place.kind}${place.mentions.length > 0 ? ' pinged' : ''}`}>
       <button type="button" className="notice-place-main" onClick={() => notices.open(place.open)}>
         <span className="notice-place-head">
           <span className="notice-place-where">{where}</span>
@@ -306,7 +307,8 @@ function PlaceCard({ place }: { place: Place }) {
           <span className="notice-time">{timeFormat.format(place.latest)}</span>
         </span>
         <span className="notice-place-who">{who}</span>
-        {place.kind === 'channel' && place.preview ? (
+        {/* The last line said, unless it is the mention already shown underneath. */}
+        {place.kind === 'channel' && place.preview && !place.mentions.some((mention) => mention.id === place.open.lastId) ? (
           <span className="notice-place-last">
             {place.open.authorName}: {place.preview}
           </span>

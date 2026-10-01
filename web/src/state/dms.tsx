@@ -49,8 +49,10 @@ import {
 } from '../lib/dm-crypto';
 import { isRecoveryDevice, recoveryDevice } from '../lib/dm-recovery';
 import { nameFor } from '../lib/local-names';
-import { noticeFor, notices } from '../lib/notices';
-import { notifyPrefs, play, soundFor } from '../lib/notify';
+import { noticeFor, notices, previewOf } from '../lib/notices';
+import type { Notice } from '../lib/notices';
+import { notifyPrefs, play, popupFor, soundFor } from '../lib/notify';
+import { present } from '../lib/popups';
 import { spawnOf } from '../lib/commands';
 import { play as playCharacter } from '../lib/stage';
 import { acceptIdentityChange, createDeviceIdentity } from '../lib/voice-crypto';
@@ -668,8 +670,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
         const blocked = blocks.has(message.authorId);
         const sound = soundFor({
           authorId: message.authorId,
-          // A DM is addressed to you by definition.
-          mentions: selfId ? [selfId] : [],
+          mentions: [],
           mentionsEveryone: false,
           selfId,
           channelId: message.dmId,
@@ -680,6 +681,7 @@ export function DmProvider({ children }: { children: ReactNode }) {
           windowFocused: document.hasFocus(),
           blocked,
           prefs: notifyPrefs.get(),
+          isDm: true,
         });
         if (sound) play(sound);
 
@@ -713,16 +715,66 @@ export function DmProvider({ children }: { children: ReactNode }) {
               preview: null,
               read: false,
             },
-            verdict.popup,
           );
         }
 
+        const prefs = notifyPrefs.get();
+        const popup = popupFor({
+          moment: 'dm',
+          authorId: message.authorId,
+          selfId,
+          blocked,
+          mode: 'default',
+          onScreen: focused && looking,
+          prefs,
+        });
+        const showPopup = (what: string | null): void => {
+          if (!popup) return;
+          const dm = stateRef.current.dms[message.dmId];
+          const author = dm?.members.find((member) => member.id === message.authorId);
+          const target: Notice = {
+            id: message.id,
+            at: Date.now(),
+            kind: 'dm',
+            authorId: message.authorId,
+            authorName: author?.displayName ?? 'Someone',
+            serverId: null,
+            serverName: null,
+            channelId: null,
+            channelName: null,
+            dmId: message.dmId,
+            preview: null,
+            read: false,
+          };
+          present(
+            {
+              id: `dm-${message.dmId}`,
+              moment: 'dm',
+              who: author?.displayName ?? 'Someone',
+              user: author,
+              where: null,
+              group: dm?.kind === 'group' ? titleOf(dm, selfId) : null,
+              what,
+              open: () => notices.open(target),
+            },
+            prefs.popupDetail,
+            focused,
+          );
+        };
+
         // Only conversations that have been opened hold text. The rest decrypt
-        // when somebody looks.
-        if (!stateRef.current.loaded[message.dmId]) return;
+        // when somebody looks, so their pop-up says who and never what.
+        if (!stateRef.current.loaded[message.dmId]) {
+          showPopup(null);
+          return;
+        }
         remember([message]);
         const view = await toView(message, await knownFor(message));
         dispatch({ type: 'messages', dmId: message.dmId, views: [view], replace: false });
+        // The words go only in the app's own card, never the computer's
+        // notification (popups.ts), and only from a message that opened
+        // cleanly from a device this person has accepted.
+        showPopup(focused && !view.problem && !view.unverified && view.text ? previewOf(view.text) : null);
         // A character sent into the conversation you are looking at crosses the room.
         const spawn = spawnOf(view.text);
         if (spawn && stateRef.current.active && stateRef.current.openId === message.dmId) playCharacter(spawn.id);

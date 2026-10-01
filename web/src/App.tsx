@@ -57,6 +57,7 @@ import { LowballGate, WhereaboutsGate } from './components/Rounds';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
+import { PopupStack } from './components/PopupStack';
 import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
 type Gate = { status: 'checking' } | { status: 'out' } | { status: 'in'; user: SelfUser };
@@ -460,6 +461,7 @@ function Shell() {
         {overlay === 'pins' && channel ? <PinnedMessages channelId={channel.id} onClose={() => setOverlay(null)} /> : null}
       {overlay === 'help' ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
       <WalkthroughGate />
+      <PopupStack />
       <GuideGate />
       <PurdleGate />
       <CuntectionsGate />

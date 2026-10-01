@@ -11,6 +11,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { isDesktop } from '../lib/desktop';
+import { notifyPrefs, playSound } from '../lib/notify';
 import { canRunModel, openMeter, sounds } from '../lib/voice-audio';
 import { VOICE_EFFECTS, isVoiceEffect } from '../lib/voice-effects';
 import {
@@ -376,8 +377,8 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
           <span>
             Join and leave sounds
             <span className="field-note">
-              Two short tones when someone comes or goes.{' '}
-              <button type="button" className="link-button" onClick={(event) => { event.preventDefault(); sounds.joined(); }}>
+              A short sound when someone comes or goes. Which sound is picked in Notifications.{' '}
+              <button type="button" className="link-button" onClick={(event) => { event.preventDefault(); playSound(notifyPrefs.get().moments.joined.sound); }}>
                 Hear it
               </button>
             </span>

@@ -12,11 +12,12 @@ import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { usePressHold } from '../lib/hold';
-import { notifyPrefs } from '../lib/notify';
+import { notifyPrefs, ownPlaceMode } from '../lib/notify';
 import { dmWaiting, othersIn, titleOf, unreadDmCount, useDms, waitingDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
+import { PlaceModeItems } from './PlaceModeItems';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
 import { GamesButton } from './Games';
@@ -135,7 +136,7 @@ export function ServerRail() {
         // The pip is the server's own news. Looking at it is not reading it,
         // so an open server still shows one until its channels are read.
         const { unread, mentions, count } = unreadForServer(state, id);
-        const muted = notifyState.mutedServers.includes(id);
+        const muted = ownPlaceMode(notifyState, id) === 'mute';
 
         const classes = ['rail-item'];
         if (active) classes.push('active');
@@ -177,15 +178,7 @@ export function ServerRail() {
 
             {serverMenu === id ? (
               <Menu onClose={() => setServerMenu(null)}>
-                <MenuItem
-                  note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up, for the whole server.'}
-                  onClick={() => {
-                    notifyPrefs.toggleServer(id);
-                    setServerMenu(null);
-                  }}
-                >
-                  {muted ? 'Unmute server' : 'Mute server'}
-                </MenuItem>
+                <PlaceModeItems id={id} scope="server" kind="server" onDone={() => setServerMenu(null)} />
               </Menu>
             ) : null}
           </span>

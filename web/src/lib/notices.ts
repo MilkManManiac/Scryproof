@@ -78,9 +78,9 @@ export interface Arrival {
 }
 
 export interface NoticePrefs {
-  /** Ask the operating system to show a pop-up. */
+  /** While the app is in the background, pop-ups go to the computer's own notifications. */
   popups: boolean;
-  /** Whether a pop-up and the list may quote a channel message. */
+  /** Whether the list behind the bell may quote a channel message. Pop-ups have their own setting. */
   previews: boolean;
 }
 
@@ -374,35 +374,6 @@ const changed = (): void => {
   for (const listener of listeners) listener();
 };
 
-function popup(notice: Notice): void {
-  if (!prefs.popups || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const where =
-    notice.kind === 'mention'
-      ? `${notice.authorName} in #${notice.channelName}`
-      : notice.kind === 'dm' && notice.channelName
-        ? `${notice.authorName} in ${notice.channelName}`
-        : notice.authorName;
-  const body =
-    notice.kind === 'dm'
-      ? notice.channelName
-        ? 'Wrote in the group.'
-        : 'Sent you a message.'
-      : [notice.preview, notice.serverName].filter(Boolean).join('\n') ||
-        (notice.kind === 'event' ? 'Starts within the hour.' : 'Mentioned you.');
-  try {
-    // The tag lets a second message from the same place replace the first
-    // rather than stack up beside it.
-    const shown = new Notification(where, { body, tag: notice.dmId ?? notice.channelId ?? notice.id, silent: true });
-    shown.onclick = () => {
-      window.focus();
-      notices.open(notice);
-      shown.close();
-    };
-  } catch {
-    // Some browsers only allow these from a service worker. The list has it anyway.
-  }
-}
-
 export const notices = {
   /** The list belongs to whoever is signed in. Somebody else on this browser gets their own. */
   use(userId: string | null): void {
@@ -419,13 +390,13 @@ export const notices = {
     return () => listeners.delete(listener);
   },
 
-  arrived(notice: Notice, show: boolean): void {
+  /** Onto the list. Whether it also pops up is `lib/popups.ts`'s business. */
+  arrived(notice: Notice): void {
     if (list.some((entry) => entry.id === notice.id)) return;
     // An event's preview is its start time, not anything somebody wrote.
     const kept = prefs.previews || notice.kind === 'event' ? notice : { ...notice, preview: null };
     list = withNotice(list, kept);
     changed();
-    if (show) popup(kept);
   },
   /** Something said in a channel while you were not looking at it. Quiet: the list only. */
   activity(arrival: Arrival): void {
@@ -477,6 +448,10 @@ export const notices = {
 
   onOpen(handler: ((notice: Notice) => void) | null): void {
     opener = handler;
+  },
+  /** Go where a notice points without marking anything read: a pop-up about a voice room or a game. */
+  goTo(notice: Notice): void {
+    opener?.(notice);
   },
   open(notice: Notice): void {
     if (notice.kind === 'event') notices.readOne(notice.id);
