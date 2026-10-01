@@ -9,10 +9,11 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
+import { UNREAD_COUNT_CAP } from '@scryproof/shared';
 import type { ReadState } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
-import { readStates } from '../db/schema.js';
+import { blocks, messages, readStates } from '../db/schema.js';
 import { blockersOf, withoutBlockers } from './blocks.js';
 
 /** `mention_count` is a smallint. Past this the badge says "a lot" either way. */
@@ -22,17 +23,61 @@ function toReadState(row: {
   channelId: string;
   lastReadMessageId: string | null;
   mentionCount: number;
+  unreadCount?: number | null;
 }): ReadState {
-  return {
+  const state: ReadState = {
     channelId: row.channelId,
     lastReadMessageId: row.lastReadMessageId,
     mentionCount: row.mentionCount,
   };
+  if (row.lastReadMessageId && typeof row.unreadCount === 'number') state.unreadCount = row.unreadCount;
+  return state;
+}
+
+/**
+ * How many messages from other people sit after the last one read, counted in
+ * the database and stopped at the cap, so a channel that ran away overnight
+ * costs a hundred index steps and no more (`messages_channel_id_idx` is on
+ * channel then id). People this person has blocked are not counted: they
+ * reach nothing, a number included.
+ */
+function unreadCountOf(userId: string) {
+  // Written out in full: drizzle prints a column of the only table in a query
+  // without its table name, and inside this subquery a bare "channel_id"
+  // would mean the message's own, counting the whole channel.
+  return sql<number>`(
+    select count(*)::int from (
+      select 1 from ${messages} as m
+      where m.channel_id = "read_states"."channel_id"
+        and m.id > "read_states"."last_read_message_id"
+        and m.author_id <> ${userId}
+        and not exists (select 1 from ${blocks} as b where b.user_id = ${userId} and b.blocked_id = m.author_id)
+      limit ${UNREAD_COUNT_CAP}
+    ) as unread
+  )`;
+}
+
+function withCount(userId: string) {
+  return {
+    channelId: readStates.channelId,
+    lastReadMessageId: readStates.lastReadMessageId,
+    mentionCount: readStates.mentionCount,
+    unreadCount: unreadCountOf(userId),
+  };
 }
 
 export async function readStatesFor(userId: string): Promise<ReadState[]> {
-  const rows = await getDb().select().from(readStates).where(eq(readStates.userId, userId));
+  const rows = await getDb().select(withCount(userId)).from(readStates).where(eq(readStates.userId, userId));
   return rows.map(toReadState);
+}
+
+/** One channel's state with its count, after something changed it. */
+async function readStateOf(userId: string, channelId: string): Promise<ReadState | null> {
+  const [row] = await getDb()
+    .select(withCount(userId))
+    .from(readStates)
+    .where(and(eq(readStates.userId, userId), eq(readStates.channelId, channelId)));
+  return row ? toReadState(row) : null;
 }
 
 /** Mark read up to a message. Returns the state as it now stands, which may be further on than asked. */
@@ -60,7 +105,9 @@ export async function markRead(
     .returning();
 
   if (!row) throw new Error('read state upsert returned nothing');
-  return toReadState(row);
+  // Read up to a message is not always read to the end: a second device can
+  // be behind. The count says what is still below the line.
+  return (await readStateOf(userId, channelId)) ?? toReadState(row);
 }
 
 /**

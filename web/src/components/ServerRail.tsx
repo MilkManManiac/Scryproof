@@ -134,7 +134,7 @@ export function ServerRail() {
         const active = state.selectedServerId === id && !dms.active;
         // The pip is the server's own news. Looking at it is not reading it,
         // so an open server still shows one until its channels are read.
-        const { unread, mentions } = unreadForServer(state, id);
+        const { unread, mentions, count } = unreadForServer(state, id);
         const muted = notifyState.mutedServers.includes(id);
 
         const classes = ['rail-item'];
@@ -146,7 +146,9 @@ export function ServerRail() {
           ? `${server.name} — muted`
           : mentions > 0
             ? `${server.name} — ${countLabel(mentions)}`
-            : server.name;
+            : count > 0
+              ? `${server.name} — ${count >= 100 ? 'over 99' : count} unread`
+              : server.name;
 
         return (
           <span key={id} style={{ position: 'relative' }}>
@@ -166,7 +168,11 @@ export function ServerRail() {
               {...hold(() => setServerMenu(id))}
             >
               {tile(server.name)}
-              {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}
+              {mentions > 0 ? (
+                <span className="badge">{badgeText(mentions)}</span>
+              ) : count > 0 && !muted ? (
+                <span className="badge quiet">{badgeText(count)}</span>
+              ) : null}
             </button>
 
             {serverMenu === id ? (

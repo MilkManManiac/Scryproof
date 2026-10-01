@@ -4759,6 +4759,15 @@ video.mirrored {
 .channel .badge {
   margin-left: auto;
 }
+/* A plain count of unread messages: present, but quieter than a mention. */
+.badge.quiet {
+  background: var(--line-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+.channel.muted .badge.quiet {
+  opacity: 0.6;
+}
 /* In the member list: messages from this person waiting in your DMs. */
 .member-dm {
   margin-left: auto;
@@ -5477,6 +5486,112 @@ kbd {
   text-transform: uppercase;
   color: var(--text-dim);
   padding: 12px 8px 4px;
+}
+
+/* The one sentence at the top: what is waiting, before any detail. */
+.notices-digest {
+  margin: 6px 8px 4px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.notices-subday {
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 8px 8px 2px;
+}
+
+/* A place with news: a channel, a conversation, an event. */
+.notice-place {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  margin: 6px 0;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.notice-place.pinged,
+.notice-place.dm {
+  border-left-color: var(--accent);
+}
+.notice-place-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.notice-place-main:hover,
+.notice-place-mention:hover {
+  background: var(--panel-3);
+}
+.notice-place-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.notice-place-where {
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.notice-place-head .notice-time {
+  margin-left: auto;
+  padding-top: 0;
+}
+.notice-place-who {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.notice-place-last {
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-mention {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 6px 10px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-at {
+  color: var(--accent);
+  font-weight: 700;
+  margin-right: 6px;
+}
+.notice-place-more {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 10px 6px;
 }
 
 /* .notice is also the banner class on the sign-in screen; inside the notices

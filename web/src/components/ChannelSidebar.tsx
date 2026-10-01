@@ -227,7 +227,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     // not focused it has not been read, and saying so here is
                     // the only thing that keeps this count and the rail's from
                     // disagreeing.
-                    const { unread, mentions } = unreadFor(state, channel);
+                    const { unread, mentions, count } = unreadFor(state, channel);
                     const muted = notifyState.mutedChannels.includes(channel.id);
                     const hasDraft = isShortDraft(channelDrafts.get(channel.id));
 
@@ -300,6 +300,12 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                           {mentions > 0 ? (
                             <span className="badge" title={countLabel(mentions)}>
                               {badgeText(mentions)}
+                            </span>
+                          ) : count > 0 ? (
+                            // How many came in since you last read it (Wes's friend,
+                            // 2026-10-01). Grey, so a mention still stands out.
+                            <span className="badge quiet" title={`${count >= 100 ? 'Over 99' : count} unread`}>
+                              {badgeText(count)}
                             </span>
                           ) : null}
                         </button>

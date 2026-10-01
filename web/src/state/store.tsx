@@ -36,7 +36,7 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
-import { voiceRoomOf } from '@scryproof/shared';
+import { UNREAD_COUNT_CAP, voiceRoomOf } from '@scryproof/shared';
 
 import { purdle } from '../lib/purdle';
 import { cuntections } from '../lib/cuntections';
@@ -219,7 +219,22 @@ function readUpTo(state: State, channelId: string, messageId: string, mentionCou
   const current = state.readStates[channelId];
   const lastReadMessageId =
     current?.lastReadMessageId && current.lastReadMessageId > messageId ? current.lastReadMessageId : messageId;
-  return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount } };
+  // Read to here is read to the end as far as this device knows. The server
+  // answers with the true count (`read_state_update`) if something is still below.
+  return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount, unreadCount: 0 } };
+}
+
+/**
+ * One more message somebody else wrote, on the number beside its channel. Only
+ * where there is a number already: a channel never opened has none, and the
+ * server's count is the starting point for the rest.
+ */
+function countArrival(state: State, channelId: string, authorId: string): State['readStates'] {
+  const current = state.readStates[channelId];
+  if (!current?.lastReadMessageId || typeof current.unreadCount !== 'number') return state.readStates;
+  if (authorId === state.user?.id || state.blocks.has(authorId)) return state.readStates;
+  if (current.unreadCount >= UNREAD_COUNT_CAP) return state.readStates;
+  return { ...state.readStates, [channelId]: { ...current, unreadCount: current.unreadCount + 1 } };
 }
 
 /**
@@ -509,7 +524,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         readStates:
           event.d.authorId === state.user?.id
             ? readUpTo(state, event.d.channelId, event.d.id, state.readStates[event.d.channelId]?.mentionCount ?? 0)
-            : state.readStates,
+            : countArrival(state, event.d.channelId, event.d.authorId),
         // A window stops short of the newest message, so appending to it would
         // put this message directly after one from last week. It is dropped;
         // scrolling down out of the window fetches it in its proper place.
@@ -629,14 +644,14 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       const ahead =
         current?.lastReadMessageId &&
         (!event.d.lastReadMessageId || current.lastReadMessageId > event.d.lastReadMessageId);
+      // A mention bump carries no count; the one this device has been keeping stands.
+      const unreadCount = ahead ? current?.unreadCount : (event.d.unreadCount ?? current?.unreadCount);
+      const next: ReadState = ahead ? { ...event.d, lastReadMessageId: current.lastReadMessageId } : { ...event.d };
+      if (typeof unreadCount === 'number') next.unreadCount = unreadCount;
+      else delete next.unreadCount;
       return {
         ...state,
-        readStates: {
-          ...state.readStates,
-          [event.d.channelId]: ahead
-            ? { ...event.d, lastReadMessageId: current.lastReadMessageId }
-            : event.d,
-        },
+        readStates: { ...state.readStates, [event.d.channelId]: next },
       };
     }
 
@@ -1098,6 +1113,31 @@ export function StoreProvider({
             verdict.popup,
           );
         }
+
+        // Everything else said where you were not looking goes on its
+        // channel's running row, so a sound is never without a line behind
+        // the bell saying where it came from. Muted places stay off it:
+        // muting is "I do not care what happens there".
+        const watching = focused && message.channelId === openChannel.current;
+        if (selfId.current && message.authorId !== selfId.current && !blocked && !muted && !watching) {
+          const channel = server?.channels.find((entry) => entry.id === message.channelId);
+          notices.activity({
+            messageId: message.id,
+            at: Date.now(),
+            authorId: message.authorId,
+            authorName: message.author.displayName,
+            serverId: server?.id ?? null,
+            serverName: server?.name ?? null,
+            channelId: message.channelId,
+            channelName: channel?.name ?? null,
+            preview: previewOf(message.content),
+          });
+        }
+      }
+
+      // Read on another device: the rows behind the bell catch up too.
+      if (event.t === 'read_state_update' && event.d.lastReadMessageId) {
+        notices.readThrough(event.d.channelId, event.d.lastReadMessageId);
       }
 
       if (event.t === 'event_reminder') {
@@ -1699,27 +1739,31 @@ export type { Presence };
 export interface Unread {
   unread: boolean;
   mentions: number;
+  /** Messages since the last one read, where that is known; see `ReadState.unreadCount`. */
+  count: number;
 }
 
 /** Whether a channel holds anything newer than what this person has read. */
 export function unreadFor(state: State, channel: { id: string; type: string; lastMessageId: string | null }): Unread {
-  if (channel.type !== 'text') return { unread: false, mentions: 0 };
+  if (channel.type !== 'text') return { unread: false, mentions: 0, count: 0 };
   const read = state.readStates[channel.id];
   const unread = Boolean(
     channel.lastMessageId && (!read?.lastReadMessageId || channel.lastMessageId > read.lastReadMessageId),
   );
-  return { unread, mentions: read?.mentionCount ?? 0 };
+  return { unread, mentions: read?.mentionCount ?? 0, count: unread ? (read?.unreadCount ?? 0) : 0 };
 }
 
 export function unreadForServer(state: State, serverId: string): Unread {
   let unread = false;
   let mentions = 0;
+  let count = 0;
   for (const channel of state.servers[serverId]?.channels ?? []) {
     const one = unreadFor(state, channel);
     unread = unread || one.unread;
     mentions += one.mentions;
+    count += one.count;
   }
-  return { unread, mentions };
+  return { unread, mentions, count };
 }
 
 /** Past 99 the number stops being information and starts being a shape. */
