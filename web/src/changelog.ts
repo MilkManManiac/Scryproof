@@ -20,6 +20,12 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-01-server-menu',
+    date: '2026-10-01',
+    title: 'Server notification menu stays visible',
+    notes: ['Right-click a server to change its notifications: the menu now opens over the channel list and stays within the window.'],
+  },
+  {
     id: '2026-10-01-notifications',
     date: '2026-10-01',
     title: 'Know where that sound came from',

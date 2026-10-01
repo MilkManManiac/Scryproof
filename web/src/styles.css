@@ -4996,6 +4996,13 @@ kbd {
   box-shadow: var(--hi), var(--shadow-2);
   animation: arrive var(--t-arrive) var(--ease);
 }
+.menu.menu-portal {
+  position: fixed;
+  right: auto;
+  overflow-y: auto;
+  min-width: 0;
+}
+
 .menu.align-right {
   left: auto;
   right: 0;

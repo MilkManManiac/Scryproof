@@ -177,7 +177,7 @@ export function ServerRail() {
             </button>
 
             {serverMenu === id ? (
-              <Menu onClose={() => setServerMenu(null)}>
+              <Menu portal onClose={() => setServerMenu(null)}>
                 <PlaceModeItems id={id} scope="server" kind="server" onDone={() => setServerMenu(null)} />
               </Menu>
             ) : null}
