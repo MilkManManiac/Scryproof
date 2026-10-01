@@ -45,7 +45,11 @@ import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { screenGain, shouldSubscribe, streamState, type PublicationFacts, type StreamState } from './stream-watch';
 import { loadSound, soundGain } from './sounds';
-import { HOLD_MS, MicGate, OutputMix, audioContext, sounds, withHold } from './voice-audio';
+import { notifyPrefs, playSound } from './notify';
+import { HOLD_MS, MicGate, OutputMix, audioContext, withHold } from './voice-audio';
+
+/** Joining and leaving a call: whichever sounds this person picked in Notifications. */
+const callSound = (moment: 'joined' | 'left'): void => playSound(notifyPrefs.get().moments[moment].sound);
 import { MicProcessor, isVoiceEffect, needsProcessor, type MicChoice } from './voice-effects';
 import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, usesModel, voicePrefs, type VoicePrefs } from './voice-prefs';
 import {
@@ -476,7 +480,7 @@ export class VoiceSession {
       this.ears = setInterval(() => this.refreshSpeaking(), 100);
 
       this.update({ phase: 'connected', encrypted: room.isE2EEEnabled });
-      if (voicePrefs.get().sounds) sounds.joined();
+      if (voicePrefs.get().sounds) callSound('joined');
       this.statsTimer = setInterval(() => void this.measure(), STATS_INTERVAL_MS);
     } catch (problem) {
       if (stale()) return;
@@ -523,7 +527,7 @@ export class VoiceSession {
     this.serverSpeakers = [];
     this.selfLoudUntil = 0;
 
-    if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) sounds.left();
+    if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) callSound('left');
     if (room) await room.disconnect().catch(() => undefined);
     if (this.snapshot.phase !== 'idle') this.update(IDLE);
   }
@@ -1227,8 +1231,8 @@ export class VoiceSession {
       const others = (list: string[]) => list.filter((id) => id !== this.userId);
       const was = new Set(others(this.members));
       const is = new Set(others(event.members));
-      if ([...is].some((id) => !was.has(id))) sounds.joined();
-      else if ([...was].some((id) => !is.has(id))) sounds.left();
+      if ([...is].some((id) => !was.has(id))) callSound('joined');
+      else if ([...was].some((id) => !is.has(id))) callSound('left');
     }
 
     this.members = event.members;

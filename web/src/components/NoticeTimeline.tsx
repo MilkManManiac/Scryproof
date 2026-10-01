@@ -7,15 +7,15 @@
  * Nothing here asks the server anything. See lib/notices.ts.
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { BookmarkedMessage } from '@scryproof/shared';
 
 import { api } from '../lib/api';
 import { channelKeysFor } from '../lib/channel-keys';
 import { toPlainLine } from '../lib/mentions';
-import { bySource, notices } from '../lib/notices';
+import { bySource, digestLine, forYou, namesLine, notices, summarize } from '../lib/notices';
 import { pushTargets } from '../lib/push';
-import type { Notice } from '../lib/notices';
+import type { Notice, Place } from '../lib/notices';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 
@@ -52,10 +52,12 @@ function flashWhenThere(elementId: string): void {
 
 export function NoticeBell() {
   const list = useNotices();
-  const { state, selectServer, selectChannel } = useStore();
+  const { state, selectServer, selectChannel, jumpToMessage } = useStore();
   const dms = useDms();
   const [open, setOpen] = useState(false);
-  const unread = list.reduce((count, entry) => count + (entry.read ? 0 : 1), 0);
+  // The number is what was for you; channel chatter lights the bell without one.
+  const unread = forYou(list);
+  const chatter = list.some((entry) => !entry.read && entry.kind === 'activity');
 
   // A pop-up clicked from the desktop comes through here as well.
   useEffect(() => {
@@ -72,11 +74,17 @@ export function NoticeBell() {
       if (!notice.channelId && notice.kind !== 'event') return;
       dms.hideDms();
       if (notice.serverId !== state.selectedServerId) selectServer(notice.serverId);
+      // A channel's running row lands on the first message not yet seen, which
+      // may be further back than the page a channel opens on.
+      if (notice.kind === 'activity' && notice.channelId && notice.messageId) {
+        void jumpToMessage(notice.channelId, notice.messageId).catch(() => selectChannel(notice.channelId!));
+        return;
+      }
       if (notice.channelId) selectChannel(notice.channelId);
       if (notice.kind !== 'event') flashWhenThere(`message-${notice.id}`);
     });
     return () => notices.onOpen(null);
-  }, [dms, state.servers, state.selectedServerId, selectServer, selectChannel]);
+  }, [dms, state.servers, state.selectedServerId, selectServer, selectChannel, jumpToMessage]);
 
   // A phone notification tapped: once there is something to go to, go.
   const bootstrapped = state.bootstrapped;
@@ -106,8 +114,8 @@ export function NoticeBell() {
     <>
       <button
         type="button"
-        className={`rail-item rail-bell${unread > 0 ? ' unread' : ''}`}
-        title={unread > 0 ? `Notifications — ${unread} new` : 'Notifications'}
+        className={`rail-item rail-bell${unread > 0 || chatter ? ' unread' : ''}`}
+        title={unread > 0 ? `Notifications — ${unread} for you` : chatter ? 'Notifications — new messages' : 'Notifications'}
         onClick={() => setOpen(true)}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -125,7 +133,12 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
   const [tab, setTab] = useState<'notices' | 'saved'>('notices');
   const [source, setSource] = useState<string | null>(null);
   const sources = useMemo(() => bySource(list), [list]);
-  const shown = source ? list.filter((entry) => (entry.serverId ?? 'dm') === source) : list;
+  const shown = useMemo(
+    () => (source ? list.filter((entry) => (entry.serverId ?? 'dm') === source) : list),
+    [list, source],
+  );
+  const summary = useMemo(() => summarize(shown), [shown]);
+  const earlier = shown.filter((entry) => entry.read);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -175,7 +188,7 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
             {sources.length > 1 ? (
               <div className="notices-sources">
                 <button type="button" className={source === null ? 'notices-source active' : 'notices-source'} onClick={() => setSource(null)}>
-                  Everywhere <span>{list.length}</span>
+                  Everywhere
                 </button>
                 {sources.map((entry) => (
                   <button
@@ -184,48 +197,41 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
                     className={source === entry.key ? 'notices-source active' : 'notices-source'}
                     onClick={() => setSource(entry.key)}
                   >
-                    {entry.label} <span>{entry.total}</span>
+                    {entry.label} {entry.unread > 0 ? <span>{entry.unread}</span> : null}
                   </button>
                 ))}
               </div>
             ) : null}
 
             <div className="notices-list">
+              <p className="notices-digest">{digestLine(summary)}</p>
+
+              {summary.places.length > 0 ? <div className="notices-day">New</div> : null}
+              {summary.places.map((place) => (
+                <PlaceCard key={place.key} place={place} />
+              ))}
+
               {shown.length === 0 ? (
                 <p className="notices-empty">
-                  Mentions, direct messages and reminders for events you are going to that arrive while you are somewhere else are listed here, with where they
-                  came from. The list is kept on this device only.
+                  Whatever was said while you were looking somewhere else shows up here, a line per channel, with who was
+                  talking and where. Mentions, direct messages and event reminders are picked out. The list is kept on
+                  this device only.
                 </p>
               ) : null}
-              {shown.map((entry) => {
+
+              {earlier.length > 0 ? <div className="notices-day">Earlier</div> : null}
+              {earlier.map((entry) => {
                 const day = dayLabel(entry.at);
-                const heading = day !== lastDay ? <div className="notices-day">{day}</div> : null;
+                const heading = day !== lastDay ? <div className="notices-subday">{day}</div> : null;
                 lastDay = day;
                 return (
                   <div key={entry.id}>
                     {heading}
-                    <button type="button" className={entry.read ? 'notice' : 'notice unread'} onClick={() => notices.open(entry)}>
+                    <button type="button" className="notice" onClick={() => notices.open(entry)}>
                       <span className="notice-time">{timeFormat.format(entry.at)}</span>
                       <span className="notice-body">
-                        <span className="notice-where">
-                          {entry.kind === 'dm'
-                            ? entry.channelName
-                              ? `Group › ${entry.channelName}`
-                              : 'Direct message'
-                            : entry.kind === 'event'
-                              ? `${entry.serverName ?? 'A server'} › Coming up`
-                              : `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`}
-                        </span>
-                        <span className="notice-what">
-                          <strong>{entry.authorName}</strong>{' '}
-                          {entry.kind === 'dm'
-                            ? entry.channelName
-                              ? 'wrote in the group'
-                              : 'sent you a message'
-                            : entry.kind === 'event'
-                              ? `${(entry.preview ?? 'starts within the hour').replace(/^Starts/, 'starts')}${entry.channelName ? ` in #${entry.channelName}` : ''}`
-                              : (entry.preview ?? 'mentioned you')}
-                        </span>
+                        <span className="notice-where">{whereOf(entry)}</span>
+                        <span className="notice-what">{whatOf(entry)}</span>
                       </span>
                     </button>
                   </div>
@@ -235,6 +241,88 @@ function NoticeTimeline({ list, onClose }: { list: readonly Notice[]; onClose: (
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function whereOf(entry: Notice): string {
+  if (entry.kind === 'dm') return entry.channelName ? `Group › ${entry.channelName}` : 'Direct message';
+  if (entry.kind === 'event') return `${entry.serverName ?? 'A server'} › Coming up`;
+  return `${entry.serverName ?? 'A server'} › #${entry.channelName ?? 'channel'}`;
+}
+
+function whatOf(entry: Notice): ReactNode {
+  if (entry.kind === 'activity') {
+    const count = entry.count ?? 1;
+    return (
+      <>
+        <strong>{namesLine((entry.authors ?? []).map((who) => who.name))}</strong> · {count}{' '}
+        {count === 1 ? 'message' : 'messages'}
+      </>
+    );
+  }
+  return (
+    <>
+      <strong>{entry.authorName}</strong>{' '}
+      {entry.kind === 'dm'
+        ? entry.channelName
+          ? 'wrote in the group'
+          : 'sent you a message'
+        : entry.kind === 'event'
+          ? `${(entry.preview ?? 'starts within the hour').replace(/^Starts/, 'starts')}${entry.channelName ? ` in #${entry.channelName}` : ''}`
+          : (entry.preview ?? 'mentioned you')}
+    </>
+  );
+}
+
+/**
+ * One place with news in it: where, who, how many, the last thing said, and
+ * any mention of you picked out underneath. The card goes to the first thing
+ * you have not seen; a mention goes to the mention.
+ */
+function PlaceCard({ place }: { place: Place }) {
+  const count =
+    place.kind === 'event'
+      ? 'Coming up'
+      : place.kind === 'dm'
+        ? `${place.count} ${place.count === 1 ? 'message' : 'messages'}`
+        : `${place.count} new`;
+  const where = place.kind === 'channel' ? `${place.label} › ${place.where}` : place.where;
+  const who =
+    place.kind === 'event'
+      ? `${place.label}${place.preview ? ` · ${place.preview}` : ''}`
+      : place.kind === 'dm'
+        ? place.open.channelName
+          ? `${namesLine(place.names)} in the group`
+          : 'Direct message'
+        : namesLine(place.names);
+
+  return (
+    // `is-` because a bare `channel` or `dm` class is already taken by the sidebar's rows.
+    <div className={`notice-place is-${place.kind}${place.mentions.length > 0 ? ' pinged' : ''}`}>
+      <button type="button" className="notice-place-main" onClick={() => notices.open(place.open)}>
+        <span className="notice-place-head">
+          <span className="notice-place-where">{where}</span>
+          <span className="notice-place-count">{count}</span>
+          <span className="notice-time">{timeFormat.format(place.latest)}</span>
+        </span>
+        <span className="notice-place-who">{who}</span>
+        {/* The last line said, unless it is the mention already shown underneath. */}
+        {place.kind === 'channel' && place.preview && !place.mentions.some((mention) => mention.id === place.open.lastId) ? (
+          <span className="notice-place-last">
+            {place.open.authorName}: {place.preview}
+          </span>
+        ) : null}
+      </button>
+      {place.mentions.slice(0, 3).map((mention) => (
+        <button type="button" key={mention.id} className="notice-place-mention" onClick={() => notices.open(mention)}>
+          <span className="notice-place-at">@</span>
+          <strong>{mention.authorName}</strong> {mention.preview ?? 'mentioned you'}
+        </button>
+      ))}
+      {place.mentions.length > 3 ? (
+        <span className="notice-place-more">and {place.mentions.length - 3} more mentions</span>
+      ) : null}
     </div>
   );
 }
@@ -293,7 +381,7 @@ function SavedTab({ onClose }: { onClose: () => void }) {
               {state.blocks.has(message.authorId)
                 ? 'Blocked message.'
                 : message.content
-                  ? toPlainLine(message.content, [])
+                  ? toPlainLine(message.content, [], state.servers[message.serverId]?.roles ?? [])
                   : message.attachments.length > 0
                     ? `${message.attachments.length} file(s)`
                     : 'A locked message'}

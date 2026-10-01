@@ -13,6 +13,7 @@ import { CHANGELOG, LATEST_RELEASE } from '../changelog';
 import { markRead } from '../lib/whats-new';
 import { Rich } from './MessageList';
 import { Modal } from './Modal';
+import { tours } from './Tours';
 
 const DATE = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -42,6 +43,18 @@ export function WhatsNew({ onClose }: { onClose: () => void }) {
               {index === 0 || CHANGELOG[index - 1]!.date !== release.date ? dateLabel(release.date) : null}
             </div>
             <h3 className="release-title">{release.title}</h3>
+            {tours.has(release.id) ? (
+              <button
+                type="button"
+                className="link-button release-tour"
+                onClick={() => {
+                  onClose();
+                  tours.start(release.id);
+                }}
+              >
+                Show me where
+              </button>
+            ) : null}
             <ul className="release-notes">
               {release.notes.map((note) => (
                 <li key={note}>
@@ -56,8 +69,13 @@ export function WhatsNew({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Above your name after an update you have not read: its title, and a way in. */
+/**
+ * Above your name after an update you have not read: its title, and a way in.
+ * A big update with a tour gets a second way in, "Show me", which walks
+ * through where the new things are instead of listing them.
+ */
 export function NewsCard({ onOpen }: { onOpen: () => void }) {
+  const toured = tours.has(LATEST_RELEASE.id);
   return (
     <div className="news-card">
       <button type="button" className="news-card-open" onClick={onOpen}>
@@ -65,6 +83,11 @@ export function NewsCard({ onOpen }: { onOpen: () => void }) {
         <span className="news-card-title">{LATEST_RELEASE.title}</span>
         <span className="news-card-more">See what changed</span>
       </button>
+      {toured ? (
+        <button type="button" className="button inline news-card-tour" onClick={() => tours.start(LATEST_RELEASE.id)}>
+          Show me
+        </button>
+      ) : null}
       <button type="button" className="news-card-close" title="Hide until the next update" aria-label="Hide" onClick={() => markRead()}>
         &#10005;
       </button>

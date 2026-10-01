@@ -51,6 +51,7 @@ import { freshEpoch, identitySigned } from '../services/channel-keys.js';
 import { addReaction, reactionsForMessages, removeReaction } from '../services/reactions.js';
 import { setVotes, tallyForMessages } from '../services/polls.js';
 import { bumpMentions, markRead, readStatesFor } from '../services/read-state.js';
+import { loadAllServerDetails } from '../services/server-detail.js';
 import { searchMessages } from '../services/search.js';
 import { pushTo, pushToReaders } from '../services/push.js';
 import { bookmarksFor, isBookmarked } from '../services/bookmarks.js';
@@ -1115,6 +1116,9 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
 
   app.get('/api/read-states', async (request) => {
     const user = requireUser(request);
-    return { readStates: await readStatesFor(user.id) };
+    const visible = new Set(
+      (await loadAllServerDetails(user.id)).flatMap((detail) => detail.channels.map((channel) => channel.id)),
+    );
+    return { readStates: await readStatesFor(user.id, visible) };
   });
 }

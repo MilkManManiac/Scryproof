@@ -28,6 +28,7 @@ import type {
   Message,
   Presence,
   PresenceStatus,
+  PublicUser,
   ReadState,
   SelfUser,
   ServerDetail,
@@ -36,16 +37,19 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
-import { voiceRoomOf } from '@scryproof/shared';
+import { UNREAD_COUNT_CAP, voiceRoomOf } from '@scryproof/shared';
 
 import { purdle } from '../lib/purdle';
 import { cuntections } from '../lib/cuntections';
 import { bee } from '../lib/bee';
 import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { api } from '../lib/api';
-import { eventNoticeFor, noticeFor, notices, previewOf } from '../lib/notices';
-import { pingsHeldRole } from '../lib/mentions';
-import { isMuted, notifyPrefs, play, soundFor } from '../lib/notify';
+import { noticeFor, notices, previewOf } from '../lib/notices';
+import type { Notice } from '../lib/notices';
+import { isMuted, momentSounds, notifyPrefs, placeMode, play, popupFor, soundFor } from '../lib/notify';
+import type { Moment } from '../lib/notify';
+import { popups, present } from '../lib/popups';
+import { pingsHeldRole, toPlainLine } from '../lib/mentions';
 import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
@@ -176,6 +180,15 @@ type Action =
  * in, if any: a person is in one call at a time, so the conversation need not
  * be in the key. Matches the gateway's own bookkeeping.
  */
+/** What each of the other daily games is called on screen, for a pop-up. */
+const GAME_NAMES: Record<'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball', string> = {
+  queens: 'Queens',
+  travle: 'Trundle',
+  thrice: 'Thrice',
+  whereabouts: 'Whereabouts',
+  lowball: 'Lowball',
+};
+
 const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
 
 /** What the gateway is told to put this person in. */
@@ -220,7 +233,22 @@ function readUpTo(state: State, channelId: string, messageId: string, mentionCou
   const current = state.readStates[channelId];
   const lastReadMessageId =
     current?.lastReadMessageId && current.lastReadMessageId > messageId ? current.lastReadMessageId : messageId;
-  return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount } };
+  // Read to here is read to the end as far as this device knows. The server
+  // answers with the true count (`read_state_update`) if something is still below.
+  return { ...state.readStates, [channelId]: { channelId, lastReadMessageId, mentionCount, unreadCount: 0 } };
+}
+
+/**
+ * One more message somebody else wrote, on the number beside its channel. Only
+ * where there is a number already: a channel never opened has none, and the
+ * server's count is the starting point for the rest.
+ */
+function countArrival(state: State, channelId: string, authorId: string): State['readStates'] {
+  const current = state.readStates[channelId];
+  if (!current?.lastReadMessageId || typeof current.unreadCount !== 'number') return state.readStates;
+  if (authorId === state.user?.id || state.blocks.has(authorId)) return state.readStates;
+  if (current.unreadCount >= UNREAD_COUNT_CAP) return state.readStates;
+  return { ...state.readStates, [channelId]: { ...current, unreadCount: current.unreadCount + 1 } };
 }
 
 /**
@@ -510,7 +538,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         readStates:
           event.d.authorId === state.user?.id
             ? readUpTo(state, event.d.channelId, event.d.id, state.readStates[event.d.channelId]?.mentionCount ?? 0)
-            : state.readStates,
+            : countArrival(state, event.d.channelId, event.d.authorId),
         // A window stops short of the newest message, so appending to it would
         // put this message directly after one from last week. It is dropped;
         // scrolling down out of the window fetches it in its proper place.
@@ -630,14 +658,14 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
       const ahead =
         current?.lastReadMessageId &&
         (!event.d.lastReadMessageId || current.lastReadMessageId > event.d.lastReadMessageId);
+      // A mention bump carries no count; the one this device has been keeping stands.
+      const unreadCount = ahead ? current?.unreadCount : (event.d.unreadCount ?? current?.unreadCount);
+      const next: ReadState = ahead ? { ...event.d, lastReadMessageId: current.lastReadMessageId } : { ...event.d };
+      if (typeof unreadCount === 'number') next.unreadCount = unreadCount;
+      else delete next.unreadCount;
       return {
         ...state,
-        readStates: {
-          ...state.readStates,
-          [event.d.channelId]: ahead
-            ? { ...event.d, lastReadMessageId: current.lastReadMessageId }
-            : event.d,
-        },
+        readStates: { ...state.readStates, [event.d.channelId]: next },
       };
     }
 
@@ -985,6 +1013,14 @@ export function StoreProvider({
   // And the same again: nothing a blocked person says makes a sound or a notice.
   const blocksRef = useRef(state.blocks);
   blocksRef.current = state.blocks;
+  // Names for a pop-up about someone joining a call or finishing a game.
+  const membersRef = useRef(state.members);
+  membersRef.current = state.members;
+  /**
+   * Everyone's voice entry as last seen, so a change can be told apart from a
+   * repeat: "went live" is sharing now and not sharing before.
+   */
+  const voiceSeen = useRef(new Map<string, VoiceState>());
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
   // One session object for the life of the app. It is idle until a call is
@@ -1043,6 +1079,141 @@ export function StoreProvider({
   }, [state.bootstrapped, state.user]);
 
   useEffect(() => {
+    /**
+     * A message as one plain line for the bell and pop-ups: names instead of
+     * mention codes, spoilers kept hidden. A server whose member list has not
+     * loaded yet cannot name anyone, and saying so beats a wrong name.
+     */
+    const plainPreview = (content: string | null, serverId: string | null): string | null => {
+      if (!content) return null;
+      const members = serverId ? (membersRef.current[serverId] ?? []) : [];
+      const roles = serverId ? (serversRef.current[serverId]?.roles ?? []) : [];
+      const line = toPlainLine(content, members, roles);
+      return previewOf(members.length > 0 ? line : line.replace(/@someone who left/g, '@someone'));
+    };
+
+    /** A member's name in a server, for a pop-up that only has their id. */
+    const nameIn = (serverId: string, userId: string): { name: string; user?: PublicUser } => {
+      const member = membersRef.current[serverId]?.find((entry) => entry.userId === userId);
+      if (member) return { name: member.nickname ?? member.user.displayName, user: member.user };
+      return { name: 'Someone' };
+    };
+
+    /**
+     * Someone arriving in a voice room, leaving one, starting to share their
+     * screen or stopping. Pop-ups follow the moments and the room's setting;
+     * a sound only for the call this device is in (where joining and leaving
+     * already chime, in voice-session) or a room being watched.
+     */
+    const voiceMoments = (after: VoiceState): void => {
+      const key = voiceKey(after.serverId, after.userId);
+      const before = voiceSeen.current.get(key) ?? null;
+      if (voiceRoomOf(after) === null) voiceSeen.current.delete(key);
+      else voiceSeen.current.set(key, after);
+      if (after.userId === selfId.current || !after.serverId) return;
+      const server = serversRef.current[after.serverId];
+      if (!server) return;
+
+      const was = before ? before.channelId : null;
+      const now = after.channelId;
+      const moments: { moment: Moment; channelId: string }[] = [];
+      if (now && now !== was) moments.push({ moment: 'joined', channelId: now });
+      if (was && !now) moments.push({ moment: 'left', channelId: was });
+      const sharedBefore = Boolean(before?.sharingScreen) && was === now;
+      // Only a change from a known state is news: someone this device never
+      // saw before (a reconnect, a room just made visible) may have been
+      // sharing all along, and "went live" would be wrong.
+      if (before && now && after.sharingScreen && !sharedBefore) moments.push({ moment: 'live', channelId: now });
+      if (was && before?.sharingScreen && !(after.sharingScreen && was === now)) {
+        moments.push({ moment: 'ended', channelId: was });
+      }
+      if (moments.length === 0) return;
+
+      const prefs = notifyPrefs.get();
+      const mine = new Set(selfRooms.current.values());
+      const focused = document.hasFocus();
+      const { name, user } = nameIn(server.id, after.userId);
+      // Going live outranks having just arrived: one card, the interesting one.
+      const shown = moments.find((entry) => entry.moment === 'live') ?? moments[0]!;
+      for (const { moment, channelId } of moments) {
+        const mode = placeMode(prefs, server.id, channelId);
+        const inMyCall = mine.has(channelId);
+        // Joining and leaving my own call already chime in voice-session.
+        const soundHere = moment === 'joined' || moment === 'left' ? !inMyCall && mode === 'watch' : inMyCall || mode === 'watch';
+        if (soundHere && momentSounds(prefs, moment, mode)) play(moment, { force: mode === 'watch' });
+        if (moment !== shown.moment) continue;
+        const room = server.channels.find((entry) => entry.id === channelId);
+        const onScreen = inMyCall || (focused && openChannel.current === channelId);
+        if (!popupFor({ moment, authorId: after.userId, selfId: selfId.current, blocked: blocksRef.current.has(after.userId), mode, onScreen, prefs })) continue;
+        const target: Notice = {
+          id: `voice-${channelId}`,
+          at: Date.now(),
+          kind: 'event',
+          authorId: after.userId,
+          authorName: name,
+          serverId: server.id,
+          serverName: server.name,
+          channelId,
+          channelName: room?.name ?? null,
+          dmId: null,
+          preview: null,
+          read: true,
+        };
+        present(
+          {
+            id: `voice-${after.userId}-${moment}`,
+            moment,
+            who: name,
+            user,
+            where: `${room?.name ?? 'A voice room'} · ${server.name}`,
+            what: null,
+            open: () => notices.goTo(target),
+          },
+          prefs.popupDetail,
+          focused,
+        );
+      }
+    };
+
+    /** Someone finished one of the daily games. Silent and unshown unless chosen. */
+    const gameMoment = (serverId: string, userId: string, game: string): void => {
+      if (userId === selfId.current) return;
+      const server = serversRef.current[serverId];
+      if (!server) return;
+      const prefs = notifyPrefs.get();
+      const mode = placeMode(prefs, serverId, null);
+      if (momentSounds(prefs, 'game', mode)) play('game');
+      if (!popupFor({ moment: 'game', authorId: userId, selfId: selfId.current, blocked: blocksRef.current.has(userId), mode, onScreen: false, prefs })) return;
+      const { name, user } = nameIn(serverId, userId);
+      const target: Notice = {
+        id: `game-${serverId}`,
+        at: Date.now(),
+        kind: 'event',
+        authorId: userId,
+        authorName: name,
+        serverId,
+        serverName: server.name,
+        channelId: null,
+        channelName: null,
+        dmId: null,
+        preview: null,
+        read: true,
+      };
+      present(
+        {
+          id: `game-${userId}-${game}`,
+          moment: 'game',
+          who: name,
+          user,
+          where: `${game} · ${server.name}`,
+          what: null,
+          open: () => notices.goTo(target),
+        },
+        prefs.popupDetail,
+        document.hasFocus(),
+      );
+    };
+
     const handleEvent = (event: ServerEvent): void => {
       dispatch({ type: 'gateway', event });
       for (const listener of eventListeners.current) listener(event);
@@ -1059,6 +1230,8 @@ export function StoreProvider({
         // The server said which roles this pinged; whether one is yours is on
         // the server's own record of you, which is there for every server.
         const mentionsMyRole = pingsHeldRole(event.d.mentionRoles, server?.myRoleIds ?? []);
+        const prefs = notifyPrefs.get();
+        const mode = placeMode(prefs, server?.id ?? null, event.d.channelId);
         const sound = soundFor({
           authorId: event.d.authorId,
           mentions: event.d.mentions ?? [],
@@ -1070,19 +1243,76 @@ export function StoreProvider({
           openChannelId: openChannel.current,
           windowFocused: document.hasFocus(),
           blocked,
-          prefs: notifyPrefs.get(),
+          prefs,
         });
-        if (sound) play(sound);
+        if (sound) play(sound, { force: mode === 'watch' });
 
         const message = event.d;
         const focused = document.hasFocus();
+        const pingsMe =
+          (message.mentionsEveryone ?? false) ||
+          (message.mentions ?? []).includes(selfId.current ?? '') ||
+          mentionsMyRole;
+        const place = server?.channels.find((entry) => entry.id === message.channelId);
+        const channelName = place?.name ?? 'channel';
+        // An end-to-end encrypted channel's words were opened on this device
+        // and stay in memory: never in the list behind the bell, which is
+        // plain storage, and never in the computer's notification, which the
+        // operating system keeps. The app's own card may show them, and only
+        // from a message that opened cleanly. The same rule as a DM.
+        const sealedPlace = Boolean(message.ciphertext) || (place?.encrypted ?? false);
+        const storedPreview = sealedPlace ? null : plainPreview(message.content, server?.id ?? null);
+        const cardWords = !sealedPlace
+          ? storedPreview
+          : focused && message.sealed === 'ok'
+            ? plainPreview(message.content, server?.id ?? null)
+            : null;
+        const target: Notice = {
+          id: message.id,
+          at: Date.now(),
+          kind: 'mention',
+          authorId: message.authorId,
+          authorName: message.author.displayName,
+          serverId: server?.id ?? null,
+          serverName: server?.name ?? null,
+          channelId: message.channelId,
+          channelName,
+          dmId: null,
+          preview: null,
+          read: false,
+        };
+        if (
+          popupFor({
+            moment: pingsMe ? 'mention' : 'message',
+            authorId: message.authorId,
+            selfId: selfId.current,
+            blocked,
+            mode,
+            onScreen: focused && message.channelId === openChannel.current,
+            prefs,
+          })
+        ) {
+          present(
+            {
+              // One card per channel: a burst updates it rather than stacking.
+              id: pingsMe ? `mention-${message.id}` : `message-${message.channelId}`,
+              moment: pingsMe ? 'mention' : 'message',
+              who: message.author.displayName,
+              user: message.author,
+              where: `#${channelName} · ${server?.name ?? 'a server'}`,
+              what: cardWords,
+              secret: sealedPlace,
+              place: message.channelId,
+              open: () => notices.open(target),
+            },
+            prefs.popupDetail,
+            focused,
+          );
+        }
         const verdict = noticeFor({
           authorId: message.authorId,
           selfId: selfId.current,
-          addressedToMe:
-            (message.mentionsEveryone ?? false) ||
-            (message.mentions ?? []).includes(selfId.current ?? '') ||
-            mentionsMyRole,
+          addressedToMe: pingsMe,
           watching: focused && message.channelId === openChannel.current,
           windowFocused: focused,
           muted,
@@ -1102,12 +1332,36 @@ export function StoreProvider({
               channelId: message.channelId,
               channelName: channel?.name ?? null,
               dmId: null,
-              preview: previewOf(message.content),
+              preview: storedPreview,
               read: false,
             },
-            verdict.popup,
           );
         }
+
+        // Everything else said where you were not looking goes on its
+        // channel's running row, so a sound is never without a line behind
+        // the bell saying where it came from. Muted places stay off it:
+        // muting is "I do not care what happens there".
+        const watching = focused && message.channelId === openChannel.current;
+        if (selfId.current && message.authorId !== selfId.current && !blocked && !muted && !watching) {
+          const channel = server?.channels.find((entry) => entry.id === message.channelId);
+          notices.activity({
+            messageId: message.id,
+            at: Date.now(),
+            authorId: message.authorId,
+            authorName: message.author.displayName,
+            serverId: server?.id ?? null,
+            serverName: server?.name ?? null,
+            channelId: message.channelId,
+            channelName: channel?.name ?? null,
+            preview: storedPreview,
+          });
+        }
+      }
+
+      // Read on another device: the rows behind the bell catch up too.
+      if (event.t === 'read_state_update' && event.d.lastReadMessageId) {
+        notices.readThrough(event.d.channelId, event.d.lastReadMessageId);
       }
 
       if (event.t === 'event_reminder') {
@@ -1118,12 +1372,38 @@ export function StoreProvider({
         const channelId = planned?.channelId ?? null;
         const channel = channelId ? server?.channels.find((entry) => entry.id === channelId) : undefined;
         const prefs = notifyPrefs.get();
-        const muted =
-          prefs.mutedServers.includes(event.d.serverId) || (channelId !== null && prefs.mutedChannels.includes(channelId));
+        const mode = placeMode(prefs, event.d.serverId, channelId);
 
-        // Treated as a mention: the same sound, and the same rule for the pop-up.
-        if (!muted && prefs.mention) play('mention');
-        const verdict = eventNoticeFor({ windowFocused: document.hasFocus(), muted });
+        // Its own moment since 2026-10-01: its own sound, its own pop-up switch.
+        if (momentSounds(prefs, 'event', mode)) play('event');
+        const reminder: Notice = {
+          id: `event-${event.d.eventId}`,
+          at: Date.now(),
+          kind: 'event',
+          authorId: planned?.createdBy ?? '',
+          authorName: event.d.title,
+          serverId: event.d.serverId,
+          serverName: server?.name ?? null,
+          channelId,
+          channelName: channel?.name ?? null,
+          dmId: null,
+          preview: `Starts ${fullWhen(event.d.startsAt)}`,
+          read: false,
+        };
+        if (popupFor({ moment: 'event', authorId: '', selfId: selfId.current, blocked: false, mode, onScreen: false, prefs })) {
+          present(
+            {
+              id: reminder.id,
+              moment: 'event',
+              who: event.d.title,
+              where: [channel ? `#${channel.name}` : null, server?.name ?? null].filter(Boolean).join(' · ') || null,
+              what: reminder.preview,
+              open: () => notices.open(reminder),
+            },
+            prefs.popupDetail,
+            document.hasFocus(),
+          );
+        }
         notices.arrived(
           {
             id: `event-${event.d.eventId}`,
@@ -1139,8 +1419,19 @@ export function StoreProvider({
             preview: `Starts ${fullWhen(event.d.startsAt)}`,
             read: false,
           },
-          verdict.popup,
         );
+      }
+
+      if (event.t === 'voice_state_update') voiceMoments(event.d);
+
+      if (event.t === 'purdle_done' || event.t === 'cuntections_done' || event.t === 'game_done') {
+        const name =
+          event.t === 'purdle_done'
+            ? 'Purdle'
+            : event.t === 'cuntections_done'
+              ? 'Cuntections'
+              : GAME_NAMES[event.d.game];
+        gameMoment(event.d.serverId, event.d.userId, name);
       }
 
       if (event.t === 'ready') {
@@ -1150,6 +1441,8 @@ export function StoreProvider({
         // call when the old one dropped. Rejoin rather than sit in a room
         // the server no longer thinks we are in.
         selfRooms.current.clear();
+        voiceSeen.current.clear();
+        for (const entry of event.d.voiceStates) voiceSeen.current.set(voiceKey(entry.serverId, entry.userId), entry);
         for (const entry of event.d.voiceStates) {
           const room = voiceRoomOf(entry);
           if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
@@ -1263,9 +1556,12 @@ export function StoreProvider({
         // nobody is going to move just to generate an event.
         void api.voice
           .states(serverId)
-          .then(({ voiceStates }) =>
-            dispatch({ type: 'voice-states-refreshed', serverId, voiceStates }),
-          )
+          .then(({ voiceStates }) => {
+            // Remembered too, so nobody already sharing reads as "went live".
+            for (const [key, seen] of voiceSeen.current) if (seen.serverId === serverId) voiceSeen.current.delete(key);
+            for (const entry of voiceStates) voiceSeen.current.set(voiceKey(entry.serverId, entry.userId), entry);
+            dispatch({ type: 'voice-states-refreshed', serverId, voiceStates });
+          })
           .catch(() => undefined);
       }
     };
@@ -1521,6 +1817,7 @@ export function StoreProvider({
   const readStatesRef = useRef(state.readStates);
   readStatesRef.current = state.readStates;
   const markRead = useCallback((channelId: string, messageId: string) => {
+    popups.dismissPlace(channelId);
     const current = readStatesRef.current[channelId];
     const caughtUp = current?.lastReadMessageId && current.lastReadMessageId >= messageId;
     if (caughtUp && current.mentionCount === 0) return;
@@ -1709,27 +2006,32 @@ export type { Presence };
 export interface Unread {
   unread: boolean;
   mentions: number;
+  /** Messages since the last one read, where that is known; see `ReadState.unreadCount`. */
+  count: number;
 }
 
 /** Whether a channel holds anything newer than what this person has read. */
 export function unreadFor(state: State, channel: { id: string; type: string; lastMessageId: string | null }): Unread {
-  if (channel.type !== 'text') return { unread: false, mentions: 0 };
+  if (channel.type !== 'text') return { unread: false, mentions: 0, count: 0 };
   const read = state.readStates[channel.id];
   const unread = Boolean(
     channel.lastMessageId && (!read?.lastReadMessageId || channel.lastMessageId > read.lastReadMessageId),
   );
-  return { unread, mentions: read?.mentionCount ?? 0 };
+  return { unread, mentions: read?.mentionCount ?? 0, count: unread ? (read?.unreadCount ?? 0) : 0 };
 }
 
-export function unreadForServer(state: State, serverId: string): Unread {
+export function unreadForServer(state: State, serverId: string, muted?: (channelId: string) => boolean): Unread {
   let unread = false;
   let mentions = 0;
+  let count = 0;
   for (const channel of state.servers[serverId]?.channels ?? []) {
     const one = unreadFor(state, channel);
     unread = unread || one.unread;
     mentions += one.mentions;
+    // A muted channel keeps its own number and stays out of the server's.
+    if (!muted?.(channel.id)) count += one.count;
   }
-  return { unread, mentions };
+  return { unread, mentions, count };
 }
 
 /** Past 99 the number stops being information and starts being a shape. */

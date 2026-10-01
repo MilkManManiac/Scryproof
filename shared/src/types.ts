@@ -281,7 +281,18 @@ export interface ReadState {
   channelId: Snowflake;
   lastReadMessageId: Snowflake | null;
   mentionCount: number;
+  /**
+   * Messages from other people after `lastReadMessageId`, stopping at
+   * `UNREAD_COUNT_CAP`. Only for a channel this person has read at least once:
+   * a channel never opened is "unread" without a number, or every channel a
+   * new member walks into would say 99. Missing on a state that only carries
+   * a mention bump; the client keeps the number it had.
+   */
+  unreadCount?: number;
 }
+
+/** Past this the sidebar says "99+": counting further is work nobody reads. */
+export const UNREAD_COUNT_CAP = 100;
 
 export interface Message {
   id: Snowflake;

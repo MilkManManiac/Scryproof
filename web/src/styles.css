@@ -630,6 +630,12 @@ select {
   flex: 0 0 auto;
 }
 
+.channel-watch {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+  margin-left: 4px;
+}
 .channel-draft {
   font-size: 11px;
   color: var(--text-faint);
@@ -3252,6 +3258,18 @@ video.mirrored {
   box-shadow: var(--hi);
   animation: arrive var(--t-arrive) var(--ease);
 }
+/* "Show me" on a big update: the tour, under the title. */
+.news-card-tour {
+  margin: 0 10px 10px;
+}
+.release-tour {
+  display: inline-block;
+  margin: -4px 0 8px;
+  font-size: 13px;
+}
+.tour-example {
+  margin: 10px 0;
+}
 .news-card-open {
   display: flex;
   flex-direction: column;
@@ -4759,6 +4777,15 @@ video.mirrored {
 .channel .badge {
   margin-left: auto;
 }
+/* A plain count of unread messages: present, but quieter than a mention. */
+.badge.quiet {
+  background: var(--line-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+.channel.muted .badge.quiet {
+  opacity: 0.6;
+}
 /* In the member list: messages from this person waiting in your DMs. */
 .member-dm {
   margin-left: auto;
@@ -5002,6 +5029,25 @@ kbd {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.menu-heading:first-child {
+  margin-top: 2px;
+  padding-top: 0;
+  border-top: 0;
+}
+.menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.menu-divider:last-child {
+  display: none;
+}
+.menu-check {
+  display: inline-block;
+  width: 16px;
+  color: var(--accent);
+  font-weight: 700;
 }
 .menu-problem {
   margin: 2px 9px 4px;
@@ -5477,6 +5523,112 @@ kbd {
   text-transform: uppercase;
   color: var(--text-dim);
   padding: 12px 8px 4px;
+}
+
+/* The one sentence at the top: what is waiting, before any detail. */
+.notices-digest {
+  margin: 6px 8px 4px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.notices-subday {
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 8px 8px 2px;
+}
+
+/* A place with news: a channel, a conversation, an event. */
+.notice-place {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  margin: 6px 0;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.notice-place.pinged,
+.notice-place.is-dm {
+  border-left-color: var(--accent);
+}
+.notice-place-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.notice-place-main:hover,
+.notice-place-mention:hover {
+  background: var(--panel-3);
+}
+.notice-place-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.notice-place-where {
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.notice-place-head .notice-time {
+  margin-left: auto;
+  padding-top: 0;
+}
+.notice-place-who {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.notice-place-last {
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-mention {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 6px 10px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-place-at {
+  color: var(--accent);
+  font-weight: 700;
+  margin-right: 6px;
+}
+.notice-place-more {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 10px 6px;
 }
 
 /* .notice is also the banner class on the sign-in screen; inside the notices
@@ -9441,6 +9593,8 @@ kbd {
 }
 .tv-legs .tv-leg.here {
   box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--text);
+}
+
 /* A role mention: the role's own colour, when it has one. `.me` is the reader holding it. */
 .mention.role {
   color: var(--role-color, var(--text));
@@ -9453,4 +9607,256 @@ kbd {
 .mention.role.gone {
   color: var(--text-dim);
   font-style: italic;
+}
+
+/* ---------------------------------- pop-ups ---------------------------------- */
+
+/* Bottom right, clear of the message box; on a phone, across the bottom above it. */
+.popup-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 104px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.popup-slot {
+  pointer-events: auto;
+  animation: popup-in var(--t-arrive) var(--ease);
+  transition: opacity 400ms var(--ease), transform 400ms var(--ease);
+}
+.popup-slot.leaving {
+  opacity: 0;
+  transform: translateY(6px);
+}
+@keyframes popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.popup-card {
+  position: relative;
+  display: flex;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--hi), var(--shadow-3);
+  overflow: hidden;
+}
+.popup-card.is-mention,
+.popup-card.is-dm,
+.popup-card.is-live,
+.popup-card.is-event {
+  border-left-color: var(--accent);
+}
+.popup-open,
+.popup-card.still {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 34px 10px 12px;
+}
+.popup-open {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.popup-open:hover {
+  background: var(--panel-2);
+}
+.popup-card.still {
+  width: 100%;
+  color: var(--text);
+  box-shadow: var(--hi), var(--shadow-2);
+}
+.popup-mark {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--panel-3);
+  color: var(--text-muted);
+}
+.popup-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.popup-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.popup-where {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.popup-what {
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.popup-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.popup-close:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+@media (max-width: 700px) {
+  .popup-stack {
+    right: 12px;
+    left: 12px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    width: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popup-slot {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------- notification settings */
+
+.modal.notify-settings {
+  max-width: 640px;
+}
+/* Three pictures of the same pop-up, one per detail level. */
+.notify-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+.notify-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+.notify-detail.chosen {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+.notify-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.notify-detail .popup-card.still {
+  padding: 8px 10px;
+  gap: 8px;
+}
+.notify-detail .popup-title {
+  font-size: 13px;
+}
+.notify-detail .avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+/* One row per moment: what it is, its sound, whether it pops up. */
+.notify-moments {
+  display: flex;
+  flex-direction: column;
+}
+.notify-moment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 56px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.notify-moment > .perm-switch {
+  justify-self: center;
+}
+.notify-moment-head {
+  padding: 4px 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.notify-moment-head span:nth-child(3) {
+  text-align: center;
+}
+.notify-moment-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.notify-when {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+.notify-sound {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.notify-hear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (max-width: 640px) {
+  .notify-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notify-moment {
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+  .notify-moment > .notify-sound {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .notify-moment > .perm-switch {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+  }
+  .notify-moment-head span:nth-child(2) {
+    display: none;
+  }
+}
+.notify-settings .voice-select {
+  width: auto;
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.notify-sound .voice-select {
+  width: 150px;
 }

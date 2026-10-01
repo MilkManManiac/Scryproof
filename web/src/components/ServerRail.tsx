@@ -12,11 +12,12 @@ import { LIMITS, validateServerName } from '@scryproof/shared';
 
 import { ApiError, api } from '../lib/api';
 import { usePressHold } from '../lib/hold';
-import { notifyPrefs } from '../lib/notify';
+import { isMuted, notifyPrefs, ownPlaceMode } from '../lib/notify';
 import { dmWaiting, othersIn, titleOf, unreadDmCount, useDms, waitingDms } from '../state/dms';
 import { badgeText, countLabel, unreadForServer, useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { Menu, MenuItem } from './Menu';
+import { PlaceModeItems } from './PlaceModeItems';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
 import { GamesButton } from './Games';
@@ -134,8 +135,8 @@ export function ServerRail() {
         const active = state.selectedServerId === id && !dms.active;
         // The pip is the server's own news. Looking at it is not reading it,
         // so an open server still shows one until its channels are read.
-        const { unread, mentions } = unreadForServer(state, id);
-        const muted = notifyState.mutedServers.includes(id);
+        const { unread, mentions, count } = unreadForServer(state, id, (channelId) => isMuted(notifyState, id, channelId));
+        const muted = ownPlaceMode(notifyState, id) === 'mute';
 
         const classes = ['rail-item'];
         if (active) classes.push('active');
@@ -146,7 +147,9 @@ export function ServerRail() {
           ? `${server.name} — muted`
           : mentions > 0
             ? `${server.name} — ${countLabel(mentions)}`
-            : server.name;
+            : count > 0
+              ? `${server.name} — ${count >= 100 ? 'over 99' : count} unread`
+              : server.name;
 
         return (
           <span key={id} style={{ position: 'relative' }}>
@@ -166,20 +169,16 @@ export function ServerRail() {
               {...hold(() => setServerMenu(id))}
             >
               {tile(server.name)}
-              {mentions > 0 ? <span className="badge">{badgeText(mentions)}</span> : null}
+              {mentions > 0 ? (
+                <span className="badge">{badgeText(mentions)}</span>
+              ) : count > 0 && !muted ? (
+                <span className="badge quiet">{badgeText(count)}</span>
+              ) : null}
             </button>
 
             {serverMenu === id ? (
               <Menu onClose={() => setServerMenu(null)}>
-                <MenuItem
-                  note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up, for the whole server.'}
-                  onClick={() => {
-                    notifyPrefs.toggleServer(id);
-                    setServerMenu(null);
-                  }}
-                >
-                  {muted ? 'Unmute server' : 'Mute server'}
-                </MenuItem>
+                <PlaceModeItems id={id} scope="server" kind="server" onDone={() => setServerMenu(null)} />
               </Menu>
             ) : null}
           </span>

@@ -1,10 +1,17 @@
 /**
- * What makes a sound when somebody says something.
+ * Notifications: what makes a sound, what pops up, and how much a pop-up says.
+ *
+ * Rebuilt 2026-10-01 around one row per moment (Wes: "allow each user to be
+ * very specific about what they want to hear and see"), with the real pop-up
+ * card drawn next to each detail level so the choice is seen, not described
+ * ("show rather than tell"). Channels and servers set differently from their
+ * right-click menus are listed at the bottom, where an old choice can be found
+ * and undone.
  *
  * Kept apart from the voice settings because it is a different question: that
  * dialog is about a call you are in, this is about the room carrying on
- * without you. Like the voice settings, none of it reaches the server — what
- * your machine does when a message arrives is not the server's business.
+ * without you. None of it reaches the server except the mute lists and the
+ * mention switch, which the phone needs.
  */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -12,38 +19,121 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { guide } from '../lib/guide';
 import { notices } from '../lib/notices';
 import { disablePush, enablePush, preparePush, pushAvailability, pushConfigured, pushState } from '../lib/push';
-import { notifyPrefs, play } from '../lib/notify';
-import type { MessageSound } from '../lib/notify';
+import { SOUND_BANK, SOUND_IDS, notifyPrefs, ownPlaceMode, playSound } from '../lib/notify';
+import type { MessageSound, Moment, NotifyPrefs, PlaceMode, PopupDetail, SoundId } from '../lib/notify';
+import type { PopupCard } from '../lib/popups';
 import { useStore } from '../state/store';
 import { Modal } from './Modal';
+import { PopupCardView } from './PopupStack';
 
-const MESSAGE_CHOICES: [value: MessageSound, label: string, note: string][] = [
-  ['off', 'Never', 'Only the times someone says your name.'],
-  ['unfocused', 'When I am somewhere else', 'Nothing while you are sitting in front of it.'],
-  ['always', 'Every message', 'Including the channel already on screen.'],
+const WHEN_CHOICES: [value: MessageSound, label: string][] = [
+  ['off', 'Never'],
+  ['unfocused', 'When I am somewhere else'],
+  ['always', 'Any channel I am not looking at'],
 ];
 
+/** The rows, in the order people think of them: things for you, then the room, then the rest. */
+const ROWS: { moment: Moment; label: string; note: string }[] = [
+  { moment: 'mention', label: 'Someone mentions you', note: 'Your name, @everyone, or a role you have.' },
+  { moment: 'dm', label: 'A direct message', note: 'Unless you are already looking at that conversation.' },
+  { moment: 'message', label: 'A message in a channel', note: 'Everything else said in channels you can see.' },
+  {
+    moment: 'joined',
+    label: 'Someone joins a voice room',
+    note: 'The sound is for your own call. A pop-up is for any room in your servers.',
+  },
+  { moment: 'left', label: 'Someone leaves a voice room', note: 'The same, on the way out.' },
+  { moment: 'live', label: 'Someone goes live', note: 'Starts sharing their screen in a voice room.' },
+  { moment: 'ended', label: 'A stream ends', note: 'They stop sharing.' },
+  { moment: 'event', label: 'An event is about to start', note: 'One you said you are going to.' },
+  { moment: 'game', label: 'Someone finishes a daily game', note: 'Purdle, Cuntections, Trundle and the rest.' },
+];
+
+const DETAILS: { value: PopupDetail; label: string }[] = [
+  { value: 'who', label: 'Who' },
+  { value: 'where', label: 'Who and where' },
+  { value: 'what', label: 'Who, where and what' },
+];
+
+/** The example in each detail picture. Made up, and obviously so to anyone who knows lamp. */
+const EXAMPLE: PopupCard = {
+  id: 'example',
+  moment: 'mention',
+  who: 'lamp',
+  user: { id: 'example', username: 'lamp', displayName: 'lamp', accent: '#7c6cf0', avatarUrl: null, statusText: null },
+  where: '#general · The Table',
+  what: 'are we still on for tonight? bring the dice',
+  open: () => undefined,
+};
+
+const PLACE_LABELS: Record<PlaceMode, string> = {
+  default: 'Follow my settings',
+  watch: 'Every message',
+  mentions: 'Mentions only',
+  mute: 'Mute',
+};
+
+function SoundPicker({ moment, prefs }: { moment: Moment; prefs: NotifyPrefs }) {
+  // A mention's on/off lives in `mention`, which the phone reads too.
+  const value: SoundId = moment === 'mention' && !prefs.mention ? 'none' : prefs.moments[moment].sound;
+  return (
+    <span className="notify-sound">
+      <select
+        className="voice-select"
+        aria-label="Sound"
+        value={value}
+        onChange={(event) => {
+          const sound = event.target.value as SoundId;
+          if (moment === 'mention') notifyPrefs.set({ mention: sound !== 'none' });
+          if (sound !== 'none' || moment !== 'mention') notifyPrefs.setMoment(moment, { sound });
+          playSound(sound);
+        }}
+      >
+        {SOUND_IDS.map((id) => (
+          <option key={id} value={id}>
+            {id === 'none' ? 'No sound' : SOUND_BANK[id].label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="icon-button notify-hear"
+        title="Hear it"
+        aria-label="Hear it"
+        disabled={value === 'none'}
+        onClick={() => playSound(value)}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M7 5v14l12-7z" />
+        </svg>
+      </button>
+    </span>
+  );
+}
+
 export function NotifySettings({ onClose }: { onClose: () => void }) {
-  const [prefs, setPrefs] = useState(notifyPrefs.get());
-  useEffect(() => notifyPrefs.subscribe(() => setPrefs(notifyPrefs.get())), []);
-  const popups = useSyncExternalStore(notices.subscribe, notices.prefs);
+  const prefs = useSyncExternalStore(notifyPrefs.subscribe, notifyPrefs.get);
+  const listPrefs = useSyncExternalStore(notices.subscribe, notices.prefs);
   const [refused, setRefused] = useState(false);
   const { state } = useStore();
 
-  // Names for whatever is muted, so a mute from months ago is still findable.
-  // A server or channel that has since been left or deleted just shows its id.
-  const mutedServers = prefs.mutedServers.map((id) => ({ id, name: state.servers[id]?.name ?? id }));
-  const mutedChannels = prefs.mutedChannels.map((id) => {
-    for (const server of Object.values(state.servers)) {
-      const channel = server.channels.find((entry) => entry.id === id);
-      if (channel) return { id, name: `#${channel.name}`, server: server.name };
+  // Every channel and server set differently, by name, so a choice from
+  // months ago is still findable. Something since left or deleted shows its id.
+  const overridden = [...prefs.mutedServers, ...prefs.mutedChannels, ...prefs.watched, ...prefs.mentionsOnly];
+  const places = Array.from(new Set(overridden)).map((id) => {
+    const server = state.servers[id];
+    if (server) return { id, scope: 'server' as const, name: server.name, where: 'Whole server' };
+    for (const each of Object.values(state.servers)) {
+      const channel = each.channels.find((entry) => entry.id === id);
+      if (channel) return { id, scope: 'channel' as const, name: `${channel.type === 'voice' ? '' : '#'}${channel.name}`, where: each.name };
     }
-    return { id, name: id, server: null as string | null };
+    return { id, scope: (prefs.mutedServers.includes(id) ? 'server' : 'channel') as 'server' | 'channel', name: id, where: 'No longer here' };
   });
 
   return (
     <Modal
       title="Notifications"
+      className="notify-settings"
       onClose={onClose}
       footer={
         <button type="button" className="button inline" onClick={onClose}>
@@ -52,7 +142,8 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
       }
     >
       <p className="field-note">
-        What each of these does, and how to set up your phone:{' '}
+        Pick what you hear and see for each kind of thing. A single channel or server can be set differently by
+        right-clicking it. More on each of these, and on setting up your phone:{' '}
         <button
           type="button"
           className="link-button"
@@ -66,105 +157,92 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
         .
       </p>
 
+      <div className="settings-subhead">How much a pop-up says</div>
+      <div className="notify-details" role="radiogroup" aria-label="How much a pop-up says">
+        {DETAILS.map((detail) => (
+          <label key={detail.value} className={prefs.popupDetail === detail.value ? 'notify-detail chosen' : 'notify-detail'}>
+            <span className="notify-detail-head">
+              <input
+                type="radio"
+                name="popup-detail"
+                checked={prefs.popupDetail === detail.value}
+                onChange={() => notifyPrefs.set({ popupDetail: detail.value })}
+              />
+              {detail.label}
+            </span>
+            <PopupCardView card={EXAMPLE} detail={detail.value} still />
+          </label>
+        ))}
+      </div>
+      <p className="field-note">
+        A direct message&rsquo;s words only ever appear in Scryproof&rsquo;s own pop-up, and only for a conversation
+        already open on this device. Your computer&rsquo;s notifications get who wrote, never what: the message is
+        encrypted, and your computer keeps a history of what it showed.
+      </p>
       <label className="toggle-row">
         <span>
-          When someone says your name
+          Use my computer&rsquo;s notifications when Scryproof is in the background
           <span className="field-note">
-            A mention, @everyone, or a role you have.{' '}
-            <button
-              type="button"
-              className="link-button"
-              onClick={(event) => {
-                event.preventDefault();
-                play('mention');
-              }}
-            >
-              Hear it
-            </button>
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          className="perm-switch"
-          checked={prefs.mention}
-          onChange={(event) => notifyPrefs.set({ mention: event.target.checked })}
-        />
-      </label>
-
-      <PushSection />
-
-      <div className="settings-subhead">Pop-ups</div>
-      <label className="toggle-row">
-        <span>
-          Show a pop-up when I am somewhere else
-          <span className="field-note">
-            For mentions and direct messages. A direct message pop-up says who wrote, never what: that text is
-            encrypted, and your computer&rsquo;s notification history is not.
+            The pop-up appears in the corner of your screen even with Scryproof behind other windows.
             {refused ? ' The browser said no. Allow notifications for this site in its settings, then try again.' : ''}
           </span>
         </span>
         <input
           type="checkbox"
           className="perm-switch"
-          checked={popups.popups}
+          checked={listPrefs.popups}
           onChange={(event) => {
             if (!event.target.checked) return notices.setPrefs({ popups: false });
             void notices.enablePopups().then((allowed) => setRefused(!allowed));
           }}
         />
       </label>
-      <label className="toggle-row">
-        <span>
-          Show what a channel message says
-          <span className="field-note">In the pop-up and in the list behind the bell. Off means only who and where.</span>
-        </span>
-        <input
-          type="checkbox"
-          className="perm-switch"
-          checked={popups.previews}
-          onChange={(event) => notices.setPrefs({ previews: event.target.checked })}
-        />
-      </label>
 
-      <div className="settings-subhead">Sounds for everything else</div>
-      <div className="radio-group">
-        <p className="field-note">
-          One short note.{' '}
-          <button
-            type="button"
-            className="link-button"
-            onClick={(event) => {
-              event.preventDefault();
-              play('message');
-            }}
-          >
-            Hear it
-          </button>
-        </p>
-        {MESSAGE_CHOICES.map(([value, label, note]) => (
-          <label className="radio-row" key={value}>
-            <input
-              type="radio"
-              name="message-sound"
-              checked={prefs.message === value}
-              onChange={() => notifyPrefs.set({ message: value })}
-            />
-            <span>
-              {label}
-              <span className="field-note">{note}</span>
+      <div className="settings-subhead">What makes a sound or pops up</div>
+      <div className="notify-moments">
+        <div className="notify-moment notify-moment-head" aria-hidden="true">
+          <span />
+          <span>Sound</span>
+          <span>Pop-up</span>
+        </div>
+        {ROWS.map((row) => (
+          <div className="notify-moment" key={row.moment}>
+            <span className="notify-moment-label">
+              {row.label}
+              <span className="field-note">{row.note}</span>
+              {row.moment === 'message' ? (
+                <select
+                  className="voice-select notify-when"
+                  aria-label="When a channel message makes a sound"
+                  value={prefs.message}
+                  onChange={(event) => notifyPrefs.set({ message: event.target.value as MessageSound })}
+                >
+                  {WHEN_CHOICES.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </span>
-          </label>
+            <SoundPicker moment={row.moment} prefs={prefs} />
+            <input
+              type="checkbox"
+              className="perm-switch"
+              aria-label={`Pop up: ${row.label}`}
+              checked={prefs.moments[row.moment].popup}
+              onChange={(event) => notifyPrefs.setMoment(row.moment, { popup: event.target.checked })}
+            />
+          </div>
         ))}
-        <p className="field-note">
-          A burst of messages is one sound, not one each.
-        </p>
       </div>
+      <p className="field-note">A burst of messages is one sound, not one each.</p>
 
       <div className="settings-subhead">Volume</div>
       <div className="toggle-row">
         <span>
           How loud the sounds are
-          <span className="field-note">Both of them. Your computer&rsquo;s own volume still applies on top.</span>
+          <span className="field-note">All of these. Your computer&rsquo;s own volume still applies on top.</span>
         </span>
         <span className="voice-volume">
           <input
@@ -175,48 +253,57 @@ export function NotifySettings({ onClose }: { onClose: () => void }) {
             step={5}
             value={Math.round(prefs.volume * 100)}
             onChange={(event) => notifyPrefs.set({ volume: Number(event.target.value) / 100 })}
-            onMouseUp={() => play('mention')}
-            onKeyUp={() => play('mention')}
-            aria-label="Volume of the message and mention sounds"
+            onMouseUp={() => playSound(prefs.moments.mention.sound)}
+            onKeyUp={() => playSound(prefs.moments.mention.sound)}
+            aria-label="Volume of the notification sounds"
           />
           <span className="voice-volume-number">{Math.round(prefs.volume * 100)}%</span>
         </span>
       </div>
 
-      {mutedServers.length > 0 || mutedChannels.length > 0 ? (
-        <>
-          <div className="settings-subhead">Muted</div>
-          <div className="radio-group">
-            {mutedServers.map((entry) => (
-              <label className="toggle-row" key={`server-${entry.id}`}>
-                <span>{entry.name}</span>
-                <button
-                  type="button"
-                  className="button secondary inline"
-                  onClick={() => notifyPrefs.toggleServer(entry.id)}
-                >
-                  Unmute
-                </button>
-              </label>
-            ))}
-            {mutedChannels.map((entry) => (
-              <label className="toggle-row" key={`channel-${entry.id}`}>
-                <span>
-                  {entry.name}
-                  {entry.server ? <span className="field-note">{entry.server}</span> : null}
-                </span>
-                <button
-                  type="button"
-                  className="button secondary inline"
-                  onClick={() => notifyPrefs.toggleChannel(entry.id)}
-                >
-                  Unmute
-                </button>
-              </label>
-            ))}
-          </div>
-        </>
-      ) : null}
+      <PushSection />
+
+      <div className="settings-subhead">Channels and servers set differently</div>
+      {places.length === 0 ? (
+        <p className="field-note">None. Right-click a channel or a server to watch it, hear only mentions, or mute it.</p>
+      ) : (
+        <div className="radio-group">
+          {places.map((place) => (
+            <div className="toggle-row" key={place.id}>
+              <span>
+                {place.name}
+                <span className="field-note">{place.where}</span>
+              </span>
+              <select
+                className="voice-select"
+                aria-label={`Notifications for ${place.name}`}
+                value={ownPlaceMode(prefs, place.id)}
+                onChange={(event) => notifyPrefs.setPlace(place.id, place.scope, event.target.value as PlaceMode)}
+              >
+                {(['default', 'watch', 'mentions', 'mute'] as const).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {PLACE_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="settings-subhead">The list behind the bell</div>
+      <label className="toggle-row">
+        <span>
+          Show what a channel message says
+          <span className="field-note">Off means only who and where. Kept on this device only.</span>
+        </span>
+        <input
+          type="checkbox"
+          className="perm-switch"
+          checked={listPrefs.previews}
+          onChange={(event) => notices.setPrefs({ previews: event.target.checked })}
+        />
+      </label>
     </Modal>
   );
 }
@@ -250,8 +337,8 @@ function PushSection() {
             Notify this device
             <span className="field-note">
               &ldquo;Someone messaged you&rdquo; or &ldquo;Someone mentioned you&rdquo;, never who or what, with a
-              sound and a number on the app&rsquo;s icon. Mentions follow the switch at the top, and muted places
-              stay quiet.
+              sound and a number on the app&rsquo;s icon. &ldquo;No sound&rdquo; on mentions above stops them
+              here too, and muted places stay quiet.
               {problem ? ` ${problem}` : ''}
             </span>
           </span>

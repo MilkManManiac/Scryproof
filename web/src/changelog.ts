@@ -20,6 +20,29 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-01-notifications',
+    date: '2026-10-01',
+    title: 'Know where that sound came from',
+    notes: [
+      'The bell now keeps everything said while you were looking somewhere else, one line per channel: who was talking, how many messages, and any mention of you picked out. The sentence at the top says what is waiting.',
+      'Channels show how many messages you have not read, in grey. Red is still mentions of you.',
+      'Right-click a channel or a server for Every message, Mentions only or Mute. A channel you watch gets a small eye.',
+      'Pop-ups: a small card in the corner when something is for you. Click it to go there. Pick how much it says, from just who to the first line.',
+      'Notifications settings have a row for each kind of thing (mentions, direct messages, channel messages, people joining a voice room, going live, a stream ending, events, the daily games), each with its own sound and its own pop-up switch.',
+    ],
+  },
+  {
+    id: '2026-10-01-role-mentions',
+    date: '2026-10-01',
+    title: 'You can @ a role now',
+    notes: [
+      'Type @ and a role, like @Table Mods, and everyone who has that role gets pinged: the badge, the sound, the pop-up and the phone notice, same as if you had named them.',
+      'Roles show up in the list in their own colour, marked role. You only see roles you are allowed to ping.',
+      'A role can be pinged by anyone if its “Anyone can @mention this role” switch is on in Roles. Otherwise only people who can mention everyone can.',
+      'It works in encrypted channels too. A message that pings a role you have is lit up like one that names you.',
+    ],
+  },
+  {
     id: '2026-09-30-whereabouts-lowball',
     date: '2026-09-30',
     title: 'Whereabouts, and three Trundles a day',
@@ -27,17 +50,6 @@ export const CHANGELOG: readonly Release[] = [
       'Whereabouts: five street photos from somewhere in the world. Click the map where you think each was taken. The closer you are, the more points, up to 25,000 a day. Scroll on the photo to zoom in on signs and number plates.',
       'It is in the games folder, or type /whereabouts. Everyone gets the same five, new ones come at midnight, and your server has a board.',
       'Trundle now has three routes a day instead of one. They are the 1 2 3 at the top; finish one and it offers the next. Your streak counts routes won in a row.',
-    ],
-  },
-  {
-    id: '2026-09-29-role-mentions',
-    date: '2026-09-29',
-    title: 'You can @ a role now',
-    notes: [
-      'Type @ and a role, like @Table Mods, and everyone who has that role gets pinged: the badge, the sound, the pop-up and the phone notice, same as if you had named them.',
-      'Roles show up in the list in their own colour, marked role. You only see roles you are allowed to ping.',
-      'A role can be pinged by anyone if its “Anyone can @mention this role” switch is on in Roles. Otherwise only people who can mention everyone can.',
-      'It works in encrypted channels too. A message that pings a role you have is lit up like one that names you.',
     ],
   },
   {

@@ -3591,22 +3591,22 @@ Ask (a friend, then Wes): a screen share or camera should not play until the vie
 
 **Live 2026-09-29 15:11 ET**, client 1790708967202, together with the game names; the live bundle carries both. **Not done / unverified.** The sound itself was never listened to (headless is muted; Wes, 2026-09-29: sound worked before, no need). Desktop shell and iPhone PWA not tried on a device; the phone check is Chrome emulating one.
 
-## Role mentions (2026-09-29, built, NOT deployed)
+## Role mentions (2026-09-29, finished and merged 2026-10-01; see the last section for the release)
 
-Wes: "Need to make sure we can @ a role therefore notifying people in those groups." Built the Discord way. Nothing committed, pushed or deployed.
+Wes: "Need to make sure we can @ a role therefore notifying people in those groups." Built the Discord way. Committed 2026-10-01 as `0c316ef`.
 
 **Design.** Token in the body: `<@&role-id>` (the `&` tells it from `<@user-id>`). Server decides who it reaches (`resolveMentions` / `pingTargets` in `server/src/services/mentions.ts`): the role must belong to this server, not be the @everyone role, and be `mentionable` or the sender holds MENTION_EVERYONE. A role the sender may not ping is plain text: no ping, no error (plaintext channels). It pings every holder, through the same rules as a direct mention (not the sender, can see the channel, not blockers, deduped with named people). Stored on the message as `messages.mention_roles` (jsonb string[]) and serialised as `Message.mentionRoles`. A member holding one of those roles is treated as mentioned on every path a direct mention takes.
 
-**Migration (runs on prod).** `server/drizzle/0032_role_mentions.sql`: `ALTER TABLE "messages" ADD COLUMN "mention_roles" jsonb DEFAULT '[]'::jsonb NOT NULL;` Additive, no rewrite of data beyond the default.
+**Migration (runs on prod).** `server/drizzle/0034_role_mentions.sql`: `ALTER TABLE "messages" ADD COLUMN "mention_roles" jsonb DEFAULT '[]'::jsonb NOT NULL;` Additive, no rewrite of data beyond the default.
 
 **Encrypted channels.** The sender declares `mentionRoleIds` (in the clear, like `mentionIds`); the server refuses the message (403) if any is not pingable. Signature: `messageSignedBytes` gets an optional `mentionRoleIds`; when empty the bytes are identical to before, when non-empty one extra trailing part `roles:<sorted ids>` is appended. Old messages and old clients still verify; a test proves it.
 
 **Progress log (update below as work lands).**
 - [x] shared: token, parse, split, types, signed bytes
 - [x] server: mentions service, messages route, schema, migration file, serialize
-- [ ] apply migration to dev DB; server tests
-- [ ] web: composer autocomplete, chip render, highlight, notify/notices/store, e2ee seal, permission text, RolesPane label, changelog
-- [ ] typecheck, web tests, e2e proof, shots (docs/shots/role-mention.png, role-mention-picker.png)
+- [x] apply migration to dev DB; server tests
+- [x] web: composer autocomplete, chip render, highlight, notify/notices/store, e2ee seal, permission text, RolesPane label, changelog
+- [x] typecheck, web tests, e2e proof (`node scripts/role-mention-shots.mjs docs/shots`, 12 checks), shots (docs/shots/role-mention.png, role-mention-channel.png, role-mention-picker.png)
 
 ## Stream zoom (2026-09-29) — LIVE 23:11 ET, client 1790737755954
 
@@ -3637,3 +3637,29 @@ The role-mentions WIP was set aside as a tagged stash for the deploy and put bac
 **Trundle, three routes a day** (Wes, 2026-09-30: "add 3 daily things of the trable things a day"; read as three Travhole routes a day). Same branch. `travle_days` and `travle_plays` gain `leg` (0-2) in their primary keys, migration `0033_travle_three_a_day`, **hand-written**: drizzle-kit crashed on the composite key change until the new key was named, then put the `ADD CONSTRAINT`s before the `ADD COLUMN`s and could not name the old `travle_days_pkey`. Every route already played becomes leg 0. `today` opens the first unfinished leg (`?leg=` asks for another), `guess` takes `leg`, no country pair repeats across any route, the board shows each person's three, the streak is routes won in a row (a whole day unplayed breaks it). Screen: 1 2 3 at the top, "Next route" after finishing one. Tests: games 16/16, including the migration on a fresh database and a two-route day.
 
 **Lowball is built but switched off** (`ROUNDS_OPEN.lowball = false` in `shared/src/rounds.ts`: routes answer 400/404, the app shows it nowhere). Redfin began answering listing pages with a bot challenge (HTTP 202) after 7 homes, 2026-09-30 ~00:30 ET. The script only stopped on 403/429/captcha, so it sent ~470 more requests into the challenge before it was killed; it now stops on any 202 or challenge page. Wes chose (asked): ship Whereabouts and three Trundles, **retry Redfin slowly the next day**: `python scripts/homes-stock.py --count 650 --delay 8` (~2 h, resumes from `game-photos/homes-state/`, stops at the first challenge). If it is blocked again, do NOT drive a real browser around the challenge; bring Wes other sources. The 7 homes so far are in `server/src/homes/stock.json`. To open it: flip `ROUNDS_OPEN.lowball`, put the Lowball lines back in What's new, `bash scripts/publish-game-photos.sh`, release.
+
+## Notifications rebuild and role mentions, merged, reviewed, fixed (2026-10-01)
+
+Wes, 2026-10-01, after asking whether the pop-ups and their settings were in: "If that is in we can clean up both of these and send." Both are on `main`: role mentions (`0c316ef`) and the `notify` branch (brief: `docs/briefs/notifications-rebuild.md`, four commits) merged on top.
+
+![A role ping arriving](shots/role-mention.png)
+![The chip, lit for a holder](shots/role-mention-channel.png)
+![The bell](shots/notify-bell.png)
+![The settings](shots/notify-settings.png)
+
+**What was wrong with role mentions.** One line: the pattern in `fromDraft` (`web/src/lib/mentions.ts`) had lost its backslashes (the doubled backslashes before `s` and `w` had become single ones, which inside a template string are a plain `s` and `w`; the heredoc hazard noted under M0). No typed @name, person or role, turned into a token. Also the role CSS had been pasted inside `.tv-legs .tv-leg.here { … }` with no closing brace, which broke `vite build` (tests and typecheck do not parse CSS; only the build caught it).
+
+**Merge.** Four conflicts (`Guide.tsx`, `NotifySettings.tsx`, `notify.ts`, `store.tsx`). The branch's new pop-up and bell code decided "this pings me" without roles; it now uses one `pingsMe` that includes `mentionsMyRole`, and previews name roles (`plainPreview` passes the server's roles). Changelog: two entries dated 2026-10-01, notifications first.
+
+**Review of the branch (a separate agent, read-only), and what was done about it.**
+- FIXED, privacy: an end-to-end encrypted channel's text was written to the bell's list in localStorage and could reach the computer's own notification. Now `sealedPlace` in `store.tsx` `message_create`: nothing from a sealed message is stored; the app's own card shows words only when focused and `sealed === 'ok'`; `PopupCard.secret` makes `popupText(..., system)` drop the words as it does for a DM. Mention rows stored before today on someone's device may still hold such a preview; nothing scrubs old rows.
+- FIXED, privacy: `readStatesFor` returned a live unread count for channels the member could no longer see (rows outlive a kick or a lost role). It now takes the set of visible channel ids and both callers pass it (`gateway/index.ts` `sendReady`, `GET /api/read-states`).
+- FIXED: deleted messages counted as unread (`m.deleted_at is null`). The client still does not count down when a message is deleted while you are away; it corrects on the next load.
+- FIXED: someone who had the old "mention sound" switch off now keeps DMs and event reminders silent (`load()` in `notify.ts`).
+- FIXED: a pop-up hovered mid-fade no longer vanishes under the pointer; a replaced card restarts visible (`PopupStack.tsx`).
+- FIXED: a muted channel no longer adds to its server icon's grey number (`unreadForServer(state, id, muted)`).
+- ADDED (seen in the proof pictures, not from the review): opening a channel or a DM takes its pop-up away (`popups.dismissPlace`, called from both `markRead`s).
+- NOT FIXED, next: (a) bell rows go stale when you read on another device while this one is disconnected (`ready` does not reconcile the list against `readStates`); (b) voice moments: a sharer leaving gives `[left, ended]` and only the first is shown; the leave chime and the stream-ended sound can overlap in your own call; live/ended sounds ignore the Voice settings "Join and leave sounds" switch; (c) the phone push does not know about "Mentions only" (`web/src/lib/push.ts` sends only the mute lists), unverified on the server side.
+- Departures from the brief, left as built: "Quiet" shipped as "Mentions only"; the digest says "Waiting for you" from unread rows, no "since you left" moment is stored; the unread count is not on `message_create`, the client counts up locally.
+
+**Proven.** Typecheck; web 468/468; server 366/366; `npm run build`; `npm run test:channels` all passed (role pings change the signed bytes only when present); `scripts/role-mention-shots.mjs` 12/12 in a real browser (the server records the role and names nobody, pop-up, red count, lit chip, pop-up leaves on open, the picker offers the role, typed text is stored as a token and pings); `scripts/notify-shots.mjs` ran clean on the merged tree. **Not proven:** nothing on a real phone; the sounds were not listened to; the encrypted-channel preview fix has no browser proof, only the unit test on `popupText` and reading the code; the owner cannot change their own roles through `PUT /members/:id/roles` (403 `role_hierarchy` in the seed; not looked into, may be intended).

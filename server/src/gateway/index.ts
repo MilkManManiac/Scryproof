@@ -227,7 +227,7 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
         // Calls inside this person's own conversations, and no others.
         ...hub.dmVoiceStatesFor(await dmIdsFor(connection.userId)),
       ],
-      readStates: await readStatesFor(connection.userId),
+      readStates: await readStatesFor(connection.userId, visibleChannelIds),
       // Here rather than fetched after the first paint, or a blocked person's
       // messages would be drawn and then taken away again.
       blocks: await blockedBy(connection.userId),

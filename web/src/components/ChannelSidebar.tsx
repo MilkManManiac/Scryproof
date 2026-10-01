@@ -15,12 +15,13 @@ import { groupChannels } from '../lib/channel-order';
 import { channelDrafts, isShortDraft } from '../lib/drafts';
 import { usePressHold } from '../lib/hold';
 import { nameFor, useLocalNames } from '../lib/local-names';
-import { notifyPrefs } from '../lib/notify';
+import { notifyPrefs, placeMode } from '../lib/notify';
 import { canOnServer } from '../lib/usePermissions';
 import { badgeText, countLabel, unreadFor, useStore } from '../state/store';
 import { Avatar } from './Avatar';
 import { ComingUp } from './ComingUp';
 import { Menu, MenuItem } from './Menu';
+import { PlaceModeItems } from './PlaceModeItems';
 import { Modal } from './Modal';
 import { CategorySettings } from './settings/CategorySettings';
 import { ChannelSettings } from './settings/ChannelSettings';
@@ -227,8 +228,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                     // not focused it has not been read, and saying so here is
                     // the only thing that keeps this count and the rail's from
                     // disagreeing.
-                    const { unread, mentions } = unreadFor(state, channel);
-                    const muted = notifyState.mutedChannels.includes(channel.id);
+                    const { unread, mentions, count } = unreadFor(state, channel);
+                    const mode = placeMode(notifyState, server.id, channel.id);
+                    const muted = mode === 'mute';
                     const hasDraft = isShortDraft(channelDrafts.get(channel.id));
 
                     // The type is a class too, so a voice channel can be told from a
@@ -267,7 +269,15 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                                 }
                               : undefined
                           }
-                          title={muted ? `${channel.name} — muted` : undefined}
+                          title={
+                            muted
+                              ? `${channel.name} — muted`
+                              : mode === 'watch'
+                                ? `${channel.name} — every message makes a sound and pops up`
+                                : mode === 'mentions'
+                                  ? `${channel.name} — mentions only`
+                                  : undefined
+                          }
                           onClick={() => {
                             selectChannel(channel.id);
                             if (channel.type === 'voice') joinVoice(channel.id);
@@ -292,6 +302,15 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                               &#128274;
                             </span>
                           ) : null}
+                          {mode === 'watch' ? (
+                            // Why this channel is noisy, at a glance.
+                            <span className="channel-watch" aria-label="Every message">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+                                <circle cx="12" cy="12" r="2.8" />
+                              </svg>
+                            </span>
+                          ) : null}
                           {hasDraft ? (
                             <span className="channel-draft" title="You have an unsent draft here">
                               &#9998;
@@ -300,6 +319,12 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                           {mentions > 0 ? (
                             <span className="badge" title={countLabel(mentions)}>
                               {badgeText(mentions)}
+                            </span>
+                          ) : count > 0 ? (
+                            // How many came in since you last read it (Wes's friend,
+                            // 2026-10-01). Grey, so a mention still stands out.
+                            <span className="badge quiet" title={`${count >= 100 ? 'Over 99' : count} unread`}>
+                              {badgeText(count)}
                             </span>
                           ) : null}
                         </button>
@@ -325,15 +350,13 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
                               setDeleteError(null);
                             }}
                           >
-                            <MenuItem
-                              note={muted ? 'Sounds and pop-ups will come back.' : 'No sound, no pop-up. Unread still shows.'}
-                              onClick={() => {
-                                notifyPrefs.toggleChannel(channel.id);
-                                setChannelMenu(null);
-                              }}
-                            >
-                              {muted ? 'Unmute channel' : 'Mute channel'}
-                            </MenuItem>
+                            <PlaceModeItems
+                              id={channel.id}
+                              scope="channel"
+                              kind={channel.type === 'voice' ? 'voice' : 'text'}
+                              serverId={server.id}
+                              onDone={() => setChannelMenu(null)}
+                            />
                             {canEdit ? (
                               <MenuItem
                                 note="Name, who can see it and get in, and what each role may do."
