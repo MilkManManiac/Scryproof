@@ -78,3 +78,66 @@ The call check uses only the seeded local Wes/Alex accounts and synthetic microp
 - Actual Electron shell smoke verified the hosted game and frame isolation. Windows capture, installer signing, real phone play, and a two-person call on production remain unverified. The existing Linux native push-to-talk test needs display hardware information unavailable in this environment.
 
 The static game is live at https://activities.scryproof.com/drain-the-swamp/. The browser Activities feature is live on Scryproof after Matt approved deployment on 2026-10-02; deployed source revision `fb40904326ee3f778dab17919deae4bfe0f88c5b`. The served bundle, health, and narrow frame policy were checked. Older desktop shells cannot embed it until Wes publishes the signed 0.5.5 installer and signed client using the existing workstation key.
+
+## Mobile activity fixes (prepared 2026-10-02)
+
+The player uses a compact toolbar for narrow windows and devices whose primary
+pointer is touch. This stays compact when a phone rotates beyond chat's 640px
+breakpoint, including tablet layouts. It uses the dynamic viewport height and
+safe-area padding; a portrait hint recommends turning sideways. Extra controls
+sit in Options, and Back closes that panel before minimizing the activity.
+Rotation, menus, and returning to chat keep the same game iframe alive. Browsers
+without screen capture show the reason instead of offering a broken share action.
+An active screen share stays labeled in the compact toolbar.
+
+The game also needs a source fix: its first touch disabled the mouse emulation
+Godot's menu buttons rely on. Keeping emulation on fixes New Game, character
+selection, HUD Menu and Resume. A separate mouse scoop binding, ignored while
+touch controls are enabled, prevents arrow taps from scooping and keeps held
+multi-touch actions independent. Touch players get touch instructions.
+
+Matt's tested game source is preserved in his DrainTheSwamp checkout as
+`fix/scryproof-mobile-activities` (`89f8505`, based on the hosted `b26ac6e`). The
+local export tested here is `abfb48855954-6a9b4e6fd8e6`; the later commit adds only
+the regression test. A separate upstream-based review branch contains just the
+mobile fix: `/tmp/scryproof-mobile-game-pr`, `fix/mobile-touch-menus-review`.
+Upstream master is older than the hosted source; rebuilding from it would remove
+existing gameplay changes. Do not deploy that older base over the activity.
+
+After Wes's review, publish the game from the preserved hosted-source branch
+using the existing validated export/publish flow, and release the Scryproof
+client normally. There is no desktop shell change and no new EXE requirement.
+The source checkout used by the builder must be clean. A fresh temporary clone
+with `--branch fix/scryproof-mobile-activities` avoids switching Matt's working
+checkout. Production and the game save origin have not been changed.
+
+### Mobile verification
+
+With the local services described above, including the fixed game export:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs MOBILE_CALL=1 \
+  node scripts/activities/check-mobile.mjs
+```
+
+This uses Chrome touch emulation and the seeded local account only. It exercises
+actual Godot touch input through the separate-origin iframe, selects Piggy, moves
+and scoops, opens the HUD menu, rotates through phone/tablet sizes, navigates Back
+through Options and the end confirmation, and saves/reopens nonzero progress.
+With local LiveKit it also checks the existing encrypted call stays connected.
+The check covers 390×844, 844×390, 375×667, 667×375, 768×1024, 1024×768,
+800×1280 and 1280×800 viewports. The capture-unavailable branch is simulated
+because desktop Chrome still exposes that API during mobile emulation.
+
+The actual two-browser sharing regression also passed: the watcher received game
+pixels over encrypted media, returning stopped the owned share, and load failure,
+retry and game-exit recovery kept the call connected. Typecheck, production web
+build and all 49 web test files passed. Godot input regression passed on both the
+hosted-source branch and the upstream review branch. Physical iPhone, iPad,
+Android phone/tablet and home-screen PWA checks remain outstanding; desktop Chrome
+emulation cannot prove browser chrome, safe-area dimensions, Safari audio or
+native orientation behavior. Nothing from this mobile fix has been deployed.
+
+The Scryproof changes are in [PR #5](https://github.com/MilkManManiac/Scryproof/pull/5).
+A desktop mouse regression also exercised the actual local app: keyboard movement
+followed by a held mouse click produced 0.030 water before the idle auto-scoop delay.
