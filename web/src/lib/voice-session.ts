@@ -41,7 +41,7 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { api, ApiError } from './api';
-import { holdPushKey } from './desktop';
+import { holdPushKey, onAccessibilityGranted } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { screenGain, shouldSubscribe, streamState, type PublicationFacts, type StreamState } from './stream-watch';
 import { loadSound, soundGain } from './sounds';
@@ -1054,10 +1054,15 @@ export class VoiceSession {
     window.addEventListener('keyup', onKey);
     window.addEventListener('blur', onBlur);
     void this.armGlobalHold();
+    // On a Mac the shell says no until Accessibility is granted; ask again then.
+    const stopRearm = onAccessibilityGranted(() => {
+      if (!this.globalHold) void this.armGlobalHold();
+    });
 
     const unsubscribe = voicePrefs.subscribe(() => void this.applyPrefs());
     this.stopWatching = () => {
       unsubscribe();
+      stopRearm();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
       window.removeEventListener('blur', onBlur);

@@ -370,6 +370,31 @@ export const downloadStore = downloadLink(onMacApp || isMacPlatform());
 /** What macOS has allowed, kept up to date while something shows it. */
 export const permissionStore = liveValue<PermissionState | null>(null, (set) => watchPermissions(set));
 
+/**
+ * Call `listener` each time Accessibility goes from refused to granted. The
+ * shell does not start the key hook without the grant, so push-to-talk asked
+ * before it was given has to ask again once the person comes back from System
+ * Settings. Only a seen refusal counts: a grant that was there from the start
+ * is not news. Silent in a browser, on Windows and in an older shell.
+ */
+export function onAccessibilityGranted(listener: () => void): () => void {
+  let refused = false;
+  const look = () => {
+    const state = permissionStore.get();
+    if (!state) return;
+    if (!state.accessibility) refused = true;
+    else if (refused) {
+      refused = false;
+      listener();
+    }
+  };
+  // The store only tells of changes; somebody else may already have it
+  // showing a refusal, so read where it stands now as well.
+  const stop = permissionStore.subscribe(look);
+  look();
+  return stop;
+}
+
 /** How the waiting installer gets installed, once the shell has one ready; null before. */
 let shellListening = false;
 export const shellUpdateStore = liveValue<'restart' | 'download' | null>(null, (set) => {

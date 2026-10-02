@@ -19,13 +19,15 @@ for (const [name, value] of [['platform', 'MacIntel'], ['maxTouchPoints', 0]] as
 }
 
 const server = 'https://scryproof.test';
+// What the Mac says about Accessibility; one test below grants it and puts it back.
+let granted = false;
 const window = new EventTarget();
 Object.assign(window, {
   scryproofDesktop: {
     server,
     gateway: 'wss://scryproof.test/ws',
     platform: 'darwin',
-    permissionState: async () => ({ accessibility: false, screen: 'denied' }),
+    permissionState: async () => ({ accessibility: granted, screen: 'denied' }),
     shellUpdateState: async () => '0.6.1',
     onShellUpdateReady: () => {},
     shellUpdateHow: async () => 'download',
@@ -116,5 +118,42 @@ describe('the two places that link the app', () => {
     const source = readFileSync(new URL('../components/ThemePicker.tsx', import.meta.url), 'utf8');
     assert.equal(source.match(/useDesktopDownload\(\)/g)?.length, 1);
     assert.match(source, /function NeedsNewerApp\(\) \{\s*const download = useDesktopDownload\(\);/);
+  });
+});
+
+describe('push-to-talk asks the shell again once Accessibility is granted', () => {
+  // The shell starts no key hook without the grant, so a call that asked
+  // before the trip to System Settings has to ask again when the person is
+  // back. The way back is the window coming to the front.
+  it('calls back once on refused then granted, not for a grant already there', async () => {
+    let calls = 0;
+    const stop = desktop.onAccessibilityGranted(() => calls++);
+    await settle();
+    assert.equal(calls, 0, 'still refused');
+    granted = true;
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    assert.equal(calls, 1, 'granted after a refusal');
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    assert.equal(calls, 1, 'still granted is not news');
+    stop();
+
+    let already = 0;
+    const stopAlready = desktop.onAccessibilityGranted(() => already++);
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    assert.equal(already, 0, 'granted from the start');
+    stopAlready();
+
+    granted = false;
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+  });
+
+  it('the voice session re-arms the shell key on that callback', () => {
+    const source = readFileSync(new URL('../lib/voice-session.ts', import.meta.url), 'utf8');
+    assert.match(source, /onAccessibilityGranted\(\(\) => \{\s*if \(!this\.globalHold\) void this\.armGlobalHold\(\);/);
+    assert.match(source, /stopRearm\(\);/);
   });
 });
