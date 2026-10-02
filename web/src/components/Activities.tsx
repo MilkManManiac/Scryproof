@@ -12,7 +12,13 @@ import {
   readActivityStatus,
   type ActivityStatus,
 } from '../lib/activity-status';
-import { canEmbedActivities, isDesktop, publicOrigin } from '../lib/desktop';
+import {
+  canEmbedActivities,
+  canInstallShellUpdate,
+  isDesktop,
+  publicOrigin,
+} from '../lib/desktop';
+import { DesktopInstallerLink } from './DesktopInstallerLink';
 import { useBackButton } from '../lib/back';
 import { usePhone } from '../lib/usePhone';
 import { useStore } from '../state/store';
@@ -75,17 +81,39 @@ export function ActivitiesGate() {
             Play here. Join a call and share your gameplay so friends can watch.
           </p>
           {!canEmbedActivities ? (
-            <p>
-              This desktop version needs an update for Activities.{' '}
-              <a
-                href={publicOrigin()}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Play in your browser
-              </a>{' '}
-              for now.
-            </p>
+            <div className="activity-update-needed">
+              <p>This desktop version needs an update for Activities.</p>
+              {canInstallShellUpdate ? (
+                <>
+                  <p>
+                    Your app will offer Restart to install when the update is
+                    ready.
+                  </p>
+                  <details className="activity-update-help">
+                    <summary>Trouble updating?</summary>
+                    <p>
+                      <DesktopInstallerLink /> and run the installer when your
+                      call is over.
+                    </p>
+                  </details>
+                </>
+              ) : (
+                <p>
+                  <DesktopInstallerLink /> and run the installer when your call
+                  is over.
+                </p>
+              )}
+              <p>
+                <a
+                  href={publicOrigin()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Play in your browser
+                </a>{' '}
+                while you wait.
+              </p>
+            </div>
           ) : null}
           {ACTIVITIES.map((game) => (
             <button

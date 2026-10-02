@@ -3682,3 +3682,16 @@ The game lives on the same encrypted vault in an independent root-owned static r
 ![Activity player, local proof](shots/activities-player.png)
 
 ![Another participant watching actual gameplay over an encrypted local call](shots/activities-watcher.png)
+
+
+## Desktop installer download fallback (2026-10-02)
+
+Prepared on `feat/desktop-update-link` for Wes's review and signed-client release; not deployed. **Normal automatic updates keep their existing flow.** Only older shells without automatic installer support check the published installer version for a manual download card. Matching/newer versions, browsers, unavailable metadata, and automatic-capable shells do not show this card. A ready verified installer still uses Restart to install; ordinary signed client updates keep Reload now with no EXE prompt. In Activities, automatic-capable shells get their normal update instructions and a collapsed Trouble updating? recovery link; legacy shells get a direct link.
+
+The rare manual card replaces the orange strip with a theme-aware dark surface, download icon, version badge, concise instructions and a clear Download update button. It fits narrow windows. `/api/desktop/installer` serves the existing public uncached manifest under a path old shells already forward; it adds no executable behavior or permissions. Existing shell signature verification/install behavior is unchanged. Manual links open the real browser to the existing download route.
+
+Published 0.5.5 metadata and the downloadable EXE response were checked. No new installer is required for this change. After merging, Wes runs his normal signed-client release (`bash scripts/release.sh`) to deploy the endpoint and deliver the UI through existing client updates. The signing key stays on his workstation.
+
+Verified: typecheck/build; all 36 server and 49 web test files before the final presentation pass; affected UI checked again after that pass. Version checks cover numeric ordering, equal/newer installs, legacy/malformed versions. Real UI checks cover legacy/new/browser/installer-ready/automatic-capable-behind/ahead/offline/client-only/automatic-behind states. Actual 0.5.4 shell source kept automatic updates, hid the manual card, and opened the optional recovery download externally. The local test did not run a Windows installer.
+
+![Rare manual update card, local seeded account with a legacy shell](shots/desktop-update-fallback.png)
