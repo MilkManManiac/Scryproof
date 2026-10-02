@@ -12,7 +12,10 @@
     "release": "node scripts/make-update.mjs",
     "test": "node --test test/*.test.mjs",
     "dist": "npm run release && electron-builder --win nsis --publish never && npm run sign-installer",
-    "sign-installer": "node scripts/sign-installer.mjs"
+    "sign-installer": "node scripts/sign-installer.mjs",
+    "mac-update-key": "node scripts/mac-update-key.mjs",
+    "dist:mac": "node -e \"if(!require('fs').existsSync('src/update-key-mac.pub.pem')){console.error('Run npm run mac-update-key on Treys Mac first.');process.exit(1)}\" && npm run release && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=scryproof-notary APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && xcrun notarytool submit release/Scryproof.dmg --keychain-profile scryproof-notary --wait && xcrun stapler staple release/Scryproof.dmg && npm run sign-installer -- --mac",
+    "dist:mac:adhoc": "npm run client && electron-builder --mac dir --arm64 --publish never --config.mac.identity=- --config.mac.notarize=false --config.mac.forceCodeSigning=false"
   },
   "devDependencies": {
     "electron": "44.4.3",
@@ -58,6 +61,37 @@
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true,
       "grantFileProtocolExtraPrivileges": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.social-networking",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "forceCodeSigning": true,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
+      "notarize": true,
+      "artifactName": "Scryproof-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Scryproof uses your microphone so people in your call can hear you.",
+        "NSCameraUsageDescription": "Scryproof uses your camera when you choose to share video."
+      }
+    },
+    "dmg": {
+      "artifactName": "Scryproof.dmg"
     }
   },
   "dependencies": {

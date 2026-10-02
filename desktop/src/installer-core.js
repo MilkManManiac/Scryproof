@@ -117,3 +117,31 @@ export async function verifyInstallerFile(path, manifest) {
     return false;
   }
 }
+
+/** Mac shell releases have their own key and domain; Windows stays v1. */
+export const MAC_CONTEXT = 'scryproof/desktop-installer-mac/v1';
+export const macInstallerFileName = (version, arch = 'arm64') => `Scryproof-${version}-mac-${arch}.zip`;
+export const macManifestName = (arch = 'arm64') => `installer-mac-${arch}.json`;
+const macSignedBytes = (version, arch, hash) => Buffer.from(`${MAC_CONTEXT}\n${arch}\n${version}\n${hash}`, 'utf8');
+
+export function signMacInstaller({ version, arch, sha256, size }, privateKey) {
+  return { version, arch, sha256, size,
+    signature: sign(null, macSignedBytes(version, arch, sha256), privateKey).toString('base64') };
+}
+
+/** Network input is untrusted, including the key or JSON being malformed. */
+export function readMacInstallerManifest(raw, publicKeyPem) {
+  try {
+    const { version, arch, sha256, size, signature } = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parts(version) || arch !== 'arm64') return null;
+    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) return null;
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_INSTALLER_BYTES) return null;
+    if (typeof signature !== 'string') return null;
+    const key = createPublicKey(publicKeyPem);
+    if (key.asymmetricKeyType !== 'ed25519') return null;
+    if (!verify(null, macSignedBytes(version, arch, sha256), key, Buffer.from(signature, 'base64'))) return null;
+    return { version, arch, sha256, size, signature };
+  } catch {
+    return null;
+  }
+}

@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const keyPath = process.env.SCRYPROOF_UPDATE_KEY ?? join(homedir(), '.scryproof', 'update-key.pem');
+export const macKeyPath = process.env.SCRYPROOF_MAC_UPDATE_KEY ?? join(homedir(), '.scryproof', 'mac-update-key.pem');
+export const macPublicKeyPath = join(root, 'desktop', 'src', 'update-key-mac.pub.pem');
 /** The public half, baked into every installer. What installed apps trust. */
 export const publicKeyPath = join(root, 'desktop', 'src', 'update-key.pub.pem');
 
