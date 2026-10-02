@@ -5,6 +5,8 @@
  * the address bar is the answer.
  */
 
+import { newerDesktopRelease } from './desktop-version';
+
 interface DesktopBridge {
   server: string;
   gateway: string;
@@ -54,6 +56,7 @@ const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop
 
 export const isDesktop = bridge !== null;
 export const canEmbedActivities = !bridge || bridge.activities === true;
+export const canInstallShellUpdate = typeof bridge?.applyShellUpdate === 'function';
 
 /** Zoom the whole window, where the app can. False in a browser or an older shell. */
 export const canZoom = typeof bridge?.setZoom === 'function';
@@ -157,6 +160,40 @@ export function onShellUpdate(listener: () => void): void {
   void bridge.shellUpdateState().then((version) => {
     if (version !== null) listener();
   });
+}
+
+/** Manual fallback only for shells without automatic installer support. */
+export function onDesktopRelease(listener: (version: string) => void): () => void {
+  if (!bridge || canInstallShellUpdate) return () => {};
+  let active = true;
+  let checking = false;
+  const controller = new AbortController();
+  const check = async () => {
+    if (!active || checking) return;
+    checking = true;
+    try {
+      // /api/ is forwarded by older shells too; a direct cross-origin fetch is not.
+      const response = await fetch('/api/desktop/installer', {
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+      });
+      if (!response.ok) return;
+      const manifest = await response.json();
+      if (active && newerDesktopRelease(manifest?.version, bridge.shell)) listener(manifest.version);
+    } catch {
+      // Offline, unpublished, or a partial publish: keep the app usable and retry.
+    } finally {
+      checking = false;
+    }
+  };
+  void check();
+  const timer = setInterval(() => void check(), 60_000);
+  return () => {
+    active = false;
+    controller.abort();
+    clearInterval(timer);
+  };
 }
 
 /** Close the app and run the waiting installer, which opens it again. */

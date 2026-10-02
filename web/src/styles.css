@@ -3242,6 +3242,119 @@ video.mirrored {
   text-decoration: underline;
 }
 
+/* A rare shell release is a quiet, actionable card, separate from call warnings. */
+.desktop-release {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+  margin: 10px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+  color: var(--text);
+  box-shadow: var(--hi);
+}
+.desktop-release-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-radius: var(--radius-lg);
+  background: var(--accent-wash);
+  color: var(--accent-bright);
+}
+.desktop-release-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.desktop-release-heading strong {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.desktop-release-version {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--text-muted);
+  font: 11px var(--mono);
+  white-space: nowrap;
+}
+.desktop-release-copy p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-release-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.desktop-release-download {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease);
+}
+.desktop-release-download:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: var(--on-accent);
+  text-decoration: none;
+}
+.desktop-release-actions > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.activity-update-help {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+.activity-update-help summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.activity-update-help p {
+  margin: 8px 0 0;
+}
+@media (max-width: 680px) {
+  .desktop-release {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+    margin: 8px;
+    padding: 12px;
+  }
+  .desktop-release-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .desktop-release-actions {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+}
+
 .banner.bad {
   background: var(--bad);
   color: #fff;

@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-02-desktop-update-link',
+    date: '2026-10-02',
+    title: 'Get the desktop update from Scryproof',
+    notes: [
+      'Older desktop versions that cannot install updates automatically get a download card when a new installer is available. Normal automatic updates keep their usual flow. Download it and run it when your call is over. Activities has the same link when it needs a newer app.',
+      'Restart to install still handles automatic updates. If updating fails, Activities has a Trouble updating? download link. Browser players do not need an installer.',
+    ],
+  },
+  {
     id: '2026-10-02-activities',
     date: '2026-10-02',
     title: 'Play Drain The Swamp in Activities',

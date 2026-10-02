@@ -13,7 +13,8 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
-import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate } from './lib/desktop';
+import { applyClientUpdate, applyShellUpdate, onClientUpdate, onDesktopRelease, onShellUpdate } from './lib/desktop';
+import { DesktopReleaseNotice } from './components/DesktopReleaseNotice';
 import { useShortcuts } from './lib/shortcuts';
 import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
 import { useBackButton } from './lib/back';
@@ -127,8 +128,10 @@ export function App() {
 function UpdateBanner({ inVoice }: { inVoice: boolean }) {
   const [client, setClient] = useState(false);
   const [shell, setShell] = useState(false);
+  const [release, setRelease] = useState<string | null>(null);
   useEffect(() => onClientUpdate(() => setClient(true)), []);
   useEffect(() => onShellUpdate(() => setShell(true)), []);
+  useEffect(() => onDesktopRelease(setRelease), []);
   if (shell) {
     return (
       <div className="banner update">
@@ -143,18 +146,22 @@ function UpdateBanner({ inVoice }: { inVoice: boolean }) {
       </div>
     );
   }
-  if (!client) return null;
+  const available = release ? <DesktopReleaseNotice version={release} /> : null;
+  if (!client) return available;
   return (
-    <div className="banner update">
-      A newer Scryproof is ready.{' '}
-      {inVoice ? (
-        'Reload when your call is over.'
-      ) : (
-        <button type="button" className="link-button" onClick={applyClientUpdate}>
-          Reload now
-        </button>
-      )}
-    </div>
+    <>
+      {available}
+      <div className="banner update">
+        A newer Scryproof is ready.{' '}
+        {inVoice ? (
+          'Reload when your call is over.'
+        ) : (
+          <button type="button" className="link-button" onClick={applyClientUpdate}>
+            Reload now
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 
