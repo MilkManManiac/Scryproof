@@ -86,12 +86,10 @@ describe('the Mac disk image, before and after it is published', () => {
       const { asked, fetcher } = answering(status);
       const store = desktop.downloadLink(true, fetcher);
       assert.equal(store.get(), null, 'nothing is offered before the answer');
-      store.subscribe(() => {});
-      store.subscribe(() => {})();
+      store.subscribe(() => {})(); // shown, and gone again
+      store.subscribe(() => {}); // shown again
       await settle();
       assert.deepEqual(store.get(), link);
-      store.subscribe(() => {});
-      await settle();
       assert.equal(asked.length, 1);
     }
   });
