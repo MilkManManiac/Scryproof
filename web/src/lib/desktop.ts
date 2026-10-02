@@ -347,12 +347,17 @@ function liveValue<T>(initial: T, start: (set: (next: T) => void) => () => void)
   };
 }
 
-/** The download link to show, or null while the Mac disk image is not known to be there. */
-export function downloadLink(mac: boolean, fetcher?: typeof fetch) {
+/**
+ * The download link to show, or null while the Mac disk image is not known to
+ * be there. Only a Mac browser asks: the Mac app is already installed and has
+ * no use for the link (and its page is on another origin than the server, so
+ * the question would be refused anyway).
+ */
+export function downloadLink(mac: boolean, fetcher?: typeof fetch, inApp: boolean = isDesktop) {
   let asked = false;
   return liveValue<DesktopDownload | null>(mac ? null : desktopDownload(false), (set) => {
     // One question for the life of the page, however often the link is shown.
-    if (mac && !asked) {
+    if (mac && !inApp && !asked) {
       asked = true;
       void dmgPublished(fetcher).then((there) => there && set(desktopDownload(true)));
     }

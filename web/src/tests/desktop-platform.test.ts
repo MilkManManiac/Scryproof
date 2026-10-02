@@ -17,7 +17,12 @@ type Desktop = typeof import('../lib/desktop');
 let loads = 0;
 
 /** The module as a page would see it: `bridge` is what the shell put on window, or nothing. */
-async function pageWith(bridge: object | null): Promise<{ desktop: Desktop; window: EventTarget }> {
+async function pageWith(bridge: object | null, platform = 'Linux x86_64'): Promise<{ desktop: Desktop; window: EventTarget }> {
+  // The machine running the tests is not the page under test: Node on a Mac
+  // says MacIntel, which the module reads when it loads.
+  for (const [name, value] of [['platform', platform], ['maxTouchPoints', 0]] as const) {
+    Object.defineProperty(globalThis.navigator, name, { value, configurable: true });
+  }
   const window = new EventTarget();
   Object.assign(window, { location: { origin: 'https://browser.test' } }, bridge ? { scryproofDesktop: bridge } : {});
   (globalThis as { window?: unknown }).window = window;
@@ -51,8 +56,10 @@ describe('which download a computer is offered', () => {
   it('uses the Mac download in the Mac app without being told', async () => {
     const mac = await pageWith({ ...bridge, platform: 'darwin' });
     assert.match(mac.desktop.desktopDownload().href, /Scryproof\.dmg$/);
-    const windows = await pageWith({ ...bridge, platform: 'win32' });
+    const windows = await pageWith({ ...bridge, platform: 'win32' }, 'Win32');
     assert.match(windows.desktop.desktopDownload().href, /Scryproof-Setup\.exe$/);
+    const browser = await pageWith(null, 'MacIntel');
+    assert.match(browser.desktop.desktopDownload().href, /Scryproof\.dmg$/);
   });
 });
 
@@ -84,7 +91,7 @@ describe('the Mac disk image, before and after it is published', () => {
       [404, null],
     ] as const) {
       const { asked, fetcher } = answering(status);
-      const store = desktop.downloadLink(true, fetcher);
+      const store = desktop.downloadLink(true, fetcher, false);
       assert.equal(store.get(), null, 'nothing is offered before the answer');
       store.subscribe(() => {})(); // shown, and gone again
       store.subscribe(() => {}); // shown again
@@ -92,6 +99,16 @@ describe('the Mac disk image, before and after it is published', () => {
       assert.deepEqual(store.get(), link);
       assert.equal(asked.length, 1);
     }
+  });
+
+  it('does not ask from inside the Mac app, which has no use for the link and cannot reach the server this way', async () => {
+    const { desktop } = await pageWith(bridge);
+    const { asked, fetcher } = answering(200);
+    const store = desktop.downloadLink(true, fetcher, true);
+    store.subscribe(() => {});
+    await settle();
+    assert.equal(store.get(), null);
+    assert.equal(asked.length, 0);
   });
 
   it('does not ask anyone else, who keeps the Windows installer', async () => {
@@ -102,6 +119,29 @@ describe('the Mac disk image, before and after it is published', () => {
     await settle();
     assert.deepEqual(store.get(), { href: `${server}/download/Scryproof-Setup.exe`, system: 'Windows' });
     assert.equal(asked.length, 0);
+  });
+});
+
+describe('a store that nobody is looking at', () => {
+  it('stops listening for the window to come back, and starts again for the next viewer', async () => {
+    let asked = 0;
+    const { desktop, window } = await pageWith({
+      ...bridge,
+      platform: 'darwin',
+      permissionState: async () => (asked += 1, { accessibility: true, screen: 'granted' }),
+    });
+    const stop = desktop.permissionStore.subscribe(() => {});
+    await settle();
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    assert.equal(asked, 2, 'asked on showing and again on focus while it is shown');
+    stop();
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    assert.equal(asked, 2, 'not asked once the last viewer has gone');
+    desktop.permissionStore.subscribe(() => {});
+    await settle();
+    assert.equal(asked, 3, 'asked again for the next viewer');
   });
 });
 

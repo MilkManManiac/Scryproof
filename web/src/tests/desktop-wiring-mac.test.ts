@@ -2,8 +2,8 @@
  * The components as a page on Mac, with the Mac app draws them, wired to the bridge the
  * shell put on window. The unit tests beside this one give the pieces their
  * inputs by hand; this file is what catches a piece being wired to the wrong
- * input. `lib/desktop.ts` reads the bridge once when it loads, so each of the
- * two wiring files is its own process with one kind of shell.
+ * input. `lib/desktop.ts` reads the bridge once when it loads, so each
+ * wiring file is its own process with one kind of shell.
  */
 
 import { strict as assert } from 'node:assert';
@@ -11,6 +11,12 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+// The machine running the tests is not the page under test: Node on a Mac says
+// MacIntel, which `lib/desktop.ts` reads when it loads.
+for (const [name, value] of [['platform', 'MacIntel'], ['maxTouchPoints', 0]] as const) {
+  Object.defineProperty(globalThis.navigator, name, { value, configurable: true });
+}
 
 const server = 'https://scryproof.test';
 const window = new EventTarget();
@@ -69,11 +75,28 @@ describe('the Mac app, with nothing granted and an update waiting', () => {
     }
   });
 
-  it('links the disk image once the server answered a HEAD for it', () => {
-    assert.deepEqual(heads, [`HEAD ${server}/download/Scryproof.dmg`]);
-    const html = linkText();
-    assert.match(html, /href="https:\/\/scryproof\.test\/download\/Scryproof\.dmg"/);
-    assert.match(html, /for Mac \(Apple silicon\)/);
+  it('offers no download link and asks the server about none: it is installed, and not on the server\'s origin', () => {
+    assert.deepEqual(heads, []);
+    assert.equal(linkText(), '');
+  });
+});
+
+describe('where the Mac pieces are placed', () => {
+  // The share picker, the voice settings and the app shell cannot be drawn
+  // without the whole store behind them, so these read them: each piece is
+  // tested above, and this is what ties it in.
+  const source = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
+  it('the share picker gives sound, the Screen Recording note and the Mac switch the Mac flag', () => {
+    const share = source('../components/SharePicker.tsx');
+    assert.match(share, /soundToShare\(onMacApp,/);
+    assert.match(share, /mac=\{onMacApp\}/);
+    assert.match(share, /<ScreenRecordingNote \/>/);
+  });
+  it('the voice settings show the real key in the push-to-talk row', () => {
+    assert.match(source('../components/VoiceSettings.tsx'), /<PushToTalkKey code=\{prefs\.pushKey\}/);
+  });
+  it('the app shell draws the update bar with the call state', () => {
+    assert.match(source('../App.tsx'), /<UpdateBanner inVoice=\{inVoice\} \/>/);
   });
 });
 
@@ -88,4 +111,10 @@ describe('the two places that link the app', () => {
       assert.match(source, /DesktopAppLink|useDesktopDownload/);
     });
   }
+
+  it('the themes dialog looks the link up only where it shows one', () => {
+    const source = readFileSync(new URL('../components/ThemePicker.tsx', import.meta.url), 'utf8');
+    assert.equal(source.match(/useDesktopDownload\(\)/g)?.length, 1);
+    assert.match(source, /function NeedsNewerApp\(\) \{\s*const download = useDesktopDownload\(\);/);
+  });
 });

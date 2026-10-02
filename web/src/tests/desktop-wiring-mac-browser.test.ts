@@ -1,6 +1,5 @@
 /**
- * The components as a page on Windows, with the Windows app draws them, wired to the bridge the
- * shell put on window. The unit tests beside this one give the pieces their
+ * The components as a page in a browser on a Mac draws them: no shell on window. The unit tests beside this one give the pieces their
  * inputs by hand; this file is what catches a piece being wired to the wrong
  * input. `lib/desktop.ts` reads the bridge once when it loads, so each
  * wiring file is its own process with one kind of shell.
@@ -14,23 +13,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 // The machine running the tests is not the page under test: Node on a Mac says
 // MacIntel, which `lib/desktop.ts` reads when it loads.
-for (const [name, value] of [['platform', 'Win32'], ['maxTouchPoints', 0]] as const) {
+for (const [name, value] of [['platform', 'MacIntel'], ['maxTouchPoints', 0]] as const) {
   Object.defineProperty(globalThis.navigator, name, { value, configurable: true });
 }
 
 const server = 'https://scryproof.test';
 const window = new EventTarget();
-Object.assign(window, {
-  scryproofDesktop: {
-    server,
-    gateway: 'wss://scryproof.test/ws',
-    platform: 'win32',
-    permissionState: async () => ({ accessibility: false, screen: 'denied' }),
-    shellUpdateState: async () => '0.6.1',
-    onShellUpdateReady: () => {},
-    shellUpdateHow: async () => 'restart',
-  },
-});
+Object.assign(window, { location: { origin: server } });
 (globalThis as { window?: unknown }).window = window;
 const heads: string[] = [];
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
@@ -54,24 +43,22 @@ const keyRow = (code: string) => render(createElement(PushToTalkKey, { code, cap
 const linkText = () =>
   render(createElement(DesktopAppLink, { className: 'x', children: (system: string) => `Get the desktop app for ${system}` }));
 
-describe('the Windows app, whatever the shell could say about a Mac', () => {
-  it('shows no Mac permission explanation and no Mac key warning', () => {
+describe('a Mac in a browser, where there is no shell to ask', () => {
+  it('warns about a modifier key, and explains no permission', () => {
     const html = keyRow('MetaLeft');
+    assert.match(html, /Cmd-Tab/);
     assert.doesNotMatch(html, /Accessibility switch/);
-    assert.doesNotMatch(html, /Cmd-Tab/);
     assert.equal(render(createElement(ScreenRecordingNote)), '');
   });
 
-  it('asks for a restart in the update bar', () => {
-    const html = render(createElement(UpdateBanner, { inVoice: false }));
-    assert.match(html, /Restart to install/);
-    assert.doesNotMatch(html, /Download it to update/);
+  it('shows no update bar of the app', () => {
+    assert.equal(render(createElement(UpdateBanner, { inVoice: false })), '');
   });
 
-  it('links the Windows installer without asking the server about it', () => {
-    assert.deepEqual(heads, []);
+  it('links the disk image once the server answered a HEAD for it', () => {
+    assert.deepEqual(heads, [`HEAD ${server}/download/Scryproof.dmg`]);
     const html = linkText();
-    assert.match(html, /Scryproof-Setup\.exe/);
-    assert.match(html, /for Windows/);
+    assert.match(html, /href="https:\/\/scryproof\.test\/download\/Scryproof\.dmg"/);
+    assert.match(html, /for Mac \(Apple silicon\)/);
   });
 });

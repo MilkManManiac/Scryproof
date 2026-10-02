@@ -43,13 +43,24 @@ function tokensFor(id: string): CSSProperties {
   return tokens as CSSProperties;
 }
 
+/** What an app too old to zoom is told. Its own component, so the download is only looked up where it is shown. */
+function NeedsNewerApp() {
+  const download = useDesktopDownload();
+  return download ? (
+    <>
+      Needs the newest desktop app: <a href={download.href}>download it</a> and run it once.
+    </>
+  ) : (
+    <>Needs the newest desktop app.</>
+  );
+}
+
 export function ThemePicker({ onClose }: { onClose: () => void }) {
   const current = useSyncExternalStore(theme.subscribe, theme.get);
   const scale = useSyncExternalStore(
     interfaceScale.subscribe,
     interfaceScale.get,
   );
-  const download = useDesktopDownload();
   // Read once per opening: the stylesheets do not change while the dialog is up.
   const painted = useMemo(
     () => new Map(THEMES.map((entry) => [entry.id, tokensFor(entry.id)])),
@@ -111,14 +122,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
         {canZoom ? (
           "Also kept on this computer only."
         ) : isDesktop ? (
-          download ? (
-            <>
-              Needs the newest desktop app:{" "}
-              <a href={download.href}>download it</a> and run it once.
-            </>
-          ) : (
-            "Needs the newest desktop app."
-          )
+          <NeedsNewerApp />
         ) : (
           "In a browser, hold Ctrl and press + or - to do the same."
         )}
