@@ -973,9 +973,10 @@ Wes asked whether every change needs a reinstall. It did. Now it does not.
 - **The signing key is `~/.scryproof/update-key.pem` on Wes's PC**, made the
   first time `npm run release:client` ran. Never printed, never committed,
   never on the box. The public half is `desktop/src/update-key.pub.pem`, baked
-  into the installer. Lose the private key and everyone reinstalls once from an
-  installer built with a new one (delete the `.pub.pem`, run again). Wes
-  saved a copy in Bitwarden as a secure note, 2026-09-21. Anyone
+  into the installer. Restore the matching original private key if it is missing;
+  keep the committed public key. If the original is irrecoverably lost, only Wes
+  deliberately rotates it under an explicit recovery plan: every client must
+  reinstall from a new installer. Wes saved a copy in Bitwarden as a secure note, 2026-09-21. Anyone
   who copies it can ship code to every installed app.
 - The app (`desktop/src/main.js`, "updates"; `update-core.js` is the verifying
   part with no Electron in it): checks at start and every 10 minutes, verifies

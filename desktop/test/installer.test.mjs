@@ -341,7 +341,9 @@ describe('Mac build preflight and client key safety', () => {
 
   test('public-key preflight verifies the signed version and refuses a different bundled version without writing', () => {
     const f = clientFixture();
-    assert.equal(f.run('mac-preflight.mjs').status, 1); // Mac key absent.
+    const missing = f.run('mac-preflight.mjs');
+    assert.equal(missing.status, 1);
+    assert.ok(missing.stderr.includes("Mac update public key missing: run `npm run mac-update-key` on Trey's Mac first, then commit desktop/src/update-key-mac.pub.pem."));
     writeFileSync(f.publicPath, pair().publicKeyPem);
     const before = readFileSync(f.versionPath, 'utf8');
     const publicPath = join(f.root, 'desktop', 'src', 'update-key.pub.pem');
@@ -357,7 +359,9 @@ describe('Mac build preflight and client key safety', () => {
     assert.equal(readFileSync(f.versionPath, 'utf8'), '{"version":0}');
     writeFileSync(f.versionPath, before);
     writeFileSync(join(f.update, 'client.json'), JSON.stringify({ ...f.client, signature: 'bad' }));
-    assert.equal(f.run('mac-preflight.mjs').status, 1);
+    const invalid = f.run('mac-preflight.mjs');
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /does not verify/);
   });
 
   test('client signer refuses a missing private key when a public key is committed, without creating a stray key', () => {
