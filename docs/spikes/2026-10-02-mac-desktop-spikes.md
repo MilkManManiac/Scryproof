@@ -145,6 +145,28 @@ other apps' monochrome icons (`evidence/s1-tray-dark.png`,
 change the bar on this dark wallpaper, so the light-bar case is unobserved;
 the dark-bar case looks acceptable, a light bar will show a dark tile.
 
+*Addendum, found while Trey tested by hand (the ad-hoc build had no mic).*
+- **No microphone, no prompt.** The first ad-hoc build is hardened-runtime
+  signed but carries no `com.apple.security.device.audio-input` entitlement
+  (nor `device.camera`). macOS then refuses the mic silently: the system log
+  (tccd) says "service: kTCCServiceMicrophone requires entitlement
+  com.apple.security.device.audio-input but it is missing", "Policy disallows
+  prompt". Trey saw the call join but no audio. Fix used: an entitlements file
+  (`desktop/assets/entitlements.mac.plist`, Electron's three plus audio-input and
+  camera) passed with `--config.mac.entitlements=assets/entitlements.mac.plist`
+  and `--config.mac.entitlementsInherit=assets/entitlements.mac.plist`. With it, the mic prompt appeared
+  ("Allow this app to use your microphone"), Trey allowed, and his voice came
+  through (he heard it in the app; no second participant, so no packet count).
+  Required for any Mac build, signed or not, once hardened runtime is on.
+- **Keychain after a rebuild:** two Keychain prompts appeared on first launch
+  of the rebuilt app and Trey answered both with his password and "allow"
+  (log: securityd, "user approved 'allow'" twice for the new process). The log
+  does not name the item; the app's only keychain item is `scryproof-desktop
+  Safe Storage` (inferred). That answers step 4's question: a rebuilt ad-hoc
+  app re-prompts; the same binary relaunched did not.
+- At launch the app also asks tccd for Accessibility (15 requests in 20
+  minutes), before any push-to-talk was configured: relevant to spike 3.
+
 *Evidence kept out of the repo:* a window shot that shows friends' chat text.
 The one in-call shot lists member usernames only.
 
@@ -179,7 +201,49 @@ experimental. This decides whether our custom picker survives on Mac.
 received audio packets with and without the audio tick, whether call audio
 leaks into the share, and what the custom picker looks like on Mac.
 
-**Result.**
+**Result.** Solo half, 2026-10-02, Cairn with Trey driving the app by hand.
+Every packet-counter and audio-leak check below is **parked: needs second
+participant.** Built twice from the same source: baseline (custom picker,
+`release/mac-arm64`) and a variant with the change (`desktop/src/main.js`:
+`setDisplayMediaRequestHandler(..., { useSystemPicker: true })` on darwin
+only; `release-spike2/`), both ad-hoc signed; the variant also has the
+mic/camera entitlements (see spike 1 addendum).
+
+*Custom picker, unchanged (step 5).* Opens ("Share your screen": Screens 2 /
+Applications 9 tabs, Cancel and Share buttons). **No sound switch**, as
+`share-menu.js` predicts. Screen Recording permission prompt appeared on
+first share; Trey accepted and sharing then worked. (Screenshot not
+committed: it shows his desktop.)
+
+*Apple's picker (`useSystemPicker: true`).* It appears and shares a window,
+but:
+- **No audio option was seen.** The only choices shown were "Share This
+  Window" and "Share All Application Windows". Whether Apple's picker offers
+  system audio on this macOS was not otherwise established; share audio and
+  `restrictOwnAudio` leak checks: parked.
+- **The picker is hard to use.** It opens as a popover over whichever window
+  the pointer is on. It then collapses to a single, unclickable "Share This
+  Window" row when the pointer approaches it along most paths. Trey got it to
+  stay open (both options clickable) only by moving the pointer very slowly
+  around the screen until it stayed expanded, then trying different paths to
+  the button. A mouse-position quirk of Apple's picker, not our code; we
+  cannot change it.
+- **The client times out while the picker waits.** A slow first attempt ended
+  with the red banner "The screen share could not be started: Timeout starting
+  video source" (a Chromium capture error, not from our code); a quick attempt
+  worked. Order of events on the first attempt not certain.
+- **Machine-wide slowdown while sharing, reproduced twice by Trey.** Sample
+  (`top`, 4 s apart, window of the Scryproof app shared on a 5K display),
+  baseline then sharing: WindowServer about 40% to 48-60% of a core and 2.2 GB;
+  kernel_task about 27-30%; Scryproof's graphics helper 115 MB to 550-710 MB;
+  load average about 6 to 16; the machine stayed 76-84% idle. Reads as
+  graphics and capture contention, not CPU. Not compared against the custom
+  picker or a smaller capture, so the cause is unproven.
+
+*What this says about the question.* The Mac share-with-sound question is
+not answered yes: Apple's picker showed no audio option in this run, the
+custom picker has none on Mac, and the Apple picker has a usability problem
+and a heavy-load problem. Decision input for the plan, not a decision.
 
 ## Spike 3 — Push-to-talk behind another app
 
@@ -251,7 +315,13 @@ Gatekeeper, a much bigger job than the Windows installer path).
 the new client, and any darwin-specific failure in the file write or
 reload path.
 
-**Result.**
+**Result.** Answered by spike 1, live client update downloaded, verified and
+stored on darwin; apply-after-relaunch inferred, not shown in UI. The dev-mode
+run was skipped on Wren's ruling. Required fix for the Mac build, found on the
+way: the shell-update check must be Windows-only until a Mac shell-update path
+exists (`INSTALLER_URL` in `desktop/src/main.js` checks only `isPackaged`, so a
+Mac app downloads the 117 MB Windows installer and shows a "Restart to
+install" banner it cannot honor). Details under Spike 1.
 
 ## Spike 6 — Close the lid mid-call
 

@@ -442,7 +442,12 @@ function armPermissions(ses) {
   ses.setPermissionCheckHandler((_contents, permission, origin) => ours(origin) && GRANTED.has(permission));
 
   // Windows has no picker of its own to hand over to, so the page draws one.
-  ses.setDisplayMediaRequestHandler((request, done) => void openSharePicker(request, done));
+  // SPIKE (Mac desktop, spike 2): on macOS, hand over to Apple's own picker
+  // instead (Electron: experimental, macOS 15+). Other platforms are unchanged.
+  ses.setDisplayMediaRequestHandler(
+    (request, done) => void openSharePicker(request, done),
+    process.platform === 'darwin' ? { useSystemPicker: true } : undefined,
+  );
 }
 
 /* ------------------------------- share picker ------------------------------ */
