@@ -287,6 +287,7 @@ async function reachable(url) {
 const wes = new Person('wes', 9341);
 const alex = new Person('alex', 9342);
 const mara = new Person('mara', 9343);
+const alexSecond = new Person('alex', 9344);
 
 async function main() {
   const up = {
@@ -769,14 +770,68 @@ async function main() {
     Boolean(dmAlone) && (await wes.snapshot()).epoch > dmEpoch);
   await wes.clickButton('Leave call');
 
-  const errors = [...wes.complaints, ...alex.complaints, ...mara.complaints];
+  // ---- the same account on a second device -----------------------------------
+  {
+    for (const person of [wes, alex]) {
+      await person.evaluate(`document.querySelector('.rail > span > .rail-item')?.click()`);
+      await person.until(`Boolean(document.querySelector('.channel.voice'))`, 10_000);
+    }
+    await wes.clickVoiceChannel();
+    await alex.clickVoiceChannel();
+    await Promise.all([wes.until(connected), alex.until(connected)]);
+    const beforeTakeover = (await wes.snapshot()).epoch;
+    await alexSecond.open();
+    await alexSecond.signIn();
+    await alexSecond.clickVoiceChannel();
+    const moved = await alex.until(`window.__voice.getSnapshot().phase === 'moved'`, 15_000);
+    check('the original device ends as moved, with the reason in plain words', Boolean(moved) &&
+      (await alex.snapshot()).error === 'You joined this call from another device.');
+    check('the original device displays the moved message', await alex.evaluate(
+      `document.body.textContent.includes('You joined this call from another device.')`));
+    const arrived = await alexSecond.until(`(() => { const s = window.__voice.getSnapshot(); return s.phase === 'connected' && s.encrypted && s.epoch > ${beforeTakeover}; })()`, 15_000);
+    check('the replacement connects encrypted on a fresh epoch', Boolean(arrived));
+    // The second profile really has a different identity. Moving a call never
+    // silently approves a device a peer has not met before.
+    const held = await wes.until(`window.__voice.getSnapshot().people.find((p) => p.userId === '${alex.userId}' && p.state === 'held')`, 15_000);
+    check('an unfamiliar replacement still waits for identity approval', Boolean(held) && held.verdict === 'new-device');
+    if (held) await wes.evaluate(`window.__voice.approve('${alex.userId}', '${held.deviceId}')`);
+    const replacedPair = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+    check('after approval the peer sees exactly one account seat, on the current device', replacedPair.every(Boolean) &&
+      (await wes.snapshot()).people.filter((p) => p.userId === alex.userId).length === 1 &&
+      (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
+    const decoded = await alexSecond.listenTo(wes.userId);
+    check('the replacement decodes the peer with the right key', decoded.energy > 0.001,
+      `+${decoded.packets} packets, +${decoded.energy.toFixed(4)} energy`);
+    check('the replacement and peer compute the same verification code',
+      (await alexSecond.snapshot()).code === (await wes.snapshot()).code);
+    const oldStillEnded = await alex.snapshot();
+    check('the original device stays moved and does not reconnect', oldStillEnded.phase === 'moved' && !oldStillEnded.encrypted);
+    check('LiveKit lists one remote participant for that account', await wes.evaluate(
+      `window.__voice.room.remoteParticipants.size === 1 && window.__voice.room.remoteParticipants.has('${alex.userId}')`));
+
+    // A terminal media disconnect is distinct from LiveKit's recoverable
+    // reconnecting event. Drive the real room event, then click the same channel.
+    await alexSecond.evaluate(`window.__voice.room.disconnect()`);
+    const failed = await alexSecond.until(`window.__voice.getSnapshot().phase === 'failed'`, 10_000);
+    const gone = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 10_000);
+    check('terminal connection loss clears the gateway presence', Boolean(failed && gone));
+    await alexSecond.clickVoiceChannel();
+    const retried = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+    check('clicking the same channel after failure rejoins encrypted', retried.every(Boolean) && (await alexSecond.snapshot()).encrypted);
+    const heardAgain = await alexSecond.listenTo(wes.userId);
+    check('audio decodes again after that same-channel retry', heardAgain.energy > 0.001);
+    await alexSecond.clickButton('Leave');
+    await wes.clickButton('Leave');
+  }
+
+  const errors = [...wes.complaints, ...alex.complaints, ...mara.complaints, ...alexSecond.complaints];
   check('no uncaught exceptions in any browser', errors.length === 0, errors.join('\n      '));
 }
 
 main()
   .catch((problem) => check('the check ran to completion', false, problem.stack ?? String(problem)))
   .finally(async () => {
-    await Promise.all([wes.close(), alex.close(), mara.close()]);
+    await Promise.all([wes.close(), alex.close(), mara.close(), alexSecond.close()]);
     const failed = results.filter((entry) => !entry.ok).length;
     console.log(failed === 0 ? `RESULT: ALL PASS (${results.length})` : `RESULT: ${failed} FAILED of ${results.length}`);
     process.exit(failed === 0 ? 0 : 1);

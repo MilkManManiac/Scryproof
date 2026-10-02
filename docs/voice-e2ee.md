@@ -215,7 +215,46 @@ membership change.
 - **Not yet proven beyond one PC.** Two browsers and a local LiveKit 1.13.6.
   Never on the real box, never through TURN, never with three people.
 - **One device per person in a call.** LiveKit identifies a participant by the
-  token's identity, which is the bare user id, so two devices collide there.
+  token's identity, which stays the bare user id. Joining from another device
+  transfers that account's call to it; it does not add a second participant.
+  The gateway retires the previous socket before rotating the encryption
+  epoch, even when the account stays in the same room. Only the current
+  socket may send or receive key envelopes, or clear that call's presence.
+  A valid signed announcement retires the previous device's cryptographic
+  seat. An unfamiliar device still waits for approval, and a changed key is
+  still held: transferring presence is never permission to trust a new key.
+
+## Same-account takeover and terminal disconnects
+
+The observed second-device hang had a control-plane cause: `setVoiceState`
+rotated only when the user's room changed. A second connection joining that
+same room therefore received no membership event. Its call stayed at epoch
+zero, installed no own media key, and sent no announcement. LiveKit could
+also disconnect the old participant because both tokens use the user id.
+The old socket remained eligible to relay keys, and its later Leave cleared
+presence for the whole account. Gateway tests now cover that same-room join,
+DM takeover, late mute/leave controls, and envelopes scoped to the owner.
+Disabling the same-room rotation makes both takeover regressions fail at
+the epoch assertion. The exact LiveKit wait seen on the Mac has not been
+reproduced here: the worktree lacks the local media-server binary, so the
+browser check exits before opening a call. The missing membership/key path
+is established by source tracing and gateway tests; media timing remains
+a live-call check.
+
+The old session ends with the reason "You joined this call from another
+device." Both the gateway's `voice_replaced` message and LiveKit's
+`DUPLICATE_IDENTITY` reason take that path. Other terminal disconnects clean
+up media and keys, clear this socket's gateway presence, and allow clicking
+the same place to join again. LiveKit's transient reconnecting events do not
+end the session.
+
+Integration dependency: the voice panel currently renders all non-connected
+phases except `failed` as Connecting and only displays `error` for `failed`.
+Its owning UI lane must render the new `moved` phase using the session's
+error text, and allow the existing channel action to join from that device.
+The voice lane does not own that component. The browser check asserts the
+moved words are actually visible so this cannot be mistaken for complete
+UI verification.
 
 ## Firefox
 

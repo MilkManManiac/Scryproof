@@ -54,6 +54,9 @@ export interface Connection {
   followsMoves?: boolean;
   /** The server voice channel this device joined, if any: which device is in the call. */
   callChannelId?: string | null;
+  callDmId?: string | null;
+  /** Ignore late controls from a replaced device until it explicitly joins again. */
+  callReplaced?: boolean;
 }
 
 const connections = new Map<string, Connection>();
@@ -83,6 +86,41 @@ export function removeConnection(connection: Connection): void {
   if (!set) return;
   set.delete(connection);
   if (set.size === 0) byUser.delete(connection.userId);
+}
+
+/** The one gateway connection allowed to exchange this person's call keys. */
+export function ownsVoice(connection: Connection, roomId?: string): boolean {
+  const room = connection.callChannelId ?? connection.callDmId;
+  return !!room && (roomId === undefined || room === roomId);
+}
+
+/** Transfer before broadcasting membership, so the old device gets no new keys. */
+export function claimVoice(connection: Connection, roomId: string, dm = false): void {
+  let replaced = false;
+  for (const other of connectionsForUser(connection.userId)) {
+    if (other === connection || !ownsVoice(other)) continue;
+    replaced = true;
+    other.callChannelId = null;
+    other.callDmId = null;
+    other.callReplaced = true;
+    if (other.ws.readyState === 1) other.ws.send(JSON.stringify({
+      t: 'error', d: { code: 'voice_replaced', message: 'You joined this call from another device.' },
+    }));
+  }
+  connection.callChannelId = dm ? null : roomId;
+  connection.callDmId = dm ? roomId : null;
+  connection.callReplaced = false;
+  // Same account and same room still means new call keys. setVoiceState sees
+  // no user-level membership change, so it cannot trigger this rotation.
+  if (replaced && voiceOccupants(roomId).includes(connection.userId)) voiceMembershipChanged(roomId);
+}
+
+/** Replaced or idle sockets must never clear the current device's presence. */
+export function clearVoiceForConnection(connection: Connection): ClearedVoiceState[] {
+  if (!ownsVoice(connection)) return [];
+  connection.callChannelId = null;
+  connection.callDmId = null;
+  return clearVoiceStatesForUser(connection.userId);
 }
 
 export function isOnline(userId: string): boolean {

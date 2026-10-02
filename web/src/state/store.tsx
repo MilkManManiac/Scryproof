@@ -54,7 +54,7 @@ import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
-import { VoiceSession, type CallPlace } from '../lib/voice-session';
+import { VoiceSession, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
@@ -198,8 +198,12 @@ const standingVoice = (): { selfMute: boolean; selfDeaf: boolean } => {
   return { selfMute, selfDeaf };
 };
 
-const intentFor = (place: CallPlace): { channelId: string | null; dmId: string | null } =>
-  place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id };
+const intentFor = (place: CallPlace, join = false): { channelId: string | null; dmId: string | null; join?: boolean } => ({
+  ...(place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id }),
+  // A deliberate join may take the call back; a late mute from a replaced
+  // device may not. Older gateways harmlessly ignore this optional field.
+  ...(join ? { join: true } : {}),
+});
 
 /** First text channel the member can see, for landing on a sensible default. */
 function firstVisibleChannel(server: ServerDetail | undefined): string | null {
@@ -1031,6 +1035,10 @@ export function StoreProvider({
     voiceRef.current = new VoiceSession(
       () => selfId.current ?? '',
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
+      (phase) => {
+        currentCall.current = null;
+        if (phase === 'failed') gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
+      },
     );
   }
   const voice = voiceRef.current;
@@ -1450,14 +1458,17 @@ export function StoreProvider({
         const place = currentCall.current;
         if (place) {
           void voice.join(place, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
+            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place, true), ...standingVoice() } }),
           );
         }
       }
       // The only errors the gateway sends are refusals of something we just
       // asked for. Mid-join, that is the join: show it rather than sit on
       // "connecting" forever.
-      if (event.t === 'error' && currentCall.current) {
+      if (event.t === 'error' && event.d.code === 'voice_replaced') {
+        currentCall.current = null;
+        void voice.end('moved', MOVED_CALL_MESSAGE);
+      } else if (event.t === 'error' && currentCall.current) {
         currentCall.current = null;
         voice.fail(event.d.message);
       }
@@ -1472,7 +1483,7 @@ export function StoreProvider({
           currentCall.current = next;
           if (openChannel.current === event.d.fromChannelId) dispatch({ type: 'select-channel', channelId: event.d.channelId });
           void voice.join(next, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(next), ...standingVoice() } }),
+            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(next, true), ...standingVoice() } }),
           );
         }
       }
@@ -1680,14 +1691,14 @@ export function StoreProvider({
   const joinCall = useCallback(
     (place: CallPlace) => {
       const current = currentCall.current;
-      if (current && current.kind === place.kind && current.id === place.id) return;
+      if (!shouldJoinCall(current, place, voice.getSnapshot().phase)) return;
       currentCall.current = place;
       // The session prepares its keys first and only then tells the gateway,
       // because the gateway answers a join with the membership event at once.
       // The gateway takes this person out of any other call as it puts them
       // in this one: one call at a time, a server's or a conversation's.
       void voice.join(place, () =>
-        gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
+        gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place, true), ...standingVoice() } }),
       );
     },
     [voice],

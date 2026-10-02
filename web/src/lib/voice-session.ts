@@ -26,6 +26,7 @@
 
 import {
   Room,
+  DisconnectReason,
   RoomEvent,
   ScreenSharePresets,
   Track,
@@ -70,7 +71,21 @@ const KEYRING_SIZE = 16;
 const SOUNDBOARD_TRACK = 'soundboard';
 const STATS_INTERVAL_MS = 2000;
 
-export type VoicePhase = 'idle' | 'connecting' | 'connected' | 'failed';
+export type VoicePhase = 'idle' | 'connecting' | 'connected' | 'failed' | 'moved';
+
+export const MOVED_CALL_MESSAGE = 'You joined this call from another device.';
+
+/** Only a live attempt makes a second click redundant. */
+export function shouldJoinCall(current: CallPlace | null, next: CallPlace, phase: VoicePhase): boolean {
+  return !current || current.kind !== next.kind || current.id !== next.id ||
+    (phase !== 'connecting' && phase !== 'connected');
+}
+
+export function callDisconnect(reason?: DisconnectReason): { phase: 'moved' | 'failed'; error: string } {
+  return reason === DisconnectReason.DUPLICATE_IDENTITY
+    ? { phase: 'moved', error: MOVED_CALL_MESSAGE }
+    : { phase: 'failed', error: 'The call connection was lost.' };
+}
 
 export interface VoicePerson {
   userId: string;
@@ -344,6 +359,7 @@ export class VoiceSession {
     /** Read when needed: the session outlives sign-in, so the id is not known at construction. */
     private readonly whoAmI: () => string,
     private readonly send: SendSignal,
+    private readonly ended: (phase: 'failed' | 'moved') => void = () => undefined,
   ) {}
 
   private get userId(): string {
@@ -375,8 +391,7 @@ export class VoiceSession {
    */
   fail(message: string): void {
     if (this.snapshot.phase !== 'connecting') return;
-    this.generation += 1;
-    this.update({ phase: 'failed', error: message });
+    void this.end('failed', message);
   }
 
   /* -------------------------------- joining ------------------------------- */
@@ -415,15 +430,18 @@ export class VoiceSession {
       const callKeys = await createCallKeypair();
       if (stale()) return;
 
-      this.call = new VoiceCall({
+      const call = new VoiceCall({
         callId: roomId,
         userId: this.userId,
         identity,
         callKeys,
         pins: new IndexedDbIdentityStore(),
       });
-      this.myAnnouncement = await announce(roomId, this.userId, identity, callKeys);
-      await this.call.admit([this.myAnnouncement]);
+      const announcement = await announce(roomId, this.userId, identity, callKeys);
+      await call.admit([announcement]);
+      if (stale()) return;
+      this.call = call;
+      this.myAnnouncement = announcement;
 
       this.keyProvider = new ScryproofKeyProvider();
       const room = new Room({
@@ -490,12 +508,23 @@ export class VoiceSession {
           : problem instanceof Error
             ? problem.message
             : 'Could not join the call.';
-      this.update({ phase: 'failed', error: message });
+      await this.end('failed', message);
     }
   }
 
+  /** Tear down media and keys while keeping the reason visible in the panel. */
+  async end(phase: 'failed' | 'moved', error: string): Promise<void> {
+    const place = { channelId: this.snapshot.channelId, dmId: this.snapshot.dmId };
+    const leaving = this.leave();
+    const generation = this.generation;
+    this.ended(phase);
+    this.update({ ...IDLE, ...place, phase, error });
+    await leaving;
+    if (this.generation === generation) this.update({ ...IDLE, ...place, phase, error });
+  }
+
   async leave(): Promise<void> {
-    this.generation += 1;
+    const generation = (this.generation += 1);
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
 
@@ -529,7 +558,7 @@ export class VoiceSession {
 
     if (room && this.snapshot.phase === 'connected' && voicePrefs.get().sounds) callSound('left');
     if (room) await room.disconnect().catch(() => undefined);
-    if (this.snapshot.phase !== 'idle') this.update(IDLE);
+    if (this.generation === generation && this.snapshot.phase !== 'idle') this.update(IDLE);
   }
 
   /* ---------------------------- mute and deafen --------------------------- */
@@ -1217,11 +1246,17 @@ export class VoiceSession {
   }
 
   onMembership(event: VoiceMembership): Promise<void> {
-    return this.inOrder(() => this.handleMembership(event));
+    const generation = this.generation;
+    return this.inOrder(async () => {
+      if (generation === this.generation) await this.handleMembership(event);
+    });
   }
 
   onSignal(event: VoiceSignal & { from: string }): Promise<void> {
-    return this.inOrder(() => this.handleSignal(event));
+    const generation = this.generation;
+    return this.inOrder(async () => {
+      if (generation === this.generation) await this.handleSignal(event);
+    });
   }
 
   private async handleMembership(event: VoiceMembership): Promise<void> {
@@ -1250,6 +1285,7 @@ export class VoiceSession {
     const epoch = call.rotate(event.epoch);
     this.keySentTo.clear();
     await this.keyProvider?.setParticipantKey(this.userId, call.mediaKey, epoch % KEYRING_SIZE);
+    if (this.call !== call || !this.myAnnouncement) return;
 
     // Newcomers need our public keys; everyone we already trust needs the new media key.
     this.send({ channelId: event.channelId, epoch, kind: 'announce', payload: { ...this.myAnnouncement } });
@@ -1273,6 +1309,7 @@ export class VoiceSession {
       if (!this.members.includes(event.payload.userId)) return;
 
       const result = await call.admit([event.payload]);
+      if (this.call !== call) return;
       this.rejected += result.rejected.length;
       await this.sendKeys(call);
       await this.publish(call);
@@ -1281,7 +1318,7 @@ export class VoiceSession {
 
     if (!isWrappedKey(event.payload)) return;
     const mediaKey = await call.accept(event.payload);
-    if (!mediaKey) return;
+    if (!mediaKey || this.call !== call) return;
     await this.keyProvider?.setParticipantKey(event.payload.senderId, mediaKey, call.epoch % KEYRING_SIZE);
     await this.publish(call);
   }
@@ -1307,6 +1344,7 @@ export class VoiceSession {
     const channelId = this.roomId;
     if (!channelId) return;
     for (const wrapped of await call.distribute()) {
+      if (this.call !== call) return;
       const seat = `${wrapped.recipientId}:${wrapped.recipientDeviceId}`;
       if (this.keySentTo.has(seat)) continue;
       this.keySentTo.add(seat);
@@ -1343,6 +1381,7 @@ export class VoiceSession {
     }
 
     const epoch = call.epoch;
+    if (this.call !== call) return;
     this.update({ people, epoch, rejected: this.rejected, code: null });
 
     // Half a second of deliberate work. Do not hold the rest up for it, and do
@@ -1454,9 +1493,10 @@ export class VoiceSession {
       this.refreshSpeaking();
     });
 
-    room.on(RoomEvent.Disconnected, () => {
+    room.on(RoomEvent.Disconnected, (reason) => {
       if (this.room !== room) return;
-      this.update({ phase: 'failed', encrypted: false, error: 'The call connection was lost.' });
+      const result = callDisconnect(reason);
+      void this.end(result.phase, result.error);
     });
   }
 

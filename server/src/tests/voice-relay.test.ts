@@ -152,6 +152,9 @@ describe('the voice relay', () => {
   const payload = { sealed: 'opaque-to-the-server' };
 
   function seatEveryone(): number {
+    wes.connection.callChannelId = room;
+    alex.connection.callChannelId = room;
+    mara.connection.callChannelId = room;
     hub.setVoiceState(voiceState(wes.connection.userId, room));
     hub.setVoiceState(voiceState(alex.connection.userId, room));
     return hub.voiceEpoch(room);
@@ -344,6 +347,8 @@ describe('a call inside a direct message', () => {
   it('relays keys between the people in it and no one else', () => {
     const dm = `dm${run}`;
     const payload = { sealed: 'opaque-to-the-server' };
+    wes.connection.callDmId = dm;
+    alex.connection.callDmId = dm;
     hub.setVoiceState(dmState(wes.connection.userId, dm));
     hub.setVoiceState(dmState(alex.connection.userId, dm));
     const epoch = hub.voiceEpoch(dm);

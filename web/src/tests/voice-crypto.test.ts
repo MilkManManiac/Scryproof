@@ -662,3 +662,30 @@ describe('a device nobody expected', () => {
     assert.equal(wes.awaitingConsent.length, 0);
   });
 });
+
+
+test('takeover retires the old device only after a valid signature and keeps new-device consent', async () => {
+  const peer = await makeDevice('peer');
+  const old = await makeDevice('account');
+  await connect([peer, old]);
+  const identity = await createDeviceIdentity('account-second-device');
+  const callKeys = await createCallKeypair();
+  const replacement = await announce(CALL, 'account', identity, callKeys);
+  const forged = { ...replacement, signature: old.announcement.signature };
+  assert.equal((await peer.call.admit([forged])).rejected.length, 1);
+  assert.ok(peer.call.members.some((member) => member.announcement.deviceId === old.announcement.deviceId));
+  peer.call.rotate(2);
+  await peer.call.admit([replacement]);
+  assert.equal(peer.call.members.filter((member) => member.announcement.userId === 'account').length, 0);
+  assert.equal(peer.call.awaitingConsent[0]?.verdict, 'new-device');
+  assert.equal((await peer.call.distribute()).filter((key) => key.recipientId === 'account').length, 0);
+  await peer.call.approve('account', identity.deviceId);
+  const sent = (await peer.call.distribute()).filter((key) => key.recipientId === 'account');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.recipientDeviceId, identity.deviceId);
+  const newCall = new VoiceCall({ callId: CALL, userId: 'account', identity, callKeys, pins: new MemoryIdentityStore() });
+  await newCall.admit([replacement, peer.announcement]);
+  newCall.rotate(2);
+  assert.ok(await newCall.accept(sent[0]!));
+  assert.equal(await old.call.accept(sent[0]!), null);
+});

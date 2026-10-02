@@ -24,6 +24,8 @@ import * as hub from './hub.js';
 
 export interface VoiceStateIntent {
   channelId: string | null;
+  /** Distinguishes a deliberate rejoin from a late mute on a replaced socket. */
+  join?: boolean;
   /** A conversation's call to be in. Only read when `channelId` is null. */
   dmId?: string | null;
   selfMute?: boolean;
@@ -32,10 +34,26 @@ export interface VoiceStateIntent {
   cameraOn?: boolean;
 }
 
+// Permission checks await the database. Serialize per account so two joins
+// cannot both claim the seat after observing the same old owner.
+const voiceIntents = new Map<string, Promise<void>>();
 export async function handleVoiceStateIntent(
   connection: hub.Connection,
   intent: VoiceStateIntent,
 ): Promise<void> {
+  const next = (voiceIntents.get(connection.userId) ?? Promise.resolve())
+    .catch(() => undefined).then(() => applyVoiceStateIntent(connection, intent));
+  voiceIntents.set(connection.userId, next);
+  try { await next; } finally {
+    if (voiceIntents.get(connection.userId) === next) voiceIntents.delete(connection.userId);
+  }
+}
+
+async function applyVoiceStateIntent(
+  connection: hub.Connection,
+  intent: VoiceStateIntent,
+): Promise<void> {
+  if (connection.callReplaced && intent.join !== true) return;
   if (intent.channelId === null && typeof intent.dmId === 'string') {
     await handleDmCallIntent(connection, intent.dmId, intent);
     return;
@@ -43,8 +61,7 @@ export async function handleVoiceStateIntent(
 
   // Leaving: clear every voice state this user holds and tell whoever could see it.
   if (intent.channelId === null) {
-    connection.callChannelId = null;
-    await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+    await hub.announceCleared(hub.clearVoiceForConnection(connection));
     return;
   }
 
@@ -73,6 +90,10 @@ export async function handleVoiceStateIntent(
     return;
   }
 
+  if (connection.ws.readyState !== 1) return;
+  const wasOwner = hub.ownsVoice(connection, channel.id);
+  hub.claimVoice(connection, channel.id);
+
   // One call at a time. A person has one microphone, and their device holds
   // one set of call keys; standing in two servers' voice channels at once, or
   // in a channel and a conversation's call, would leave a ghost in whichever
@@ -94,7 +115,7 @@ export async function handleVoiceStateIntent(
     });
   }
 
-  const staying = previous?.channelId === channel.id;
+  const staying = previous?.channelId === channel.id && wasOwner;
 
   const state: VoiceState = {
     userId: connection.userId,
@@ -114,10 +135,8 @@ export async function handleVoiceStateIntent(
     cameraOn: (intent.cameraOn ?? (staying && previous.cameraOn)) && has(permissions, Permission.VIDEO),
   };
 
+  if (connection.ws.readyState !== 1 || !hub.ownsVoice(connection, channel.id)) return;
   hub.setVoiceState(state);
-  // This device is the one in the call now, whichever was before.
-  for (const other of hub.connectionsForUser(connection.userId)) other.callChannelId = null;
-  connection.callChannelId = channel.id;
   await hub.announceVoiceState(channel.serverId, channel.id, state);
 
   logger.debug(
@@ -149,11 +168,15 @@ async function handleDmCallIntent(
     // it, which rotates the key the others hold so this device loses it. The
     // departure goes first so the client hangs up before it reads why.
     if (hub.getDmVoiceState(connection.userId)?.dmId === dmId) {
-      await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+      await hub.announceCleared(hub.clearVoiceForConnection(connection));
     }
     connection.ws.send(JSON.stringify({ t: 'error', d: { code, message } }));
     return;
   }
+
+  if (connection.ws.readyState !== 1) return;
+  const wasOwner = hub.ownsVoice(connection, dmId);
+  hub.claimVoice(connection, dmId, true);
 
   // Leaves any server call, and any other conversation's call, first. The
   // conversation's own entry is kept so that muting does not look like
@@ -163,7 +186,7 @@ async function handleDmCallIntent(
   );
 
   const previous = hub.getDmVoiceState(connection.userId);
-  const staying = previous?.dmId === dmId;
+  const staying = previous?.dmId === dmId && wasOwner;
 
   const state: VoiceState = {
     userId: connection.userId,
@@ -178,8 +201,8 @@ async function handleDmCallIntent(
     cameraOn: intent.cameraOn ?? (staying && previous.cameraOn),
   };
 
+  if (connection.ws.readyState !== 1 || !hub.ownsVoice(connection, dmId)) return;
   hub.setVoiceState(state);
-  connection.callChannelId = null;
   await hub.announceDmVoiceState(dmId, state);
 
   logger.debug({ userId: connection.userId, dmId }, 'dm call state updated');
@@ -236,16 +259,19 @@ export function handleVoiceSignal(
   // A message labelled with an old epoch is about a set of people that no
   // longer exists, and every client would refuse it anyway.
   const occupants = hub.voiceOccupants(channelId);
-  if (!occupants.includes(connection.userId)) return;
+  if (!occupants.includes(connection.userId) || !hub.ownsVoice(connection, channelId)) return;
   if (epoch !== hub.voiceEpoch(channelId)) return;
 
   const recipients = to === undefined ? occupants : occupants.includes(to) ? [to] : [];
 
   for (const userId of recipients) {
     if (userId === connection.userId) continue;
-    hub.sendToUser(userId, {
-      t: 'voice_signal',
-      d: { channelId, epoch, kind, payload, from: connection.userId },
-    });
+    for (const recipient of hub.connectionsForUser(userId)) {
+      if (!hub.ownsVoice(recipient, channelId) || recipient.ws.readyState !== 1) continue;
+      recipient.ws.send(JSON.stringify({
+        t: 'voice_signal',
+        d: { channelId, epoch, kind, payload, from: connection.userId },
+      }));
+    }
   }
 }
