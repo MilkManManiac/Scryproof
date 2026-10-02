@@ -41,15 +41,22 @@ export function parseTeamId(report) {
 export const teamAllowed = (staged, running) => staged !== null && staged === MAC_TEAM_ID && staged === running;
 
 /**
- * The requirement a staged bundle must meet, checked by `codesign -R`: signed
- * through Apple's chain by a Developer ID certificate whose organizational unit
- * is our team, and the bundle is Scryproof's own (so another app of the same
- * team is refused). Pinning it here means the answer does not rest on parsing
- * text out of `codesign -dv`.
+ * The requirement a staged bundle must meet, checked by `codesign -R`: Apple's
+ * own form for "Developer ID" (TN3127): signed through Apple's chain, the
+ * intermediate is the Developer ID Certification Authority (OID
+ * 1.2.840.113635.100.6.2.6) and the leaf is a Developer ID Application
+ * certificate (1.2.840.113635.100.6.1.13), so an Apple Development or
+ * Distribution certificate of the same team does not pass; the leaf's
+ * organizational unit is our team; and the bundle is Scryproof's own, so
+ * another app of the same team is refused. Pinning it here means the answer
+ * does not rest on parsing text out of `codesign -dv`.
  */
 export const MAC_BUNDLE_ID = 'com.scryproof.desktop';
 export const macRequirement = () =>
-  `anchor apple generic and identifier "${MAC_BUNDLE_ID}" and certificate leaf[subject.OU] = "${MAC_TEAM_ID}"`;
+  `anchor apple generic and identifier "${MAC_BUNDLE_ID}"` +
+  ' and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */' +
+  ' and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */' +
+  ` and certificate leaf[subject.OU] = "${MAC_TEAM_ID}"`;
 
 /**
  * What to do with a staged bundle, as the exact steps. `how: 'download'` means

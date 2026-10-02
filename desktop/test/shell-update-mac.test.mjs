@@ -81,11 +81,14 @@ test('undo puts the old bundle back only between setting it aside and the new on
   assert.deepEqual(undoSteps(plan, 4), [{ op: 'rename', from: '/A/S.app.old', to: '/A/S.app' }]);
 });
 
-test('the signature requirement is pinned to Apple\'s chain, our team and our bundle id', () => {
+test('the signature requirement is Developer ID only, our team and our bundle id', () => {
   const req = macRequirement();
   assert.match(req, /^anchor apple generic and /);
   assert.ok(req.includes('certificate leaf[subject.OU] = "LRU27MC63Q"'));
   assert.ok(req.includes('identifier "com.scryproof.desktop"'));
+  // Apple's Developer ID markers: the Developer ID CA intermediate and the Developer ID Application leaf.
+  assert.ok(req.includes('certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */'));
+  assert.ok(req.includes('certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */'));
 });
 
 test('a process started from the set-aside bundle is recognised', () => {
@@ -145,6 +148,7 @@ function world(over = {}) {
     failRename: null,
     gate: null,
     downloadGate: null,
+    renameGate: null,
     symlinks: new Set(),
     enabled: true,
     appPath: APP,
@@ -167,6 +171,7 @@ function world(over = {}) {
         w.files.set(to + key.slice(from.length), w.files.get(key));
         w.files.delete(key);
       }
+      if (w.renameGate && to === `${APP}.old`) await w.renameGate;
     },
     writable: async () => w.writable,
   };
@@ -596,4 +601,73 @@ test('a bundle that fails the pinned requirement is refused even if codesign oth
   assert.deepEqual(w.ready, []);
   assert.equal(has(w, STAGING), false);
   assert.equal(has(w, ZIP), false);
+});
+
+/* ---------------------------- round 2 ---------------------------- */
+
+test('the late tidy pass waits for a swap in progress and never removes the bundle set aside for it', async () => {
+  const { w, updater } = world();
+  w.files.set(`${APP}/Contents/old.txt`, 'old');
+  await updater.check();
+  let open;
+  w.renameGate = new Promise((resolve) => { open = resolve; });
+  const applying = updater.apply();
+  await ticks();
+  assert.equal(has(w, `${APP}.old/Contents/old.txt`), true, 'precondition: the old app is set aside, the swap is mid-way');
+  const tidying = updater.tidyAside();
+  await ticks();
+  assert.equal(has(w, `${APP}.old/Contents/old.txt`), true, 'tidy did not run over the swap');
+  open();
+  await applying;
+  await tidying;
+  assert.equal(has(w, `${APP}.old/Contents/old.txt`), true, 'and does not remove the way back once the swap is done');
+  assert.deepEqual(w.relaunched, [APP]);
+});
+
+test('a download that finishes after Restart was clicked stages nothing and announces nothing', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  w.served = 'the second zip';
+  Object.assign(w.manifest, { version: '0.6.2', sha256: sha(w.served), size: w.served.length });
+  let open;
+  w.downloadGate = new Promise((resolve) => { open = resolve; });
+  const checking = updater.check();
+  await ticks();
+  assert.equal(await updater.apply(), true, 'Restart installs the 0.6.1 that was waiting');
+  open();
+  await checking;
+  assert.deepEqual(w.ready, ['0.6.1']);
+  assert.equal(w.commands.filter((c) => c[0] === 'ditto' && c[1] === '-x').length, 1, 'the second zip was never unpacked');
+});
+
+test('a newer release that fails its checks does not take the waiting one with it: Restart still installs it', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  assert.deepEqual(w.ready, ['0.6.1']);
+  w.served = 'the second zip';
+  Object.assign(w.manifest, { version: '0.6.2', sha256: sha(w.served), size: w.served.length });
+  // stagedVersion stays 0.6.1: the 0.6.2 bundle says it is another version, so it is refused.
+  await updater.check();
+  assert.deepEqual(w.ready, ['0.6.1']);
+  assert.equal(updater.state(), '0.6.1');
+  assert.equal(has(w, ZIP), true, 'the waiting zip is kept');
+  assert.equal(has(w, `${DIR}/Scryproof-0.6.2-mac-arm64.zip`), false, 'the refused one is deleted');
+  w.files.set(`${APP}/Contents/old.txt`, 'old');
+  assert.equal(await updater.apply(), true);
+  assert.deepEqual(w.relaunched, [APP]);
+  assert.equal(has(w, `${APP}/Contents/Info.plist`), true);
+  assert.equal(has(w, `${APP}.old/Contents/old.txt`), true);
+});
+
+test('a newer release that passes replaces the waiting one and its zip is removed', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  w.served = 'the second zip';
+  Object.assign(w.manifest, { version: '0.6.2', sha256: sha(w.served), size: w.served.length });
+  w.stagedVersion = '0.6.2';
+  await updater.check();
+  assert.deepEqual(w.ready, ['0.6.1', '0.6.2']);
+  assert.equal(updater.state(), '0.6.2');
+  assert.equal(has(w, ZIP), false);
+  assert.equal(has(w, `${DIR}/Scryproof-0.6.2-mac-arm64.zip`), true);
 });

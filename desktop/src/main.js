@@ -424,7 +424,8 @@ const MAC_TOOLS = { ditto: '/usr/bin/ditto', codesign: '/usr/bin/codesign', plut
 const runMacTool = (name, args) =>
   new Promise((resolve) => {
     if (!Object.prototype.hasOwnProperty.call(MAC_TOOLS, name)) return resolve({ code: 127, stdout: '', stderr: 'not an allowed tool' });
-    execFile(MAC_TOOLS[name], args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) =>
+    // A tool that hangs would hold the updater's lock for good; past the timeout it is killed and counts as a refusal.
+    execFile(MAC_TOOLS[name], args, { maxBuffer: 8 * 1024 * 1024, timeout: 120_000 }, (error, stdout, stderr) =>
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }),
     );
   });

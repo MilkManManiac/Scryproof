@@ -200,32 +200,48 @@ export function createMacShellUpdater(deps) {
     }
   }
 
+  /**
+   * Unpack `zip` into a fresh staging folder and check the bundle: its app
+   * folder, or null (and staging emptied; a zip whose bundle failed is deleted).
+   */
+  async function unpackAndCheck(version, zip) {
+    await emptyStaging();
+    await fs.mkdir(staging);
+    const unzipped = await run('ditto', ['-x', '-k', zip, staging]);
+    if (unzipped.code !== 0) return fail(`could not unpack the update (${unzipped.code})`) || null;
+    const name = stagedAppName(await fs.readdir(staging));
+    if (!name) return fail('the update does not hold exactly one app') || null;
+    const appDir = join(staging, name);
+    if (!(await bundleOk(appDir, version))) {
+      await fs.rm(zip);
+      return null;
+    }
+    return appDir;
+  }
+
   /** Unpack and check `zip`, and make it the waiting update. Runs under the lock. */
   async function stage(manifest, zip) {
     // The app is on its way out, or already replaced: nothing is staged for it.
     if (applying) return false;
     // Always extracted afresh: what is on disk in staging is never trusted from
-    // before. A bundle that was waiting goes with it; it is staged again if this fails.
-    if (pending?.staged) await fs.rm(zipPathFor(pending.version));
+    // before, so a bundle already waiting is unpacked out of the way. Its zip is
+    // kept until the newer one has passed: if the newer one fails, the older is
+    // staged again, and Restart still installs it.
+    const previous = pending;
     pending = null;
-    try {
-      await emptyStaging();
-      await fs.mkdir(staging);
-      const unzipped = await run('ditto', ['-x', '-k', zip, staging]);
-      if (unzipped.code !== 0) return fail(`could not unpack the update (${unzipped.code})`);
-      const name = stagedAppName(await fs.readdir(staging));
-      if (!name) return fail('the update does not hold exactly one app');
-      const appDir = join(staging, name);
-      if (!(await bundleOk(appDir, manifest.version))) {
-        await fs.rm(zip);
-        return false;
-      }
+    const appDir = await unpackAndCheck(manifest.version, zip);
+    if (appDir) {
+      if (previous?.staged) await fs.rm(zipPathFor(previous.version));
       pending = { version: manifest.version, staged: appDir, manifest };
       deps.onReady(manifest.version);
       return true;
-    } finally {
-      if (!pending) await emptyStaging();
     }
+    if (previous?.staged) {
+      const again = await unpackAndCheck(previous.version, zipPathFor(previous.version));
+      if (again) pending = { ...previous, staged: again };
+    }
+    if (!pending) await emptyStaging();
+    return false;
   }
 
   async function check() {
@@ -330,8 +346,12 @@ export function createMacShellUpdater(deps) {
   }
 
   /** The late pass: only the set-aside bundle, which the process that handed over may have been holding. Never staging, never a download. */
-  async function tidyAside() {
-    if (deps.appPath) await fs.rm(`${deps.appPath}.old`).catch(() => {});
+  function tidyAside() {
+    return locked(async () => {
+      // Not while a swap is under way (or done, and the app leaving): `.old` is then the way back.
+      if (!deps.appPath || applying) return;
+      await fs.rm(`${deps.appPath}.old`).catch(() => {});
+    });
   }
 
   return { check, apply, how, tidy, tidyAside, state: () => pending?.version ?? null };
