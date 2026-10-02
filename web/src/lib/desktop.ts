@@ -83,13 +83,19 @@ export function isMacPlatform(
   return /^mac/i.test(platform) && touchPoints < 2;
 }
 
+export interface DesktopDownload {
+  href: string;
+  /** What to call it. The Mac build is Apple silicon only, and Safari says MacIntel on both kinds of Mac. */
+  system: 'Mac (Apple silicon)' | 'Windows';
+}
+
 /**
  * Where the desktop app for this computer is downloaded, and what to call it.
  * The Mac gets the disk image; everyone else keeps the Windows installer.
  */
-export function desktopDownload(mac: boolean = onMacApp || isMacPlatform()): { href: string; system: 'Mac' | 'Windows' } {
+export function desktopDownload(mac: boolean = onMacApp || isMacPlatform()): DesktopDownload {
   return mac
-    ? { href: `${publicOrigin()}/download/Scryproof.dmg`, system: 'Mac' }
+    ? { href: `${publicOrigin()}/download/Scryproof.dmg`, system: 'Mac (Apple silicon)' }
     : { href: `${publicOrigin()}/download/Scryproof-Setup.exe`, system: 'Windows' };
 }
 
@@ -296,3 +302,76 @@ export function watchPermissions(listener: (state: PermissionState) => void): ()
 export const openPermissionSettings = (which: 'accessibility' | 'screen'): void => {
   void Promise.resolve(bridge?.openPermissionSettings?.(which)).catch(() => undefined);
 };
+
+/**
+ * Whether the Mac disk image is on the server yet. The Mac app is published
+ * after the page that links to it can be, and a link to a missing file is
+ * worse than none.
+ */
+export async function dmgPublished(fetcher: typeof fetch = (...args) => fetch(...args)): Promise<boolean> {
+  try {
+    const answer = await fetcher(desktopDownload(true).href, { method: 'HEAD', cache: 'no-store' });
+    return answer.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A value the page reads as it changes, for `useSyncExternalStore`. `start`
+ * runs while somebody is looking and returns the way to stop; it reports each
+ * new value through `set`, and the same value again is not a change.
+ */
+function liveValue<T>(initial: T, start: (set: (next: T) => void) => () => void) {
+  let value = initial;
+  let stop: (() => void) | null = null;
+  const listeners = new Set<() => void>();
+  const set = (next: T) => {
+    if (JSON.stringify(next) === JSON.stringify(value)) return;
+    value = next;
+    listeners.forEach((listener) => listener());
+  };
+  return {
+    get: (): T => value,
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      stop ??= start(set);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          stop?.();
+          stop = null;
+        }
+      };
+    },
+  };
+}
+
+/** The download link to show, or null while the Mac disk image is not known to be there. */
+export function downloadLink(mac: boolean, fetcher?: typeof fetch) {
+  let asked = false;
+  return liveValue<DesktopDownload | null>(mac ? null : desktopDownload(false), (set) => {
+    // One question for the life of the page, however often the link is shown.
+    if (mac && !asked) {
+      asked = true;
+      void dmgPublished(fetcher).then((there) => there && set(desktopDownload(true)));
+    }
+    return () => {};
+  });
+}
+
+export const downloadStore = downloadLink(onMacApp || isMacPlatform());
+
+/** What macOS has allowed, kept up to date while something shows it. */
+export const permissionStore = liveValue<PermissionState | null>(null, (set) => watchPermissions(set));
+
+/** How the waiting installer gets installed, once the shell has one ready; null before. */
+let shellListening = false;
+export const shellUpdateStore = liveValue<'restart' | 'download' | null>(null, (set) => {
+  // The shell's listener cannot be taken off again, so it is added once.
+  if (!shellListening) {
+    shellListening = true;
+    onShellUpdate(() => void shellUpdateHow().then(set));
+  }
+  return () => {};
+});

@@ -19,7 +19,7 @@ let loads = 0;
 /** The module as a page would see it: `bridge` is what the shell put on window, or nothing. */
 async function pageWith(bridge: object | null): Promise<{ desktop: Desktop; window: EventTarget }> {
   const window = new EventTarget();
-  Object.assign(window, bridge ? { scryproofDesktop: bridge } : {});
+  Object.assign(window, { location: { origin: 'https://browser.test' } }, bridge ? { scryproofDesktop: bridge } : {});
   (globalThis as { window?: unknown }).window = window;
   loads += 1;
   const desktop: Desktop = await import(`../lib/desktop.ts?load=${loads}`);
@@ -44,7 +44,7 @@ describe('which download a computer is offered', () => {
 
   it('offers the disk image on a Mac and the Windows installer to everyone else', async () => {
     const { desktop } = await pageWith(bridge);
-    assert.deepEqual(desktop.desktopDownload(true), { href: `${server}/download/Scryproof.dmg`, system: 'Mac' });
+    assert.deepEqual(desktop.desktopDownload(true), { href: `${server}/download/Scryproof.dmg`, system: 'Mac (Apple silicon)' });
     assert.deepEqual(desktop.desktopDownload(false), { href: `${server}/download/Scryproof-Setup.exe`, system: 'Windows' });
   });
 
@@ -53,6 +53,57 @@ describe('which download a computer is offered', () => {
     assert.match(mac.desktop.desktopDownload().href, /Scryproof\.dmg$/);
     const windows = await pageWith({ ...bridge, platform: 'win32' });
     assert.match(windows.desktop.desktopDownload().href, /Scryproof-Setup\.exe$/);
+  });
+});
+
+describe('the Mac disk image, before and after it is published', () => {
+  const answering = (status: number | 'fails') => {
+    const asked: { url: string; method: string | undefined }[] = [];
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      asked.push({ url, method: init?.method });
+      if (status === 'fails') throw new Error('offline');
+      return { status } as Response;
+    }) as unknown as typeof fetch;
+    return { asked, fetcher };
+  };
+
+  it('is there when a HEAD answers 200 and not otherwise', async () => {
+    const { desktop } = await pageWith(bridge);
+    const ok = answering(200);
+    assert.equal(await desktop.dmgPublished(ok.fetcher), true);
+    assert.deepEqual(ok.asked, [{ url: `${server}/download/Scryproof.dmg`, method: 'HEAD' }]);
+    assert.equal(await desktop.dmgPublished(answering(404).fetcher), false);
+    assert.equal(await desktop.dmgPublished(answering(403).fetcher), false);
+    assert.equal(await desktop.dmgPublished(answering('fails').fetcher), false);
+  });
+
+  it('shows a Mac the link only once it is there, and asks once however often it is shown', async () => {
+    const { desktop } = await pageWith(bridge);
+    for (const [status, link] of [
+      [200, { href: `${server}/download/Scryproof.dmg`, system: 'Mac (Apple silicon)' }],
+      [404, null],
+    ] as const) {
+      const { asked, fetcher } = answering(status);
+      const store = desktop.downloadLink(true, fetcher);
+      assert.equal(store.get(), null, 'nothing is offered before the answer');
+      store.subscribe(() => {});
+      store.subscribe(() => {})();
+      await settle();
+      assert.deepEqual(store.get(), link);
+      store.subscribe(() => {});
+      await settle();
+      assert.equal(asked.length, 1);
+    }
+  });
+
+  it('does not ask anyone else, who keeps the Windows installer', async () => {
+    const { desktop } = await pageWith(bridge);
+    const { asked, fetcher } = answering(404);
+    const store = desktop.downloadLink(false, fetcher);
+    store.subscribe(() => {});
+    await settle();
+    assert.deepEqual(store.get(), { href: `${server}/download/Scryproof-Setup.exe`, system: 'Windows' });
+    assert.equal(asked.length, 0);
   });
 });
 
@@ -147,6 +198,16 @@ describe('the Accessibility explanation', () => {
 });
 
 describe('the Screen Recording explanation', () => {
+  it('says to quit and reopen, and has the button, only when it is missing', async () => {
+    await pageWith(null);
+    const { ScreenRecordingNoteView } = await import('../components/ShareMacNotes');
+    const html = renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: true }));
+    assert.match(html, /needs Screen Recording turned on for Scryproof/);
+    assert.match(html, /quit\s+and reopen Scryproof/);
+    assert.match(html, /Open System Settings/);
+    assert.equal(renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: false })), '');
+  });
+
   it('is for denied and not-determined, not for granted or unknown', async () => {
     const { desktop } = await pageWith(null);
     const { screenRecordingMissing } = desktop;
@@ -156,6 +217,33 @@ describe('the Screen Recording explanation', () => {
     assert.equal(screenRecordingMissing(state('granted')), false);
     assert.equal(screenRecordingMissing(state('unknown')), false);
     assert.equal(screenRecordingMissing(null), false);
+  });
+});
+
+describe('sound in a screen share', () => {
+  it('never goes out from a Mac, whatever was offered or switched on', async () => {
+    await pageWith(null);
+    const { soundToShare } = await import('../components/ShareMacNotes');
+    assert.equal(soundToShare(true, true, true), false);
+    assert.equal(soundToShare(false, true, true), true, 'Windows keeps its switch');
+    assert.equal(soundToShare(false, true, false), false);
+    assert.equal(soundToShare(false, false, true), false);
+  });
+
+  it('shows a Mac the reason in place of the switch, and Windows its switch', async () => {
+    await pageWith(null);
+    const { ShareSound } = await import('../components/ShareMacNotes');
+    const render = (mac: boolean, offered: boolean) =>
+      renderToStaticMarkup(
+        createElement(ShareSound, { mac, offered, label: 'Share sound', checked: false, onChange: () => {} }),
+      );
+    const mac = render(true, true);
+    assert.match(mac, /No sound with a Mac screen share yet/);
+    assert.match(mac, /disabled/);
+    assert.doesNotMatch(mac, /Share sound/);
+    assert.match(render(false, true), /Share sound/);
+    assert.doesNotMatch(render(false, true), /disabled/);
+    assert.equal(render(false, false), '');
   });
 });
 
@@ -211,7 +299,7 @@ describe('no desktop copy where there is no Mac app', () => {
 describe('the update bar', () => {
   const bar = async (how: 'restart' | 'download', inVoice: boolean) => {
     await pageWith(null);
-    const { ShellUpdateBanner } = await import('../components/ShellUpdateBanner');
+    const { ShellUpdateBanner } = await import('../components/UpdateBanner');
     return renderToStaticMarkup(createElement(ShellUpdateBanner, { how, inVoice, onApply: () => {} }));
   };
 

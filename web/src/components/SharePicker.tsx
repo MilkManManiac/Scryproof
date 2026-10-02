@@ -13,19 +13,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  answerShare,
-  onMacApp,
-  onShareRequest,
-  openPermissionSettings,
-  refreshShare,
-  screenRecordingMissing,
-  watchPermissions,
-  type PermissionState,
-  type ShareRequest,
-  type ShareSource,
-} from '../lib/desktop';
+import { answerShare, onMacApp, onShareRequest, refreshShare, type ShareRequest, type ShareSource } from '../lib/desktop';
 import { Modal } from './Modal';
+import { ScreenRecordingNote, ShareSound, soundToShare } from './ShareMacNotes';
 
 /** Often enough to look live, seldom enough to stay cheap: the pictures are small. */
 const REFRESH_MS = 2000;
@@ -37,7 +27,6 @@ export function SharePicker() {
   const [tab, setTab] = useState<Tab>('screen');
   const [selected, setSelected] = useState<string | null>(null);
   const [withSound, setWithSound] = useState(false);
-  const [permission, setPermission] = useState<PermissionState | null>(null);
 
   useEffect(
     () =>
@@ -55,11 +44,6 @@ export function SharePicker() {
   );
 
   const open = request !== null;
-
-  // On a Mac the share can come out blank until Screen Recording is allowed,
-  // and the way to allow it is a trip to System Settings: look again when the
-  // window is back in front, so the note goes once it is done.
-  useEffect(() => (open ? watchPermissions(setPermission) : undefined), [open]);
 
   // Fresh pictures while it is open, and none once it closes. A source that
   // went away (a window closed) goes from the grid, and from the selection.
@@ -89,7 +73,7 @@ export function SharePicker() {
   const share = (id: string | null) => {
     if (!id) return;
     setRequest(null);
-    answerShare({ id, withSound: !onMacApp && request.sound !== null && withSound });
+    answerShare({ id, withSound: soundToShare(onMacApp, request.sound !== null, withSound) });
   };
 
   const screens = request.sources.filter((source) => source.kind === 'screen');
@@ -103,24 +87,13 @@ export function SharePicker() {
       onClose={cancel}
       footer={
         <>
-          {onMacApp ? (
-            // Electron has no way to capture a Mac's own sound, so there is no
-            // switch to offer. Windows keeps its switch below.
-            <label className="share-picker-sound">
-              <input type="checkbox" className="perm-switch" checked={false} disabled />
-              <span>No sound with a Mac screen share yet.</span>
-            </label>
-          ) : request.sound !== null ? (
-            <label className="share-picker-sound">
-              <input
-                type="checkbox"
-                className="perm-switch"
-                checked={withSound}
-                onChange={(event) => setWithSound(event.target.checked)}
-              />
-              <span>{request.soundLabel}</span>
-            </label>
-          ) : null}
+          <ShareSound
+            mac={onMacApp}
+            offered={request.sound !== null}
+            label={request.soundLabel}
+            checked={withSound}
+            onChange={setWithSound}
+          />
           <button type="button" className="button secondary inline" onClick={cancel}>
             Cancel
           </button>
@@ -130,16 +103,7 @@ export function SharePicker() {
         </>
       }
     >
-      {screenRecordingMissing(permission) ? (
-        <div className="toggle-row">
-          <span className="field-note warning">
-            macOS needs Screen Recording turned on for Scryproof before it can share a screen or a window.
-          </span>
-          <button type="button" className="button secondary inline" onClick={() => openPermissionSettings('screen')}>
-            Open System Settings
-          </button>
-        </div>
-      ) : null}
+      <ScreenRecordingNote />
       <div className="settings-tabs share-picker-tabs" role="tablist">
         {(
           [

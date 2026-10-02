@@ -13,7 +13,6 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
-import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate, shellUpdateHow } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
 import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
 import { useBackButton } from './lib/back';
@@ -40,12 +39,12 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
 import { SharePicker } from './components/SharePicker';
-import { ShellUpdateBanner } from './components/ShellUpdateBanner';
 import { ShortcutHelp } from './components/ShortcutHelp';
 import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Walkthrough } from './components/Walkthrough';
 import { GuideGate } from './components/Guide';
 import { PurdleGate } from './components/Purdle';
@@ -111,37 +110,6 @@ export function App() {
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>
-  );
-}
-
-/**
- * A newer client is ready: in the app, fetched and checked and waiting; in a
- * browser, published. Switching to it is a reload, which would hang up a
- * call, so the person picks the moment. Nothing reloads on its own (Wes,
- * 2026-09-21). Left alone, it is simply there next time the app or the tab
- * is opened.
- *
- * In the app, a newer installer can be waiting too. That one wins: it carries
- * a client of its own, and restarting installs both.
- */
-function UpdateBanner({ inVoice }: { inVoice: boolean }) {
-  const [client, setClient] = useState(false);
-  const [shell, setShell] = useState<'restart' | 'download' | null>(null);
-  useEffect(() => onClientUpdate(() => setClient(true)), []);
-  useEffect(() => onShellUpdate(() => void shellUpdateHow().then(setShell)), []);
-  if (shell) return <ShellUpdateBanner how={shell} inVoice={inVoice} onApply={applyShellUpdate} />;
-  if (!client) return null;
-  return (
-    <div className="banner update">
-      A newer Scryproof is ready.{' '}
-      {inVoice ? (
-        'Reload when your call is over.'
-      ) : (
-        <button type="button" className="link-button" onClick={applyClientUpdate}>
-          Reload now
-        </button>
-      )}
-    </div>
   );
 }
 

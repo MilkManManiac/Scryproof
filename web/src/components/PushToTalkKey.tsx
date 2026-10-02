@@ -3,9 +3,8 @@
  * person should know about it before it fails them on a Mac.
  */
 
-import { useEffect, useState } from 'react';
-
-import { accessibilityMissing, isMacPlatform, onMacApp, openPermissionSettings, watchPermissions, type PermissionState } from '../lib/desktop';
+import { accessibilityMissing, isMacPlatform, onMacApp, openPermissionSettings } from '../lib/desktop';
+import { usePermissions } from '../lib/desktop-hooks';
 import { keyLabel } from '../lib/voice-prefs';
 
 /** Either side of Cmd, Option, Control or Shift. */
@@ -64,10 +63,9 @@ export function PushToTalkKeyRow({
 }
 
 export function PushToTalkKey({ code, capturing, onCapture }: { code: string; capturing: boolean; onCapture: () => void }) {
-  const [permission, setPermission] = useState<PermissionState | null>(null);
   // Looked at again whenever the window is back in front, so the explanation
   // goes away by itself after the trip to System Settings.
-  useEffect(() => watchPermissions(setPermission), []);
+  const permission = usePermissions();
   return (
     <PushToTalkKeyRow
       code={code}
