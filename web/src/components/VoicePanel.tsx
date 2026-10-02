@@ -20,7 +20,7 @@ import type { PublicUser, VoiceState } from '@scryproof/shared';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
-import { publicOrigin } from '../lib/desktop';
+import { desktopDownload } from '../lib/desktop';
 import { voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
@@ -662,8 +662,8 @@ export function VoiceStage(
         <p className="voice-stage-error">
           {voice.error}
           {voice.installer ? (
-            <a className="voice-stage-error-link" href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
-              Get the desktop app for Windows
+            <a className="voice-stage-error-link" href={desktopDownload().href}>
+              Get the desktop app for {desktopDownload().system}
             </a>
           ) : null}
         </p>

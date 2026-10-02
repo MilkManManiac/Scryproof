@@ -11,7 +11,7 @@
 
 import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
 
-import { canZoom, isDesktop, publicOrigin } from "../lib/desktop";
+import { canZoom, desktopDownload, isDesktop } from "../lib/desktop";
 import { interfaceScale, SCALE_STEPS } from "../lib/interface-scale";
 import { theme } from "../lib/theme";
 import { THEMES } from "../lib/themes";
@@ -111,7 +111,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
         ) : isDesktop ? (
           <>
             Needs the newest desktop app:{" "}
-            <a href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
+            <a href={desktopDownload().href}>
               download it
             </a>{" "}
             and run it once.

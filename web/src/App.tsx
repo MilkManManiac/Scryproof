@@ -13,7 +13,7 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
-import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate } from './lib/desktop';
+import { applyClientUpdate, applyShellUpdate, onClientUpdate, onShellUpdate, shellUpdateHow } from './lib/desktop';
 import { useShortcuts } from './lib/shortcuts';
 import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
 import { useBackButton } from './lib/back';
@@ -40,6 +40,7 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { SearchResults } from './components/SearchResults';
 import { ServerRail } from './components/ServerRail';
 import { SharePicker } from './components/SharePicker';
+import { ShellUpdateBanner } from './components/ShellUpdateBanner';
 import { ShortcutHelp } from './components/ShortcutHelp';
 import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
@@ -125,23 +126,10 @@ export function App() {
  */
 function UpdateBanner({ inVoice }: { inVoice: boolean }) {
   const [client, setClient] = useState(false);
-  const [shell, setShell] = useState(false);
+  const [shell, setShell] = useState<'restart' | 'download' | null>(null);
   useEffect(() => onClientUpdate(() => setClient(true)), []);
-  useEffect(() => onShellUpdate(() => setShell(true)), []);
-  if (shell) {
-    return (
-      <div className="banner update">
-        A new version of the app is ready.{' '}
-        {inVoice ? (
-          'Restart to install when your call is over.'
-        ) : (
-          <button type="button" className="link-button" onClick={applyShellUpdate}>
-            Restart to install
-          </button>
-        )}
-      </div>
-    );
-  }
+  useEffect(() => onShellUpdate(() => void shellUpdateHow().then(setShell)), []);
+  if (shell) return <ShellUpdateBanner how={shell} inVoice={inVoice} onApply={applyShellUpdate} />;
   if (!client) return null;
   return (
     <div className="banner update">

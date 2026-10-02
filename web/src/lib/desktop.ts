@@ -27,6 +27,20 @@ interface DesktopBridge {
   onShareRequest?: (open: (request: ShareRequest) => void, close: () => void) => () => void;
   answerShare?: (answer: { id: string; withSound: boolean } | null) => Promise<boolean>;
   refreshShare?: () => Promise<ShareSource[] | null>;
+  /** Absent in shells built before the Mac app (0.5.x). */
+  platform?: 'darwin' | 'win32' | 'linux';
+  permissionState?: () => Promise<PermissionState>;
+  openPermissionSettings?: (which: 'accessibility' | 'screen') => Promise<void>;
+  /** 'download' when the app cannot replace itself (its folder is not writable): the shell opens the download link instead. */
+  shellUpdateHow?: () => Promise<'restart' | 'download'>;
+}
+
+/** What macOS has let the app do. The page only explains; the shell asks. */
+export interface PermissionState {
+  /** Needed to hear the push-to-talk key while another app is in front. */
+  accessibility: boolean;
+  /** Needed to share a screen or window. */
+  screen: 'granted' | 'denied' | 'not-determined' | 'unknown';
 }
 
 /** One screen or window the desktop app can share, as its shell describes it. */
@@ -51,6 +65,33 @@ export interface ShareRequest {
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+
+/** The app on a Mac. False in a browser, and in a shell too old to say. */
+export const onMacApp = bridge?.platform === 'darwin';
+
+/**
+ * Whether this page is on a Mac, from the platform string a browser reports.
+ * An iPad asking for the desktop site says "MacIntel" too, but has a touch
+ * screen and no Mac app to download.
+ */
+export function isMacPlatform(
+  platform: string = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    '',
+  touchPoints: number = navigator.maxTouchPoints ?? 0,
+): boolean {
+  return /^mac/i.test(platform) && touchPoints < 2;
+}
+
+/**
+ * Where the desktop app for this computer is downloaded, and what to call it.
+ * The Mac gets the disk image; everyone else keeps the Windows installer.
+ */
+export function desktopDownload(mac: boolean = onMacApp || isMacPlatform()): { href: string; system: 'Mac' | 'Windows' } {
+  return mac
+    ? { href: `${publicOrigin()}/download/Scryproof.dmg`, system: 'Mac' }
+    : { href: `${publicOrigin()}/download/Scryproof-Setup.exe`, system: 'Windows' };
+}
 
 /** Zoom the whole window, where the app can. False in a browser or an older shell. */
 export const canZoom = typeof bridge?.setZoom === 'function';
@@ -156,6 +197,20 @@ export function onShellUpdate(listener: () => void): void {
   });
 }
 
+/**
+ * How a waiting installer gets installed. 'restart' is the usual way: the app
+ * closes, swaps itself and opens again. 'download' is a Mac app that cannot
+ * replace itself (it was dragged somewhere it may not write): the shell then
+ * opens the download link. A shell that does not say always meant 'restart'.
+ */
+export async function shellUpdateHow(): Promise<'restart' | 'download'> {
+  try {
+    return (await bridge?.shellUpdateHow?.()) === 'download' ? 'download' : 'restart';
+  } catch {
+    return 'restart';
+  }
+}
+
 /** Close the app and run the waiting installer, which opens it again. */
 export const applyShellUpdate = (): void => {
   void bridge?.applyShellUpdate?.();
@@ -189,4 +244,55 @@ export const refreshShare = async (): Promise<ShareSource[] | null> => {
   } catch {
     return null;
   }
+};
+
+/** Whether the Mac has said no to hearing keys while another app is in front. */
+export const accessibilityMissing = (state: PermissionState | null): boolean => state !== null && !state.accessibility;
+
+/** Whether the Mac has not yet let the app record the screen. 'unknown' is not a no. */
+export const screenRecordingMissing = (state: PermissionState | null): boolean =>
+  state !== null && (state.screen === 'denied' || state.screen === 'not-determined');
+
+/**
+ * What macOS has allowed, once, or null when this is not the Mac app (a
+ * browser, Windows, or a shell that predates the question). Never throws.
+ */
+export async function permissionState(): Promise<PermissionState | null> {
+  if (!onMacApp || !bridge?.permissionState) return null;
+  try {
+    const state = await bridge.permissionState();
+    return {
+      accessibility: state?.accessibility === true,
+      screen: state?.screen === 'granted' || state?.screen === 'denied' || state?.screen === 'not-determined' ? state.screen : 'unknown',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tell `listener` what macOS has allowed now, and again each time the window
+ * is back in front: the way to grant these is a trip to System Settings, and
+ * the explanation should clear by itself when the person returns. Returns the
+ * way to stop. Silent in a browser, on Windows and in an older shell.
+ */
+export function watchPermissions(listener: (state: PermissionState) => void): () => void {
+  if (!onMacApp || !bridge?.permissionState) return () => {};
+  let live = true;
+  const look = () => {
+    void permissionState().then((state) => {
+      if (live && state) listener(state);
+    });
+  };
+  look();
+  window.addEventListener('focus', look);
+  return () => {
+    live = false;
+    window.removeEventListener('focus', look);
+  };
+}
+
+/** Open the macOS settings pane where the person turns the permission on. */
+export const openPermissionSettings = (which: 'accessibility' | 'screen'): void => {
+  void Promise.resolve(bridge?.openPermissionSettings?.(which)).catch(() => undefined);
 };

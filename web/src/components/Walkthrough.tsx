@@ -154,7 +154,8 @@ export const STEPS: readonly Step[] = [
         </p>
         <p>
           When a new version is ready, a bar across the top says <b>Reload now</b>, or <b>Restart to install</b> in the
-          desktop app. Click it when you&apos;re not in a call.
+          desktop app (a Mac app that cannot replace itself says <b>Download it to update</b>). Click it when
+          you&apos;re not in a call.
         </p>
       </>
     ),
