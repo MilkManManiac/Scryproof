@@ -42,6 +42,7 @@ import {
   verifyInstallerFile,
   versionFromFileName,
 } from './installer-core.js';
+import { shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
@@ -52,6 +53,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SERVER = new URL(app.isPackaged ? 'https://scryproof.com' : (process.env.SCRYPROOF_SERVER ?? 'https://scryproof.com'));
 /** Development only: where a local LiveKit listens, so the page is allowed to reach it. */
 const DEV_MEDIA = app.isPackaged ? '' : (process.env.SCRYPROOF_DEV_MEDIA ?? '');
+
+const ACTIVITIES_ORIGIN = new URL(app.isPackaged ? 'https://activities.scryproof.com' : (process.env.SCRYPROOF_ACTIVITIES_ORIGIN ?? 'https://activities.scryproof.com')).origin;
 
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
@@ -106,6 +109,7 @@ const CSP = [
   "font-src 'self'",
   `connect-src 'self' ${SERVER.origin} ${GATEWAY.replace(/\/gateway$/, '')} ${DEV_MEDIA}`.trim(),
   "worker-src 'self' blob:",
+  `frame-src ${ACTIVITIES_ORIGIN}`,
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",
@@ -434,15 +438,15 @@ function armGateway(ses) {
 
 /* ------------------------------- permissions ------------------------------- */
 
-const GRANTED = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'fullscreen']);
-
 function armPermissions(ses) {
-  const ours = (origin) => typeof origin === 'string' && origin.replace(/\/$/, '') === APP_ORIGIN;
-  ses.setPermissionRequestHandler((contents, permission, done) => done(ours(contents.getURL().slice(0, APP_ORIGIN.length)) && GRANTED.has(permission)));
-  ses.setPermissionCheckHandler((_contents, permission, origin) => ours(origin) && GRANTED.has(permission));
+  ses.setPermissionRequestHandler((_contents, permission, done, details) => done(shellPermission(details.requestingUrl, permission, details.isMainFrame !== false)));
+  ses.setPermissionCheckHandler((_contents, permission, origin, details) => shellPermission(origin, permission, details.isMainFrame !== false));
 
   // Windows has no picker of its own to hand over to, so the page draws one.
-  ses.setDisplayMediaRequestHandler((request, done) => void openSharePicker(request, done));
+  ses.setDisplayMediaRequestHandler((request, done) => {
+    if (!shellPermission(request.frame?.url, 'display-capture')) return done({});
+    void openSharePicker(request, done);
+  });
 }
 
 /* ------------------------------- share picker ------------------------------ */
@@ -679,6 +683,13 @@ function createWindow(visible = true) {
   });
   win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
   win.webContents.on('will-redirect', (event, url) => allowGo(event, url));
+  win.webContents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame) return;
+    try {
+      if (new URL(event.url).origin === ACTIVITIES_ORIGIN) return;
+    } catch {}
+    event.preventDefault();
+  });
   win.webContents.on('will-attach-webview', (event) => event.preventDefault());
   armContextMenu(win.webContents, outside);
   win.on('close', (event) => {
