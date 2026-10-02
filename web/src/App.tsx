@@ -57,6 +57,7 @@ import { LowballGate, WhereaboutsGate } from './components/Rounds';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
+import { ActivitiesGate } from './components/Activities';
 import { PopupStack } from './components/PopupStack';
 import { TourGate } from './components/Tours';
 import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
@@ -464,6 +465,7 @@ function Shell() {
       <WalkthroughGate />
       <TourGate />
       <PopupStack />
+      <ActivitiesGate />
       <GuideGate />
       <PurdleGate />
       <CuntectionsGate />

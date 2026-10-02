@@ -1,0 +1,39 @@
+[Unit]
+Description=Isolated Scryproof static activities
+After=network.target apparmor.service
+Requires=apparmor.service
+RequiresMountsFor=/srv/sites/scryproof-activities
+
+[Service]
+Type=simple
+User=scryproof-activities
+Group=scryproof-activities
+RuntimeDirectory=scryproof-activities
+RuntimeDirectoryMode=0755
+ExecStart=/usr/sbin/nginx -c /etc/scryproof-activities/nginx.conf -g 'daemon off;'
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+AppArmorProfile=scryproof-activities-nginx
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/scryproof-activities
+InaccessiblePaths=/srv/sites/scryproof /srv/conf/scryproof /etc/scryproof /home/git
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+UMask=0022
+MemoryMax=64M
+CPUQuota=25%
+TasksMax=16
+LimitNOFILE=128
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

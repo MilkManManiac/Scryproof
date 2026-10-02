@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-02-activities',
+    date: '2026-10-02',
+    title: 'Play Drain The Swamp in Activities',
+    notes: [
+      'Open Activities in the left bar or call controls to play Drain The Swamp. It is single player, with progress saved in this browser on this device.',
+      'In a call, choose Share gameplay and share the Scryproof tab or window. Friends can press Watch. Back to Scryproof keeps the game open and stops the share you started there.',
+      'Activities works in the browser. The desktop app needs the new installer; older versions offer a browser link.',
+    ],
+  },
+  {
     id: '2026-10-01-server-menu',
     date: '2026-10-01',
     title: 'Server notification menu stays visible',
