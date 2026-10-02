@@ -68,7 +68,7 @@ test('macOS: Cmd-backtick (next window of the app) releases too', () => {
   assert.deepEqual(seen, [true, false]);
 });
 
-test('another key pressed while talking does not release: W to walk, Tab alone, Cmd-C', () => {
+test('another key pressed while talking does not release: W to walk, Tab alone, a lone C', () => {
   for (const platform of ['darwin', 'win32']) {
     const { feed, seen } = watch(K.Slash, platform);
     feed(down(K.Slash));
@@ -77,9 +77,36 @@ test('another key pressed while talking does not release: W to walk, Tab alone, 
     feed(up(K.W));
     feed(down(K.Tab)); // no modifier: a tab key, not a switch
     feed(up(K.Tab));
-    feed(down(K.C, { metaKey: true }));
+    feed(down(K.C, { metaKey: true })); // a flag alone, with no Cmd press seen, is not a release
     assert.deepEqual(seen, [true], platform);
   }
+});
+
+test('macOS: pressing Cmd at all while the key is held releases it (Cmd-Tab may not show the hook its Tab)', () => {
+  for (const cmd of [K.Meta, K.MetaRight]) {
+    const { feed, seen } = watch(K.Slash, 'darwin');
+    feed(down(K.Slash));
+    feed(down(cmd, { metaKey: true }));
+    feed(down(K.C, { metaKey: true })); // Cmd-C while talking
+    assert.deepEqual(seen, [true, false]);
+    feed(up(cmd));
+    feed(up(K.Slash));
+    assert.deepEqual(seen, [true, false]);
+  }
+  // Cmd before the key was pressed is not "while held".
+  const early = watch(K.Slash, 'darwin');
+  early.feed(down(K.Meta, { metaKey: true }));
+  early.feed(down(K.Slash));
+  assert.deepEqual(early.seen, [true]);
+});
+
+test('macOS: Cmd as the push-to-talk key is not released by its own press', () => {
+  const { feed, seen } = watch(K.Meta, 'darwin');
+  feed(down(K.Meta, { metaKey: true }));
+  feed(down(K.W));
+  assert.deepEqual(seen, [true]);
+  feed(up(K.Meta));
+  assert.deepEqual(seen, [true, false]);
 });
 
 test('a late key-up after a forced release changes nothing; a fresh key-down engages again', () => {

@@ -20,6 +20,11 @@
  *
  *   - an app-switch chord: Cmd+Tab and Cmd+` on macOS; Alt+Tab and the Windows
  *     key on Windows;
+ *   - on macOS, the Cmd key going down at all. Cmd-Tab is a system hotkey and
+ *     the hook may not be shown its Tab; Cmd itself it does see. A hot mic is
+ *     a worse failure than a word dropped when someone reaches for Cmd-C while
+ *     talking, so any Cmd press while the key is held lets go (unless Cmd is
+ *     the push-to-talk key). Plain W, Tab and the like still do not;
  *   - the screen locking, or the machine going to sleep (`release()`, called
  *     from `powerMonitor` in `push-to-talk.js`).
  *
@@ -64,6 +69,7 @@ export function keycodeFor(code, keys) {
 export function isAppSwitchChord(event, platform, keys, watched) {
   if (!keys || event.type !== 'keydown') return false;
   if (platform === 'darwin') {
+    if (event.keycode === keys.Meta || event.keycode === keys.MetaRight) return event.keycode !== watched;
     return event.metaKey === true && (event.keycode === keys.Tab || event.keycode === keys.Backquote);
   }
   if (platform === 'win32') {

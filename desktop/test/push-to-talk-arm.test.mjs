@@ -105,3 +105,28 @@ test('Windows never consults Accessibility, and Alt-Tab and the Windows key rele
   assert.deepEqual(r.sent.slice(2), [['scryproof:ptt', true], ['scryproof:ptt', false]]);
   stopPushToTalk();
 });
+
+test('watching stopped or re-armed while the key is held tells the page it was released', async () => {
+  const r = rig({ platform: 'win32', trusted: trustedFn(true) });
+  assert.equal(await r.watch('Slash'), true);
+  r.hook.io.emit('keydown', { keycode: 53 });
+  assert.deepEqual(r.sent, [['scryproof:ptt', true]]);
+  assert.equal(await r.watch('Slash'), true); // re-armed with the key still down
+  assert.deepEqual(r.sent, [['scryproof:ptt', true], ['scryproof:ptt', false]]);
+  r.hook.io.emit('keydown', { keycode: 53 });
+  assert.equal(await r.watch(null), false);
+  assert.deepEqual(r.sent.slice(2), [['scryproof:ptt', true], ['scryproof:ptt', false]]);
+  // Nothing held: stopping says nothing.
+  await r.watch('Slash');
+  await r.watch(null);
+  assert.equal(r.sent.length, 4);
+});
+
+test('macOS: losing the Accessibility grant while a key is held releases it', async () => {
+  const r = rig({ platform: 'darwin', trusted: trustedFn(true) });
+  assert.equal(await r.watch('Slash'), true);
+  r.hook.io.emit('keydown', { keycode: 53 });
+  r.setTrusted(false);
+  assert.equal(await r.watch('Slash'), false);
+  assert.deepEqual(r.sent, [['scryproof:ptt', true], ['scryproof:ptt', false]]);
+});

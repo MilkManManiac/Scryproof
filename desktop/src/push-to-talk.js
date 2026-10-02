@@ -51,6 +51,10 @@ const LEAVING = ['lock-screen', 'suspend'];
 function stop() {
   if (!listener) return;
   const { hook: loaded, power } = listener;
+  // A key still held when watching ends (re-armed after the Accessibility grant,
+  // a changed key, the page going) must not leave the page believing it is held:
+  // the next tracker starts from "up" and would swallow the real key-up.
+  listener.leave();
   loaded.io.off('keydown', listener.down);
   loaded.io.off('keyup', listener.up);
   for (const name of LEAVING) power?.off(name, listener.leave);
