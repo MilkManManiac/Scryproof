@@ -245,6 +245,39 @@ not answered yes: Apple's picker showed no audio option in this run, the
 custom picker has none on Mac, and the Apple picker has a usability problem
 and a heavy-load problem. Decision input for the plan, not a decision.
 
+## Spike 2b — Same share through our own picker
+
+**Result (Cairn, 2026-10-02).** The slowdown is not the Apple picker's. The
+custom picker on the baseline build (custom picker, no entitlements, no system
+picker) slows the Mac the same way.
+
+- **Same test as spike 2.** Scryproof window shared on the 5K display through
+  the dark custom picker (Applications tab), `top` four samples 4 s apart.
+- **Numbers while sharing:** WindowServer 50-69% of a core and 2.4 GB;
+  kernel_task 34-36%; Scryproof graphics helper 546-774 MB; the machine stayed
+  70-78% idle; load average about 6.4 and not rising (the 15-minute figure was
+  8.1, so the machine was already loaded when sampling began). Apple picker, for
+  comparison: WindowServer 48-60% and 2.2 GB, kernel_task 27-30%, helper
+  550-710 MB, 76-84% idle, load about 6 to 16.
+- **Trey's report:** the Mac felt slow and laggy again; he stopped sharing
+  because of it.
+- **Reads as:** the cost belongs to capturing a window on a 5K display
+  (Chromium's capture path plus WindowServer), whichever picker starts it. Not
+  tested: a smaller capture, a lower display resolution, or a lower capture frame
+  rate, so the cause inside that path is still unproven. The load-average rise
+  seen with the Apple picker did not reproduce here, probably because of the
+  higher starting load; do not read it as the custom picker being lighter.
+- **Side finding: Accessibility re-prompts on every rebuild.** On joining the
+  call in this build, macOS showed "Scryproof would like to control this Mac
+  and access your data" again, though Trey had approved the app. The tccd log
+  says the existing grant failed to match the code requirement: the grant is
+  pinned to the binary hashes of the earlier builds, and an ad-hoc signed build
+  has no identity beyond its hash. Each rebuild is a new app to macOS. Expect
+  the same for every client or shell update that replaces the binary unless the
+  build carries a Developer ID signature; spike 4 should confirm.
+- **Caveats.** Baseline build has no mic entitlement, so no audio in this run.
+  One run each, one observer; not repeated.
+
 ## Spike 3 — Push-to-talk behind another app
 
 **Question.** Does the global keyboard hook (`uiohook-napi`) load from the
@@ -311,6 +344,13 @@ the green speaking ring around Trey's avatar.
   flagged. Options for a later fix, none tried: a watchdog that clears held when
   key-repeat events stop arriving; polling the key's real state; also
   clearing on app switch. Not a fix to make in this spike.
+  **Ruling (Wren, 2026-10-02): REQUIRED FIX for the Mac build, severity high**
+  (a stuck push-to-talk is a hot mic, worse than a missed one). Candidate: macOS
+  delivers key-repeat key-downs through the hook while a key is physically
+  held, so a watchdog that releases when repeats stop for about a second would
+  catch it without polling; verify that repeats actually arrive through
+  `uiohook-napi` on darwin before building on it. May exist on Windows too
+  (Win+Tab, UAC prompts); not part of this spike.
 - **Product note.** Right Option is a poor push-to-talk key on a Mac for this
   reason: it fights every shortcut. The key picker may want to warn on
   modifier keys, or the default should not be one.
