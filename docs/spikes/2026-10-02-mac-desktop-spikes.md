@@ -57,7 +57,96 @@ call?
 **Record.** Each prompt, the connection panel screenshot, whether the app
 launched from asar without complaint, the icon.
 
-**Result.**
+**Result.** Run 2026-10-02 by Cairn. Partly done: everything that needs one
+person works; the packet-counter halves are **parked: needs second
+participant** (Trey's ruling).
+
+*Machine.* Mac16,5, Apple M4 Max, macOS 27.0.1 (build 26A434), as `sw_vers`
+reports it. Node 26.10.0, Electron 44.4.3, electron-builder 26.15.3. The
+brief assumes macOS 15; nothing below hit a version-specific problem.
+Gatekeeper is **off** on this Mac (`spctl --status`: "assessments disabled",
+`spctl -a` says "override=security disabled"), so launch behavior here says
+nothing about what a friend sees (spike 4). A Developer ID Application
+identity for team LRU27MC63Q exists in Trey's keychain (team ID only recorded;
+no key material).
+
+*Build.* `npm ci`, `npm run build --workspace web`, `cd desktop && npm ci`,
+then packaging worked. Three builds, in order:
+1. `npx electron-builder --mac dir --arm64 --publish never`: electron-builder
+   found the Developer ID in the keychain by itself and **signed with it**
+   (hardened runtime, unnotarized). The brief's "no signing config" does not
+   stop that. Kept aside as `desktop/release/mac-arm64-devid-signed/` (a third
+   spike 4 case; not committed, release/ is build output).
+2. Same with `CSC_IDENTITY_AUTO_DISCOVERY=false`: builds, but the app is
+   **killed by the kernel at launch** (crash report: `EXC_BAD_ACCESS`,
+   `SIGKILL (Code Signature Invalid)`, namespace CODESIGNING). Skipping
+   signing leaves the Electron binaries with a broken signature after the
+   fuse flip, and Apple Silicon refuses to run them.
+3. **Working unsigned recipe:** `CSC_IDENTITY_AUTO_DISCOVERY=false npx
+   electron-builder --mac dir --arm64 --publish never --config.mac.identity=-`
+   gives an ad-hoc signed build (`codesign`: `Signature=adhoc`, no team ID,
+   `--verify --deep --strict` passes). electron-builder warns that ad-hoc
+   plus hardened runtime wants the `disable-library-validation` entitlement;
+   the app launched fine without it. This is the build used for every
+   observation below. 298 MB.
+The app launches from asar without complaint. The `uiohook-napi` darwin-arm64
+prebuild is present under `Contents/Resources/app.asar.unpacked/` (spike 3
+step 4). The `.app` has no mac icon (`electron.icns`, the default Electron
+icon, in the Dock and Finder; `build.mac.icon` is unset).
+
+*Prompts.* On the relaunch (step 4) I watched the window list for 12 s for
+any system dialog (Keychain, SecurityAgent, TCC): none appeared, and the
+login persisted. The Keychain item `scryproof-desktop Safe Storage` exists
+(created on first run), so cookie encryption is using the Mac Keychain. Not
+yet observed: whether a prompt appeared at the very first launch or at the
+first microphone use (those happened while Trey was clicking; asked him). An
+unsigned-after-rebuild re-prompt was not tested (same binary both times).
+
+*Trust boundary and call.* Signed in as `thetreygoff`; the app served the
+client from `app://scryproof` and the gateway connected (presence, chat
+loaded). Joining General / VibeCoders from the packaged app worked: panel
+reads "Voice connected", "Encrypted · only you here", RTT 35 ms, Jitter and
+Loss "—", TURN no, opus
+(`evidence/s1-desktop-in-call-panel.png`). Packet counters both ways:
+**parked: needs second participant.**
+
+*Second device on the same account does not work (product bug, not for now).*
+`server/src/routes/voice.ts` mints the call token with `identity: user.id`,
+so two devices of one account share one call identity. Joining from the web
+(Aside tab, same account) sat on "Connecting…" for 40 s+, and when it left the
+web view said "Nobody is in here" while the desktop panel had stopped
+updating. Whether the desktop was dropped or merely not repainting in the
+background is unresolved (noted for spike 6). Also: a second participant
+therefore needs a different account, and only the host can mint account
+invites (`server/src/routes/invites.ts`).
+
+*Packaged app refuses a debug port* (`main.js` `DEBUG_SWITCHES`): by design,
+because the keys are in the page. The panel was read by window screenshot.
+
+*Updates on darwin (feeds spike 5).*
+- The client self-updater ran on darwin on the first launch: a signed
+  `client.json`/`client.bin` (version 1790919141588, 5.9 MB) was fetched,
+  verified, and stored in `~/Library/Application Support/scryproof-desktop/
+  client-update/`; its manifest matches the live one. After relaunch the
+  stored update is loaded by `loadStoredUpdate()` (inferred, not observed:
+  the client version is not shown in the UI).
+- **Bug on Mac:** the *shell* updater is not platform-gated. It also downloaded
+  `Scryproof-Setup-0.5.5.exe` (117 MB, a Windows installer) into
+  `shell-update/` and the orange "A new version of the app is ready. Restart
+  to install" banner returns after every relaunch. On a Mac, "Restart to
+  install" would try to `spawn` that .exe (`applyShellUpdate`); by reading the
+  code the spawn fails and the app stays open, so the banner would stick. Not
+  clicked. Fix later: gate `INSTALLER_URL` on `process.platform === 'win32'`.
+
+*Tray icon.* `createTray()` uses the color `assets/icon.png`, resized to 16 px,
+no template image. In the menu bar it is a full-color gold-ring tile beside
+other apps' monochrome icons (`evidence/s1-tray-dark.png`,
+`evidence/s1-tray-light.png`). Switching macOS to light appearance did not
+change the bar on this dark wallpaper, so the light-bar case is unobserved;
+the dark-bar case looks acceptable, a light bar will show a dark tile.
+
+*Evidence kept out of the repo:* a window shot that shows friends' chat text.
+The one in-call shot lists member usernames only.
 
 ## Spike 2 — Share with sound through Apple's picker
 
