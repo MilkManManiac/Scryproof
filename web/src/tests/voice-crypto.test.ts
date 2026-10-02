@@ -689,3 +689,14 @@ test('takeover retires the old device only after a valid signature and keeps new
   assert.ok(await newCall.accept(sent[0]!));
   assert.equal(await old.call.accept(sent[0]!), null);
 });
+
+
+test('another own-user announcement never retires this device from its own verification set', async () => {
+  const self = await makeDevice('self');
+  await self.call.admit([self.announcement]);
+  const otherIdentity = await createDeviceIdentity('self-other');
+  const otherKeys = await createCallKeypair();
+  await self.call.admit([await announce(CALL, 'self', otherIdentity, otherKeys)]);
+  assert.ok(self.call.members.some((member) => member.announcement.deviceId === self.call.identity.deviceId));
+  assert.equal(self.call.members.find((member) => member.announcement.deviceId === self.call.identity.deviceId)?.fingerprint, self.call.identity.fingerprint);
+});

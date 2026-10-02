@@ -196,7 +196,8 @@ export type ServerEvent =
   | { t: 'dm_read'; d: { dmId: Snowflake; lastReadMessageId: Snowflake } }
   /** "Again" on a jump in a conversation. Only the message id: the server cannot read what it says. */
   | { t: 'dm_spawn_replay'; d: { dmId: Snowflake; messageId: Snowflake } }
-  | { t: 'error'; d: { code: string; message: string } };
+  | { t: 'voice_owned'; d: { roomId: string; requestId: string } }
+  | { t: 'error'; d: { code: string; message: string; requestId?: string } };
 
 export type ClientEvent =
   | { t: 'heartbeat' }
@@ -209,6 +210,10 @@ export type ClientEvent =
       d: {
         /** A server voice channel to be in, or null with no `dmId` to leave any call. */
         channelId: Snowflake | null;
+        /** true claims the call; resume never takes it from another session. */
+        join?: boolean | 'resume';
+        /** Correlates ownership confirmation before any media connect. */
+        requestId?: string;
         /** A direct message conversation to be in the call of. Only read when `channelId` is null. */
         dmId?: Snowflake | null;
         selfMute?: boolean;

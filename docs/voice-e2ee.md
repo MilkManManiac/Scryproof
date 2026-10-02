@@ -234,27 +234,57 @@ also disconnect the old participant because both tokens use the user id.
 The old socket remained eligible to relay keys, and its later Leave cleared
 presence for the whole account. Gateway tests now cover that same-room join,
 DM takeover, late mute/leave controls, and envelopes scoped to the owner.
-Disabling the same-room rotation makes both takeover regressions fail at
-the epoch assertion. The exact LiveKit wait seen on the Mac has not been
-reproduced here: the worktree lacks the local media-server binary, so the
-browser check exits before opening a call. The missing membership/key path
-is established by source tracing and gateway tests; media timing remains
-a live-call check.
+Every explicit join rotates even when the account and socket already own
+that room: a rebuilt session has new call keys and cannot start at epoch zero.
+The client waits for a correlated gateway ownership acknowledgement before
+connecting to LiveKit.
 
-The old session ends with the reason "You joined this call from another
-device." Both the gateway's `voice_replaced` message and LiveKit's
-`DUPLICATE_IDENTITY` reason take that path. Other terminal disconnects clean
-up media and keys, clear this socket's gateway presence, and allow clicking
-the same place to join again. LiveKit's transient reconnecting events do not
-end the session.
+Automatic gateway rejoins use `join: 'resume'`. They may restore the call if
+no different login session owns it, and cannot take it from another session.
+Both LiveKit signal resumes and full reconnects emit `RoomEvent.Reconnected`
+in the installed SDK; the client confirms ownership again then. A device
+that receives a `DUPLICATE_IDENTITY` kick also confirms: a rejected device
+ends with "You joined this call from another device.", while the gateway's
+current owner rebuilds its encrypted call instead of giving up its seat to
+LiveKit's last connector. Every terminal ending sends Leave. Non-owner
+leaves are ignored, and server-side removals retire socket ownership with
+presence. The moved UI shows the reason and treats this device as out of call.
 
-Integration dependency: the voice panel currently renders all non-connected
-phases except `failed` as Connecting and only displays `error` for `failed`.
-Its owning UI lane must render the new `moved` phase using the session's
-error text, and allow the existing channel action to join from that device.
-The voice lane does not own that component. The browser check asserts the
-moved words are actually visible so this cannot be mistaken for complete
-UI verification.
+Approval re-announces the approving peer to the approved device. Receiving a
+repeat announcement resends the same epoch's sender key, so the key refused
+while the sender was held is obtained after approval. It does not rotate or
+relax identity checks, and ciphertext is not retained while consent is pending.
+
+**The server can trigger retirement.** A signed announcement from a different
+device of a remote user retires their previous seat before consent is decided.
+Announcements bind the channel/call id, but do not sign the epoch. A hostile
+relay can replay an old signed device announcement or inject a self-signed
+new-device announcement to evict the current remote seat. That is denial of
+service, not permission to decrypt: new or changed identities still get no
+keys until approved. Check the named device warning and read matching
+verification codes with the people actually in the call before approving a
+replacement. Own-user announcements never retire this device's own seat.
+Owner-only routing also prevents the previous device receiving any newly
+rotated envelopes sealed for its old call key during the announcement race.
+
+### Token lifetime and reconnects
+
+The application default is now ten minutes, reduced from fifteen. This
+bounds a just-issued cached join token to LiveKit 1.13.6's refresh floor.
+Reducing it further would not tighten tokens already held by a connected
+client: LiveKit immediately refreshes them and refreshes every five minutes,
+issuing at least ten minutes of remaining validity. An explicitly configured
+longer `LIVEKIT_TOKEN_TTL_SECONDS` still overrides the application default.
+See [`RoomManager.refreshToken` at v1.13.6](https://github.com/livekit/livekit/blob/v1.13.6/pkg/service/roommanager.go).
+
+The installed SDK replaces `RTCEngine.token` on `onTokenRefresh` and uses it
+for both `resumeConnection` and `restartConnection`; an expired token can
+make a full reconnect unrecoverable. Shortening initial expiry therefore
+cannot be the ownership lock. Gateway confirmation and owner recovery are
+what make stale cached-token connects settle back onto the selected device.
+LiveKit may briefly kick the owner before that confirmation finishes; this
+is a self-healing interruption, not simultaneous account presence or a new
+per-device LiveKit identity.
 
 ## Firefox
 

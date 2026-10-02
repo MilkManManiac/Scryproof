@@ -198,11 +198,11 @@ const standingVoice = (): { selfMute: boolean; selfDeaf: boolean } => {
   return { selfMute, selfDeaf };
 };
 
-const intentFor = (place: CallPlace, join = false): { channelId: string | null; dmId: string | null; join?: boolean } => ({
+const intentFor = (place: CallPlace, join: boolean | 'resume' = false): { channelId: string | null; dmId: string | null; join?: boolean | 'resume' } => ({
   ...(place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id }),
   // A deliberate join may take the call back; a late mute from a replaced
   // device may not. Older gateways harmlessly ignore this optional field.
-  ...(join ? { join: true } : {}),
+  ...(join ? { join } : {}),
 });
 
 /** First text channel the member can see, for landing on a sensible default. */
@@ -1027,6 +1027,34 @@ export function StoreProvider({
   const voiceSeen = useRef(new Map<string, VoiceState>());
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
+  /** Ownership must be confirmed before media can claim the account identity. */
+  const requestVoiceOwnership = (place: CallPlace, join: true | 'resume'): Promise<boolean> => new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const done = (owned: boolean): void => {
+      clearTimeout(timer);
+      eventListeners.current.delete(listen);
+      resolve(owned);
+    };
+    const listen = (event: ServerEvent): void => {
+      if (event.t === 'voice_owned' && event.d.requestId === requestId && event.d.roomId === place.id) done(true);
+      if (event.t === 'error' && event.d.requestId === requestId) {
+        if (event.d.code === 'voice_replaced') done(false);
+        else { clearTimeout(timer); eventListeners.current.delete(listen); reject(new Error(event.d.message)); }
+      }
+    };
+    const timer = setTimeout(() => {
+      eventListeners.current.delete(listen);
+      reject(new Error('The server could not confirm this device owns the call. Try joining again.'));
+    }, 10_000);
+    eventListeners.current.add(listen);
+    gatewayRef.current?.send({ t: 'voice_state', d: {
+      ...intentFor(place, join), ...standingVoice(), requestId,
+      // A rebuilt call stopped its camera and share. Ownership confirmation
+      // of an already connected room preserves them instead.
+      ...(voiceRef.current?.getSnapshot().phase === 'connecting' ? { cameraOn: false, sharingScreen: false } : {}),
+    } });
+  });
+
   // One session object for the life of the app. It is idle until a call is
   // joined, and it reaches the gateway through the ref so it never holds a
   // socket that has since been replaced.
@@ -1035,10 +1063,11 @@ export function StoreProvider({
     voiceRef.current = new VoiceSession(
       () => selfId.current ?? '',
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
-      (phase) => {
+      () => {
         currentCall.current = null;
-        if (phase === 'failed') gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
+        gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
       },
+      (place) => requestVoiceOwnership(place, 'resume'),
     );
   }
   const voice = voiceRef.current;
@@ -1458,14 +1487,14 @@ export function StoreProvider({
         const place = currentCall.current;
         if (place) {
           void voice.join(place, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place, true), ...standingVoice() } }),
+            requestVoiceOwnership(place, 'resume'),
           );
         }
       }
       // The only errors the gateway sends are refusals of something we just
       // asked for. Mid-join, that is the join: show it rather than sit on
       // "connecting" forever.
-      if (event.t === 'error' && event.d.code === 'voice_replaced') {
+      if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current) {
         currentCall.current = null;
         void voice.end('moved', MOVED_CALL_MESSAGE);
       } else if (event.t === 'error' && currentCall.current) {
@@ -1483,7 +1512,7 @@ export function StoreProvider({
           currentCall.current = next;
           if (openChannel.current === event.d.fromChannelId) dispatch({ type: 'select-channel', channelId: event.d.channelId });
           void voice.join(next, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(next, true), ...standingVoice() } }),
+            requestVoiceOwnership(next, true),
           );
         }
       }
@@ -1698,7 +1727,7 @@ export function StoreProvider({
       // The gateway takes this person out of any other call as it puts them
       // in this one: one call at a time, a server's or a conversation's.
       void voice.join(place, () =>
-        gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place, true), ...standingVoice() } }),
+        requestVoiceOwnership(place, true),
       );
     },
     [voice],

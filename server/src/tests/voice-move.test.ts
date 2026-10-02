@@ -205,6 +205,65 @@ describe('moving someone between voice channels', () => {
     hub.removeConnection(second);
   });
 
+  it('owner rejoin gets another epoch, while automatic resume cannot reclaim another session', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    const nextHeard: ServerEvent[] = [];
+    const next: Connection = { ...first, id: 'resume-next', sessionId: 'different-session', callChannelId: null,
+      ws: { readyState: 1, send: (raw: string) => nextHeard.push(JSON.parse(raw)) } as never };
+    hub.addConnection(next);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    const epoch = hub.voiceEpoch(lounge);
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, requestId: 'explicit-owner-rejoin' });
+    assert.equal(hub.voiceEpoch(lounge), epoch + 1);
+    assert.ok(heard.some((event) => event.t === 'voice_membership' && event.d.epoch === epoch + 1));
+    assert.ok(heard.some((event) => event.t === 'voice_owned' && event.d.requestId === 'explicit-owner-rejoin'));
+    await handleVoiceStateIntent(next, { channelId: lounge, join: true });
+    const claimedEpoch = hub.voiceEpoch(lounge);
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', requestId: 'offline-resume' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced' && event.d.requestId === 'offline-resume'));
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    // Even a fresh gateway socket must not steal the other session's seat.
+    const fresh: Connection = { ...first, id: 'resume-fresh', callReplaced: false, callChannelId: null };
+    hub.addConnection(fresh);
+    await handleVoiceStateIntent(fresh, { channelId: lounge, join: 'resume', requestId: 'fresh-resume' });
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    // Old bundles get an answer for late controls rather than hanging silently.
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, selfMute: true });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    await handleVoiceStateIntent(next, { channelId: null });
+    assert.equal(hub.ownsVoice(next), false);
+    hub.removeConnection(next); hub.removeConnection(fresh);
+  });
+
+  it('server removal retires socket ownership without a client leave', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    await (await import('../gateway/voice.js')).disconnectFromVoice(server.id, friend.id);
+    assert.equal(hub.ownsVoice(first), false);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    hub.removeUserFromServer(friend.id, server.id);
+    assert.equal(hub.ownsVoice(first), false);
+    first.servers.add(server.id);
+  });
+
+  it('issued channel tokens use the configured shorter join lifetime', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const response = await app.inject({ method: 'POST', url: `/api/channels/${lounge}/voice/token`, headers: { cookie: friend.cookie } });
+    assert.equal(response.statusCode, 200);
+    const { token, expiresInSeconds } = response.json();
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    const after = Math.floor(Date.now() / 1000);
+    if (process.env.LIVEKIT_TOKEN_TTL_SECONDS === undefined) assert.equal(config.livekit.tokenTtlSeconds, 600);
+    assert.equal(expiresInSeconds, config.livekit.tokenTtlSeconds);
+    assert.ok(claims.exp >= before + expiresInSeconds && claims.exp <= after + expiresInSeconds);
+    assert.equal(claims.sub, friend.id);
+  });
+
   it('DM takeover rotates too, and a replaced DM device cannot leave the new call', async () => {
     const dm = await app.inject({ method: 'POST', url: '/api/dms', headers: { cookie: friend.cookie }, payload: { userId: owner.id } });
     assert.equal(dm.statusCode, 200, dm.body);

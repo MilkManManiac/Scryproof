@@ -18,6 +18,7 @@ import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
 import { useBackButton } from './lib/back';
 import { useDrawerSwipe } from './lib/swipe';
 import { usePhone } from './lib/usePhone';
+import { useVoice } from './state/useVoice';
 import { subscribeWalkthrough, walkthroughDue, walkthroughOpened } from './lib/walkthrough';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
@@ -138,6 +139,7 @@ function WalkthroughGate() {
 }
 
 function Shell() {
+  const call = useVoice();
   const { state, loadMembers, selectChannel, selectServer, markRead } = useStore();
   const server = useSelectedServer();
   const channel = useSelectedChannel();
@@ -253,7 +255,7 @@ function Shell() {
     );
   }
 
-  const inVoice = Object.values(state.voiceStates).some(
+  const inVoice = call.phase !== 'moved' && Object.values(state.voiceStates).some(
     (voice) => voice.userId === state.user?.id,
   );
 

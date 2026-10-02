@@ -95,7 +95,7 @@ export function ownsVoice(connection: Connection, roomId?: string): boolean {
 }
 
 /** Transfer before broadcasting membership, so the old device gets no new keys. */
-export function claimVoice(connection: Connection, roomId: string, dm = false): void {
+export function claimVoice(connection: Connection, roomId: string, dm = false, joining = false): void {
   let replaced = false;
   for (const other of connectionsForUser(connection.userId)) {
     if (other === connection || !ownsVoice(other)) continue;
@@ -112,7 +112,16 @@ export function claimVoice(connection: Connection, roomId: string, dm = false): 
   connection.callReplaced = false;
   // Same account and same room still means new call keys. setVoiceState sees
   // no user-level membership change, so it cannot trigger this rotation.
-  if (replaced && voiceOccupants(roomId).includes(connection.userId)) voiceMembershipChanged(roomId);
+  if ((replaced || joining) && voiceOccupants(roomId).includes(connection.userId)) voiceMembershipChanged(roomId);
+}
+
+/** Server removals retire ownership along with the corresponding presence. */
+function releaseVoiceOwner(userId: string, roomId: string): void {
+  for (const connection of connectionsForUser(userId)) {
+    if (!ownsVoice(connection, roomId)) continue;
+    connection.callChannelId = null;
+    connection.callDmId = null;
+  }
 }
 
 /** Replaced or idle sockets must never clear the current device's presence. */
@@ -409,7 +418,10 @@ export function setVoiceState(state: VoiceState): void {
   const before = previous ? voiceRoomOf(previous) : null;
   const after = voiceRoomOf(state);
 
-  if (after === null) voiceStates.delete(key);
+  if (after === null) {
+    voiceStates.delete(key);
+    if (before) releaseVoiceOwner(state.userId, before);
+  }
   else voiceStates.set(key, state);
 
   // Muting and unmuting come through here too and must not rotate anything.
@@ -450,7 +462,10 @@ export function clearVoiceStatesForUser(
       leftDmId: state.dmId,
     });
     const room = voiceRoomOf(state);
-    if (room) voiceMembershipChanged(room);
+    if (room) {
+      releaseVoiceOwner(userId, room);
+      voiceMembershipChanged(room);
+    }
   }
   return cleared;
 }

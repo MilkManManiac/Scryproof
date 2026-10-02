@@ -242,7 +242,7 @@ export function VoiceStage(
   const occupants = Object.values(state.voiceStates).filter(inPlace);
   const selfId = state.user?.id;
   const myState = occupants.find((entry) => entry.userId === selfId);
-  const here = Boolean(myState);
+  const here = Boolean(myState) && voice.phase !== 'moved';
   // `mine` from the moment Join is pressed; `live` only once the server lists
   // us. A join that dies before that point (a browser that cannot encrypt,
   // a refusal from the gateway) is still ours to explain.
@@ -658,7 +658,7 @@ export function VoiceStage(
         </div>
       )}
 
-      {mine && voice.phase === 'failed' ? (
+      {mine && (voice.phase === 'failed' || voice.phase === 'moved') ? (
         <p className="voice-stage-error">
           {voice.error}
           {voice.installer ? (
@@ -671,7 +671,7 @@ export function VoiceStage(
 
       {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
-        {myState ? (
+        {myState && voice.phase !== 'moved' ? (
           <>
             <button
               type="button"
@@ -850,8 +850,8 @@ export function ConnectionPanel() {
 
   let tone: 'good' | 'warn' | 'bad' = 'good';
   let headline = 'Encrypted';
-  if (voice.phase === 'failed') {
-    tone = 'bad';
+  if (voice.phase === 'failed' || voice.phase === 'moved') {
+    tone = voice.phase === 'moved' ? 'warn' : 'bad';
     headline = voice.error ?? 'Not connected';
   } else if (voice.phase !== 'connected') {
     tone = 'warn';

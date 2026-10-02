@@ -360,6 +360,7 @@ export class VoiceSession {
     private readonly whoAmI: () => string,
     private readonly send: SendSignal,
     private readonly ended: (phase: 'failed' | 'moved') => void = () => undefined,
+    private readonly confirmOwnership: (place: CallPlace) => Promise<boolean> = async () => false,
   ) {}
 
   private get userId(): string {
@@ -402,7 +403,7 @@ export class VoiceSession {
    * with a membership event straight away, and the call state has to exist to
    * receive it.
    */
-  async join(place: CallPlace, enterChannel: () => void): Promise<void> {
+  async join(place: CallPlace, enterChannel: () => void | Promise<boolean>): Promise<void> {
     await this.leave();
     const generation = (this.generation += 1);
     const stale = () => generation !== this.generation;
@@ -468,7 +469,9 @@ export class VoiceSession {
       await room.setE2EEEnabled(true);
       if (stale()) return;
 
-      enterChannel();
+      const owned = await enterChannel();
+      if (stale()) return;
+      if (owned === false) { await this.end('moved', MOVED_CALL_MESSAGE); return; }
       if (this.pendingMembership) {
         const pending = this.pendingMembership;
         this.pendingMembership = null;
@@ -1310,6 +1313,10 @@ export class VoiceSession {
 
       const result = await call.admit([event.payload]);
       if (this.call !== call) return;
+      // Approval re-announces us to request the sender key we refused while
+      // that device was held. A repeat announcement resends the same key,
+      // never changes it within the epoch.
+      this.keySentTo.delete(`${event.payload.userId}:${event.payload.deviceId}`);
       this.rejected += result.rejected.length;
       await this.sendKeys(call);
       await this.publish(call);
@@ -1335,6 +1342,8 @@ export class VoiceSession {
       const approved = await call.approve(userId, deviceId, unsaved);
       if (!approved) return;
       void letInEverywhere(userId, deviceId, approved.fingerprint, unsaved);
+      if (this.call !== call || !this.myAnnouncement || !this.roomId) return;
+      this.send({ channelId: this.roomId, epoch: call.epoch, kind: 'announce', to: userId, payload: { ...this.myAnnouncement } });
       await this.sendKeys(call);
       await this.publish(call);
     });
@@ -1388,6 +1397,23 @@ export class VoiceSession {
     // not show a code for a membership that has already changed again.
     const code = await call.verificationCode();
     if (this.call === call && call.epoch === epoch) this.update({ code });
+  }
+
+  /** The gateway, not LiveKit's last connector, decides the active device. */
+  private async checkOwnership(room: Room, reconnect = false): Promise<void> {
+    if (this.room !== room || !this.roomId) return;
+    const place: CallPlace = this.snapshot.dmId
+      ? { kind: 'dm', id: this.snapshot.dmId } : { kind: 'channel', id: this.roomId };
+    try {
+      const owned = await this.confirmOwnership(place);
+      if (this.room !== room) return;
+      if (!owned) { await this.end('moved', MOVED_CALL_MESSAGE); return; }
+      // A stale device connected to LiveKit alone and kicked the gateway's
+      // real owner. Confirmed owners reconnect with fresh local call keys.
+      if (reconnect) await this.join(place, () => this.confirmOwnership(place));
+    } catch (problem) {
+      if (this.room === room) await this.end('failed', problem instanceof Error ? problem.message : 'Could not confirm call ownership.');
+    }
   }
 
   /* --------------------------------- media -------------------------------- */
@@ -1493,8 +1519,14 @@ export class VoiceSession {
       this.refreshSpeaking();
     });
 
+    // Reconnected covers both LiveKit's signal resume and full restart.
+    room.on(RoomEvent.Reconnected, () => { void this.checkOwnership(room); });
     room.on(RoomEvent.Disconnected, (reason) => {
       if (this.room !== room) return;
+      if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+        void this.checkOwnership(room, true);
+        return;
+      }
       const result = callDisconnect(reason);
       void this.end(result.phase, result.error);
     });

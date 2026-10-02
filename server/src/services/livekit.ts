@@ -7,7 +7,7 @@
  * keeps the exact contents of every token we issue visible in one short file.
  *
  * Tokens are deliberately short-lived and name exactly one room. A leaked
- * token is useless within fifteen minutes and useless anywhere else even
+ * token is useless within ten minutes by default and useless anywhere else even
  * before that.
  */
 

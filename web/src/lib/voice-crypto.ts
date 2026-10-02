@@ -673,7 +673,7 @@ export class VoiceCall {
       // may retire its previous device. A new identity still needs consent;
       // takeover is never permission to bypass pinning.
       for (const old of [...this.members, ...this.awaitingConsent]) {
-        if (old.announcement.userId === announcement.userId && old.announcement.deviceId !== announcement.deviceId) {
+        if (announcement.userId !== this.userId && old.announcement.userId === announcement.userId && old.announcement.deviceId !== announcement.deviceId) {
           this.remove(old.announcement.userId, old.announcement.deviceId);
         }
       }
