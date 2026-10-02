@@ -22,13 +22,18 @@
  *
  * One thing this process does that a browser cannot: hear the push-to-talk
  * key while a game has the keyboard. `push-to-talk.js`, and its rules.
+ *
+ * Everything for the Mac is behind `process.platform === 'darwin'` (the menu
+ * bar icon, the Dock, the app menu, Accessibility and screen permission, the
+ * zip-swap updater in `shell-update-mac.js`); the Windows path is the same
+ * code as before.
  */
 
-import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron';
-import { spawn } from 'node:child_process';
-import { createWriteStream, existsSync, readFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, normalize, sep } from 'node:path';
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
+import { execFile, spawn } from 'node:child_process';
+import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -36,14 +41,19 @@ import { fileURLToPath } from 'node:url';
 import { armContextMenu } from './context-menu.js';
 import { APP_ORIGIN, hardenApiHeaders, isApiUrl } from './forward-core.js';
 import {
+  hashFile,
   installerFileName,
   isNewerVersion,
+  macManifestName,
   readInstallerManifest,
+  readMacInstallerManifest,
   verifyInstallerFile,
   versionFromFileName,
 } from './installer-core.js';
+import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
+import { bundlePathFor, createMacShellUpdater } from './shell-update-mac.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -61,12 +71,21 @@ const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (proces
 const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
 const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
 const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
+const MAC = process.platform === 'darwin';
 /**
- * Where newer installers are looked for. An installed copy only: a
+ * Where newer installers are looked for. An installed Windows copy only: a
  * development run is electron.exe from node_modules, and running an installer
- * from it would install over the real app.
+ * from it would install over the real app. The installer is the Windows one,
+ * so nothing else looks for it; the Mac has its own path below.
  */
-const INSTALLER_URL = app.isPackaged ? `${SERVER.origin}/download/` : '';
+const INSTALLER_URL = app.isPackaged && process.platform === 'win32' ? `${SERVER.origin}/download/` : '';
+/**
+ * The Mac shell update is signed by a key of its own, Trey's, whose public half
+ * is baked into the build as `update-key-mac.pub.pem`. A Mac build without it
+ * never offers a shell update; it says so once in the log.
+ */
+const MAC_KEY_FILE = join(here, 'update-key-mac.pub.pem');
+const MAC_KEY = MAC && existsSync(MAC_KEY_FILE) ? readFileSync(MAC_KEY_FILE, 'utf8') : '';
 const INSTALLER_EVERY_MS = 60 * 60_000;
 const TIDY_AGAIN_MS = 60_000;
 const BUNDLED_VERSION = (() => {
@@ -397,9 +416,84 @@ async function applyShellUpdate() {
   return true;
 }
 
+/** The `.app` this process runs from, on the Mac. */
+const macBundle = () => bundlePathFor(app.getPath('exe'));
+
+/** The three system tools the Mac updater runs, by absolute path: it does not go looking on a PATH. */
+const MAC_TOOLS = { ditto: '/usr/bin/ditto', codesign: '/usr/bin/codesign', plutil: '/usr/bin/plutil' };
+const runMacTool = (name, args) =>
+  new Promise((resolve) => {
+    if (!Object.prototype.hasOwnProperty.call(MAC_TOOLS, name)) return resolve({ code: 127, stdout: '', stderr: 'not an allowed tool' });
+    execFile(MAC_TOOLS[name], args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) =>
+      resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }),
+    );
+  });
+
+/**
+ * The Mac side of shell updates: `shell-update-mac.js` with this process's
+ * network, disk and relaunch. Installed copies only, and only with the Mac key
+ * (see MAC_KEY) on an Apple-silicon Mac.
+ */
+function armMacShellUpdates() {
+  const appPath = macBundle();
+  const enabled = app.isPackaged && MAC_KEY !== '' && process.arch === 'arm64' && appPath !== null;
+  if (app.isPackaged && MAC_KEY === '') console.warn('Scryproof: this build has no Mac update key (update-key-mac.pub.pem); shell updates are off.');
+  const base = new URL('/download/', SERVER.origin);
+  const updater = createMacShellUpdater({
+    enabled,
+    log: (line) => console.warn(`Scryproof: ${line}`),
+    arch: 'arm64',
+    version: app.getVersion(),
+    appPath,
+    dir: shellDir(),
+    urls: {
+      manifest: new URL(macManifestName('arm64'), base).toString(),
+      zip: new URL('Scryproof-mac-arm64.zip', base).toString(),
+      dmg: new URL('Scryproof.dmg', base).toString(),
+    },
+    fetchText: async (url) => {
+      const reply = await net.fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
+      return reply.ok ? reply.text() : null;
+    },
+    download,
+    readManifest: (raw) => readMacInstallerManifest(raw, MAC_KEY),
+    isNewer: isNewerVersion,
+    hashFile,
+    stat,
+    run: runMacTool,
+    fs: {
+      mkdir: (path) => mkdir(path, { recursive: true }),
+      rm: (path) => rm(path, { recursive: true, force: true }),
+      readdir,
+      rename,
+      writable: (folder) => access(folder, constants.W_OK).then(() => true, () => false),
+    },
+    onReady: (version) => win?.webContents.send('scryproof:shell-ready', version),
+    openExternal: (url) => void shell.openExternal(url),
+    // `quitting` first: the window's close handler would otherwise hide instead of closing. The new bundle is
+    // now at the old path, so the relaunch runs from there, without the login start's `--hidden`.
+    relaunchAndQuit: (bundle) => {
+      quitting = true;
+      app.relaunch({ execPath: join(bundle, 'Contents', 'MacOS', basename(process.execPath)), args: process.argv.slice(1).filter((arg) => arg !== HIDDEN_ARG) });
+      app.quit();
+    },
+  });
+  ipcMain.handle('scryproof:shell-state', (event) => (ours(event) ? updater.state() : null));
+  ipcMain.handle('scryproof:shell-apply', (event) => (ours(event) ? updater.apply() : false));
+  ipcMain.handle('scryproof:shell-how', (event) => (ours(event) ? updater.how() : null));
+  if (!enabled) return;
+  void updater.tidy().then(() => updater.check());
+  // The old bundle may still be held by the process that just handed over; once more a minute later.
+  setTimeout(() => void updater.tidy(), TIDY_AGAIN_MS).unref();
+  setInterval(() => void updater.check(), INSTALLER_EVERY_MS).unref();
+}
+
 function armShellUpdates() {
+  if (MAC) return armMacShellUpdates();
   ipcMain.handle('scryproof:shell-state', (event) => (ours(event) ? (pendingShell?.version ?? null) : null));
   ipcMain.handle('scryproof:shell-apply', (event) => (ours(event) ? applyShellUpdate() : false));
+  // Only the Mac replaces itself in place; everywhere else a restart installs.
+  ipcMain.handle('scryproof:shell-how', (event) => (ours(event) ? 'restart' : null));
   if (!INSTALLER_URL) return;
   void tidyShellDir().then(checkForShellUpdate);
   // The installer that just updated this app is still running when the app
@@ -594,20 +688,23 @@ let tray = null;
 /** Closing the window leaves the app in the tray, so a call or a pop-up survives it. Quit is in the tray menu. */
 let quitting = false;
 
-/* ----------------------------- start with Windows ----------------------------- */
+/* ----------------------------- start at login ----------------------------- */
 
 /**
- * Off until the person turns it on in the tray menu. Turning it on writes one
- * Run entry for this account (HKCU, nothing machine-wide), and Windows then
- * starts the app at sign-in with `--hidden`: into the tray, no window in
- * anyone's face. An installed copy only; a development run is electron.exe and
- * must not be put in anyone's start-up.
+ * Off until the person turns it on in the tray menu. On Windows, turning it on
+ * writes one Run entry for this account (HKCU, nothing machine-wide), and
+ * Windows then starts the app at sign-in with `--hidden`: into the tray, no
+ * window in anyone's face. On the Mac it registers a login item for the app;
+ * macOS cannot hand a login item arguments, so a login start is recognised by
+ * `wasOpenedAtLogin` instead (`mac-integration.js`, `startsHidden`). An
+ * installed copy only; a development run is electron.exe and must not be put
+ * in anyone's start-up.
  */
 const HIDDEN_ARG = '--hidden';
 const loginItem = { openAtLogin: false, args: [HIDDEN_ARG] };
-const startsWithWindows = () => app.isPackaged && app.getLoginItemSettings({ args: loginItem.args }).openAtLogin;
-const setStartsWithWindows = (on) => app.setLoginItemSettings({ ...loginItem, openAtLogin: on });
-const startedHidden = process.argv.includes(HIDDEN_ARG);
+const startsAtLogin = () =>
+  app.isPackaged && (MAC ? app.getLoginItemSettings() : app.getLoginItemSettings({ args: loginItem.args })).openAtLogin;
+const setStartsAtLogin = (on) => app.setLoginItemSettings(MAC ? { openAtLogin: on } : { ...loginItem, openAtLogin: on });
 
 function show() {
   if (!win) return createWindow();
@@ -621,13 +718,13 @@ function trayMenu() {
     { label: 'Open Scryproof', click: show },
     { type: 'separator' },
     {
-      label: 'Start with Windows (in the tray)',
+      label: MAC ? 'Start at login' : 'Start with Windows (in the tray)',
       type: 'checkbox',
-      checked: startsWithWindows(),
+      checked: startsAtLogin(),
       enabled: app.isPackaged,
       click: (item) => {
-        setStartsWithWindows(item.checked);
-        // Read back what Windows has, not what was asked for.
+        setStartsAtLogin(item.checked);
+        // Read back what the system has, not what was asked for.
         tray.setContextMenu(trayMenu());
       },
     },
@@ -643,7 +740,13 @@ function trayMenu() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(join(here, '..', 'assets', 'icon.png')).resize({ width: 16, height: 16 });
+  // On the Mac the menu-bar icon is a template image (black on transparent, the
+  // `Template` in the name), which macOS tints for a light or dark bar; the
+  // @2x file beside it is used on a Retina display.
+  const icon = MAC
+    ? nativeImage.createFromPath(join(here, '..', 'assets', 'trayTemplate.png'))
+    : nativeImage.createFromPath(join(here, '..', 'assets', 'icon.png')).resize({ width: 16, height: 16 });
+  if (MAC) icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip('Scryproof');
   tray.setContextMenu(trayMenu());
@@ -715,20 +818,31 @@ app.on('before-quit', () => {
   quitting = true;
   stopPushToTalk();
 });
-app.on('window-all-closed', () => app.quit());
+// The window hides rather than closes, so this fires only while quitting. On the
+// Mac an app with no window is still running (the Dock icon stays), and Cmd-Q
+// or Quit in a menu is what ends it.
+app.on('window-all-closed', () => {
+  if (!MAC) app.quit();
+});
 
 void app.whenReady().then(async () => {
   await loadStoredUpdate();
   // Windows files pop-ups under this name, and shows none at all without it.
   app.setAppUserModelId('com.scryproof.desktop');
-  Menu.setApplicationMenu(null);
+  // Windows has no menu bar to show. The Mac always has one, and without Edit
+  // there Cmd-C and Cmd-V do nothing in a text box; without App, Cmd-Q neither.
+  Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate(appMenuTemplate({ packaged: app.isPackaged })) : null);
   createTray();
   protocol.handle('app', handle);
   armGateway(session.defaultSession);
   armPermissions(session.defaultSession);
   armSharePicker();
-  createWindow(!startedHidden);
+  const hidden = startsHidden({ platform: process.platform, argv: process.argv, loginSettings: MAC ? app.getLoginItemSettings() : null });
+  createWindow(!hidden);
+  // A click on the Dock icon brings back the window the close button hid.
+  if (MAC) app.on('activate', show);
   armUpdates();
   armShellUpdates();
-  armPushToTalk(ipcMain, ours, () => win);
+  armPushToTalk(ipcMain, ours, () => win, { power: powerMonitor, accessibility: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt) });
+  armPermissionIpc(ipcMain, ours, { platform: process.platform, systemPreferences, shell });
 });
