@@ -270,7 +270,51 @@ held key survive the app being in the background?
 **Record.** The permission name, whether the hook loaded, packet counters
 during hold and after release, and the Cmd-Tab release case.
 
-**Result.**
+**Result.** Solo half, 2026-10-02, Cairn with Trey driving. Packet-counter
+checks: **parked: needs second participant.** Instrument alone in the channel:
+the green speaking ring around Trey's avatar.
+
+- **Hook loads.** The `uiohook-napi` darwin-arm64 prebuild is unpacked under
+  `Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/prebuilds/`
+  (spike 1) and push-to-talk worked, so the module loads from the packaged
+  app on darwin.
+- **Permission: Accessibility.** Choosing push-to-talk (Right Option) brought
+  a macOS permission prompt that sent Trey to System Settings, to a pane titled
+  "Device Control and Data Access" listing Scryproof with its switch off (his
+  screenshot, not committed). The tccd log shows a `Modify` event for
+  `kTCCServiceAccessibility` on `com.scryproof.desktop` at 12:39:30 when he
+  turned it on. **Push-to-talk did not work until he turned that switch on**
+  (his report). Whether a relaunch was needed: not reported. No separate
+  Input Monitoring prompt was reported.
+- **Held key works behind other apps.** With another app in front and
+  Scryproof in the background, the ring lit while he held the key and he
+  reports it "no matter where the window is". Packet counters while held and
+  after release: parked.
+- **Right Option fights shortcuts, and is not our hook.** With Right Option as
+  the key, Cmd-Tab did nothing while the key was held, and the same happened
+  after leaving the call (the code stops the hook outside a voice channel with
+  push-to-talk on). Right Option is a modifier, so the held chord is
+  Cmd-Option-Tab (inferred). With `/` as the key, Cmd-Tab worked both in and
+  out of the call, which confirms the hook does not block shortcuts.
+- **Lost release: reproduced.** With `/` as the key, in the call: hold `/`,
+  press Cmd-Tab to switch apps while still holding it, let go. The green
+  speaking ring **stayed lit** after the release (Trey's report). The page had
+  not been told the key went up. Cause not isolated. Hypothesis, unverified:
+  macOS's app switcher takes the keyboard while it is up, so the hook never
+  sees the key-up. The code has no safeguard: `holdTracker`
+  (`desktop/src/push-to-talk-core.js`) sets held on key-down and clears it
+  only on a key-up for that same key, so one missed key-up leaves it held
+  until the key is pressed and released again. The page treats held as
+  "mic open", so a missed release probably leaves the mic transmitting
+  (inferred from the ring and the design; the audio itself was not measured,
+  needs the second participant). This is the lost-release problem Astro
+  flagged. Options for a later fix, none tried: a watchdog that clears held when
+  key-repeat events stop arriving; polling the key's real state; also
+  clearing on app switch. Not a fix to make in this spike.
+- **Product note.** Right Option is a poor push-to-talk key on a Mac for this
+  reason: it fights every shortcut. The key picker may want to warn on
+  modifier keys, or the default should not be one.
+- Console.app hook logging (step 5) not checked; nothing visible failed.
 
 ## Spike 4 — What a friend sees opening an unsigned build
 
