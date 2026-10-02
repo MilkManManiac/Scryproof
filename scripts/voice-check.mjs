@@ -179,6 +179,14 @@ class Person {
   async signIn() {
     await this.send('Page.navigate', { url: WEB });
     await this.until(`document.readyState === 'complete'`);
+    // A fresh profile opens the "How Scryproof works" tour once, and its
+    // backdrop catches every real mouse event. Programmatic clicks go straight
+    // through it, which is why most checks never noticed; the zoom checks use
+    // real CDP mouse input and land on the backdrop. Mark it seen, as a person
+    // who finished it would be, before the app first runs. (Before this, only
+    // `shoot` dismissed it, so those checks passed only when VOICE_CHECK_SHOTS
+    // was set.)
+    await this.evaluate(`localStorage.setItem('scryproof.walkthrough.v1', 'done')`);
     const status = await this.evaluate(`
       fetch('/api/auth/login', {
         method: 'POST',
