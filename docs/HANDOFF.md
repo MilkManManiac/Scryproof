@@ -21,14 +21,22 @@ codesign -dv --verbose=4 desktop/release/mac-arm64/Scryproof.app
 spctl -a -t exec -vv desktop/release/mac-arm64/Scryproof.app
 xcrun stapler validate desktop/release/mac-arm64/Scryproof.app
 xcrun stapler validate desktop/release/Scryproof.dmg
+zip_version=$(node -p "require('./desktop/package.json').version")
+zip_check=$(mktemp -d "${TMPDIR:-/tmp}/scryproof-zip.XXXXXX")
+ditto -x -k "desktop/release/Scryproof-$zip_version-mac-arm64.zip" "$zip_check"
+codesign --verify --deep --strict "$zip_check/Scryproof.app"
+codesign -dv --verbose=4 "$zip_check/Scryproof.app"
+spctl -a -t exec -vv "$zip_check/Scryproof.app"
+xcrun stapler validate "$zip_check/Scryproof.app"
 bash scripts/publish-mac.sh --dry-run
 ```
 
 The keychain profile must already exist; Gatekeeper must be enabled. Check
-TeamIdentifier is LRU27MC63Q. `dist:mac` also runs the existing client-release
-signer, which requires the original matching Wes client-update key; the Mac
-key never replaces it. Do not create a replacement client key. Build, extract
-and test both artifacts on the Mac using the plan's fresh-user verification
+TeamIdentifier is LRU27MC63Q on both the unpacked app and the app extracted
+from the zip. `dist:mac` never signs a client or needs Wes's private key. Its
+public-key preflight refuses unless the committed client manifest verifies
+against Wes's public key and client-version.json matches its signed version.
+Build, extract and test both artifacts on the Mac using the plan's fresh-user verification
 before publication. No build, notarization or publication was run on Linux.
 After Wes approves publication:
 

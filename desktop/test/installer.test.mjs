@@ -230,8 +230,8 @@ const releaseFixture = () => {
   mkdirSync(join(root, 'desktop', 'release'));
   mkdirSync(join(root, 'scripts'));
   writeFileSync(join(root, 'desktop', 'package.json'), '{"type":"module","version":"0.6.0"}');
-  for (const name of ['installer-core.js']) cpSync(new URL(`../src/${name}`, import.meta.url), join(root, 'desktop', 'src', name));
-  for (const name of ['mac-update-key.mjs', 'signing-key.mjs', 'sign-installer.mjs']) {
+  for (const name of ['installer-core.js', 'update-core.js']) cpSync(new URL(`../src/${name}`, import.meta.url), join(root, 'desktop', 'src', name));
+  for (const name of ['mac-update-key.mjs', 'mac-preflight.mjs', 'make-update.mjs', 'signing-key.mjs', 'sign-installer.mjs']) {
     cpSync(new URL(`../scripts/${name}`, import.meta.url), join(root, 'desktop', 'scripts', name));
   }
   cpSync(new URL('../../scripts/publish-mac.sh', import.meta.url), join(root, 'scripts', 'publish-mac.sh'));
@@ -312,5 +312,77 @@ describe('Mac release commands', () => {
     writeFileSync(f.key, other.privateKey.export({ type: 'pkcs8', format: 'pem' }));
     assert.equal(f.run('sign-installer.mjs', '--mac').status, 1);
     assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), signed);
+  });
+});
+
+
+describe('Mac build preflight and client key safety', () => {
+  const clientFixture = () => {
+    const f = releaseFixture();
+    const wes = pair();
+    const client = signBundle(packBundle({ 'index.html': Buffer.from('signed client') }), 1790867486002, wes.privateKey);
+    const update = join(f.root, 'web', 'public', 'desktop-update');
+    mkdirSync(update, { recursive: true });
+    writeFileSync(join(update, 'client.json'), JSON.stringify(client));
+    writeFileSync(join(f.root, 'desktop', 'src', 'update-key.pub.pem'), wes.publicKeyPem);
+    const versionPath = join(f.root, 'desktop', 'src', 'client-version.json');
+    writeFileSync(versionPath, JSON.stringify({ version: client.version }));
+    return { ...f, client, versionPath, update };
+  };
+
+  test('Mac packaging builds without invoking the client signing scripts', () => {
+    const { scripts, build } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.doesNotMatch(scripts['dist:mac'], /release|make-update|loadSigningKey/);
+    assert.match(scripts['dist:mac'], /mac-preflight/);
+    assert.match(scripts['dist:mac'], /npm run client/);
+    assert.ok(build.files.includes('assets/trayTemplate.png'));
+    assert.ok(build.files.includes('assets/trayTemplate@2x.png'));
+  });
+
+  test('public-key preflight verifies the signed version and refuses a different bundled version without writing', () => {
+    const f = clientFixture();
+    assert.equal(f.run('mac-preflight.mjs').status, 1); // Mac key absent.
+    writeFileSync(f.publicPath, pair().publicKeyPem);
+    const before = readFileSync(f.versionPath, 'utf8');
+    const publicPath = join(f.root, 'desktop', 'src', 'update-key.pub.pem');
+    const publicBefore = readFileSync(publicPath, 'utf8');
+    const good = f.run('mac-preflight.mjs');
+    assert.equal(good.status, 0, good.stderr);
+    assert.equal(readFileSync(f.versionPath, 'utf8'), before);
+    assert.equal(readFileSync(publicPath, 'utf8'), publicBefore);
+    writeFileSync(f.versionPath, JSON.stringify({ version: 0 }));
+    const mismatch = f.run('mac-preflight.mjs');
+    assert.equal(mismatch.status, 1);
+    assert.match(mismatch.stderr, /does not match/);
+    assert.equal(readFileSync(f.versionPath, 'utf8'), '{"version":0}');
+    writeFileSync(f.versionPath, before);
+    writeFileSync(join(f.update, 'client.json'), JSON.stringify({ ...f.client, signature: 'bad' }));
+    assert.equal(f.run('mac-preflight.mjs').status, 1);
+  });
+
+  test('client signer refuses a missing private key when a public key is committed, without creating a stray key', () => {
+    const f = clientFixture();
+    const missingKey = join(f.root, 'missing-private.pem');
+    const result = spawnSync(process.execPath, [join(f.root, 'desktop', 'scripts', 'make-update.mjs')], {
+      env: { ...f.env, SCRYPROOF_UPDATE_KEY: missingKey }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.equal(existsSync(missingKey), false);
+    assert.match(result.stderr, /Restore the original key/);
+    assert.doesNotMatch(result.stderr, /delete/);
+  });
+
+  test('client key bootstrap still works only without a baked public key; mismatch guidance preserves it', () => {
+    const f = releaseFixture();
+    const privatePath = join(f.root, 'new-client-key.pem');
+    const modulePath = new URL(`file://${join(f.root, 'desktop', 'scripts', 'signing-key.mjs')}`).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { loadSigningKey, keyMismatchMessage } from ${JSON.stringify(modulePath)}; loadSigningKey({create:true}); console.log(keyMismatchMessage());`], {
+      env: { ...f.env, SCRYPROOF_UPDATE_KEY: privatePath }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(statSync(privatePath).mode & 0o777, 0o600);
+    assert.match(result.stdout, /Keep the committed public key/);
+    assert.doesNotMatch(result.stdout, /delete|PRIVATE KEY/);
   });
 });

@@ -22,14 +22,14 @@ export const publicKeyPath = join(root, 'desktop', 'src', 'update-key.pub.pem');
 
 /**
  * The private key and its public half. With `create`, a key is made if there
- * is none; only the client signer does that, the first time it ever runs.
+ * is none and no public key is baked yet; only the client signer bootstraps it.
  * Anything else with no key stops: a fresh key would sign things no installed
  * app accepts.
  */
 export function loadSigningKey({ create = false } = {}) {
   if (!existsSync(keyPath)) {
-    if (!create) {
-      console.error(`There is no signing key at ${keyPath}. Sign a client first (npm run release:client), or restore the key from the password manager.`);
+    if (!create || existsSync(publicKeyPath)) {
+      console.error(`There is no signing key at ${keyPath}. Restore the original key on Wes's signing machine. No replacement key will be created.`);
       process.exit(1);
     }
     const { privateKey } = generateKeyPairSync('ed25519');
@@ -55,4 +55,4 @@ export function matchesBakedKey(publicKeyPem) {
 
 export const keyMismatchMessage = () =>
   `The signing key at ${keyPath} is not the one installed apps trust (desktop/src/update-key.pub.pem).\n` +
-  'If the old key is lost, delete that .pem file, run this again, and build and hand out a new installer.';
+  'Restore the matching original private key. Keep the committed public key: rotating it requires an explicit recovery plan and new installers for every member.';

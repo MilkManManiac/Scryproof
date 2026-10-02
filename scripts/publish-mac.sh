@@ -41,6 +41,24 @@ JS
 )
 zip="$release/Scryproof-$version-mac-arm64.zip"
 [ -s "$dmg" ] || { echo 'No desktop/release/Scryproof.dmg. Build the Mac release first.' >&2; exit 1; }
+# A failed later build can leave a new fixed-name DMG beside an older zip.
+# Check the mounted app before either a real upload or a dry-run on macOS.
+if [ "$(uname -s)" = Darwin ]; then
+  xcrun stapler validate "$dmg"
+  mountpoint=$(mktemp -d "${TMPDIR:-/tmp}/scryproof-dmg.XXXXXX")
+  mounted=false
+  cleanup_dmg() {
+    if "$mounted"; then hdiutil detach "$mountpoint" >/dev/null; fi
+    rmdir "$mountpoint"
+  }
+  trap cleanup_dmg EXIT
+  hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$dmg" >/dev/null
+  mounted=true
+  dmg_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mountpoint/Scryproof.app/Contents/Info.plist")
+  [ "$dmg_version" = "$version" ] || { echo "The DMG contains $dmg_version, not manifest version $version. Rebuild the matching release." >&2; exit 1; }
+  cleanup_dmg
+  trap - EXIT
+fi
 hash() { shasum -a 256 "$1" | cut -d' ' -f1; }
 dmg_sum=$(hash "$dmg")
 zip_sum=$(hash "$zip")
