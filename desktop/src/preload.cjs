@@ -23,13 +23,12 @@ const read = (name) => {
   return found ? found.slice(flag.length) : '';
 };
 
-if (process.isMainFrame) contextBridge.exposeInMainWorld(
+contextBridge.exposeInMainWorld(
   'scryproofDesktop',
   Object.freeze({
     server: read('server'),
     gateway: read('gateway'),
     shell: read('shell'),
-    activities: true,
     /** The version waiting, or null. */
     updateState: () => ipcRenderer.invoke('scryproof:update-state'),
     onUpdateReady: (listener) => {
