@@ -41,25 +41,41 @@ export function parseTeamId(report) {
 export const teamAllowed = (staged, running) => staged !== null && staged === MAC_TEAM_ID && staged === running;
 
 /**
+ * The requirement a staged bundle must meet, checked by `codesign -R`: signed
+ * through Apple's chain by a Developer ID certificate whose organizational unit
+ * is our team, and the bundle is Scryproof's own (so another app of the same
+ * team is refused). Pinning it here means the answer does not rest on parsing
+ * text out of `codesign -dv`.
+ */
+export const MAC_BUNDLE_ID = 'com.scryproof.desktop';
+export const macRequirement = () =>
+  `anchor apple generic and identifier "${MAC_BUNDLE_ID}" and certificate leaf[subject.OU] = "${MAC_TEAM_ID}"`;
+
+/**
  * What to do with a staged bundle, as the exact steps. `how: 'download'` means
  * the app cannot replace itself (translocated, or its folder is not writable,
  * as when it runs from the DMG): the page offers the DMG instead. Otherwise
- * `steps` run in order and nothing in them touches a path outside `appPath`'s
- * folder except the staged bundle that is moved out of staging.
+ * `steps` run in order. The new bundle is first brought beside the app
+ * (`incoming`, a rename, or a copy when staging is on another disk), so the
+ * only moment with no app at its path is the gap between the last two renames.
  */
 export function planSwap({ appPath, stagedPath, writable, translocated }) {
   if (!appPath || !stagedPath) return { how: 'download' };
   if (translocated || !writable) return { how: 'download' };
   const aside = `${appPath}.old`;
+  const incoming = `${appPath}.incoming`;
   return {
     how: 'swap',
     aside,
+    incoming,
+    appPath,
     steps: [
       { op: 'remove', path: aside },
+      { op: 'remove', path: incoming },
+      { op: 'move', from: stagedPath, to: incoming },
       { op: 'rename', from: appPath, to: aside },
-      { op: 'move', from: stagedPath, to: appPath },
+      { op: 'rename', from: incoming, to: appPath },
     ],
-    appPath,
   };
 }
 
@@ -70,9 +86,19 @@ export function planSwap({ appPath, stagedPath, writable, translocated }) {
  */
 export function undoSteps(plan, failedAt) {
   const asideAt = plan.steps.findIndex((step) => step.op === 'rename');
-  const moveAt = plan.steps.findIndex((step) => step.op === 'move');
-  if (failedAt > asideAt && failedAt <= moveAt) return [{ op: 'rename', from: plan.aside, to: plan.appPath }];
+  const lastAt = plan.steps.length - 1;
+  if (failedAt > asideAt && failedAt <= lastAt) return [{ op: 'rename', from: plan.aside, to: plan.appPath }];
   return [];
+}
+
+/**
+ * The app a process was started from when it was started from the bundle an
+ * update set aside (`Scryproof.app.old/Contents/MacOS/...`), meaning an update
+ * died between its two renames. `{ owner, aside }`, or null.
+ */
+export function asideOwner(execPath) {
+  const match = typeof execPath === 'string' ? /^(.*?\.app)\.old\/Contents\/MacOS\/[^/]+$/.exec(execPath) : null;
+  return match ? { owner: match[1], aside: `${match[1]}.old` } : null;
 }
 
 /** The version a zip in the shell-update folder is for, from its name, or null. */

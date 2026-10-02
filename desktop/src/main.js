@@ -32,7 +32,7 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
-import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -53,7 +53,7 @@ import {
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
-import { bundlePathFor, createMacShellUpdater } from './shell-update-mac.js';
+import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -460,6 +460,7 @@ function armMacShellUpdates() {
     isNewer: isNewerVersion,
     hashFile,
     stat,
+    lstat,
     run: runMacTool,
     fs: {
       mkdir: (path) => mkdir(path, { recursive: true }),
@@ -483,8 +484,9 @@ function armMacShellUpdates() {
   ipcMain.handle('scryproof:shell-how', (event) => (ours(event) ? updater.how() : null));
   if (!enabled) return;
   void updater.tidy().then(() => updater.check());
-  // The old bundle may still be held by the process that just handed over; once more a minute later.
-  setTimeout(() => void updater.tidy(), TIDY_AGAIN_MS).unref();
+  // The old bundle may still be held by the process that just handed over; that one only, a minute
+  // later. Never staging or a download: a check may be using them by now.
+  setTimeout(() => void updater.tidyAside(), TIDY_AGAIN_MS).unref();
   setInterval(() => void updater.check(), INSTALLER_EVERY_MS).unref();
 }
 
@@ -826,6 +828,15 @@ app.on('window-all-closed', () => {
 });
 
 void app.whenReady().then(async () => {
+  // An update that died between its two renames leaves the app at `.app.old` and nothing at `.app`.
+  // If that is what this process was started from, put the app back and start it from there.
+  if (MAC && app.isPackaged) {
+    const restored = await restoreAside(app.getPath('exe'), { exists: existsSync, rename });
+    if (restored) {
+      app.relaunch({ execPath: restored, args: process.argv.slice(1) });
+      return app.exit(0);
+    }
+  }
   await loadStoredUpdate();
   // Windows files pop-ups under this name, and shows none at all without it.
   app.setAppUserModelId('com.scryproof.desktop');

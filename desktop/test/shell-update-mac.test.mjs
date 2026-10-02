@@ -4,8 +4,10 @@ import { test } from 'node:test';
 
 import {
   bundlePathFor,
+  asideOwner,
   isTranslocated,
   MAC_TEAM_ID,
+  macRequirement,
   parseTeamId,
   planSwap,
   stagedAppName,
@@ -13,7 +15,7 @@ import {
   undoSteps,
   versionFromZipName,
 } from '../src/shell-update-mac-core.js';
-import { createMacShellUpdater, executeSwap } from '../src/shell-update-mac.js';
+import { createMacShellUpdater, executeSwap, restoreAside } from '../src/shell-update-mac.js';
 
 /* ------------------------------ the pure parts ------------------------------ */
 
@@ -51,11 +53,14 @@ test('the swap planner returns the exact steps, or the DMG outcome', () => {
   assert.deepEqual(planSwap({ ...base, writable: true, translocated: false }), {
     how: 'swap',
     aside: '/Applications/Scryproof.app.old',
+    incoming: '/Applications/Scryproof.app.incoming',
     appPath: '/Applications/Scryproof.app',
     steps: [
       { op: 'remove', path: '/Applications/Scryproof.app.old' },
+      { op: 'remove', path: '/Applications/Scryproof.app.incoming' },
+      { op: 'move', from: '/u/shell-update/staging/Scryproof.app', to: '/Applications/Scryproof.app.incoming' },
       { op: 'rename', from: '/Applications/Scryproof.app', to: '/Applications/Scryproof.app.old' },
-      { op: 'move', from: '/u/shell-update/staging/Scryproof.app', to: '/Applications/Scryproof.app' },
+      { op: 'rename', from: '/Applications/Scryproof.app.incoming', to: '/Applications/Scryproof.app' },
     ],
   });
   assert.deepEqual(planSwap({ ...base, writable: false, translocated: false }), { how: 'download' });
@@ -63,11 +68,43 @@ test('the swap planner returns the exact steps, or the DMG outcome', () => {
   assert.deepEqual(planSwap({ appPath: null, stagedPath: base.stagedPath, writable: true, translocated: false }), { how: 'download' });
 });
 
+test('the only moment with no app at its path is between the last two renames', () => {
+  const plan = planSwap({ appPath: '/A/S.app', stagedPath: '/st/S.app', writable: true, translocated: false });
+  // Whatever can be slow (a copy across disks) comes before the app is set aside.
+  assert.equal(plan.steps.findIndex((s) => s.op === 'move') < plan.steps.findIndex((s) => s.op === 'rename'), true);
+  assert.deepEqual(plan.steps.slice(-2).map((s) => s.op), ['rename', 'rename']);
+});
+
 test('undo puts the old bundle back only between setting it aside and the new one arriving', () => {
   const plan = planSwap({ appPath: '/A/S.app', stagedPath: '/st/S.app', writable: true, translocated: false });
-  assert.deepEqual(undoSteps(plan, 0), []);
-  assert.deepEqual(undoSteps(plan, 1), [], 'the rename itself failed: nothing moved');
-  assert.deepEqual(undoSteps(plan, 2), [{ op: 'rename', from: '/A/S.app.old', to: '/A/S.app' }]);
+  for (const failedAt of [0, 1, 2, 3]) assert.deepEqual(undoSteps(plan, failedAt), [], `step ${failedAt}`);
+  assert.deepEqual(undoSteps(plan, 4), [{ op: 'rename', from: '/A/S.app.old', to: '/A/S.app' }]);
+});
+
+test('the signature requirement is pinned to Apple\'s chain, our team and our bundle id', () => {
+  const req = macRequirement();
+  assert.match(req, /^anchor apple generic and /);
+  assert.ok(req.includes('certificate leaf[subject.OU] = "LRU27MC63Q"'));
+  assert.ok(req.includes('identifier "com.scryproof.desktop"'));
+});
+
+test('a process started from the set-aside bundle is recognised', () => {
+  assert.deepEqual(asideOwner('/Applications/Scryproof.app.old/Contents/MacOS/Scryproof'), { owner: '/Applications/Scryproof.app', aside: '/Applications/Scryproof.app.old' });
+  assert.equal(asideOwner('/Applications/Scryproof.app/Contents/MacOS/Scryproof'), null);
+  assert.equal(asideOwner(undefined), null);
+});
+
+test('an update that died between its renames is put back when the app is started from the set-aside copy', async () => {
+  const renames = [];
+  const io = (exists) => ({ exists: () => exists, rename: async (from, to) => renames.push([from, to]) });
+  const exec = '/Applications/Scryproof.app.old/Contents/MacOS/Scryproof';
+  assert.equal(await restoreAside(exec, io(false)), '/Applications/Scryproof.app/Contents/MacOS/Scryproof');
+  assert.deepEqual(renames, [['/Applications/Scryproof.app.old', '/Applications/Scryproof.app']]);
+  assert.equal(await restoreAside(exec, io(true)), null, 'an app is already there: leave both alone');
+  assert.equal(await restoreAside('/Applications/Scryproof.app/Contents/MacOS/Scryproof', io(false)), null);
+  const broken = { exists: () => false, rename: async () => { throw new Error('EPERM'); } };
+  assert.equal(await restoreAside(exec, broken), null);
+  assert.equal(renames.length, 1);
 });
 
 test('zip names and staged app names', () => {
@@ -106,6 +143,9 @@ function world(over = {}) {
     runningTeam: MAC_TEAM_ID,
     stagedVersion: '0.6.1',
     failRename: null,
+    gate: null,
+    downloadGate: null,
+    symlinks: new Set(),
     enabled: true,
     appPath: APP,
     ...over,
@@ -135,6 +175,9 @@ function world(over = {}) {
     if (cmd === 'ditto' && args[0] === '-x') {
       w.files.set(`${args[3]}/Scryproof.app`, 'dir');
       w.files.set(`${args[3]}/Scryproof.app/Contents`, 'dir');
+      // A half-unpacked bundle is what is on disk until the gate opens.
+      if (w.gate) await w.gate;
+      w.files.set(`${args[3]}/Scryproof.app/Contents/Info.plist`, 'whole');
       return { code: 0, stdout: '', stderr: '' };
     }
     if (cmd === 'ditto') {
@@ -162,6 +205,7 @@ function world(over = {}) {
       w.fetched.push(url);
       if (w.served.length > size) throw new Error('bigger than it was signed at');
       w.files.set(path, w.served);
+      if (w.downloadGate) await w.downloadGate;
     },
     // The signature is the Mac manifest reader's business (installer.test.mjs); here a manifest is a signed one if it has a signature.
     readManifest: (raw) => { const m = JSON.parse(raw); return m.signature ? m : null; },
@@ -171,6 +215,10 @@ function world(over = {}) {
       return false;
     },
     hashFile: async (path) => sha(w.files.get(path)),
+    lstat: async (path) => {
+      if (!w.files.has(path)) throw new Error('ENOENT');
+      return { isSymbolicLink: () => w.symlinks.has(path), isDirectory: () => w.files.get(path) === 'dir' };
+    },
     stat: async (path) => {
       if (!w.files.has(path)) throw new Error('ENOENT');
       return { size: w.files.get(path).length };
@@ -198,7 +246,7 @@ test('a newer signed zip is fetched, checked and staged, and the page is told on
   assert.equal(has(w, ZIP), true, 'the zip stays as a cache for the next launch');
   assert.deepEqual(w.commands.map((c) => c[0]), ['ditto', 'codesign', 'codesign', 'codesign', 'plutil']);
   assert.deepEqual(w.commands[0], ['ditto', '-x', '-k', ZIP, STAGING]);
-  assert.deepEqual(w.commands[1], ['codesign', '--verify', '--deep', '--strict', `${STAGING}/Scryproof.app`]);
+  assert.deepEqual(w.commands[1], ['codesign', '--verify', '--deep', '--strict', `-R=${macRequirement()}`, `${STAGING}/Scryproof.app`]);
   await updater.check();
   assert.deepEqual(w.ready, ['0.6.1'], 'nothing newer than the one waiting: no second download or announcement');
   assert.equal(w.fetched.filter((u) => u.endsWith('.zip')).length, 1);
@@ -229,26 +277,54 @@ test('apply checks the bundle again, and a bundle that no longer passes is delet
   assert.equal(updater.state(), null);
 });
 
-test('a failure while moving the new bundle in puts the old one back', async () => {
+test('a swap that fails before the app is set aside leaves it alone and opens the DMG instead', async () => {
   const { w, updater } = world();
   w.files.set(`${APP}/Contents/old.txt`, 'old');
   await updater.check();
   w.failRename = (from) => (from.startsWith(STAGING) ? 'EACCES' : null);
-  assert.equal(await updater.apply(), false);
+  assert.equal(await updater.apply(), true);
+  assert.equal(has(w, `${APP}/Contents/old.txt`), true);
+  assert.equal(has(w, `${APP}.old`), false);
+  assert.equal(has(w, `${APP}.incoming`), false);
+  assert.deepEqual(w.relaunched, []);
+  assert.deepEqual(w.opened, ['https://s/download/Scryproof.dmg']);
+  assert.match(w.log.join('\n'), /opening the DMG link instead/);
+});
+
+test('a failure of the last rename puts the old bundle back, clears the incoming one and opens the DMG', async () => {
+  const { w, updater } = world();
+  w.files.set(`${APP}/Contents/old.txt`, 'old');
+  await updater.check();
+  w.failRename = (from, to) => (to === APP && from === `${APP}.incoming` ? 'EACCES' : null);
+  assert.equal(await updater.apply(), true);
   assert.equal(has(w, `${APP}/Contents/old.txt`), true, 'the old app is back where it was');
   assert.equal(has(w, `${APP}.old`), false);
+  assert.equal(has(w, `${APP}.incoming`), false);
   assert.deepEqual(w.relaunched, []);
+  assert.deepEqual(w.opened, ['https://s/download/Scryproof.dmg']);
   assert.match(w.log.join('\n'), /put back/);
 });
 
-test('a move across disks copies beside the destination and renames, leaving nothing half there', async () => {
+test('a refused rename of the running app (App Management, root-owned) opens the DMG rather than ignoring every click', async () => {
   const { w, updater } = world();
   await updater.check();
-  w.failRename = (from, to) => (from.startsWith(STAGING) ? 'EXDEV' : null);
+  w.failRename = (from) => (from === APP ? 'EPERM' : null);
   assert.equal(await updater.apply(), true);
-  assert.equal(w.commands.some((c) => c[0] === 'ditto' && c[2] === `${APP}.incoming`), true);
-  assert.equal(has(w, `${APP}.incoming`), false);
+  assert.deepEqual(w.opened, ['https://s/download/Scryproof.dmg']);
+  assert.deepEqual(w.relaunched, []);
   assert.equal(has(w, `${APP}/Contents`), true);
+});
+
+test('a move across disks copies beside the app first, so the swap itself is two renames', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  w.failRename = (from) => (from.startsWith(STAGING) ? 'EXDEV' : null);
+  assert.equal(await updater.apply(), true);
+  const copy = w.commands.findIndex((c) => c[0] === 'ditto' && c[2] === `${APP}.incoming`);
+  assert.notEqual(copy, -1);
+  assert.equal(has(w, `${APP}.incoming`), false);
+  assert.equal(has(w, `${APP}/Contents/Info.plist`), true);
+  assert.equal(has(w, `${APP}.old/Contents`), true);
   assert.deepEqual(w.relaunched, [APP]);
 });
 
@@ -259,12 +335,12 @@ test('executeSwap says why it failed and whether the old app was put back', asyn
     rm: async (p) => calls.push(['rm', p]),
     rename: async (from, to) => {
       calls.push(['rename', from, to]);
-      if (from === '/st/S.app') throw new Error('disk full');
+      if (from === '/A/S.app.incoming') throw new Error('disk full');
     },
     run: async () => ({ code: 0, stdout: '', stderr: '' }),
   };
   assert.deepEqual(await executeSwap(plan, io), { ok: false, error: 'disk full', restored: true });
-  assert.deepEqual(calls.at(-1), ['rename', '/A/S.app.old', '/A/S.app']);
+  assert.deepEqual(calls.slice(-2), [['rename', '/A/S.app.old', '/A/S.app'], ['rm', '/A/S.app.incoming']]);
   assert.deepEqual(await executeSwap({ how: 'download' }, io), { ok: false, error: 'not a swap' });
 });
 
@@ -436,4 +512,88 @@ test('a cached zip from an earlier run is reused when it still matches, and re-c
   assert.deepEqual(w.fetched.filter((u) => u.endsWith('.zip')), [], 'no download');
   assert.deepEqual(w.ready, ['0.6.1']);
   assert.equal(w.commands[0][0], 'ditto');
+});
+
+/* ---------------- the review's races: tidy, and check against apply ---------------- */
+
+const ticks = async (n = 20) => { for (let i = 0; i < n; i += 1) await new Promise((resolve) => setImmediate(resolve)); };
+
+test('the late tidy pass removes only the set-aside bundle: a staged update still applies', async () => {
+  const { w, updater } = world();
+  w.files.set(`${APP}.old`, 'dir');
+  await updater.check();
+  await updater.tidyAside();
+  assert.equal(has(w, `${APP}.old`), false);
+  assert.equal(has(w, `${STAGING}/Scryproof.app`), true, 'staging is not touched');
+  assert.equal(await updater.apply(), true);
+  assert.deepEqual(w.relaunched, [APP]);
+});
+
+test('the launch tidy does nothing while a download is being written or an update waits', async () => {
+  const { w, updater } = world();
+  let open;
+  w.downloadGate = new Promise((resolve) => { open = resolve; });
+  const checking = updater.check();
+  await ticks();
+  assert.equal(has(w, `${DIR}/mac-update.part`), true, 'precondition: the download is under way');
+  await updater.tidy();
+  assert.equal(has(w, `${DIR}/mac-update.part`), true, 'tidy left the half download alone');
+  open();
+  await checking;
+  assert.deepEqual(w.ready, ['0.6.1']);
+  await updater.tidy();
+  assert.equal(has(w, `${STAGING}/Scryproof.app`), true, 'and left the staged update alone');
+});
+
+test('a check unpacking a newer release while Restart is clicked: the swap waits and moves a whole bundle', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  assert.deepEqual(w.ready, ['0.6.1']);
+  w.served = 'the second zip';
+  Object.assign(w.manifest, { version: '0.6.2', sha256: sha(w.served), size: w.served.length });
+  w.stagedVersion = '0.6.2';
+  let open;
+  w.gate = new Promise((resolve) => { open = resolve; });
+  const checking = updater.check();
+  await ticks();
+  assert.equal(w.commands.filter((c) => c[0] === 'ditto').length, 2, 'precondition: the second unpack has started');
+  assert.equal(has(w, `${STAGING}/Scryproof.app/Contents/Info.plist`), false, 'precondition: half unpacked');
+  const applying = updater.apply();
+  await ticks();
+  assert.deepEqual(w.relaunched, [], 'nothing is swapped while the unpack is half done');
+  open();
+  await checking;
+  assert.equal(await applying, true);
+  assert.equal(has(w, `${APP}/Contents/Info.plist`), true, 'the bundle at the app path is the whole one');
+  assert.deepEqual(w.ready, ['0.6.1', '0.6.2']);
+  assert.deepEqual(w.relaunched, [APP]);
+});
+
+test('once the swap has begun, a later check stages nothing and downloads nothing', async () => {
+  const { w, updater } = world();
+  await updater.check();
+  await updater.apply();
+  const before = w.fetched.length;
+  await updater.check();
+  assert.equal(w.fetched.length, before);
+});
+
+test('a staged entry that is a link, not a real folder, is refused', async () => {
+  const { w, updater } = world();
+  w.symlinks.add(`${STAGING}/Scryproof.app`);
+  await updater.check();
+  assert.deepEqual(w.ready, []);
+  assert.equal(has(w, STAGING), false);
+  assert.equal(has(w, ZIP), false);
+  assert.match(w.log.join('\n'), /plain app folder/);
+});
+
+test('a bundle that fails the pinned requirement is refused even if codesign otherwise verifies it', async () => {
+  const { w, updater } = world();
+  const run = w.run;
+  w.run = async (cmd, args) => (args.some((a) => String(a).startsWith('-R=')) ? { code: 3, stdout: '', stderr: 'does not satisfy its designated requirement' } : run(cmd, args));
+  await updater.check();
+  assert.deepEqual(w.ready, []);
+  assert.equal(has(w, STAGING), false);
+  assert.equal(has(w, ZIP), false);
 });
