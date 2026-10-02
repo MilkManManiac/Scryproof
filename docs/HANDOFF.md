@@ -3728,3 +3728,9 @@ game fix to GitHub/opening its PR because it did not find explicit authorization
 to export that payload to the game fork/upstream. Both local game branches are
 complete; publishing that game PR needs Matt's approval. Wes's release review
 boundary remains in place.
+
+Scryproof review: [PR #5](https://github.com/MilkManManiac/Scryproof/pull/5).
+The additional desktop input check exercised the actual app with keyboard movement
+and a held mouse click: the bag reached 0.030 before idle auto-scooping could begin.
+The game PR still awaits Matt's response to the separate publishing permission
+question. Local preview is at http://localhost:5179 with the fixed game on 5180.

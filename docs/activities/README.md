@@ -137,3 +137,7 @@ hosted-source branch and the upstream review branch. Physical iPhone, iPad,
 Android phone/tablet and home-screen PWA checks remain outstanding; desktop Chrome
 emulation cannot prove browser chrome, safe-area dimensions, Safari audio or
 native orientation behavior. Nothing from this mobile fix has been deployed.
+
+The Scryproof changes are in [PR #5](https://github.com/MilkManManiac/Scryproof/pull/5).
+A desktop mouse regression also exercised the actual local app: keyboard movement
+followed by a held mouse click produced 0.030 water before the idle auto-scoop delay.
