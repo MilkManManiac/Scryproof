@@ -10,6 +10,8 @@ interface DesktopBridge {
   gateway: string;
   /** The installed shell's own version, from its package.json. Absent in older shells. */
   shell?: string;
+  /** The shell permits isolated Activities frames. Older shells do not. */
+  activities?: boolean;
   /** Absent in shells built before updates existed. */
   updateState?: () => Promise<number | null>;
   onUpdateReady?: (listener: (version: number) => void) => void;
@@ -51,6 +53,7 @@ export interface ShareRequest {
 const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+export const canEmbedActivities = !bridge || bridge.activities === true;
 
 /** Zoom the whole window, where the app can. False in a browser or an older shell. */
 export const canZoom = typeof bridge?.setZoom === 'function';
