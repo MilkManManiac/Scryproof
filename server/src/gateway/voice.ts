@@ -58,9 +58,11 @@ async function applyVoiceStateIntent(
   const otherOwner = hub.connectionsForUser(connection.userId).find((other) =>
     other !== connection && hub.ownsVoice(other) && other.sessionId !== connection.sessionId,
   );
-  if (roomId && ((intent.join === 'resume' && otherOwner) ||
+  if (roomId && ((intent.join !== true && otherOwner) ||
     (connection.callReplaced && intent.join !== true && intent.join !== 'resume'))) {
-    // Old bundles get an answer too. A silent refusal would let them connect
+    // Neither a resume nor an unlabelled legacy join may claim another
+    // login session's call. Old bundles get an answer too, including on a
+    // fresh gateway socket. A silent refusal would let them connect
     // media with a cached account token while waiting forever for call keys.
     connection.ws.send(JSON.stringify({ t: 'error', d: {
       code: 'voice_replaced', message: 'You joined this call from another device.', requestId: intent.requestId,

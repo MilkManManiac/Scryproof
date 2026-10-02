@@ -241,6 +241,10 @@ connecting to LiveKit.
 
 Automatic gateway rejoins use `join: 'resume'`. They may restore the call if
 no different login session owns it, and cannot take it from another session.
+An unlabelled legacy intent on a replaced or fresh socket is also refused
+when another login session owns the call, with `voice_replaced` instead of
+silence. Such a bundle must update to explicitly take a call from that
+session; it may still join when there is no other owner.
 Both LiveKit signal resumes and full reconnects emit `RoomEvent.Reconnected`
 in the installed SDK; the client confirms ownership again then. A device
 that receives a `DUPLICATE_IDENTITY` kick also confirms: a rejected device
@@ -285,6 +289,44 @@ what make stale cached-token connects settle back onto the selected device.
 LiveKit may briefly kick the owner before that confirmation finishes; this
 is a self-healing interruption, not simultaneous account presence or a new
 per-device LiveKit identity.
+
+### Review verification (2026-10-02)
+
+Targeted Node tests passed 41 server and 51 client checks, with concurrency
+capped at eight; both TypeScript project checks passed. The session test
+uses real WebCrypto and proves approval secures both directions without
+another epoch. Deliberately disabling approval's re-announcement, cross-session
+resume refusal, same-room owner rotation, or moved-ending Leave made the
+corresponding tests fail. The moved-ending mutation reproduced a real
+LiveKit presence ghost rather than only changing a mocked snapshot.
+
+The full browser run passed 109 of 112 checks against LiveKit 1.13.6.
+All takeover, owner recovery, and same-channel retry checks passed. The three
+failures were the existing screen-zoom checks (wheel in, pan, and double-click
+out); the exact pre-change archive from `f4074d2^` passed 88 of 91 and failed
+the same three checks on its isolated API and web ports. They are outside
+this voice change and were not modified.
+
+After tightening the final legacy-join guard, the focused live takeover run
+passed all 25 checks. It blocks only gateway and LiveKit WebSockets, keeps
+Vite's HMR connected, moves the call, approves the new identity, and restores
+the old device's network. It also forces a cached-token LiveKit-only connect
+to kick the owner and proves that owner recovers with decoded encrypted audio.
+A fresh legacy gateway socket is refused, an owner can rejoin the same room,
+and both moved and failed terminal endings clear owned presence.
+
+Replay locally with the application's API, Vite, and local LiveKit running:
+
+```bash
+VOICE_CHECK_WEB=http://localhost:5183 VOICE_CHECK_TAKEOVER_ONLY=1 \
+  testrun scryproof voice-takeover -- npm run test:voice
+```
+
+This is separate headless Chromium profiles on one Linux machine. Actual Mac
+sleep/wake, real microphone/camera permissions, two physical machines, TURN,
+and slow or lossy networks still need the coordinator's device test. The
+stale-token recovery can briefly interrupt the selected device's media while
+its ownership confirmation and encrypted reconnect finish.
 
 ## Firefox
 

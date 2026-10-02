@@ -231,6 +231,11 @@ describe('moving someone between voice channels', () => {
     await handleVoiceStateIntent(fresh, { channelId: lounge, join: 'resume', requestId: 'fresh-resume' });
     assert.equal(hub.ownsVoice(next, lounge), true);
     assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    heard.length = 0;
+    await handleVoiceStateIntent(fresh, { channelId: lounge });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
     // Old bundles get an answer for late controls rather than hanging silently.
     heard.length = 0;
     await handleVoiceStateIntent(first, { channelId: lounge, selfMute: true });

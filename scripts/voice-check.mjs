@@ -140,6 +140,24 @@ class Person {
 
     await this.send('Page.enable');
     await this.send('Runtime.enable');
+    await this.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+      (() => {
+        const Native = window.WebSocket;
+        window.__callSockets = [];
+        window.__callOffline = false;
+        window.WebSocket = class extends Native {
+          constructor(url, protocols) {
+            const address = new URL(String(url), location.href);
+            const call = address.pathname === '/gateway' || address.port === '7880';
+            // Fail only call signalling, with ordinary asynchronous network
+            // errors. Vite's HMR socket and HTTP stay connected.
+            super(call && window.__callOffline ? 'ws://127.0.0.1:7999/offline' : url, protocols);
+            this.callSocket = call;
+            window.__callSockets.push(this);
+          }
+        };
+      })();
+    ` });
   }
 
   send(method, params = {}) {
@@ -267,6 +285,15 @@ class Person {
     return { frames: after.frames - before.frames, packets: after.packets - before.packets, width: after.width };
   }
 
+  async callOffline(offline) {
+    return this.evaluate(`(() => {
+      window.__callOffline = ${offline};
+      const sockets = window.__callSockets.filter((socket) => socket.callSocket && socket.readyState === WebSocket.OPEN);
+      if (window.__callOffline) for (const socket of sockets) socket.close();
+      return sockets.length;
+    })()`);
+  }
+
   async close() {
     try { this.socket?.close(); } catch {}
     try { this.process?.kill(); } catch {}
@@ -289,10 +316,127 @@ const alex = new Person('alex', 9342);
 const mara = new Person('mara', 9343);
 const alexSecond = new Person('alex', 9344);
 
+/** Focused takeover checks also run alone for review mutations. */
+async function checkTakeover(connected) {
+  for (const person of [wes, alex]) {
+    await person.evaluate(`document.querySelector('.rail > span > .rail-item')?.click()`);
+    await person.until(`Boolean(document.querySelector('.channel.voice'))`, 10_000);
+  }
+  await wes.clickVoiceChannel();
+  await alex.clickVoiceChannel();
+  await Promise.all([wes.until(connected), alex.until(connected)]);
+  const beforeTakeover = (await wes.snapshot()).epoch;
+  // Retain only the original encrypted Room and its join grant in this test
+  // profile, to force the LiveKit-only kick independently of gateway state.
+  await alex.evaluate(`(async () => {
+    window.__staleRoom = window.__voice.room;
+    const channel = window.__voice.getSnapshot().channelId;
+    window.__staleGrant = await fetch('/api/channels/' + channel + '/voice/token', { method: 'POST', credentials: 'include' }).then((r) => r.json());
+  })()`);
+  const blockedSockets = await alex.callOffline(true);
+  check('the old device loses both gateway and LiveKit sockets without closing HMR', blockedSockets >= 2);
+  await sleep(8000);
+  check('Vite HMR stays connected while the call network is blocked', await alex.evaluate(
+    `window.__callSockets.some((socket) => !socket.callSocket && socket.readyState === WebSocket.OPEN)`));
+  await alexSecond.open();
+  await alexSecond.signIn();
+  await alexSecond.clickVoiceChannel();
+  const arrived = await alexSecond.until(`(() => { const s = window.__voice.getSnapshot(); return s.phase === 'connected' && s.encrypted && s.epoch > ${beforeTakeover}; })()`, 15_000);
+  check('the replacement connects encrypted on a fresh epoch', Boolean(arrived));
+  // The second profile really has a different identity. Moving a call never
+  // silently approves a device a peer has not met before.
+  const held = await wes.until(`window.__voice.getSnapshot().people.find((p) => p.userId === '${alex.userId}' && p.state === 'held')`, 15_000);
+  check('an unfamiliar replacement still waits for identity approval', Boolean(held) && held.verdict === 'new-device');
+  if (held) await wes.evaluate(`window.__voice.approve('${alex.userId}', '${held.deviceId}')`);
+  const replacedPair = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+  check('after approval the peer sees exactly one account seat, on the current device', replacedPair.every(Boolean) &&
+    (await wes.snapshot()).people.filter((p) => p.userId === alex.userId).length === 1 &&
+    (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
+  const decoded = await alexSecond.listenTo(wes.userId);
+  check('the replacement decodes the peer with the right key', decoded.energy > 0.001,
+    `+${decoded.packets} packets, +${decoded.energy.toFixed(4)} energy`);
+  check('the replacement and peer compute the same verification code',
+    (await alexSecond.snapshot()).code === (await wes.snapshot()).code);
+  await alex.callOffline(false);
+  const moved = await alex.until(`window.__voice.getSnapshot().phase === 'moved'`, 15_000);
+  check('the original device ends as moved, with the reason in plain words', Boolean(moved) &&
+    (await alex.snapshot()).error === 'You joined this call from another device.');
+  check('the original device displays the moved message', await alex.evaluate(
+    `document.body.textContent.includes('You joined this call from another device.')`));
+  // A stale LiveKit-level reconnect may race gateway ready. The server's
+  // owner must recover from a duplicate kick and keep the call either way.
+  await sleep(8000);
+  const afterNetwork = await Promise.all([wes.until(connected, 15_000), alexSecond.until(connected, 15_000)]);
+  check('returning network never transfers the call back to the old device', afterNetwork.every(Boolean) &&
+    (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
+  const oldStillEnded = await alex.snapshot();
+  check('the original device stays moved and does not reconnect', oldStillEnded.phase === 'moved' && !oldStillEnded.encrypted);
+  check('LiveKit lists one remote participant for that account', await wes.evaluate(
+    `window.__voice.room.remoteParticipants.size === 1 && window.__voice.room.remoteParticipants.has('${alex.userId}')`));
+
+  const activeChannel = (await alexSecond.snapshot()).channelId;
+  const legacyRefused = await alex.evaluate(`new Promise((resolve) => {
+    const socket = new WebSocket(location.origin.replace(/^http/, 'ws') + '/gateway');
+    const finish = (value) => { clearTimeout(timer); socket.close(); resolve(value); };
+    const timer = setTimeout(() => finish(false), 7000);
+    socket.addEventListener('message', (event) => {
+      const message = JSON.parse(event.data);
+      if (message.t === 'ready') socket.send(JSON.stringify({ t: 'voice_state', d: { channelId: '${activeChannel}' } }));
+      if (message.t === 'error') finish(message.d.code === 'voice_replaced');
+    });
+    socket.addEventListener('error', () => finish(false));
+  })`);
+  check('an old bundle on a fresh gateway socket cannot reclaim another session call', legacyRefused &&
+    (await alexSecond.snapshot()).phase === 'connected');
+
+  const recoveryGeneration = await alexSecond.evaluate(`window.__voice.generation`);
+  await alex.evaluate(`window.__staleRoom.connect(window.__staleGrant.url, window.__staleGrant.token, { autoSubscribe: false }).catch(() => undefined)`);
+  const recovered = await alexSecond.until(`window.__voice.generation > ${recoveryGeneration} && ${connected}`, 20_000);
+  const ownerRecovered = [recovered, await wes.until(connected, 20_000)];
+  check('the gateway owner self-heals after a stale LiveKit-only identity takeover', ownerRecovered.every(Boolean) &&
+    (await alexSecond.evaluate(`window.__voice.generation`)) > recoveryGeneration &&
+    (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
+  const recoveredAudio = await alexSecond.listenTo(wes.userId);
+  check('the recovered gateway owner still decodes encrypted audio', recoveredAudio.energy > 0.001);
+
+  // Reset this session without delivering Leave, like a lost leave frame.
+  // The owner explicitly rejoins the same room and must receive an epoch.
+  await alexSecond.evaluate(`window.__voice.leave()`);
+  await alexSecond.clickVoiceChannel();
+  const ownerRejoin = await Promise.all([wes.until(connected, 15_000), alexSecond.until(connected, 15_000)]);
+  check('an owner explicitly rejoins the same room with a fresh encrypted call', ownerRejoin.every(Boolean) &&
+    (await alexSecond.snapshot()).epoch > 0 && (await alexSecond.snapshot()).encrypted);
+  const rejoinAudio = await alexSecond.listenTo(wes.userId);
+  check('the same-room owner rejoin decodes audio', rejoinAudio.energy > 0.001);
+
+  // Force a terminal moved end while this socket still owns presence, the
+  // mismatch that used to leave a ghost. Every terminal end must send Leave.
+  await alexSecond.evaluate(`window.__voice.end('moved', 'You joined this call from another device.')`);
+  const movedDeparture = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 10_000);
+  check('a moved terminal end also clears owned gateway presence', Boolean(movedDeparture));
+  await alexSecond.clickVoiceChannel();
+  const movedRetry = await Promise.all([wes.until(connected, 15_000), alexSecond.until(connected, 15_000)]);
+  check('a device can deliberately take the call back after a moved end', movedRetry.every(Boolean));
+
+  // A terminal media disconnect is distinct from LiveKit's recoverable
+  // reconnecting event. Drive the real room event, then click the same channel.
+  await alexSecond.evaluate(`window.__voice.room.disconnect()`);
+  const failed = await alexSecond.until(`window.__voice.getSnapshot().phase === 'failed'`, 10_000);
+  const gone = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 10_000);
+  check('terminal connection loss clears the gateway presence', Boolean(failed && gone));
+  await alexSecond.clickVoiceChannel();
+  const retried = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+  check('clicking the same channel after failure rejoins encrypted', retried.every(Boolean) && (await alexSecond.snapshot()).encrypted);
+  const heardAgain = await alexSecond.listenTo(wes.userId);
+  check('audio decodes again after that same-channel retry', heardAgain.energy > 0.001);
+  await alexSecond.clickButton('Leave');
+  await wes.clickButton('Leave');
+}
+
 async function main() {
   const up = {
     'the web dev server (npm run dev)': await reachable(WEB),
-    'the API (npm run dev)': await reachable('http://127.0.0.1:8787/api/health'),
+    'the API (npm run dev)': await reachable(`${WEB}/api/health`),
     'LiveKit (npm run dev:livekit)': await reachable('http://127.0.0.1:7880/'),
   };
   const missing = Object.entries(up).filter(([, ok]) => !ok).map(([name]) => name);
@@ -312,6 +456,12 @@ async function main() {
   check('both connect, and each holds the other\'s verified key', Boolean(wesReady && alexReady),
     `wes: ${w.phase} ${w.error ?? ''} ${JSON.stringify(w.people.map((p) => p.state))}   alex: ${a.phase} ${a.error ?? ''} ${JSON.stringify(a.people.map((p) => p.state))}`);
   if (!wesReady || !alexReady) return;
+  if (process.env.VOICE_CHECK_TAKEOVER_ONLY === '1') {
+    await checkTakeover(connected);
+    const errors = [...wes.complaints, ...alex.complaints, ...alexSecond.complaints];
+    check('no uncaught exceptions in takeover browsers', errors.length === 0, errors.join('\n      '));
+    return;
+  }
 
   check('LiveKit reports end-to-end encryption on, for both', w.encrypted && a.encrypted);
   check('both compute the same verification code', w.code === a.code && /^\d{5} \d{5} \d{5} \d{5}$/.test(w.code), `${w.code}  /  ${a.code}`);
@@ -770,59 +920,7 @@ async function main() {
     Boolean(dmAlone) && (await wes.snapshot()).epoch > dmEpoch);
   await wes.clickButton('Leave call');
 
-  // ---- the same account on a second device -----------------------------------
-  {
-    for (const person of [wes, alex]) {
-      await person.evaluate(`document.querySelector('.rail > span > .rail-item')?.click()`);
-      await person.until(`Boolean(document.querySelector('.channel.voice'))`, 10_000);
-    }
-    await wes.clickVoiceChannel();
-    await alex.clickVoiceChannel();
-    await Promise.all([wes.until(connected), alex.until(connected)]);
-    const beforeTakeover = (await wes.snapshot()).epoch;
-    await alexSecond.open();
-    await alexSecond.signIn();
-    await alexSecond.clickVoiceChannel();
-    const moved = await alex.until(`window.__voice.getSnapshot().phase === 'moved'`, 15_000);
-    check('the original device ends as moved, with the reason in plain words', Boolean(moved) &&
-      (await alex.snapshot()).error === 'You joined this call from another device.');
-    check('the original device displays the moved message', await alex.evaluate(
-      `document.body.textContent.includes('You joined this call from another device.')`));
-    const arrived = await alexSecond.until(`(() => { const s = window.__voice.getSnapshot(); return s.phase === 'connected' && s.encrypted && s.epoch > ${beforeTakeover}; })()`, 15_000);
-    check('the replacement connects encrypted on a fresh epoch', Boolean(arrived));
-    // The second profile really has a different identity. Moving a call never
-    // silently approves a device a peer has not met before.
-    const held = await wes.until(`window.__voice.getSnapshot().people.find((p) => p.userId === '${alex.userId}' && p.state === 'held')`, 15_000);
-    check('an unfamiliar replacement still waits for identity approval', Boolean(held) && held.verdict === 'new-device');
-    if (held) await wes.evaluate(`window.__voice.approve('${alex.userId}', '${held.deviceId}')`);
-    const replacedPair = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
-    check('after approval the peer sees exactly one account seat, on the current device', replacedPair.every(Boolean) &&
-      (await wes.snapshot()).people.filter((p) => p.userId === alex.userId).length === 1 &&
-      (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
-    const decoded = await alexSecond.listenTo(wes.userId);
-    check('the replacement decodes the peer with the right key', decoded.energy > 0.001,
-      `+${decoded.packets} packets, +${decoded.energy.toFixed(4)} energy`);
-    check('the replacement and peer compute the same verification code',
-      (await alexSecond.snapshot()).code === (await wes.snapshot()).code);
-    const oldStillEnded = await alex.snapshot();
-    check('the original device stays moved and does not reconnect', oldStillEnded.phase === 'moved' && !oldStillEnded.encrypted);
-    check('LiveKit lists one remote participant for that account', await wes.evaluate(
-      `window.__voice.room.remoteParticipants.size === 1 && window.__voice.room.remoteParticipants.has('${alex.userId}')`));
-
-    // A terminal media disconnect is distinct from LiveKit's recoverable
-    // reconnecting event. Drive the real room event, then click the same channel.
-    await alexSecond.evaluate(`window.__voice.room.disconnect()`);
-    const failed = await alexSecond.until(`window.__voice.getSnapshot().phase === 'failed'`, 10_000);
-    const gone = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 10_000);
-    check('terminal connection loss clears the gateway presence', Boolean(failed && gone));
-    await alexSecond.clickVoiceChannel();
-    const retried = await Promise.all([wes.until(connected), alexSecond.until(connected)]);
-    check('clicking the same channel after failure rejoins encrypted', retried.every(Boolean) && (await alexSecond.snapshot()).encrypted);
-    const heardAgain = await alexSecond.listenTo(wes.userId);
-    check('audio decodes again after that same-channel retry', heardAgain.energy > 0.001);
-    await alexSecond.clickButton('Leave');
-    await wes.clickButton('Leave');
-  }
+  await checkTakeover(connected);
 
   const errors = [...wes.complaints, ...alex.complaints, ...mara.complaints, ...alexSecond.complaints];
   check('no uncaught exceptions in any browser', errors.length === 0, errors.join('\n      '));
