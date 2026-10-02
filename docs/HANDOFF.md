@@ -3695,3 +3695,36 @@ Published 0.5.5 metadata and the downloadable EXE response were checked. No new 
 Verified: typecheck/build; all 36 server and 49 web test files before the final presentation pass; affected UI checked again after that pass. Version checks cover numeric ordering, equal/newer installs, legacy/malformed versions. Real UI checks cover legacy/new/browser/installer-ready/automatic-capable-behind/ahead/offline/client-only/automatic-behind states. Actual 0.5.4 shell source kept automatic updates, hid the manual card, and opened the optional recovery download externally. The local test did not run a Windows installer.
 
 ![Rare manual update card, local seeded account with a legacy shell](shots/desktop-update-fallback.png)
+
+## Mobile Activities (2026-10-02, prepared locally for review)
+
+Matt reported poor mobile play on iPhone, iPad, Android phones and tablets.
+Two reproduced causes: the Scryproof player switched to desktop spacing above
+640px even on a sideways phone, and the game's first real touch disabled the
+mouse emulation its menus need. New Game would stop responding.
+
+`fix/mobile-activities` keeps the player compact for touch in either orientation,
+uses dynamic viewport height/safe-area padding, puts extra controls in Options,
+and preserves the running iframe through rotation and Back/return. It explains
+when the browser cannot share a screen. The game fix keeps menu emulation enabled,
+separates desktop mouse scoop from touch/keyboard scoop, and uses touch help text.
+Game changes live on the separate local `fix/scryproof-mobile-activities` branch
+in Matt's DrainTheSwamp checkout; his current working branch was not changed.
+See `docs/activities/README.md` for exact source/export revisions and release steps.
+
+Verified locally: actual touch selection of Piggy, movement and scooping (0.095
+water saved), HUD menu/Resume, eight phone/tablet viewport sizes, iframe identity
+through rotation/Back/confirmation, saved progress after reopening, and encrypted
+local call continuity. Existing two-browser sharing check passed with actual
+watcher pixels and load/quit recovery. Godot input regression, web tests,
+typecheck and production web build passed. These are Chrome emulation results;
+physical iPhone/iPad/Android and PWA acceptance remain outstanding.
+
+![Phone landscape, real game and local encrypted call in Chrome touch emulation](shots/activities-mobile-landscape.png)
+![Phone portrait, same running game after rotation in Chrome touch emulation](shots/activities-mobile-portrait.png)
+
+No mobile fix is deployed. Automatic approval review blocked pushing the separate
+game fix to GitHub/opening its PR because it did not find explicit authorization
+to export that payload to the game fork/upstream. Both local game branches are
+complete; publishing that game PR needs Matt's approval. Wes's release review
+boundary remains in place.
