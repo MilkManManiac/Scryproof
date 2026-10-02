@@ -5,7 +5,7 @@
  * browser stops the moment someone alt-tabs into a game. Here the main
  * process watches the keyboard system-wide through `uiohook-napi` (a
  * low-level Windows hook; vetted 2026-09-21: no network, imports only
- * kernel32/user32/advapi32) and tells the page one thing: whether the one
+ * kernel32/user32/advapi32; on macOS it is a CGEventTap) and tells the page one thing: whether the one
  * chosen key is held. The rules that keep a keyboard hook honest:
  *
  *   - It runs only while the page asks, which is only in a voice channel with
@@ -14,6 +14,14 @@
  *     process. Nothing about what was typed reaches the page, the server, or
  *     a file.
  *   - It watches; it does not intercept. The game still gets the key.
+ *   - On macOS it does not start, and does not ask, until the page has chosen
+ *     a key and the Accessibility permission is there. Starting the hook
+ *     without the grant is what made macOS put its prompt up over and over
+ *     (15 times in 20 minutes in spike 3); here it is asked once, through
+ *     `systemPreferences`, and the hook is started only if it was granted.
+ *   - A key held while the person leaves (Cmd-Tab, Alt-Tab, the screen locks,
+ *     the machine sleeps) is released here, not left to a key-up that never
+ *     comes. `push-to-talk-core.js` has the reasoning.
  */
 
 import { createRequire } from 'node:module';
@@ -37,36 +45,48 @@ function loadHook() {
   return hook;
 }
 
+/** What the OS tells us about leaving: the screen locking, the machine going to sleep. */
+const LEAVING = ['lock-screen', 'suspend'];
+
 function stop() {
-  if (!hook || !listener) return;
-  hook.io.off('keydown', listener.down);
-  hook.io.off('keyup', listener.up);
+  if (!listener) return;
+  const { hook: loaded, power } = listener;
+  loaded.io.off('keydown', listener.down);
+  loaded.io.off('keyup', listener.up);
+  for (const name of LEAVING) power?.off(name, listener.leave);
   listener = null;
-  if (hook.started) {
-    try { hook.io.stop(); } catch { /* already stopped */ }
-    hook.started = false;
+  if (loaded.started) {
+    try { loaded.io.stop(); } catch { /* already stopped */ }
+    loaded.started = false;
   }
 }
 
 /**
  * Watch `code` (a DOM key name), calling `onHold(true|false)` as it goes
  * down and up. `null` stops watching. Returns whether the key is watched.
+ * `env` is for tests and for main.js: `platform`, `power` (Electron's
+ * `powerMonitor`) and `loadHook` (a stand-in for the real hook).
  */
-export function watchKey(code, onHold) {
+export function watchKey(code, onHold, env = {}) {
   stop();
   if (code === null) return false;
-  const loaded = loadHook();
+  const loaded = (env.loadHook ?? loadHook)();
   if (!loaded) return false;
   const keycode = keycodeFor(code, loaded.keys);
   if (keycode === null) return false;
 
-  const track = holdTracker(keycode, onHold);
+  const platform = env.platform ?? process.platform;
+  const track = holdTracker(keycode, onHold, { platform, keys: loaded.keys });
   listener = {
-    down: (event) => track({ type: 'keydown', keycode: event.keycode }),
+    hook: loaded,
+    power: env.power ?? null,
+    down: (event) => track({ type: 'keydown', keycode: event.keycode, altKey: event.altKey, metaKey: event.metaKey }),
     up: (event) => track({ type: 'keyup', keycode: event.keycode }),
+    leave: () => track.release(),
   };
   loaded.io.on('keydown', listener.down);
   loaded.io.on('keyup', listener.up);
+  for (const name of LEAVING) listener.power?.on(name, listener.leave);
   if (!loaded.started) {
     try {
       loaded.io.start();
@@ -79,12 +99,30 @@ export function watchKey(code, onHold) {
   return true;
 }
 
-/** Wire the page's requests. `ours` says whether a request came from our own page; `target` is where held/released goes. */
-export function armPushToTalk(ipcMain, ours, target) {
+/**
+ * Wire the page's requests. `ours` says whether a request came from our own
+ * page; `target` is where held/released goes. `env` is `{ platform, power,
+ * accessibility, loadHook }`: `accessibility(prompt)` is
+ * `systemPreferences.isTrustedAccessibilityClient`, used on macOS only.
+ */
+export function armPushToTalk(ipcMain, ours, target, env = {}) {
+  const platform = env.platform ?? process.platform;
+  let asked = false;
   ipcMain.handle('scryproof:ptt-watch', (event, code) => {
     if (!ours(event)) return false;
     if (code !== null && typeof code !== 'string') return false;
-    return watchKey(code, (held) => target()?.webContents.send('scryproof:ptt', held));
+    if (code !== null && platform === 'darwin') {
+      // The first request puts up the system prompt; later ones only look.
+      // Without the grant the hook is not started at all, so macOS has nothing
+      // to ask about again. The page tries again after the person has said yes.
+      const prompt = !asked;
+      asked = true;
+      if (!env.accessibility?.(prompt)) {
+        stop();
+        return false;
+      }
+    }
+    return watchKey(code, (held) => target()?.webContents.send('scryproof:ptt', held), { ...env, platform });
   });
 }
 
