@@ -144,15 +144,17 @@ class Person {
       (() => {
         const Native = window.WebSocket;
         window.__callSockets = [];
-        window.__callOffline = false;
+        window.__callOffline = { gateway: false, media: false };
         window.WebSocket = class extends Native {
           constructor(url, protocols) {
             const address = new URL(String(url), location.href);
-            const call = address.pathname === '/gateway' || address.port === '7880';
+            const kind = address.pathname === '/gateway' ? 'gateway' : address.port === '7880' ? 'media' : 'other';
+            const call = kind !== 'other';
             // Fail only call signalling, with ordinary asynchronous network
             // errors. Vite's HMR socket and HTTP stay connected.
-            super(call && window.__callOffline ? 'ws://127.0.0.1:7999/offline' : url, protocols);
+            super(call && window.__callOffline[kind] ? 'ws://127.0.0.1:7999/offline' : url, protocols);
             this.callSocket = call;
+            this.callKind = kind;
             window.__callSockets.push(this);
           }
         };
@@ -285,13 +287,25 @@ class Person {
     return { frames: after.frames - before.frames, packets: after.packets - before.packets, width: after.width };
   }
 
-  async callOffline(offline) {
+  async signalOffline(kind, offline) {
     return this.evaluate(`(() => {
-      window.__callOffline = ${offline};
-      const sockets = window.__callSockets.filter((socket) => socket.callSocket && socket.readyState === WebSocket.OPEN);
-      if (window.__callOffline) for (const socket of sockets) socket.close();
+      window.__callOffline['${kind}'] = ${offline};
+      const sockets = window.__callSockets.filter((socket) => socket.callKind === '${kind}' && socket.readyState === WebSocket.OPEN);
+      if (${offline}) for (const socket of sockets) socket.close();
       return sockets.length;
     })()`);
+  }
+
+  async dropSignal(kind) {
+    return this.evaluate(`(() => {
+      const sockets = window.__callSockets.filter((socket) => socket.callKind === '${kind}' && socket.readyState === WebSocket.OPEN);
+      for (const socket of sockets) socket.close();
+      return sockets.length;
+    })()`);
+  }
+
+  async callOffline(offline) {
+    return (await this.signalOffline('gateway', offline)) + (await this.signalOffline('media', offline));
   }
 
   async close() {
@@ -311,10 +325,11 @@ async function reachable(url) {
   }
 }
 
-const wes = new Person('wes', 9341);
-const alex = new Person('alex', 9342);
-const mara = new Person('mara', 9343);
-const alexSecond = new Person('alex', 9344);
+const debugBase = Number(process.env.VOICE_CHECK_DEBUG_BASE ?? 9341);
+const wes = new Person('wes', debugBase);
+const alex = new Person('alex', debugBase + 1);
+const mara = new Person('mara', debugBase + 2);
+const alexSecond = new Person('alex', debugBase + 3);
 
 /** Focused takeover checks also run alone for review mutations. */
 async function checkTakeover(connected) {
@@ -325,6 +340,18 @@ async function checkTakeover(connected) {
   await wes.clickVoiceChannel();
   await alex.clickVoiceChannel();
   await Promise.all([wes.until(connected), alex.until(connected)]);
+  check('single-device probe blocks a live gateway and drops a live media socket',
+    (await alex.signalOffline('gateway', true)) >= 1 && (await alex.dropSignal('media')) >= 1);
+  await sleep(15000);
+  const pending = await alex.snapshot();
+  check('a missing gateway keeps the single-device call pending beyond the old timeout', pending.phase === 'connecting' && pending.channelId !== null);
+  await alex.signalOffline('gateway', false);
+  const singleRecovered = await Promise.all([wes.until(connected, 60_000), alex.until(connected, 60_000)]);
+  check('the single-device call resumes once the gateway returns', singleRecovered.every(Boolean));
+  const singleAudio = await wes.listenTo(alex.userId);
+  check('the peer decodes the single-device user after gateway recovery', singleAudio.energy > 0.001,
+    `+${singleAudio.energy.toFixed(4)} energy`);
+
   const beforeTakeover = (await wes.snapshot()).epoch;
   // Retain only the original encrypted Room and its join grant in this test
   // profile, to force the LiveKit-only kick independently of gateway state.
@@ -355,10 +382,22 @@ async function checkTakeover(connected) {
   const decoded = await alexSecond.listenTo(wes.userId);
   check('the replacement decodes the peer with the right key', decoded.energy > 0.001,
     `+${decoded.packets} packets, +${decoded.energy.toFixed(4)} energy`);
+  const peerDecoded = await wes.listenTo(alexSecond.userId);
+  check('after approval the peer actually decodes the replacement device', peerDecoded.energy > 0.001,
+    `+${peerDecoded.energy.toFixed(4)} energy`);
   check('the replacement and peer compute the same verification code',
     (await alexSecond.snapshot()).code === (await wes.snapshot()).code);
-  await alex.callOffline(false);
-  const moved = await alex.until(`window.__voice.getSnapshot().phase === 'moved'`, 15_000);
+  const stable = { peerEpoch: (await wes.snapshot()).epoch, ownerEpoch: (await alexSecond.snapshot()).epoch,
+    generation: await alexSecond.evaluate(`window.__voice.generation`) };
+  await alex.signalOffline('media', false);
+  await sleep(25000);
+  check('returning old media before its gateway never changes the selected device epoch or transport',
+    (await wes.snapshot()).epoch === stable.peerEpoch && (await alexSecond.snapshot()).epoch === stable.ownerEpoch &&
+    (await alexSecond.evaluate(`window.__voice.generation`)) === stable.generation);
+  check('the old device has no live media socket while its gateway is absent', await alex.evaluate(
+    `!window.__callSockets.some((socket) => socket.callKind === 'media' && socket.readyState === WebSocket.OPEN)`));
+  await alex.signalOffline('gateway', false);
+  const moved = await alex.until(`window.__voice.getSnapshot().phase === 'moved'`, 60_000);
   check('the original device ends as moved, with the reason in plain words', Boolean(moved) &&
     (await alex.snapshot()).error === 'You joined this call from another device.');
   check('the original device displays the moved message', await alex.evaluate(
@@ -420,7 +459,7 @@ async function checkTakeover(connected) {
 
   // A terminal media disconnect is distinct from LiveKit's recoverable
   // reconnecting event. Drive the real room event, then click the same channel.
-  await alexSecond.evaluate(`window.__voice.room.disconnect()`);
+  await alexSecond.evaluate(`window.__voice.end('failed', 'The call connection was lost.')`);
   const failed = await alexSecond.until(`window.__voice.getSnapshot().phase === 'failed'`, 10_000);
   const gone = await wes.until(`window.__voice.getSnapshot().people.length === 0`, 10_000);
   check('terminal connection loss clears the gateway presence', Boolean(failed && gone));
