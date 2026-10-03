@@ -4,6 +4,8 @@ Living state. Update this at the end of every working session.
 
 ## Mac release
 
+**Built on Trey's Mac, 2026-10-02 late: 0.5.4, not yet published.** Trey's Mac update key generated (private half only at `~/.scryproof/mac-update-key.pem` on his Mac; back it up, since losing it means installed Mac apps can never update) and its public half committed. Notarized with the existing keychain profile `codex-pet-sidecar-notary` (same Team ID) because `scryproof-notary` does not exist on this Mac; the build steps were run by hand with that name. Both the app and the zip's app: codesign strict verify OK, TeamIdentifier LRU27MC63Q, `spctl` "Notarized Developer ID", stapled, `syspolicy_check distribution` passes. DMG notarized and stapled. `publish-mac.sh --dry-run` passes: DMG sha256 b7420b2bf6134b002c145504ffaf27c82770b8e323b237f9c7300d99ab0d4ef3, zip 016ccd441fb1a7cdd92c441e69212b1f69fdc7d7ef2acbb3a6135dc7976bd59f. Gatekeeper is disabled on this Mac, so `spctl` reports "override=security disabled"; `syspolicy_check` is the check that held. Not done: the server deploy, publication (needs Wes, `.env.box` and the box key), and the second-user checklist below.
+
 Trey signs Mac shell updates with his separate Mac key (ruling 2026-10-02).
 On Trey's Mac, from the repository root, in order:
 
