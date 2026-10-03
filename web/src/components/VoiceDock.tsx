@@ -19,6 +19,7 @@ import type { VoiceState } from '@scryproof/shared';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, HangUpGlyph, ScreenGlyph, SoundboardGlyph } from './glyphs';
+import { ActivitiesButton } from './Activities';
 import { SoundBoard } from './SoundBoard';
 
 export function VoiceDock({ mine }: { mine: VoiceState }) {
@@ -95,6 +96,7 @@ export function VoiceDock({ mine }: { mine: VoiceState }) {
           <SoundboardGlyph size={18} />
           <span>Soundboard</span>
         </button>
+        <ActivitiesButton inCall />
       </div>
       {boardOpen && boardReady && server ? <SoundBoard server={server} onClose={() => setBoardOpen(false)} /> : null}
     </div>

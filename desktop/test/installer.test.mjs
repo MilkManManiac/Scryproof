@@ -280,7 +280,8 @@ describe('Mac release commands', () => {
     assert.equal(existsSync(f.key), false);
   });
 
-  test('signs the zip, dry-runs a valid publish and refuses doctored hashes and sizes before network', () => {
+  // On a Mac the script also staples and mounts the DMG, which a stand-in DMG cannot pass.
+  test('signs the zip, dry-runs a valid publish and refuses doctored hashes and sizes before network', { skip: process.platform === 'darwin' && 'publish-mac.sh validates a real notarized DMG on macOS' }, () => {
     const f = releaseFixture();
     assert.equal(f.run('mac-update-key.mjs').status, 0);
     const release = join(f.root, 'desktop', 'release');

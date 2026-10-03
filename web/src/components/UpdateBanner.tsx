@@ -4,7 +4,8 @@
 
 import { useEffect, useState } from 'react';
 
-import { applyClientUpdate, applyShellUpdate, onClientUpdate } from '../lib/desktop';
+import { applyClientUpdate, applyShellUpdate, onClientUpdate, onDesktopRelease } from '../lib/desktop';
+import { DesktopReleaseNotice } from './DesktopReleaseNotice';
 import { useShellUpdate } from '../lib/desktop-hooks';
 
 /**
@@ -49,20 +50,27 @@ export function ShellUpdateBanner({
  */
 export function UpdateBanner({ inVoice }: { inVoice: boolean }) {
   const [client, setClient] = useState(false);
+  const [release, setRelease] = useState<string | null>(null);
   const shell = useShellUpdate();
   useEffect(() => onClientUpdate(() => setClient(true)), []);
+  // Only shells that cannot install updates themselves hear of a release here.
+  useEffect(() => onDesktopRelease(setRelease), []);
   if (shell) return <ShellUpdateBanner how={shell} inVoice={inVoice} onApply={applyShellUpdate} />;
-  if (!client) return null;
+  const available = release ? <DesktopReleaseNotice version={release} /> : null;
+  if (!client) return available;
   return (
-    <div className="banner update">
-      A newer Scryproof is ready.{' '}
-      {inVoice ? (
-        'Reload when your call is over.'
-      ) : (
-        <button type="button" className="link-button" onClick={applyClientUpdate}>
-          Reload now
-        </button>
-      )}
-    </div>
+    <>
+      {available}
+      <div className="banner update">
+        A newer Scryproof is ready.{' '}
+        {inVoice ? (
+          'Reload when your call is over.'
+        ) : (
+          <button type="button" className="link-button" onClick={applyClientUpdate}>
+            Reload now
+          </button>
+        )}
+      </div>
+    </>
   );
 }

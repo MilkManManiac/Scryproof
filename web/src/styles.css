@@ -3242,6 +3242,119 @@ video.mirrored {
   text-decoration: underline;
 }
 
+/* A rare shell release is a quiet, actionable card, separate from call warnings. */
+.desktop-release {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+  margin: 10px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+  color: var(--text);
+  box-shadow: var(--hi);
+}
+.desktop-release-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-radius: var(--radius-lg);
+  background: var(--accent-wash);
+  color: var(--accent-bright);
+}
+.desktop-release-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.desktop-release-heading strong {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.desktop-release-version {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--text-muted);
+  font: 11px var(--mono);
+  white-space: nowrap;
+}
+.desktop-release-copy p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-release-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.desktop-release-download {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease);
+}
+.desktop-release-download:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: var(--on-accent);
+  text-decoration: none;
+}
+.desktop-release-actions > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.activity-update-help {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+.activity-update-help summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.activity-update-help p {
+  margin: 8px 0 0;
+}
+@media (max-width: 680px) {
+  .desktop-release {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+    margin: 8px;
+    padding: 12px;
+  }
+  .desktop-release-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .desktop-release-actions {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+}
+
 .banner.bad {
   background: var(--bad);
   color: #fff;
@@ -4996,6 +5109,13 @@ kbd {
   box-shadow: var(--hi), var(--shadow-2);
   animation: arrive var(--t-arrive) var(--ease);
 }
+.menu.menu-portal {
+  position: fixed;
+  right: auto;
+  overflow-y: auto;
+  min-width: 0;
+}
+
 .menu.align-right {
   left: auto;
   right: 0;
@@ -9859,4 +9979,161 @@ kbd {
 }
 .notify-sound .voice-select {
   width: 150px;
+}
+
+/* Standalone activities keep the call alive while their own frame has focus. */
+.activity-choice {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 20px;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.activity-choice > span:first-of-type {
+  display: grid;
+  gap: 4px;
+}
+.activity-choice strong {
+  font-size: 18px;
+}
+.activity-choice small,
+.activity-title small {
+  color: var(--text-muted);
+}
+.activity-play {
+  margin-left: auto;
+  color: var(--accent);
+}
+.activity-player {
+  position: fixed;
+  inset: 12px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.activity-player.minimized {
+  visibility: hidden;
+  pointer-events: none;
+}
+.activity-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.activity-title,
+.activity-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.activity-title small {
+  font-size: 12px;
+}
+.activity-controls button {
+  border: 1px solid var(--line);
+  padding: 7px 12px;
+}
+.activity-hint {
+  padding: 8px 16px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.activity-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #111;
+}
+.activity-stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.activity-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: var(--panel-solid);
+  gap: 10px;
+  padding: 24px;
+}
+.activity-loading button {
+  border: 1px solid var(--line);
+  padding: 8px 16px;
+}
+.activity-call {
+  border-top: 1px solid var(--line);
+  padding: 6px 16px;
+  font-size: 12px;
+}
+.activity-call > button {
+  margin-left: 12px;
+}
+.activity-call .connection-panel {
+  border: 0;
+}
+.activity-error {
+  padding: 8px 16px;
+  margin: 0;
+  color: var(--bad);
+}
+.activity-resume {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--panel-solid);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.voice-dock-row {
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (max-width: 640px) {
+  .activity-player {
+    inset: 0;
+    border-radius: 0;
+  }
+  .activity-toolbar {
+    padding: 8px;
+  }
+  .activity-hint {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .activity-title small {
+    display: none;
+  }
+  .activity-controls {
+    gap: 5px;
+  }
+  .activity-controls button {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
 }

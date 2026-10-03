@@ -786,7 +786,7 @@ export class VoiceSession {
     if (this.room === room) this.refreshVideos();
   }
 
-  async setScreenShare(on: boolean): Promise<void> {
+  async setScreenShare(on: boolean, forActivity = false): Promise<void> {
     const room = this.room;
     if (!room || !this.snapshot.can.screenShare) return;
     this.update(on ? { mediaError: null, shareNotice: null } : { mediaError: null });
@@ -807,7 +807,8 @@ export class VoiceSession {
           systemAudio: 'include',
           resolution: quality.resolution,
           contentHint: 'motion',
-          selfBrowserSurface: 'exclude',
+          selfBrowserSurface: forActivity ? 'include' : 'exclude',
+          ...(forActivity ? { preferCurrentTab: true } : {}),
         },
         {
           screenShareEncoding: quality.encoding,

@@ -21,7 +21,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { config } from '../config.js';
 import { notFound } from '../lib/http-error.js';
@@ -37,8 +37,7 @@ const DOWNLOADS: Record<string, string> = {
 export const downloadsDir = (): string => resolve(config.dataDir, 'downloads');
 
 export async function registerDownloadRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Params: { name: string } }>('/download/:name', async (request, reply) => {
-    const name = request.params.name;
+  const serve = async (name: string, reply: FastifyReply) => {
     const type = Object.hasOwn(DOWNLOADS, name) ? DOWNLOADS[name] : undefined;
     if (!type) throw notFound('There is no such download.');
     const path = resolve(downloadsDir(), name);
@@ -54,5 +53,8 @@ export async function registerDownloadRoutes(app: FastifyInstance): Promise<void
     if (!name.endsWith('.json')) void reply.header('Content-Disposition', `attachment; filename="${name}"`);
     void reply.header('Cache-Control', 'no-store');
     return reply.send(createReadStream(path));
-  });
+  };
+  app.get<{ Params: { name: string } }>('/download/:name', (request, reply) => serve(request.params.name, reply));
+  // Older desktop shells forward /api/ but cannot fetch /download/ as app files.
+  app.get('/api/desktop/installer', (_request, reply) => serve('installer.json', reply));
 }

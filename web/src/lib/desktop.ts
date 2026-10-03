@@ -5,11 +5,15 @@
  * the address bar is the answer.
  */
 
+import { newerDesktopRelease } from './desktop-version';
+
 interface DesktopBridge {
   server: string;
   gateway: string;
   /** The installed shell's own version, from its package.json. Absent in older shells. */
   shell?: string;
+  /** The shell permits isolated Activities frames. Older shells do not. */
+  activities?: boolean;
   /** Absent in shells built before updates existed. */
   updateState?: () => Promise<number | null>;
   onUpdateReady?: (listener: (version: number) => void) => void;
@@ -65,6 +69,8 @@ export interface ShareRequest {
 const bridge = typeof window === 'undefined' ? null : (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+export const canEmbedActivities = !bridge || bridge.activities === true;
+export const canInstallShellUpdate = typeof bridge?.applyShellUpdate === 'function';
 
 /** The app on a Mac. False in a browser, and in a shell too old to say. */
 export const onMacApp = bridge?.platform === 'darwin';
@@ -215,6 +221,40 @@ export async function shellUpdateHow(): Promise<'restart' | 'download'> {
   } catch {
     return 'restart';
   }
+}
+
+/** Manual fallback only for shells without automatic installer support. */
+export function onDesktopRelease(listener: (version: string) => void): () => void {
+  if (!bridge || canInstallShellUpdate) return () => {};
+  let active = true;
+  let checking = false;
+  const controller = new AbortController();
+  const check = async () => {
+    if (!active || checking) return;
+    checking = true;
+    try {
+      // /api/ is forwarded by older shells too; a direct cross-origin fetch is not.
+      const response = await fetch('/api/desktop/installer', {
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+      });
+      if (!response.ok) return;
+      const manifest = await response.json();
+      if (active && newerDesktopRelease(manifest?.version, bridge.shell)) listener(manifest.version);
+    } catch {
+      // Offline, unpublished, or a partial publish: keep the app usable and retry.
+    } finally {
+      checking = false;
+    }
+  };
+  void check();
+  const timer = setInterval(() => void check(), 60_000);
+  return () => {
+    active = false;
+    controller.abort();
+    clearInterval(timer);
+  };
 }
 
 /** Close the app and run the waiting installer, which opens it again. */

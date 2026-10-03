@@ -20,6 +20,7 @@ import { Menu, MenuItem } from './Menu';
 import { PlaceModeItems } from './PlaceModeItems';
 import { Modal } from './Modal';
 import { NoticeBell } from './NoticeTimeline';
+import { ActivitiesButton } from './Activities';
 import { GamesButton } from './Games';
 
 function tile(name: string): string {
@@ -127,6 +128,7 @@ export function ServerRail() {
       })}
       <NoticeBell />
       <GamesButton />
+      <ActivitiesButton />
       <div className="rail-divider" />
 
       {state.serverOrder.map((id) => {
@@ -177,7 +179,7 @@ export function ServerRail() {
             </button>
 
             {serverMenu === id ? (
-              <Menu onClose={() => setServerMenu(null)}>
+              <Menu portal onClose={() => setServerMenu(null)}>
                 <PlaceModeItems id={id} scope="server" kind="server" onDone={() => setServerMenu(null)} />
               </Menu>
             ) : null}

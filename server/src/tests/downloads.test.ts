@@ -78,6 +78,21 @@ describe('/download/', () => {
     });
   }
 
+  it('makes the same uncached manifest readable through an older desktop shell API path', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/desktop/installer' });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers['content-type'], 'application/json');
+    assert.equal(response.headers['cache-control'], 'no-store');
+    assert.equal(response.body, manifest);
+    writeFileSync(join(dataDir, 'downloads', 'installer.json'), JSON.stringify({ version: '0.10.0' }));
+    try {
+      const later = await app.inject({ method: 'GET', url: '/api/desktop/installer' });
+      assert.equal(later.json().version, '0.10.0', 'a published release is seen without restarting the app');
+    } finally {
+      writeFileSync(join(dataDir, 'downloads', 'installer.json'), manifest);
+    }
+  });
+
   it('serves nothing that is not on the list', async () => {
     for (const url of ['/download/secret.txt', '/download/..%2Finstaller.json', '/download/installer.json.part', '/download/installer-mac-arm64.json.bak', '/download/../installer.json', '/download/constructor', '/download/toString']) {
       const response = await app.inject({ method: 'GET', url });

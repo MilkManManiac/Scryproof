@@ -29,6 +29,31 @@ export const CHANGELOG: readonly Release[] = [
     ],
   },
   {
+    id: '2026-10-02-desktop-update-link',
+    date: '2026-10-02',
+    title: 'Get the desktop update from Scryproof',
+    notes: [
+      'Older desktop versions that cannot install updates automatically get a download card when a new installer is available. Normal automatic updates keep their usual flow. Download it and run it when your call is over. Activities has the same link when it needs a newer app.',
+      'Restart to install still handles automatic updates. If updating fails, Activities has a Trouble updating? download link. Browser players do not need an installer.',
+    ],
+  },
+  {
+    id: '2026-10-02-activities',
+    date: '2026-10-02',
+    title: 'Play Drain The Swamp in Activities',
+    notes: [
+      'Open Activities in the left bar or call controls to play Drain The Swamp. It is single player, with progress saved in this browser on this device.',
+      'In a call, choose Share gameplay and share the Scryproof tab or window. Friends can press Watch. Back to Scryproof keeps the game open and stops the share you started there.',
+      'Activities works in the browser. The desktop app needs the new installer; older versions offer a browser link.',
+    ],
+  },
+  {
+    id: '2026-10-01-server-menu',
+    date: '2026-10-01',
+    title: 'Server notification menu stays visible',
+    notes: ['Right-click a server to change its notifications: the menu now opens over the channel list and stays within the window.'],
+  },
+  {
     id: '2026-10-01-notifications',
     date: '2026-10-01',
     title: 'Know where that sound came from',
