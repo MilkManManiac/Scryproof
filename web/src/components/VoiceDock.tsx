@@ -37,7 +37,7 @@ export function VoiceDock({ mine }: { mine: VoiceState }) {
       ? 'A moderator has muted you'
       : 'Getting the soundboard ready';
 
-  if (call.phase === 'moved') return (
+  if ((call.phase === 'moved' || call.phase === 'ended')) return (
     <div className="voice-dock" role="status">
       <span className="voice-dock-state">{call.error}</span>
     </div>

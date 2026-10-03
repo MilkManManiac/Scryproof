@@ -216,6 +216,8 @@ export type ClientEvent =
         requestId?: string;
         /** Identifies this tab across gateway reconnects, not a LiveKit identity. */
         tabId?: string;
+        /** Terminal transport cleanup is not a user's deliberate hang-up. */
+        leave?: 'cleanup';
         /** A direct message conversation to be in the call of. Only read when `channelId` is null. */
         dmId?: Snowflake | null;
         selfMute?: boolean;

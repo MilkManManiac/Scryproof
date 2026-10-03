@@ -43,7 +43,7 @@ mock.module('../lib/api', { namedExports: {
   ApiError: class extends Error {},
   api: { voice: { token: async () => ({ url: 'local-test', token: 'test', can: { speak: false, video: false, screenShare: false } }) } },
 } });
-const { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused } = await import('../lib/voice-session');
+const { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused, VoiceCallLeft } = await import('../lib/voice-session');
 const { voicePrefs } = await import('../lib/voice-prefs');
 voicePrefs.set({ sounds: false });
 
@@ -185,4 +185,73 @@ test('a definite gateway refusal is terminal rather than an endless media retry'
     assert.equal(session.getSnapshot().error, 'You cannot join that voice channel.');
     assert.deepEqual(ends, ['failed']);
   } finally { await session.leave(); }
+});
+
+
+test('automatic recovery expires at sixty seconds of wall-clock loss, including sleep', async (t) => {
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  identity = await createDeviceIdentity('sleep-owner'); pins = new MemoryIdentityStore();
+  const ends: string[] = [];
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase), async () => { throw new VoiceGatewayUnavailable(); });
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    await session.resume();
+    now += 59_999;
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'connecting');
+    now += 1;
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'ended');
+    assert.equal(session.getSnapshot().error, 'You were disconnected from the call.');
+    assert.deepEqual(ends, ['ended']);
+  } finally { await session.leave(); }
+});
+
+test('an explicit offline join retains its claiming callback instead of becoming a resume', async () => {
+  identity = await createDeviceIdentity('offline-claim'); pins = new MemoryIdentityStore();
+  let online = false;
+  let claims = 0; let resumes = 0;
+  const session = new VoiceSession(() => 'me', () => {}, () => {}, async () => { resumes += 1; return false; });
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => {
+      claims += 1;
+      if (!online) throw new VoiceGatewayUnavailable();
+      return true;
+    });
+    online = true;
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(claims, 2);
+    assert.equal(resumes, 0);
+  } finally { await session.leave(); }
+});
+
+test('a server deliberate-leave refusal ends quietly without moved or failed', async () => {
+  identity = await createDeviceIdentity('left-elsewhere'); pins = new MemoryIdentityStore();
+  const ends: string[] = [];
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase), async () => { throw new VoiceCallLeft(); });
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'ended');
+    assert.equal(session.getSnapshot().error, 'You left this call on another device.');
+    assert.deepEqual(ends, ['ended']);
+  } finally { await session.leave(); }
+});
+
+
+test('a server that never answers a join is bounded from the request, not its first timeout', async () => {
+  identity = await createDeviceIdentity('unanswered-join'); pins = new MemoryIdentityStore();
+  let answer: ((owned: boolean) => void) | undefined;
+  const session = new VoiceSession(() => 'me', () => {}, () => {}, async () => false, 30);
+  const work = session.join({ kind: 'channel', id: 'room' }, () => new Promise<boolean>((resolve) => { answer = resolve; }));
+  try {
+    await until(() => session.getSnapshot().phase === 'ended');
+    assert.equal(session.getSnapshot().error, 'You were disconnected from the call.');
+    assert.equal(Room.opened.at(-1)?.connects, 0);
+    answer?.(true);
+    await work;
+    assert.equal(session.getSnapshot().phase, 'ended');
+  } finally { answer?.(false); await session.leave(); }
 });

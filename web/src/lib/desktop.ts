@@ -62,7 +62,7 @@ export interface ShareRequest {
   soundLabel: string;
 }
 
-const bridge = (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
+const bridge = typeof window === 'undefined' ? null : (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
 
@@ -365,7 +365,14 @@ export function downloadLink(mac: boolean, fetcher?: typeof fetch, inApp: boolea
   });
 }
 
-export const downloadStore = downloadLink(onMacApp || isMacPlatform());
+// Importing the bridge must not read a browser location or platform. React
+// reads/subscribes later, when the page is present; keep one stable store.
+let downloads: ReturnType<typeof downloadLink> | null = null;
+const downloadsForPage = () => downloads ??= downloadLink(onMacApp || isMacPlatform());
+export const downloadStore = {
+  get: (): DesktopDownload | null => downloadsForPage().get(),
+  subscribe: (listener: () => void): (() => void) => downloadsForPage().subscribe(listener),
+};
 
 /** What macOS has allowed, kept up to date while something shows it. */
 export const permissionStore = liveValue<PermissionState | null>(null, (set) => watchPermissions(set));

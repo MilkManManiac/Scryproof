@@ -75,19 +75,33 @@ const voiceStates = new Map<string, VoiceState>();
 // Remember the selected tab briefly through a gateway outage. This is only
 // in-memory recovery state; explicit leave and server removals discard it.
 const selectedVoice = new Map<string, { tabId: string; sessionId: string; roomId: string; until: number }>();
+const deliberatelyLeft = new Map<string, number>();
 const RECOVERY_WINDOW_MS = 10 * 60_000;
 setInterval(() => {
+  for (const [userId, until] of deliberatelyLeft) if (until <= Date.now()) deliberatelyLeft.delete(userId);
   for (const [userId, selected] of selectedVoice) {
     if (selected.until <= Date.now() && !connectionsForUser(userId).some((c) => ownsVoice(c))) selectedVoice.delete(userId);
   }
 }, 60_000).unref();
-export function canResumeVoice(connection: Connection, roomId: string, tabId: string): boolean {
+/** A human hang-up invalidates every automatic recovery for this account. */
+export function invalidateVoiceRecovery(userId: string): void {
+  selectedVoice.delete(userId);
+  deliberatelyLeft.set(userId, Date.now() + RECOVERY_WINDOW_MS);
+}
+
+export function resumeRefusal(connection: Connection, roomId: string, tabId: string): 'voice_left' | 'voice_replaced' | null {
   const selected = selectedVoice.get(connection.userId);
-  if (selected && selected.until <= Date.now() && !connectionsForUser(connection.userId).some((c) => ownsVoice(c))) {
-    selectedVoice.delete(connection.userId);
-  }
+  if (selected && selected.until <= Date.now() && !connectionsForUser(connection.userId).some((c) => ownsVoice(c))) selectedVoice.delete(connection.userId);
   const active = selectedVoice.get(connection.userId);
-  return !active || (active.tabId === tabId && active.sessionId === connection.sessionId && active.roomId === roomId);
+  if (active) {
+    if (active.roomId !== roomId) return 'voice_left';
+    return active.tabId === tabId && active.sessionId === connection.sessionId ? null : 'voice_replaced';
+  }
+  return (deliberatelyLeft.get(connection.userId) ?? 0) > Date.now() ? 'voice_left' : null;
+}
+
+export function canResumeVoice(connection: Connection, roomId: string, tabId: string): boolean {
+  return resumeRefusal(connection, roomId, tabId) === null;
 }
 
 const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
@@ -115,16 +129,19 @@ export function ownsVoice(connection: Connection, roomId?: string): boolean {
 
 /** Transfer before broadcasting membership, so the old device gets no new keys. */
 export function claimVoice(connection: Connection, roomId: string, dm = false, joining = false, tabId = connection.id): void {
+  const previous = selectedVoice.get(connection.userId);
+  if (joining && previous && previous.roomId !== roomId) invalidateVoiceRecovery(connection.userId);
   let replaced = false;
   for (const other of connectionsForUser(connection.userId)) {
     if (other === connection || !ownsVoice(other)) continue;
+    const differentRoom = (other.callChannelId ?? other.callDmId) !== roomId;
     const differentTab = other.callTabId !== tabId || other.sessionId !== connection.sessionId;
     replaced ||= differentTab;
     other.callChannelId = null;
     other.callDmId = null;
     other.callReplaced = true;
     if (differentTab && other.ws.readyState === 1) other.ws.send(JSON.stringify({
-      t: 'error', d: { code: 'voice_replaced', message: 'You joined this call from another device.' },
+      t: 'error', d: { code: differentRoom ? 'voice_left' : 'voice_replaced', message: differentRoom ? 'You left this call on another device.' : 'You joined this call from another device.' },
     }));
   }
   connection.callChannelId = dm ? null : roomId;

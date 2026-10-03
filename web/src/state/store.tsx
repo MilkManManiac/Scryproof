@@ -54,7 +54,7 @@ import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
-import { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
+import { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused, VoiceCallLeft, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
@@ -1044,6 +1044,7 @@ export function StoreProvider({
       if (event.t === 'voice_owned' && event.d.requestId === requestId && event.d.roomId === place.id) done(true);
       if (event.t === 'error' && event.d.requestId === requestId) {
         if (event.d.code === 'voice_replaced') done(false);
+        else if (event.d.code === 'voice_left') { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceCallLeft()); }
         else { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceGatewayRefused(event.d.message)); }
       }
     };
@@ -1071,7 +1072,7 @@ export function StoreProvider({
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
       () => {
         currentCall.current = null;
-        gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
+        gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
       },
       (place) => requestVoiceOwnership(place, 'resume'),
     );
@@ -1498,7 +1499,10 @@ export function StoreProvider({
       // The only errors the gateway sends are refusals of something we just
       // asked for. Mid-join, that is the join: show it rather than sit on
       // "connecting" forever.
-      if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current && !event.d.requestId) {
+      if (event.t === 'error' && event.d.code === 'voice_left' && currentCall.current && !event.d.requestId) {
+        currentCall.current = null;
+        void voice.end('ended', 'You left this call on another device.');
+      } else if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current && !event.d.requestId) {
         currentCall.current = null;
         void voice.end('moved', MOVED_CALL_MESSAGE);
       } else if (event.t === 'error' && currentCall.current && !event.d.requestId) {
@@ -1547,7 +1551,7 @@ export function StoreProvider({
           // a call somewhere else announces leaving the old one, and that
           // must not hang up the new one.
           const place = currentCall.current;
-          if (place && left === place.id) {
+          if (place && left === place.id && (!event.d.ownerTabId || event.d.ownerTabId === voiceTabId)) {
             currentCall.current = null;
             void voice.leave();
           }
@@ -1667,6 +1671,7 @@ export function StoreProvider({
         });
       },
       onStatus: (status) => {
+        if (status === 'reconnecting' && currentCall.current) voice.gatewayLost();
         dispatch({ type: 'connection', status });
         if (status === 'closed') onSignedOut();
         // A fresh connection starts out as nobody looking; say otherwise.
@@ -1743,7 +1748,7 @@ export function StoreProvider({
   const leaveVoice = useCallback(() => {
     currentCall.current = null;
     gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
-    void voice.leave();
+    void voice.end('ended', 'You left the call.');
   }, [voice]);
 
   const updateVoice = useCallback(

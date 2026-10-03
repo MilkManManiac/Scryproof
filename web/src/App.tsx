@@ -255,7 +255,7 @@ function Shell() {
     );
   }
 
-  const inVoice = call.phase !== 'moved' && Object.values(state.voiceStates).some(
+  const inVoice = call.phase !== 'moved' && call.phase !== 'ended' && Object.values(state.voiceStates).some(
     (voice) => voice.userId === state.user?.id,
   );
 

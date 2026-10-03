@@ -28,6 +28,7 @@ export interface VoiceStateIntent {
   join?: boolean | 'resume';
   requestId?: string;
   tabId?: string;
+  leave?: 'cleanup';
   /** A conversation's call to be in. Only read when `channelId` is null. */
   dmId?: string | null;
   selfMute?: boolean;
@@ -60,15 +61,16 @@ async function applyVoiceStateIntent(
   const otherOwner = hub.connectionsForUser(connection.userId).find((other) =>
     other !== connection && hub.ownsVoice(other) && (other.callTabId !== tabId || other.sessionId !== connection.sessionId),
   );
+  const refusal = roomId && intent.join !== true ? hub.resumeRefusal(connection, roomId, tabId) : null;
   if (roomId && ((intent.join !== true && otherOwner) ||
-    (intent.join !== true && !hub.canResumeVoice(connection, roomId, tabId)) ||
+    refusal ||
     (connection.callReplaced && intent.join !== true && intent.join !== 'resume'))) {
     // Neither a resume nor an unlabelled legacy join may claim another
     // login session's call. Old bundles get an answer too, including on a
     // fresh gateway socket. A silent refusal would let them connect
     // media with a cached account token while waiting forever for call keys.
     connection.ws.send(JSON.stringify({ t: 'error', d: {
-      code: 'voice_replaced', message: 'You joined this call from another device.', requestId: intent.requestId,
+      code: refusal ?? 'voice_replaced', message: refusal === 'voice_left' ? 'You left this call on another device.' : 'You joined this call from another device.', requestId: intent.requestId,
     } }));
     return;
   }
@@ -79,6 +81,16 @@ async function applyVoiceStateIntent(
 
   // Leaving: clear every voice state this user holds and tell whoever could see it.
   if (intent.channelId === null) {
+    if (intent.leave !== 'cleanup') {
+      hub.invalidateVoiceRecovery(connection.userId);
+      for (const other of hub.connectionsForUser(connection.userId)) {
+        if (other !== connection && hub.ownsVoice(other) && other.ws.readyState === 1) other.ws.send(JSON.stringify({
+          t: 'error', d: { code: 'voice_left', message: 'You left this call on another device.' },
+        }));
+      }
+      await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+      return;
+    }
     await hub.announceCleared(hub.clearVoiceForConnection(connection));
     return;
   }
@@ -90,11 +102,10 @@ async function applyVoiceStateIntent(
     .where(eq(channels.id, intent.channelId))
     .limit(1);
 
-  if (!channel || channel.type !== 'voice') return;
-  if (!connection.servers.has(channel.serverId)) return;
+  if (!channel || channel.type !== 'voice' || !connection.servers.has(channel.serverId)) { refuseVoice(connection, intent); return; }
 
   const ctx = await loadMemberContext(channel.serverId, connection.userId);
-  if (!ctx) return;
+  if (!ctx) { refuseVoice(connection, intent); return; }
 
   const permissions = await computePermissionsInChannel(ctx, channel.id);
 
@@ -136,6 +147,7 @@ async function applyVoiceStateIntent(
   const staying = previous?.channelId === channel.id && wasOwner;
 
   const state: VoiceState = {
+    ownerTabId: connection.callTabId,
     userId: connection.userId,
     serverId: channel.serverId,
     channelId: channel.id,
@@ -153,7 +165,8 @@ async function applyVoiceStateIntent(
     cameraOn: (intent.cameraOn ?? (staying && previous.cameraOn)) && has(permissions, Permission.VIDEO),
   };
 
-  if (connection.ws.readyState !== 1 || !hub.ownsVoice(connection, channel.id)) return;
+  if (connection.ws.readyState !== 1) return;
+  if (!hub.ownsVoice(connection, channel.id)) { refuseVoice(connection, intent); return; }
   hub.setVoiceState(state);
   await hub.announceVoiceState(channel.serverId, channel.id, state);
   confirmVoice(connection, channel.id, intent);
@@ -208,6 +221,7 @@ async function handleDmCallIntent(
   const staying = previous?.dmId === dmId && wasOwner;
 
   const state: VoiceState = {
+    ownerTabId: connection.callTabId,
     userId: connection.userId,
     serverId: null,
     channelId: null,
@@ -226,6 +240,12 @@ async function handleDmCallIntent(
   confirmVoice(connection, dmId, intent);
 
   logger.debug({ userId: connection.userId, dmId }, 'dm call state updated');
+}
+
+function refuseVoice(connection: hub.Connection, intent: VoiceStateIntent): void {
+  connection.ws.send(JSON.stringify({ t: 'error', d: {
+    code: 'voice_unavailable', message: 'You cannot join that call.', requestId: intent.requestId,
+  } }));
 }
 
 /** A correlated acknowledgement gates the client's LiveKit connect. */

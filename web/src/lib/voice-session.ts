@@ -70,7 +70,7 @@ const KEYRING_SIZE = 16;
 const SOUNDBOARD_TRACK = 'soundboard';
 const STATS_INTERVAL_MS = 2000;
 
-export type VoicePhase = 'idle' | 'connecting' | 'connected' | 'failed' | 'moved';
+export type VoicePhase = 'idle' | 'connecting' | 'connected' | 'failed' | 'moved' | 'ended';
 
 export const MOVED_CALL_MESSAGE = 'You joined this call from another device.';
 
@@ -82,6 +82,7 @@ export function shouldJoinCall(current: CallPlace | null, next: CallPlace, phase
 
 /** A missing gateway is a recoverable wait, never a terminal call failure. */
 export class VoiceGatewayRefused extends Error {}
+export class VoiceCallLeft extends Error {}
 
 export class VoiceGatewayUnavailable extends Error {
   constructor(readonly retry = false) { super('Waiting for the server to reconnect.'); }
@@ -340,6 +341,9 @@ export class VoiceSession {
   /** Guards against a slow join finishing after the user has already left. */
   private generation = 0;
   private stopOfflineWatch: (() => void) | null = null;
+  private recoveryStartedAt: number | null = null;
+  private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
+  private pendingEntry: (() => void | Promise<boolean>) | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   /** A membership event that arrived before the call state was ready. */
   private pendingMembership: VoiceMembership | null = null;
@@ -361,8 +365,9 @@ export class VoiceSession {
     /** Read when needed: the session outlives sign-in, so the id is not known at construction. */
     private readonly whoAmI: () => string,
     private readonly send: SendSignal,
-    private readonly ended: (phase: 'failed' | 'moved') => void = () => undefined,
+    private readonly ended: (phase: 'failed' | 'moved' | 'ended') => void = () => undefined,
     private readonly confirmOwnership: (place: CallPlace) => Promise<boolean> = async () => { throw new VoiceGatewayUnavailable(); },
+    private recoveryWindowMs = 60_000,
   ) {}
 
   private get userId(): string {
@@ -406,10 +411,14 @@ export class VoiceSession {
    * receive it.
    */
   async join(place: CallPlace, enterChannel: () => void | Promise<boolean>, recovering = false): Promise<void> {
+    if (!recovering) {
+      this.clearRecovery();
+      this.pendingEntry = enterChannel;
+    } else if (this.recoveryExpired()) { await this.end('ended', 'You were disconnected from the call.'); return; }
     const savedCall = recovering ? this.call : null;
     const savedAnnouncement = recovering ? this.myAnnouncement : null;
     const savedMembers = recovering ? this.members : [];
-    const leaving = this.leave();
+    const leaving = this.leave(true);
     const cleanupGeneration = this.generation;
     if (savedCall) {
       this.call = savedCall; this.myAnnouncement = savedAnnouncement; this.members = savedMembers;
@@ -501,8 +510,10 @@ export class VoiceSession {
       await room.setE2EEEnabled(true);
       if (stale()) return;
 
+      this.startRecovery();
       const owned = await enterChannel();
       if (stale()) return;
+      this.pendingEntry = null;
       if (owned === false) { await this.end('moved', MOVED_CALL_MESSAGE); return; }
       if (this.pendingMembership) {
         const pending = this.pendingMembership;
@@ -512,6 +523,7 @@ export class VoiceSession {
 
       // The only step that knows what kind of place this is. Each route
       // decides on the server what this person may do there.
+      if (recovering && this.recoveryExpired()) { await this.end('ended', 'You were disconnected from the call.'); return; }
       const grant = place.kind === 'channel' ? await api.voice.token(place.id) : await api.voice.dmToken(place.id);
       if (stale()) return;
       this.update({ can: grant.can });
@@ -520,6 +532,7 @@ export class VoiceSession {
       // `syncSubscriptions`) and pictures wait for Watch.
       await room.connect(grant.url, grant.token, { autoSubscribe: false });
       if (stale()) return;
+      if (recovering && this.recoveryExpired()) { await this.end('ended', 'You were disconnected from the call.'); return; }
       this.syncSubscriptions();
       if (this.call) { await this.sendKeys(this.call); await this.publish(this.call); }
       if (stale()) return;
@@ -534,11 +547,13 @@ export class VoiceSession {
       // local microphone meter from the moment the call is up.
       this.ears = setInterval(() => this.refreshSpeaking(), 100);
 
+      this.clearRecovery();
       this.update({ phase: 'connected', encrypted: room.isE2EEEnabled });
       if (voicePrefs.get().sounds) callSound('joined');
       this.statsTimer = setInterval(() => void this.measure(), STATS_INTERVAL_MS);
     } catch (problem) {
       if (stale()) return;
+      if (problem instanceof VoiceCallLeft) { await this.end('ended', 'You left this call on another device.'); return; }
       const message =
         problem instanceof ApiError
           ? problem.message
@@ -546,10 +561,11 @@ export class VoiceSession {
             ? problem.message
             : 'Could not join the call.';
       if (problem instanceof VoiceGatewayUnavailable || (recovering && !(problem instanceof ApiError) && !(problem instanceof VoiceGatewayRefused))) {
+        this.startRecovery();
         const call = this.call;
         const announcement = this.myAnnouncement;
         const members = this.members;
-        const leaving = this.leave();
+        const leaving = this.leave(true);
         const waitingGeneration = this.generation;
         this.call = call;
         this.myAnnouncement = announcement;
@@ -575,7 +591,9 @@ export class VoiceSession {
   }
 
   /** Tear down media and keys while keeping the reason visible in the panel. */
-  async end(phase: 'failed' | 'moved', error: string): Promise<void> {
+  async end(phase: 'failed' | 'moved' | 'ended', error: string): Promise<void> {
+    this.clearRecovery();
+    this.pendingEntry = null;
     const place = { channelId: this.snapshot.channelId, dmId: this.snapshot.dmId };
     const leaving = this.leave();
     const generation = this.generation;
@@ -585,7 +603,8 @@ export class VoiceSession {
     if (this.generation === generation) this.update({ ...IDLE, ...place, phase, error });
   }
 
-  async leave(): Promise<void> {
+  async leave(preserveRecovery = false): Promise<void> {
+    if (!preserveRecovery) { this.clearRecovery(); this.pendingEntry = null; }
     const generation = (this.generation += 1);
     this.stopOfflineWatch?.();
     this.stopOfflineWatch = null;
@@ -1465,12 +1484,45 @@ export class VoiceSession {
     if (this.call === call && call.epoch === epoch) this.update({ code });
   }
 
+  private clearRecovery(): void {
+    if (this.recoveryDeadline) clearTimeout(this.recoveryDeadline);
+    this.recoveryDeadline = null;
+    this.recoveryStartedAt = null;
+  }
+
+  private recoveryExpired(): boolean {
+    return this.recoveryStartedAt !== null && Date.now() - this.recoveryStartedAt >= this.recoveryWindowMs;
+  }
+
+  private startRecovery(): void {
+    if (this.recoveryStartedAt !== null) return;
+    this.recoveryStartedAt = Date.now();
+    const expire = () => {
+      if (this.recoveryStartedAt === null) return;
+      const remaining = this.recoveryWindowMs - (Date.now() - this.recoveryStartedAt);
+      if (remaining <= 0) { void this.end('ended', 'You were disconnected from the call.'); return; }
+      // Timers can fire just before the wall-clock boundary. Keep checking
+      // the same deadline instead of losing the expiry altogether.
+      this.recoveryDeadline = setTimeout(expire, remaining + 1);
+    };
+    this.recoveryDeadline = setTimeout(expire, this.recoveryWindowMs);
+  }
+
+  /** Gateway loss also starts the wall-clock bound, even with media still up. */
+  gatewayLost(): void {
+    if (!this.roomId || !['connected', 'connecting'].includes(this.snapshot.phase)) return;
+    this.startRecovery();
+    void this.resume();
+  }
+
   /** All transport recovery is gated by the application gateway. */
   async resume(): Promise<void> {
-    if (!this.roomId || this.snapshot.phase === 'moved' || this.snapshot.phase === 'idle') return;
+    if (!this.roomId || ['moved', 'ended', 'idle'].includes(this.snapshot.phase)) return;
+    this.startRecovery();
+    if (this.recoveryExpired()) { await this.end('ended', 'You were disconnected from the call.'); return; }
     const place: CallPlace = this.snapshot.dmId
       ? { kind: 'dm', id: this.snapshot.dmId } : { kind: 'channel', id: this.roomId };
-    await this.join(place, () => this.confirmOwnership(place), true);
+    await this.join(place, this.pendingEntry ?? (() => this.confirmOwnership(place)), true);
   }
 
   /* --------------------------------- media -------------------------------- */

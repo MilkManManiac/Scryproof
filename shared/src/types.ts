@@ -419,6 +419,8 @@ export interface AuditLogEntry {
  * person is in at most one call at a time, wherever it is.
  */
 export interface VoiceState {
+  /** Server-stamped owner of this presence, so an old tab departure cannot cancel a new join. */
+  ownerTabId?: string;
   userId: Snowflake;
   /** The server whose voice channel the call is in. Null for a call in a direct message. */
   serverId: Snowflake | null;

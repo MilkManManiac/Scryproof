@@ -174,7 +174,7 @@ describe('moving someone between voice channels', () => {
     assert.deepEqual(hub.voiceOccupants(lounge), [friend.id]);
     assert.equal(hub.ownsVoice(first), false);
     assert.equal(hub.ownsVoice(second, lounge), true);
-    await handleVoiceStateIntent(first, { channelId: null });
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
     await handleVoiceStateIntent(first, { channelId: lounge, selfMute: true });
     assert.equal(hub.getVoiceState(server.id, friend.id)?.selfMute, false);
     assert.deepEqual(hub.clearVoiceForConnection(first), []);
@@ -265,7 +265,7 @@ describe('moving someone between voice channels', () => {
     assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
     await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', tabId: 'selected-tab' });
     assert.equal(hub.ownsVoice(first, lounge), true);
-    await handleVoiceStateIntent(first, { channelId: null });
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
     hub.removeConnection(sibling);
   });
 
@@ -283,6 +283,26 @@ describe('moving someone between voice channels', () => {
     assert.equal(hub.voiceEpoch(lounge), epoch);
     await handleVoiceStateIntent(next, { channelId: null });
     hub.removeConnection(next); hub.addConnection(first);
+  });
+
+  it('a deliberate leave cannot be undone by an offline device resume', async () => {
+    const laptop = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: true, tabId: 'sleeping-laptop' });
+    hub.clearVoiceForConnection(laptop, true);
+    const desktop: Connection = { ...laptop, id: 'deliberate-leave-desktop', sessionId: 'desktop-session', callChannelId: null };
+    hub.addConnection(desktop);
+    await handleVoiceStateIntent(desktop, { channelId: lounge, join: true, tabId: 'desktop-tab' });
+    await handleVoiceStateIntent(desktop, { channelId: null });
+    heard.length = 0;
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: 'resume', tabId: 'sleeping-laptop', requestId: 'after-hangup' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_left' && event.d.requestId === 'after-hangup'));
+    assert.equal(hub.ownsVoice(laptop), false);
+    assert.deepEqual(hub.voiceOccupants(lounge), []);
+    // A human may still explicitly rejoin after the deliberate hang-up.
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: true, tabId: 'sleeping-laptop' });
+    assert.equal(hub.ownsVoice(laptop, lounge), true);
+    await handleVoiceStateIntent(laptop, { channelId: null });
+    hub.removeConnection(desktop);
   });
 
   it('server removal retires socket ownership without a client leave', async () => {
@@ -322,7 +342,7 @@ describe('moving someone between voice channels', () => {
     assert.equal(hub.voiceEpoch(dmId), epoch + 1);
     assert.equal(hub.ownsVoice(first), false);
     assert.equal(hub.ownsVoice(second, dmId), true);
-    await handleVoiceStateIntent(first, { channelId: null });
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
     assert.deepEqual(hub.voiceOccupants(dmId), [friend.id]);
     await handleVoiceStateIntent(second, { channelId: null });
     assert.deepEqual(hub.voiceOccupants(dmId), []);
