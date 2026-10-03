@@ -214,6 +214,8 @@ export type ClientEvent =
         join?: boolean | 'resume';
         /** Correlates ownership confirmation before any media connect. */
         requestId?: string;
+        /** Identifies this tab across gateway reconnects, not a LiveKit identity. */
+        tabId?: string;
         /** A direct message conversation to be in the call of. Only read when `channelId` is null. */
         dmId?: Snowflake | null;
         selfMute?: boolean;

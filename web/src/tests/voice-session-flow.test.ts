@@ -21,7 +21,7 @@ class Room extends EventEmitter {
   isE2EEEnabled = true;
   remoteParticipants = new Map();
   localParticipant = { getTrackPublication: () => undefined, trackPublications: new Map() };
-  constructor() { super(); Room.opened.push(this); }
+  constructor(readonly options: livekit.RoomOptions) { super(); Room.opened.push(this); }
   async setE2EEEnabled() {}
   connects = 0;
   async connect() { this.connects += 1; }
@@ -43,7 +43,7 @@ mock.module('../lib/api', { namedExports: {
   ApiError: class extends Error {},
   api: { voice: { token: async () => ({ url: 'local-test', token: 'test', can: { speak: false, video: false, screenShare: false } }) } },
 } });
-const { VoiceSession } = await import('../lib/voice-session');
+const { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused } = await import('../lib/voice-session');
 const { voicePrefs } = await import('../lib/voice-prefs');
 voicePrefs.set({ sounds: false });
 
@@ -98,7 +98,7 @@ test('a LiveKit reconnect ends moved when the gateway rejects ownership', async 
   try {
     await session.join({ kind: 'channel', id: 'room' }, async () => true);
     const room = Room.opened.at(-1)!;
-    room.emit(livekit.RoomEvent.Reconnected);
+    room.emit(livekit.RoomEvent.Disconnected);
     await until(() => session.getSnapshot().phase === 'moved');
     assert.equal(checks, 1);
     assert.equal(session.getSnapshot().encrypted, false);
@@ -116,7 +116,7 @@ test('a duplicate kick reconnects the gateway owner instead of ending it moved',
     const room = Room.opened.at(-1)!;
     room.emit(livekit.RoomEvent.Disconnected, livekit.DisconnectReason.DUPLICATE_IDENTITY);
     await until(() => Room.opened.at(-1) !== room && session.getSnapshot().phase === 'connected');
-    assert.equal(checks, 2, 'confirm before recovery and again before the new media connect');
+    assert.equal(checks, 1, 'gateway confirmation precedes the only media recovery');
     assert.deepEqual(ends, []);
     assert.equal(session.getSnapshot().encrypted, true);
   } finally { await session.leave(); }
@@ -131,5 +131,58 @@ test('a denied automatic join never reaches LiveKit', async () => {
     assert.equal(session.getSnapshot().phase, 'moved');
     assert.equal(Room.opened.at(-1)?.connects, 0);
     assert.deepEqual(ends, ['moved']);
+  } finally { await session.leave(); }
+});
+
+
+test('a gateway outage keeps the call pending and recovers when ready', async () => {
+  identity = await createDeviceIdentity('pending-owner'); pins = new MemoryIdentityStore();
+  const ends: string[] = [];
+  let online = false;
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase), async () => {
+    if (!online) throw new VoiceGatewayUnavailable();
+    return true;
+  });
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    const room = Room.opened.at(-1)!;
+    room.emit(livekit.RoomEvent.Disconnected);
+    await until(() => session.getSnapshot().phase === 'connecting' && session.getSnapshot().error !== null);
+    assert.deepEqual(ends, []);
+    assert.equal(session.getSnapshot().channelId, 'room');
+    online = true;
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.deepEqual(ends, []);
+  } finally { await session.leave(); }
+});
+
+test('SDK automatic retry is disabled and a guarded rebuild preserves epoch and keys', async () => {
+  identity = await createDeviceIdentity('stable-owner'); pins = new MemoryIdentityStore();
+  const session = new VoiceSession(() => 'me', () => {}, () => {}, async () => true);
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, () => session.onMembership({ channelId: 'room', epoch: 4, members: ['me'] }).then(() => true));
+    const room = Room.opened.at(-1)!;
+    assert.equal(room.options.reconnectPolicy?.nextRetryDelayInMs({ elapsedMs: 0, retryCount: 0 }), null);
+    await session.resume();
+    assert.equal(session.getSnapshot().epoch, 4);
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(Room.opened.at(-1)?.options.reconnectPolicy?.nextRetryDelayInMs({ elapsedMs: 1000, retryCount: 1 }), null);
+  } finally { await session.leave(); }
+});
+
+
+test('a definite gateway refusal is terminal rather than an endless media retry', async () => {
+  identity = await createDeviceIdentity('refused-owner'); pins = new MemoryIdentityStore();
+  const ends: string[] = [];
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase), async () => {
+    throw new VoiceGatewayRefused('You cannot join that voice channel.');
+  });
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    Room.opened.at(-1)!.emit(livekit.RoomEvent.Disconnected);
+    await until(() => session.getSnapshot().phase === 'failed');
+    assert.equal(session.getSnapshot().error, 'You cannot join that voice channel.');
+    assert.deepEqual(ends, ['failed']);
   } finally { await session.leave(); }
 });

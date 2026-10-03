@@ -27,6 +27,7 @@ export interface VoiceStateIntent {
   /** Distinguishes a deliberate rejoin from a late mute on a replaced socket. */
   join?: boolean | 'resume';
   requestId?: string;
+  tabId?: string;
   /** A conversation's call to be in. Only read when `channelId` is null. */
   dmId?: string | null;
   selfMute?: boolean;
@@ -55,10 +56,12 @@ async function applyVoiceStateIntent(
   intent: VoiceStateIntent,
 ): Promise<void> {
   const roomId = intent.channelId ?? intent.dmId;
+  const tabId = typeof intent.tabId === 'string' && intent.tabId.length <= 128 ? intent.tabId : connection.callTabId ?? connection.id;
   const otherOwner = hub.connectionsForUser(connection.userId).find((other) =>
-    other !== connection && hub.ownsVoice(other) && other.sessionId !== connection.sessionId,
+    other !== connection && hub.ownsVoice(other) && (other.callTabId !== tabId || other.sessionId !== connection.sessionId),
   );
   if (roomId && ((intent.join !== true && otherOwner) ||
+    (intent.join !== true && !hub.canResumeVoice(connection, roomId, tabId)) ||
     (connection.callReplaced && intent.join !== true && intent.join !== 'resume'))) {
     // Neither a resume nor an unlabelled legacy join may claim another
     // login session's call. Old bundles get an answer too, including on a
@@ -70,7 +73,7 @@ async function applyVoiceStateIntent(
     return;
   }
   if (intent.channelId === null && typeof intent.dmId === 'string') {
-    await handleDmCallIntent(connection, intent.dmId, intent);
+    await handleDmCallIntent(connection, intent.dmId, { ...intent, tabId });
     return;
   }
 
@@ -107,7 +110,7 @@ async function applyVoiceStateIntent(
 
   if (connection.ws.readyState !== 1) return;
   const wasOwner = hub.ownsVoice(connection, channel.id);
-  hub.claimVoice(connection, channel.id, false, intent.join === true || intent.join === 'resume');
+  hub.claimVoice(connection, channel.id, false, intent.join === true, tabId);
 
   // One call at a time. A person has one microphone, and their device holds
   // one set of call keys; standing in two servers' voice channels at once, or
@@ -192,7 +195,7 @@ async function handleDmCallIntent(
 
   if (connection.ws.readyState !== 1) return;
   const wasOwner = hub.ownsVoice(connection, dmId);
-  hub.claimVoice(connection, dmId, true, intent.join === true || intent.join === 'resume');
+  hub.claimVoice(connection, dmId, true, intent.join === true, typeof intent.tabId === 'string' ? intent.tabId : connection.id);
 
   // Leaves any server call, and any other conversation's call, first. The
   // conversation's own entry is kept so that muting does not look like

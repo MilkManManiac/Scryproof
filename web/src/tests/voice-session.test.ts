@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { DisconnectReason } from 'livekit-client';
 
 // Vite supplies the worker constructor; Node exercises session decisions and
 // lifecycle without starting a media worker or a browser.
@@ -12,15 +11,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 Object.assign(globalThis, { window: {} });
-const { callDisconnect, shouldJoinCall, VoiceSession } = await import('../lib/voice-session');
+const { shouldJoinCall, VoiceSession } = await import('../lib/voice-session');
 
-test('duplicate identity ends as moved; other disconnects fail and can rejoin', () => {
-  assert.deepEqual(callDisconnect(DisconnectReason.DUPLICATE_IDENTITY), {
-    phase: 'moved', error: 'You joined this call from another device.',
-  });
-  for (const reason of [undefined, DisconnectReason.CLIENT_INITIATED, DisconnectReason.SERVER_SHUTDOWN]) {
-    assert.equal(callDisconnect(reason).phase, 'failed');
-  }
+test('terminal sessions permit another click on the same place', () => {
   for (const kind of ['channel', 'dm'] as const) {
     const place = { kind, id: 'same-place' };
     assert.equal(shouldJoinCall(place, place, 'connected'), false);

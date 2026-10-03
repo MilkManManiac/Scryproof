@@ -245,6 +245,46 @@ describe('moving someone between voice channels', () => {
     hub.removeConnection(next); hub.removeConnection(fresh);
   });
 
+  it('same-owner resume preserves epoch, and sibling tabs cannot resume a selected call', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, tabId: 'selected-tab' });
+    const epoch = hub.voiceEpoch(lounge);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', tabId: 'selected-tab', requestId: 'stable-resume' });
+    assert.equal(hub.voiceEpoch(lounge), epoch);
+    assert.ok(heard.some((event) => event.t === 'voice_owned' && event.d.requestId === 'stable-resume'));
+    const sibling: Connection = { ...first, id: 'sibling-tab', callChannelId: null, callTabId: undefined, callReplaced: false };
+    hub.addConnection(sibling);
+    heard.length = 0;
+    await handleVoiceStateIntent(sibling, { channelId: lounge, join: 'resume', tabId: 'sibling-tab' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    assert.equal(hub.ownsVoice(first, lounge), true);
+    // The selected tab also survives a shared outage with no active owner.
+    hub.clearVoiceForConnection(first, true);
+    heard.length = 0;
+    await handleVoiceStateIntent(sibling, { channelId: lounge, join: 'resume', tabId: 'sibling-tab' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', tabId: 'selected-tab' });
+    assert.equal(hub.ownsVoice(first, lounge), true);
+    await handleVoiceStateIntent(first, { channelId: null });
+    hub.removeConnection(sibling);
+  });
+
+  it('an obsolete closing socket cannot clear its resumed tab', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, tabId: 'same-tab' });
+    const epoch = hub.voiceEpoch(lounge);
+    hub.removeConnection(first);
+    const next: Connection = { ...first, id: 'same-tab-new-socket', callChannelId: null, callDmId: null };
+    hub.addConnection(next);
+    await handleVoiceStateIntent(next, { channelId: lounge, join: 'resume', tabId: 'same-tab' });
+    assert.deepEqual(hub.clearVoiceForConnection(first, true), []);
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.deepEqual(hub.voiceOccupants(lounge), [friend.id]);
+    assert.equal(hub.voiceEpoch(lounge), epoch);
+    await handleVoiceStateIntent(next, { channelId: null });
+    hub.removeConnection(next); hub.addConnection(first);
+  });
+
   it('server removal retires socket ownership without a client leave', async () => {
     const first = hub.connectionsForUser(friend.id)[0]!;
     await handleVoiceStateIntent(first, { channelId: lounge, join: true });

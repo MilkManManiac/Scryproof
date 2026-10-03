@@ -57,6 +57,7 @@ export interface Connection {
   callDmId?: string | null;
   /** Ignore late controls from a replaced device until it explicitly joins again. */
   callReplaced?: boolean;
+  callTabId?: string;
 }
 
 const connections = new Map<string, Connection>();
@@ -71,6 +72,24 @@ const voiceStates = new Map<string, VoiceState>();
  * need to be part of the key: moving from one conversation's call to another
  * replaces the entry.
  */
+// Remember the selected tab briefly through a gateway outage. This is only
+// in-memory recovery state; explicit leave and server removals discard it.
+const selectedVoice = new Map<string, { tabId: string; sessionId: string; roomId: string; until: number }>();
+const RECOVERY_WINDOW_MS = 10 * 60_000;
+setInterval(() => {
+  for (const [userId, selected] of selectedVoice) {
+    if (selected.until <= Date.now() && !connectionsForUser(userId).some((c) => ownsVoice(c))) selectedVoice.delete(userId);
+  }
+}, 60_000).unref();
+export function canResumeVoice(connection: Connection, roomId: string, tabId: string): boolean {
+  const selected = selectedVoice.get(connection.userId);
+  if (selected && selected.until <= Date.now() && !connectionsForUser(connection.userId).some((c) => ownsVoice(c))) {
+    selectedVoice.delete(connection.userId);
+  }
+  const active = selectedVoice.get(connection.userId);
+  return !active || (active.tabId === tabId && active.sessionId === connection.sessionId && active.roomId === roomId);
+}
+
 const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
 
 export function addConnection(connection: Connection): void {
@@ -95,21 +114,24 @@ export function ownsVoice(connection: Connection, roomId?: string): boolean {
 }
 
 /** Transfer before broadcasting membership, so the old device gets no new keys. */
-export function claimVoice(connection: Connection, roomId: string, dm = false, joining = false): void {
+export function claimVoice(connection: Connection, roomId: string, dm = false, joining = false, tabId = connection.id): void {
   let replaced = false;
   for (const other of connectionsForUser(connection.userId)) {
     if (other === connection || !ownsVoice(other)) continue;
-    replaced = true;
+    const differentTab = other.callTabId !== tabId || other.sessionId !== connection.sessionId;
+    replaced ||= differentTab;
     other.callChannelId = null;
     other.callDmId = null;
     other.callReplaced = true;
-    if (other.ws.readyState === 1) other.ws.send(JSON.stringify({
+    if (differentTab && other.ws.readyState === 1) other.ws.send(JSON.stringify({
       t: 'error', d: { code: 'voice_replaced', message: 'You joined this call from another device.' },
     }));
   }
   connection.callChannelId = dm ? null : roomId;
   connection.callDmId = dm ? roomId : null;
   connection.callReplaced = false;
+  connection.callTabId = tabId;
+  selectedVoice.set(connection.userId, { tabId, sessionId: connection.sessionId, roomId, until: Date.now() + RECOVERY_WINDOW_MS });
   // Same account and same room still means new call keys. setVoiceState sees
   // no user-level membership change, so it cannot trigger this rotation.
   if ((replaced || joining) && voiceOccupants(roomId).includes(connection.userId)) voiceMembershipChanged(roomId);
@@ -117,6 +139,7 @@ export function claimVoice(connection: Connection, roomId: string, dm = false, j
 
 /** Server removals retire ownership along with the corresponding presence. */
 function releaseVoiceOwner(userId: string, roomId: string): void {
+  if (selectedVoice.get(userId)?.roomId === roomId) selectedVoice.delete(userId);
   for (const connection of connectionsForUser(userId)) {
     if (!ownsVoice(connection, roomId)) continue;
     connection.callChannelId = null;
@@ -125,11 +148,20 @@ function releaseVoiceOwner(userId: string, roomId: string): void {
 }
 
 /** Replaced or idle sockets must never clear the current device's presence. */
-export function clearVoiceForConnection(connection: Connection): ClearedVoiceState[] {
+export function clearVoiceForConnection(connection: Connection, recovering = false): ClearedVoiceState[] {
   if (!ownsVoice(connection)) return [];
+  const selected = selectedVoice.get(connection.userId);
+  // An error can remove a socket before its close event. A fresh socket may
+  // already have resumed the tab by then; the obsolete close clears nothing.
+  if (connectionsForUser(connection.userId).some((other) => other !== connection && ownsVoice(other))) {
+    connection.callChannelId = null; connection.callDmId = null;
+    return [];
+  }
   connection.callChannelId = null;
   connection.callDmId = null;
-  return clearVoiceStatesForUser(connection.userId);
+  const cleared = clearVoiceStatesForUser(connection.userId);
+  if (recovering && selected) selectedVoice.set(connection.userId, { ...selected, until: Date.now() + RECOVERY_WINDOW_MS });
+  return cleared;
 }
 
 export function isOnline(userId: string): boolean {

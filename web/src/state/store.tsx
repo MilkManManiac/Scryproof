@@ -54,7 +54,7 @@ import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
-import { VoiceSession, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
+import { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
 import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
@@ -197,6 +197,9 @@ const standingVoice = (): { selfMute: boolean; selfDeaf: boolean } => {
   const { selfMute, selfDeaf } = voicePrefs.get();
   return { selfMute, selfDeaf };
 };
+
+// Per document, not sessionStorage: window.open can copy a tab's storage.
+const voiceTabId = crypto.randomUUID();
 
 const intentFor = (place: CallPlace, join: boolean | 'resume' = false): { channelId: string | null; dmId: string | null; join?: boolean | 'resume' } => ({
   ...(place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id }),
@@ -1029,6 +1032,8 @@ export function StoreProvider({
 
   /** Ownership must be confirmed before media can claim the account identity. */
   const requestVoiceOwnership = (place: CallPlace, join: true | 'resume'): Promise<boolean> => new Promise((resolve, reject) => {
+    const gateway = gatewayRef.current;
+    if (!gateway?.isOpen) { reject(new VoiceGatewayUnavailable()); return; }
     const requestId = crypto.randomUUID();
     const done = (owned: boolean): void => {
       clearTimeout(timer);
@@ -1039,20 +1044,21 @@ export function StoreProvider({
       if (event.t === 'voice_owned' && event.d.requestId === requestId && event.d.roomId === place.id) done(true);
       if (event.t === 'error' && event.d.requestId === requestId) {
         if (event.d.code === 'voice_replaced') done(false);
-        else { clearTimeout(timer); eventListeners.current.delete(listen); reject(new Error(event.d.message)); }
+        else { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceGatewayRefused(event.d.message)); }
       }
     };
     const timer = setTimeout(() => {
       eventListeners.current.delete(listen);
-      reject(new Error('The server could not confirm this device owns the call. Try joining again.'));
+      reject(new VoiceGatewayUnavailable(gateway.isOpen));
     }, 10_000);
     eventListeners.current.add(listen);
-    gatewayRef.current?.send({ t: 'voice_state', d: {
-      ...intentFor(place, join), ...standingVoice(), requestId,
+    const sent = gateway.send({ t: 'voice_state', d: {
+      ...intentFor(place, join), ...standingVoice(), requestId, tabId: voiceTabId,
       // A rebuilt call stopped its camera and share. Ownership confirmation
       // of an already connected room preserves them instead.
       ...(voiceRef.current?.getSnapshot().phase === 'connecting' ? { cameraOn: false, sharingScreen: false } : {}),
     } });
+    if (!sent) { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceGatewayUnavailable()); }
   });
 
   // One session object for the life of the app. It is idle until a call is
@@ -1486,18 +1492,16 @@ export function StoreProvider({
         }
         const place = currentCall.current;
         if (place) {
-          void voice.join(place, () =>
-            requestVoiceOwnership(place, 'resume'),
-          );
+          void voice.resume();
         }
       }
       // The only errors the gateway sends are refusals of something we just
       // asked for. Mid-join, that is the join: show it rather than sit on
       // "connecting" forever.
-      if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current) {
+      if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current && !event.d.requestId) {
         currentCall.current = null;
         void voice.end('moved', MOVED_CALL_MESSAGE);
-      } else if (event.t === 'error' && currentCall.current) {
+      } else if (event.t === 'error' && currentCall.current && !event.d.requestId) {
         currentCall.current = null;
         voice.fail(event.d.message);
       }

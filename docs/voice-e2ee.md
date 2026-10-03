@@ -239,20 +239,41 @@ that room: a rebuilt session has new call keys and cannot start at epoch zero.
 The client waits for a correlated gateway ownership acknowledgement before
 connecting to LiveKit.
 
-Automatic gateway rejoins use `join: 'resume'`. They may restore the call if
-no different login session owns it, and cannot take it from another session.
-An unlabelled legacy intent on a replaced or fresh socket is also refused
-when another login session owns the call, with `voice_replaced` instead of
-silence. Such a bundle must update to explicitly take a call from that
-session; it may still join when there is no other owner.
-Both LiveKit signal resumes and full reconnects emit `RoomEvent.Reconnected`
-in the installed SDK; the client confirms ownership again then. A device
-that receives a `DUPLICATE_IDENTITY` kick also confirms: a rejected device
-ends with "You joined this call from another device.", while the gateway's
-current owner rebuilds its encrypted call instead of giving up its seat to
-LiveKit's last connector. Every terminal ending sends Leave. Non-owner
-leaves are ignored, and server-side removals retire socket ownership with
-presence. The moved UI shows the reason and treats this device as out of call.
+Automatic gateway rejoins use `join: 'resume'`. Ownership is tied to a random
+per-document tab id and the authenticated login session, so sibling tabs of
+one browser do not share the call claim. The selected tab is retained in
+memory through an outage for a ten-minute recovery window, including when
+no socket currently owns presence. Explicit leave and server removals clear
+it, and expired offline selections are pruned. A different tab must explicitly
+claim the call; it cannot win a race just by waking first.
+
+Unlabelled legacy joins get `voice_replaced` instead of silently taking a
+selected tab's call. Such a bundle must update to explicitly move a call;
+it may still join when there is no other selection. Only the gateway's
+`voice_replaced` answer ends a recovering device as moved.
+
+**LiveKit does not control recovery.** In installed livekit-client 2.22.3,
+`RoomOptions.reconnectPolicy.nextRetryDelayInMs` returning null stops both
+normal signal-resume and full-reconnect scheduling in `RTCEngine.handleDisconnect`.
+The SDK's browser-online shortcut can invoke `attemptReconnect` directly,
+so the session also tears down on browser offline, Reconnecting, and
+SignalReconnecting. No disconnected room is left running an automatic
+cached-token retry loop.
+
+An unexpected media disconnect keeps the selected call pending and rebuilds
+through gateway approval. A closed gateway fails fast into waiting for its
+next ready; it neither silently drops an ownership request nor turns a
+network outage into a terminal failure. Recoverable media failures retry
+through gateway approval. Terminal refusals and explicit endings still send
+Leave; non-owner leaves are ignored.
+
+A resume from the socket already owning the room does not rotate the epoch.
+The client retains its call keypair, sender key, admitted identities, and
+received sender keys while replacing the media Room and worker, so a new
+transport does not invent a different key in that epoch. Explicit joins,
+real tab handovers, and actual membership changes still rotate. Losing a
+gateway socket clears presence and rotates the peers, so its later rejoin
+is a membership change and receives a fresh epoch.
 
 Approval re-announces the approving peer to the approved device. Receiving a
 repeat announcement resends the same epoch's sender key, so the key refused
@@ -284,11 +305,10 @@ See [`RoomManager.refreshToken` at v1.13.6](https://github.com/livekit/livekit/b
 The installed SDK replaces `RTCEngine.token` on `onTokenRefresh` and uses it
 for both `resumeConnection` and `restartConnection`; an expired token can
 make a full reconnect unrecoverable. Shortening initial expiry therefore
-cannot be the ownership lock. Gateway confirmation and owner recovery are
-what make stale cached-token connects settle back onto the selected device.
-LiveKit may briefly kick the owner before that confirmation finishes; this
-is a self-healing interruption, not simultaneous account presence or a new
-per-device LiveKit identity.
+cannot be the ownership lock. Disabling SDK retries and gateway-approved recovery prevent an offline tab
+from repeatedly reattaching its cached token. A deliberately forced raw
+LiveKit connect can still kick the owner once; that owner recovers through
+the gateway using its existing epoch. LiveKit identities stay per account.
 
 ### Review verification (2026-10-02)
 
@@ -327,6 +347,41 @@ sleep/wake, real microphone/camera permissions, two physical machines, TURN,
 and slow or lossy networks still need the coordinator's device test. The
 stale-token recovery can briefly interrupt the selected device's media while
 its ownership confirmation and encrypted reconnect finish.
+
+### Recovery review verification (2026-10-02)
+
+The second review found that SDK-driven signal resume could run while the
+application gateway was offline. That could either turn a single-device
+outage into a permanent failed call, or repeatedly reattach a replaced tab
+to the selected user's LiveKit identity. SDK retries are now disabled and
+all application recovery keeps the pending call until gateway approval.
+
+Targeted checks passed 43 server and 54 client tests, including same-owner
+epoch retention, sibling-tab refusal with and without a live owner, obsolete
+socket cleanup, pending-call recovery, and definitive permission refusals.
+Both TypeScript project checks passed. The requested guards were proved by
+mutation: treating a gateway outage as terminal failed the pending-call test;
+enabling SDK retries failed the Room policy assertion; rotating on owned
+resume failed the unchanged-epoch assertion.
+
+The final focused browser check passed all 32 checks against LiveKit 1.13.6.
+A single device's gateway was blocked, its media socket dropped, and the
+gateway restored after fifteen seconds: the peer decoded its audio again.
+A replaced device's media network returned twenty-five seconds before its
+gateway: the selected device had no epoch changes or transport rebuilds.
+After approving the replacement, the peer's decoded audio energy was positive.
+These checks remain in the harness, and Vite's HMR socket stays untouched.
+
+The full voice check passed 117 of 120 checks. The only failures were the
+three existing zoom checks. The coordinator identified the first-run tour
+backdrop as the cause and fixed the test's tour state on `mac-integration`;
+this branch leaves that independently owned change for integration.
+
+Physical Mac lid-close and Wi-Fi loss still need testing: browser socket
+blocking does not suspend JavaScript, reproduce OS device changes, or prove
+TURN behavior. Recovery selection expires after the ten-minute outage window
+when no tab owns presence; after expiry, the first valid resume may select
+an otherwise unowned call.
 
 ## Firefox
 

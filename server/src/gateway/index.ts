@@ -252,7 +252,7 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
 
 async function announceDeparture(connection: hub.Connection): Promise<void> {
   // Voice belongs to this socket even when another signed-in window remains.
-  await hub.announceCleared(hub.clearVoiceForConnection(connection));
+  await hub.announceCleared(hub.clearVoiceForConnection(connection, true));
   // Other devices may still be connected; only announce a real disconnect.
   if (hub.connectionsForUser(connection.userId).length > 0) return;
 

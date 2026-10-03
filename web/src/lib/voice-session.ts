@@ -26,7 +26,6 @@
 
 import {
   Room,
-  DisconnectReason,
   RoomEvent,
   ScreenSharePresets,
   Track,
@@ -81,10 +80,11 @@ export function shouldJoinCall(current: CallPlace | null, next: CallPlace, phase
     (phase !== 'connecting' && phase !== 'connected');
 }
 
-export function callDisconnect(reason?: DisconnectReason): { phase: 'moved' | 'failed'; error: string } {
-  return reason === DisconnectReason.DUPLICATE_IDENTITY
-    ? { phase: 'moved', error: MOVED_CALL_MESSAGE }
-    : { phase: 'failed', error: 'The call connection was lost.' };
+/** A missing gateway is a recoverable wait, never a terminal call failure. */
+export class VoiceGatewayRefused extends Error {}
+
+export class VoiceGatewayUnavailable extends Error {
+  constructor(readonly retry = false) { super('Waiting for the server to reconnect.'); }
 }
 
 export interface VoicePerson {
@@ -339,6 +339,8 @@ export class VoiceSession {
   private deafened = false;
   /** Guards against a slow join finishing after the user has already left. */
   private generation = 0;
+  private stopOfflineWatch: (() => void) | null = null;
+  private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   /** A membership event that arrived before the call state was ready. */
   private pendingMembership: VoiceMembership | null = null;
   private previousLoss: { lost: number; received: number } | null = null;
@@ -360,7 +362,7 @@ export class VoiceSession {
     private readonly whoAmI: () => string,
     private readonly send: SendSignal,
     private readonly ended: (phase: 'failed' | 'moved') => void = () => undefined,
-    private readonly confirmOwnership: (place: CallPlace) => Promise<boolean> = async () => false,
+    private readonly confirmOwnership: (place: CallPlace) => Promise<boolean> = async () => { throw new VoiceGatewayUnavailable(); },
   ) {}
 
   private get userId(): string {
@@ -403,8 +405,18 @@ export class VoiceSession {
    * with a membership event straight away, and the call state has to exist to
    * receive it.
    */
-  async join(place: CallPlace, enterChannel: () => void | Promise<boolean>): Promise<void> {
-    await this.leave();
+  async join(place: CallPlace, enterChannel: () => void | Promise<boolean>, recovering = false): Promise<void> {
+    const savedCall = recovering ? this.call : null;
+    const savedAnnouncement = recovering ? this.myAnnouncement : null;
+    const savedMembers = recovering ? this.members : [];
+    const leaving = this.leave();
+    const cleanupGeneration = this.generation;
+    if (savedCall) {
+      this.call = savedCall; this.myAnnouncement = savedAnnouncement; this.members = savedMembers;
+      this.update({ phase: 'connecting', encrypted: false });
+    }
+    await leaving;
+    if (this.generation !== cleanupGeneration) return;
     const generation = (this.generation += 1);
     const stale = () => generation !== this.generation;
     const roomId = place.id;
@@ -427,26 +439,46 @@ export class VoiceSession {
     }
 
     try {
-      const identity = await loadDeviceIdentity(createDeviceIdentity);
-      const callKeys = await createCallKeypair();
-      if (stale()) return;
+      if (savedCall && savedAnnouncement) {
+        this.call = savedCall;
+        this.myAnnouncement = savedAnnouncement;
+        this.members = savedMembers;
+      } else {
+        const identity = await loadDeviceIdentity(createDeviceIdentity);
+        const callKeys = await createCallKeypair();
+        if (stale()) return;
 
-      const call = new VoiceCall({
-        callId: roomId,
-        userId: this.userId,
-        identity,
-        callKeys,
-        pins: new IndexedDbIdentityStore(),
-      });
-      const announcement = await announce(roomId, this.userId, identity, callKeys);
-      await call.admit([announcement]);
-      if (stale()) return;
-      this.call = call;
-      this.myAnnouncement = announcement;
+        const call = new VoiceCall({
+          callId: roomId,
+          userId: this.userId,
+          identity,
+          callKeys,
+          pins: new IndexedDbIdentityStore(),
+        });
+        const announcement = await announce(roomId, this.userId, identity, callKeys);
+        await call.admit([announcement]);
+        if (stale()) return;
+        this.call = call;
+        this.myAnnouncement = announcement;
+      }
 
-      this.keyProvider = new ScryproofKeyProvider();
+      const keyProvider = new ScryproofKeyProvider();
+      this.keyProvider = keyProvider;
+      const restoredCall = this.call;
+      // A same-owner recovery retains sender keys and epoch. Replacing the
+      // transport must not invent a second key in the same epoch.
+      if (restoredCall && restoredCall.epoch > 0) {
+        await keyProvider.setParticipantKey(this.userId, restoredCall.mediaKey, restoredCall.epoch % KEYRING_SIZE);
+        for (const member of restoredCall.members) {
+          const a = member.announcement;
+          const key = restoredCall.keyFor(a.userId, a.deviceId);
+          if (key) await keyProvider.setParticipantKey(a.userId, key, restoredCall.epoch % KEYRING_SIZE);
+        }
+      }
+      if (stale()) return;
       const room = new Room({
-        encryption: { keyProvider: this.keyProvider, worker: new E2EEWorker() },
+        reconnectPolicy: { nextRetryDelayInMs: () => null },
+        encryption: { keyProvider, worker: new E2EEWorker() },
         // Only fetch the picture sizes somebody is actually looking at, and
         // only send the sizes somebody is fetching.
         adaptiveStream: true,
@@ -489,6 +521,8 @@ export class VoiceSession {
       await room.connect(grant.url, grant.token, { autoSubscribe: false });
       if (stale()) return;
       this.syncSubscriptions();
+      if (this.call) { await this.sendKeys(this.call); await this.publish(this.call); }
+      if (stale()) return;
 
       if (grant.can.speak) await this.publishMicrophone(room);
       if (stale()) return;
@@ -511,6 +545,31 @@ export class VoiceSession {
           : problem instanceof Error
             ? problem.message
             : 'Could not join the call.';
+      if (problem instanceof VoiceGatewayUnavailable || (recovering && !(problem instanceof ApiError) && !(problem instanceof VoiceGatewayRefused))) {
+        const call = this.call;
+        const announcement = this.myAnnouncement;
+        const members = this.members;
+        const leaving = this.leave();
+        const waitingGeneration = this.generation;
+        this.call = call;
+        this.myAnnouncement = announcement;
+        this.members = members;
+        this.update({ ...IDLE, phase: 'connecting', channelId: place.kind === 'channel' ? place.id : null,
+          dmId: place.kind === 'dm' ? place.id : null, error: 'Waiting to reconnect the call.' });
+        const waiting = this.snapshot;
+        await leaving;
+        if (this.generation !== waitingGeneration) return;
+        this.update(waiting);
+        // An offline gateway resumes on ready. A media-only failure retries
+        // through fresh gateway approval, never the SDK's cached-token path.
+        if (!(problem instanceof VoiceGatewayUnavailable) || problem.retry) {
+          const generation = this.generation;
+          this.recoveryTimer = setTimeout(() => {
+            if (this.generation === generation) void this.resume();
+          }, 2000);
+        }
+        return;
+      }
       await this.end('failed', message);
     }
   }
@@ -528,6 +587,10 @@ export class VoiceSession {
 
   async leave(): Promise<void> {
     const generation = (this.generation += 1);
+    this.stopOfflineWatch?.();
+    this.stopOfflineWatch = null;
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
 
@@ -1263,6 +1326,7 @@ export class VoiceSession {
   }
 
   private async handleMembership(event: VoiceMembership): Promise<void> {
+    const generation = this.generation;
     if (event.channelId !== this.roomId) return;
     const call = this.call;
     if (!call || !this.myAnnouncement) {
@@ -1288,7 +1352,7 @@ export class VoiceSession {
     const epoch = call.rotate(event.epoch);
     this.keySentTo.clear();
     await this.keyProvider?.setParticipantKey(this.userId, call.mediaKey, epoch % KEYRING_SIZE);
-    if (this.call !== call || !this.myAnnouncement) return;
+    if (this.call !== call || generation !== this.generation || !this.myAnnouncement) return;
 
     // Newcomers need our public keys; everyone we already trust needs the new media key.
     this.send({ channelId: event.channelId, epoch, kind: 'announce', payload: { ...this.myAnnouncement } });
@@ -1297,6 +1361,7 @@ export class VoiceSession {
   }
 
   private async handleSignal(event: VoiceSignal & { from: string }): Promise<void> {
+    const generation = this.generation;
     const call = this.call;
     if (!call || event.channelId !== this.roomId) return;
     // The gateway sends a membership event before it relays anything labelled
@@ -1312,7 +1377,7 @@ export class VoiceSession {
       if (!this.members.includes(event.payload.userId)) return;
 
       const result = await call.admit([event.payload]);
-      if (this.call !== call) return;
+      if (this.call !== call || generation !== this.generation) return;
       // Approval re-announces us to request the sender key we refused while
       // that device was held. A repeat announcement resends the same key,
       // never changes it within the epoch.
@@ -1325,7 +1390,7 @@ export class VoiceSession {
 
     if (!isWrappedKey(event.payload)) return;
     const mediaKey = await call.accept(event.payload);
-    if (!mediaKey || this.call !== call) return;
+    if (!mediaKey || this.call !== call || generation !== this.generation) return;
     await this.keyProvider?.setParticipantKey(event.payload.senderId, mediaKey, call.epoch % KEYRING_SIZE);
     await this.publish(call);
   }
@@ -1350,10 +1415,11 @@ export class VoiceSession {
   }
 
   private async sendKeys(call: VoiceCall): Promise<void> {
+    const generation = this.generation;
     const channelId = this.roomId;
     if (!channelId) return;
     for (const wrapped of await call.distribute()) {
-      if (this.call !== call) return;
+      if (this.call !== call || generation !== this.generation) return;
       const seat = `${wrapped.recipientId}:${wrapped.recipientDeviceId}`;
       if (this.keySentTo.has(seat)) continue;
       this.keySentTo.add(seat);
@@ -1399,21 +1465,12 @@ export class VoiceSession {
     if (this.call === call && call.epoch === epoch) this.update({ code });
   }
 
-  /** The gateway, not LiveKit's last connector, decides the active device. */
-  private async checkOwnership(room: Room, reconnect = false): Promise<void> {
-    if (this.room !== room || !this.roomId) return;
+  /** All transport recovery is gated by the application gateway. */
+  async resume(): Promise<void> {
+    if (!this.roomId || this.snapshot.phase === 'moved' || this.snapshot.phase === 'idle') return;
     const place: CallPlace = this.snapshot.dmId
       ? { kind: 'dm', id: this.snapshot.dmId } : { kind: 'channel', id: this.roomId };
-    try {
-      const owned = await this.confirmOwnership(place);
-      if (this.room !== room) return;
-      if (!owned) { await this.end('moved', MOVED_CALL_MESSAGE); return; }
-      // A stale device connected to LiveKit alone and kicked the gateway's
-      // real owner. Confirmed owners reconnect with fresh local call keys.
-      if (reconnect) await this.join(place, () => this.confirmOwnership(place));
-    } catch (problem) {
-      if (this.room === room) await this.end('failed', problem instanceof Error ? problem.message : 'Could not confirm call ownership.');
-    }
+    await this.join(place, () => this.confirmOwnership(place), true);
   }
 
   /* --------------------------------- media -------------------------------- */
@@ -1519,17 +1576,18 @@ export class VoiceSession {
       this.refreshSpeaking();
     });
 
-    // Reconnected covers both LiveKit's signal resume and full restart.
-    room.on(RoomEvent.Reconnected, () => { void this.checkOwnership(room); });
-    room.on(RoomEvent.Disconnected, (reason) => {
-      if (this.room !== room) return;
-      if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
-        void this.checkOwnership(room, true);
-        return;
-      }
-      const result = callDisconnect(reason);
-      void this.end(result.phase, result.error);
-    });
+    // The policy blocks normal retries. These events also stop the SDK's
+    // browser-online shortcut before it can carry a cached-token call.
+    const recover = () => {
+      if (this.room !== room || this.snapshot.phase !== 'connected') return;
+      void this.resume();
+    };
+    window.addEventListener('offline', recover);
+    this.stopOfflineWatch = () => window.removeEventListener('offline', recover);
+    room.on(RoomEvent.Reconnecting, recover);
+    room.on(RoomEvent.SignalReconnecting, recover);
+    room.on(RoomEvent.Reconnected, recover);
+    room.on(RoomEvent.Disconnected, recover);
   }
 
   /**
