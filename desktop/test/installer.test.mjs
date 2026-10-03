@@ -7,13 +7,20 @@
  */
 
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, generateKeyPairSync, sign, verify } from 'node:crypto';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 
 import {
+  MAC_CONTEXT,
+  MAX_INSTALLER_BYTES,
+  macInstallerFileName,
+  macManifestName,
+  readMacInstallerManifest,
+  signMacInstaller,
   hashFile,
   installerFileName,
   isNewerVersion,
@@ -161,5 +168,226 @@ describe('only forward', () => {
     for (const name of ['installer.part', 'Scryproof-Setup.exe', 'Scryproof-Setup-0.5.0.exe.part', '../Scryproof-Setup-0.5.0.exe', 'Other-Setup-0.5.0.exe']) {
       assert.equal(versionFromFileName(name), null, name);
     }
+  });
+});
+
+
+describe('Mac shell release trust', () => {
+  const input = { version: '0.6.0', arch: 'arm64', sha256: sha256(EXE), size: EXE.length };
+
+  test('signs the pinned protocol bytes and verifies the zip', async () => {
+    const trey = pair();
+    const manifest = signMacInstaller(input, trey.privateKey);
+    // Independent protocol oracle: changing both signer and reader cannot hide a drift.
+    assert.equal(MAC_CONTEXT, 'scryproof/desktop-installer-mac/v1');
+    const bytes = Buffer.from(`scryproof/desktop-installer-mac/v1\narm64\n0.6.0\n${input.sha256}`);
+    assert.equal(verify(null, bytes, trey.publicKeyPem, Buffer.from(manifest.signature, 'base64')), true);
+    assert.deepEqual(readMacInstallerManifest(JSON.stringify(manifest), trey.publicKeyPem), manifest);
+    assert.equal(await verifyInstallerFile(onDisk(EXE), manifest), true);
+    assert.equal(macInstallerFileName('0.6.0'), 'Scryproof-0.6.0-mac-arm64.zip');
+    assert.equal(macManifestName(), 'installer-mac-arm64.json');
+  });
+
+  test('rejects substitution between Windows and Mac even with the same key', () => {
+    const trey = pair();
+    const mac = signMacInstaller(input, trey.privateKey);
+    const win = signInstaller(input, trey.privateKey);
+    assert.equal(readInstallerManifest(mac, trey.publicKeyPem), null);
+    assert.equal(readMacInstallerManifest(win, trey.publicKeyPem), null);
+    // Same fields and arm64, but Windows signature words: the context must differ.
+    assert.equal(readMacInstallerManifest({ ...win, arch: 'arm64' }, trey.publicKeyPem), null);
+  });
+
+  test('rejects untrusted keys, modified signed fields and malformed input without throwing', () => {
+    const trey = pair();
+    const good = signMacInstaller(input, trey.privateKey);
+    const server = pair();
+    assert.equal(readMacInstallerManifest(signMacInstaller(input, server.privateKey), trey.publicKeyPem), null);
+    for (const raw of [undefined, null, 'null', '{}', '<html>', [],
+      ...[5, '0.6', 'v0.6.0', '0.6.0-beta', '0.7.0'].map(version => ({ ...good, version })),
+      ...[undefined, 'x64', '../arm64'].map(arch => ({ ...good, arch })),
+      ...[0, -1, 1.5, MAX_INSTALLER_BYTES + 1, NaN].map(size => ({ ...good, size })),
+      ...['A'.repeat(64), 'bad', sha256(Buffer.from('tampered'))].map(sha256 => ({ ...good, sha256 })),
+      { ...good, signature: 'bad' }, { ...good, signature: undefined },
+    ]) assert.equal(readMacInstallerManifest(raw, trey.publicKeyPem), null);
+    // Give malformed fields genuine signatures too: rejection must come from
+    // the field guard, rather than accidentally from a stale signature.
+    for (const change of [
+      { version: '0.6' }, { version: '0.6.0-beta' }, { arch: 'x64' },
+      { sha256: 'A'.repeat(64) }, { sha256: 'bad' },
+      { size: 0 }, { size: MAX_INSTALLER_BYTES + 1 }, { size: 1.5 },
+    ]) assert.equal(readMacInstallerManifest(signMacInstaller({ ...input, ...change }, trey.privateKey), trey.publicKeyPem), null);
+    assert.equal(readMacInstallerManifest(good, 'bad key'), null);
+  });
+});
+
+// Exercise the actual CLI boundary in a disposable repository layout: keys
+// never touch this checkout or the operator's home, and no network is used.
+const releaseFixture = () => {
+  const root = mkdtempSync(join(dir, 'release-'));
+  mkdirSync(join(root, 'desktop', 'scripts'), { recursive: true });
+  mkdirSync(join(root, 'desktop', 'src'));
+  mkdirSync(join(root, 'desktop', 'release'));
+  mkdirSync(join(root, 'scripts'));
+  writeFileSync(join(root, 'desktop', 'package.json'), '{"type":"module","version":"0.6.0"}');
+  for (const name of ['installer-core.js', 'update-core.js']) cpSync(new URL(`../src/${name}`, import.meta.url), join(root, 'desktop', 'src', name));
+  for (const name of ['mac-update-key.mjs', 'mac-preflight.mjs', 'make-update.mjs', 'signing-key.mjs', 'sign-installer.mjs']) {
+    cpSync(new URL(`../scripts/${name}`, import.meta.url), join(root, 'desktop', 'scripts', name));
+  }
+  cpSync(new URL('../../scripts/publish-mac.sh', import.meta.url), join(root, 'scripts', 'publish-mac.sh'));
+  const key = join(root, 'private.pem');
+  const env = { ...process.env, SCRYPROOF_MAC_UPDATE_KEY: key };
+  const run = (script, ...args) => spawnSync(process.execPath, [join(root, 'desktop', 'scripts', script), ...args], { env, encoding: 'utf8' });
+  return { root, key, env, run, publicPath: join(root, 'desktop', 'src', 'update-key-mac.pub.pem') };
+};
+
+describe('Mac release commands', () => {
+  test('creates a private key with restricted mode, repeats safely and refuses a mismatched public key', () => {
+    const f = releaseFixture();
+    assert.equal(f.run('mac-update-key.mjs').status, 0);
+    assert.equal(statSync(f.key).mode & 0o777, 0o600);
+    const original = readFileSync(f.publicPath, 'utf8');
+    assert.equal(f.run('mac-update-key.mjs').status, 0);
+    assert.equal(readFileSync(f.publicPath, 'utf8'), original);
+    writeFileSync(f.publicPath, pair().publicKeyPem);
+    const mismatch = f.run('mac-update-key.mjs');
+    assert.equal(mismatch.status, 1);
+    assert.match(mismatch.stderr, /mismatch/);
+    assert.equal(mismatch.stdout.includes('PRIVATE KEY'), false);
+  });
+
+  test('keeps the Windows installer signing command and manifest format', () => {
+    const f = releaseFixture();
+    const wes = pair();
+    const winKey = join(f.root, 'windows-private.pem');
+    writeFileSync(winKey, wes.privateKey.export({ type: 'pkcs8', format: 'pem' }));
+    writeFileSync(join(f.root, 'desktop', 'src', 'update-key.pub.pem'), wes.publicKeyPem);
+    writeFileSync(join(f.root, 'desktop', 'release', 'Scryproof-Setup-0.6.0.exe'), EXE);
+    const result = spawnSync(process.execPath, [join(f.root, 'desktop', 'scripts', 'sign-installer.mjs')], {
+      env: { ...f.env, SCRYPROOF_UPDATE_KEY: winKey }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const manifest = JSON.parse(readFileSync(join(f.root, 'desktop', 'release', 'installer.json'), 'utf8'));
+    assert.deepEqual(Object.keys(manifest), ['version', 'sha256', 'size', 'signature']);
+    assert.ok(readInstallerManifest(manifest, wes.publicKeyPem));
+    assert.equal(existsSync(join(f.root, 'desktop', 'release', 'installer-mac-arm64.json')), false);
+  });
+
+  test('refuses to silently replace a missing private key when apps already trust a public key', () => {
+    const f = releaseFixture();
+    writeFileSync(f.publicPath, pair().publicKeyPem);
+    assert.equal(f.run('mac-update-key.mjs').status, 1);
+    assert.equal(existsSync(f.key), false);
+  });
+
+  // On a Mac the script also staples and mounts the DMG, which a stand-in DMG cannot pass.
+  test('signs the zip, dry-runs a valid publish and refuses doctored hashes and sizes before network', { skip: process.platform === 'darwin' && 'publish-mac.sh validates a real notarized DMG on macOS' }, () => {
+    const f = releaseFixture();
+    assert.equal(f.run('mac-update-key.mjs').status, 0);
+    const release = join(f.root, 'desktop', 'release');
+    writeFileSync(join(release, 'Scryproof-0.6.0-mac-arm64.zip'), EXE);
+    writeFileSync(join(release, 'Scryproof.dmg'), 'test DMG');
+    assert.equal(f.run('sign-installer.mjs', '--mac').status, 0);
+    const path = join(release, 'installer-mac-arm64.json');
+    const signed = JSON.parse(readFileSync(path, 'utf8'));
+    assert.ok(readMacInstallerManifest(signed, readFileSync(f.publicPath, 'utf8')));
+    assert.equal(readInstallerManifest(signed, readFileSync(f.publicPath, 'utf8')), null);
+    const publish = () => spawnSync('bash', [join(f.root, 'scripts', 'publish-mac.sh'), '--dry-run'], { encoding: 'utf8' });
+    const dry = publish();
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /manifest|installer-mac-arm64.json/);
+    assert.match(dry.stdout, /no network calls/);
+    // Size is deliberately not signed, so this reaches the file-integrity guard.
+    writeFileSync(path, JSON.stringify({ ...signed, size: signed.size + 1 }));
+    const badSize = publish();
+    assert.equal(badSize.status, 1);
+    assert.match(badSize.stderr, /hash\/size does not match/);
+    writeFileSync(path, JSON.stringify({ ...signed, sha256: 'b'.repeat(64) }));
+    assert.equal(publish().status, 1);
+    writeFileSync(path, JSON.stringify(signed));
+    const tampered = Buffer.from(EXE); tampered[100] ^= 1;
+    writeFileSync(join(release, 'Scryproof-0.6.0-mac-arm64.zip'), tampered);
+    assert.equal(publish().status, 1);
+    // A different signing key cannot overwrite a manifest trusted by apps.
+    const other = pair();
+    writeFileSync(f.key, other.privateKey.export({ type: 'pkcs8', format: 'pem' }));
+    assert.equal(f.run('sign-installer.mjs', '--mac').status, 1);
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), signed);
+  });
+});
+
+
+describe('Mac build preflight and client key safety', () => {
+  const clientFixture = () => {
+    const f = releaseFixture();
+    const wes = pair();
+    const client = signBundle(packBundle({ 'index.html': Buffer.from('signed client') }), 1790867486002, wes.privateKey);
+    const update = join(f.root, 'web', 'public', 'desktop-update');
+    mkdirSync(update, { recursive: true });
+    writeFileSync(join(update, 'client.json'), JSON.stringify(client));
+    writeFileSync(join(f.root, 'desktop', 'src', 'update-key.pub.pem'), wes.publicKeyPem);
+    const versionPath = join(f.root, 'desktop', 'src', 'client-version.json');
+    writeFileSync(versionPath, JSON.stringify({ version: client.version }));
+    return { ...f, client, versionPath, update };
+  };
+
+  test('Mac packaging builds without invoking the client signing scripts', () => {
+    const { scripts, build } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.doesNotMatch(scripts['dist:mac'], /release|make-update|loadSigningKey/);
+    assert.match(scripts['dist:mac'], /mac-preflight/);
+    assert.match(scripts['dist:mac'], /npm run client/);
+    assert.ok(build.files.includes('assets/trayTemplate.png'));
+    assert.ok(build.files.includes('assets/trayTemplate@2x.png'));
+  });
+
+  test('public-key preflight verifies the signed version and refuses a different bundled version without writing', () => {
+    const f = clientFixture();
+    const missing = f.run('mac-preflight.mjs');
+    assert.equal(missing.status, 1);
+    assert.ok(missing.stderr.includes("Mac update public key missing: run `npm run mac-update-key` on Trey's Mac first, then commit desktop/src/update-key-mac.pub.pem."));
+    writeFileSync(f.publicPath, pair().publicKeyPem);
+    const before = readFileSync(f.versionPath, 'utf8');
+    const publicPath = join(f.root, 'desktop', 'src', 'update-key.pub.pem');
+    const publicBefore = readFileSync(publicPath, 'utf8');
+    const good = f.run('mac-preflight.mjs');
+    assert.equal(good.status, 0, good.stderr);
+    assert.equal(readFileSync(f.versionPath, 'utf8'), before);
+    assert.equal(readFileSync(publicPath, 'utf8'), publicBefore);
+    writeFileSync(f.versionPath, JSON.stringify({ version: 0 }));
+    const mismatch = f.run('mac-preflight.mjs');
+    assert.equal(mismatch.status, 1);
+    assert.match(mismatch.stderr, /does not match/);
+    assert.equal(readFileSync(f.versionPath, 'utf8'), '{"version":0}');
+    writeFileSync(f.versionPath, before);
+    writeFileSync(join(f.update, 'client.json'), JSON.stringify({ ...f.client, signature: 'bad' }));
+    const invalid = f.run('mac-preflight.mjs');
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /does not verify/);
+  });
+
+  test('client signer refuses a missing private key when a public key is committed, without creating a stray key', () => {
+    const f = clientFixture();
+    const missingKey = join(f.root, 'missing-private.pem');
+    const result = spawnSync(process.execPath, [join(f.root, 'desktop', 'scripts', 'make-update.mjs')], {
+      env: { ...f.env, SCRYPROOF_UPDATE_KEY: missingKey }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.equal(existsSync(missingKey), false);
+    assert.match(result.stderr, /Restore the original key/);
+    assert.doesNotMatch(result.stderr, /delete/);
+  });
+
+  test('client key bootstrap still works only without a baked public key; mismatch guidance preserves it', () => {
+    const f = releaseFixture();
+    const privatePath = join(f.root, 'new-client-key.pem');
+    const modulePath = new URL(`file://${join(f.root, 'desktop', 'scripts', 'signing-key.mjs')}`).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { loadSigningKey, keyMismatchMessage } from ${JSON.stringify(modulePath)}; loadSigningKey({create:true}); console.log(keyMismatchMessage());`], {
+      env: { ...f.env, SCRYPROOF_UPDATE_KEY: privatePath }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(statSync(privatePath).mode & 0o777, 0o600);
+    assert.match(result.stdout, /Keep the committed public key/);
+    assert.doesNotMatch(result.stdout, /delete|PRIVATE KEY/);
   });
 });

@@ -17,7 +17,6 @@ import { VOICE_EFFECTS, isVoiceEffect } from '../lib/voice-effects';
 import {
   cameraCostLabel,
   captureOptions,
-  keyLabel,
   usesModel,
   shareCostLabel,
   voicePrefs,
@@ -30,6 +29,7 @@ import {
   type ShareHeight,
 } from '../lib/voice-prefs';
 import { Modal } from './Modal';
+import { PushToTalkKey } from './PushToTalkKey';
 
 const FLOOR_DB = -80;
 const toPercent = (db: number): number => Math.max(0, Math.min(100, ((db - FLOOR_DB) / -FLOOR_DB) * 100));
@@ -204,15 +204,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
         <p className="field-note">{MODES.find((mode) => mode.id === prefs.inputMode)?.note}</p>
 
         {prefs.inputMode === 'push' ? (
-          <div className="toggle-row">
-            <span>
-              Key to hold
-              <span className="field-note">Pick one you do not type with.</span>
-            </span>
-            <button type="button" className="button secondary inline" onClick={() => setCapturingKey(true)}>
-              {capturingKey ? 'Press a key…' : keyLabel(prefs.pushKey)}
-            </button>
-          </div>
+          <PushToTalkKey code={prefs.pushKey} capturing={capturingKey} onCapture={() => setCapturingKey(true)} />
         ) : null}
 
         <div className="settings-subhead">Noise suppression</div>

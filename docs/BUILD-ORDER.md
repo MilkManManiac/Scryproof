@@ -10,6 +10,15 @@ Discord (screenshots 2026-09-22 22:16), Wes's own asks, and the gaps the
 security page in that channel admits to. Facts about the code were
 checked against main at `229709b`.
 
+**Found 2026-10-02 during the Mac spikes, not in the Mac plan:** two devices
+on one account cannot be in the same call. `server/src/routes/voice.ts` mints
+the call token with `identity: user.id`, so a second device collides with the
+first (the web tab sat on "Connecting…" while the desktop app was in the
+channel). Fixing it means a per-device identity and touches sender-key
+rotation in `web/src/lib/voice-crypto.ts`. Also from the spikes, shipping in
+the Mac plan but Windows-relevant: push-to-talk hot mic after a missed key-up
+(`docs/plans/2026-10-02-mac-desktop-build.md`, task M1).
+
 **IMPORTANT, added 2026-09-26: phone notifications (push and the number
 on the app icon).** Wes: "Note it as important." Plan and the rule it lives
 under: `docs/briefs/push.md`. Phones get no alerts at all today once the

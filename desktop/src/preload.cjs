@@ -12,6 +12,9 @@
  * And the screen-share picker: the page draws it, the main process decides
  * what is actually shared.
  *
+ * And, for the Mac, what platform this is and which permissions macOS has
+ * granted, with a way to open the pane that grants them.
+ *
  * CommonJS because a sandboxed preload cannot be a module.
  */
 
@@ -41,8 +44,23 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
     onShellUpdateReady: (listener) => {
       ipcRenderer.on('scryproof:shell-ready', (_event, version) => listener(version));
     },
-    /** Runs the installer and closes the app; the installer opens it again. */
+    /**
+     * Runs the installer and closes the app; the installer opens it again. On
+     * the Mac, swaps in the new app and relaunches, or, when `shellUpdateHow`
+     * says 'download', opens the DMG link in the browser instead.
+     */
     applyShellUpdate: () => ipcRenderer.invoke('scryproof:shell-apply'),
+    /** 'restart' if applying an update replaces the app itself, 'download' if the person has to fetch it (a Mac app that cannot write its own folder). */
+    shellUpdateHow: () => ipcRenderer.invoke('scryproof:shell-how'),
+    /** 'darwin', 'win32' or 'linux'. */
+    platform: process.platform,
+    /**
+     * What macOS has granted, without asking: `{ accessibility, screen }`. Off
+     * the Mac, accessibility is true and screen is 'unknown'.
+     */
+    permissionState: () => ipcRenderer.invoke('scryproof:perm-state'),
+    /** Opens the System Settings pane for 'accessibility' or 'screen'. Mac only. */
+    openPermissionSettings: (which) => ipcRenderer.invoke('scryproof:perm-open', which === 'screen' ? 'screen' : which === 'accessibility' ? 'accessibility' : null),
     /**
      * Watch one key (a `KeyboardEvent.code`) system-wide, or null to stop.
      * Resolves to whether it is being watched; false means fall back to the
