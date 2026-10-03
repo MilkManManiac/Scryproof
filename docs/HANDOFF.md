@@ -55,6 +55,32 @@ bash scripts/publish-mac.sh
 
 ---
 
+## Mac desktop app: built, reviewed, merged to main (2026-10-02, not released)
+
+Built from the plan `docs/plans/2026-10-02-mac-desktop-build.md` in four lanes, each with two Opus reviews and two fix rounds. Merged to `main` on Forgejo; **not deployed to the box and not published** (Wes says when). Nothing here has run on a Mac yet: everything Mac-specific was tested on Linux against stand-ins, and the list at the end is what only Trey's Mac can prove.
+
+**What is in it.**
+- **Desktop app (darwin).** Menu-bar icon, Dock, app menu, login item, Accessibility and Screen Recording prompts. Push-to-talk now lets go on Cmd-Tab, Alt-Tab, lock and sleep (the hot-mic bug from spike 3, which probably hit Windows too); on a Mac any Cmd press while the key is held lets go, unless Cmd is the push-to-talk key. Once Accessibility is granted, a call that was already running picks up the global key without rejoining.
+- **Mac shell self-update.** Downloads a signed zip, checks the Ed25519 manifest against Trey's Mac key (`desktop/src/update-key-mac.pub.pem`, made on his Mac, not Wes's key), then `codesign --verify --deep --strict` with a pinned Developer ID requirement for Team ID LRU27MC63Q, then swaps the bundle (new copy beside the app first, so the gap with no app is two renames; the old app is put back if the last rename fails, and the DMG link opens instead). One lock covers unpack, swap and cleanup; a newer release that fails its checks no longer throws away an older update that was waiting. A build without the Mac key has shell updates switched off.
+- **Release scripts.** `npm run dist:mac` (packaging, signing, notarizing, DMG) never needs Wes's client signing key; its preflight refuses unless the committed client manifest verifies and the Mac public key is there. `scripts/publish-mac.sh` checks the DMG's version against the manifest. Windows `dist` and Wes's client release are byte-for-byte unchanged (checked side by side).
+- **Web client.** A Mac browser gets the DMG link (only once the server actually has the DMG); the Mac app shows the permission notes and the update bar.
+- **Same account on two devices (Discord's behaviour).** Joining a call from a second device moves the call there; the first device says "You joined this call from another device." and stays out. The other people see one person, and a device they have not met still needs approving, as before. The server's gateway decides which device owns the call: LiveKit's own automatic reconnect is switched off (it was re-taking the shared identity with a cached token while the gateway was down), so a dropped call waits and comes back through the gateway, but only within 60 s of being lost (wall clock, so laptop sleep counts); after that it says "You were disconnected from the call." and you click to rejoin. Hanging up on purpose on any device stops every other device from coming back on its own ("You left this call on another device."). Same-device recovery keeps the call key; ownership is per tab. An old bundle (no tab id) may need a reload after a gateway blip. Call tokens now last 10 minutes (LiveKit's own refresh floor). Also fixed: rejoining after a failed call.
+- **Test harness.** `scripts/voice-check.mjs` marks the first-run tour as seen; its backdrop was eating the real-mouse zoom checks, so the 2026-09-29 "91 pass" had only held with screenshots on.
+
+**Decisions (Trey 2026-10-02 unless noted).** Mac updates signed under Trey's own Ed25519 key and certificate; Wes's key untouched. One LiveKit identity per account; the gateway is the only judge of call ownership (coordinator ruling; per-device identities would not stop a cached-token rejoin either and touch ~40 call sites). Cmd releases push-to-talk on a Mac (coordinator ruling: the hook may not see Cmd-Tab itself).
+
+**Deploy order when Wes says go:** the server and client ship together as always; the protocol change is backward compatible with an open old tab (it gets an explicit "replaced" answer), but deploy the server before publishing any Mac build.
+
+**Trey's Mac, at the end, in order:** the commands in "Mac release" above (key, notary profile, Gatekeeper on, `dist:mac`, the codesign/spctl/stapler checks on both the app and the zip's app). Then, as a second macOS user with a fresh install:
+1. Hold the push-to-talk key, press Cmd-Tab: the speaking ring goes dark. Hold it and press Cmd alone: same.
+2. Grant Accessibility mid-call from the prompt: push-to-talk works with another app in front without rejoining.
+3. Publish a newer shell build to a test server: the app downloads it, Restart installs it, and the relaunched app is the signed new one (`codesign -dv`). Try Restart within the first 60 s after launch too.
+4. Rename `Scryproof.app` to `Scryproof.app.old` and click it in the Dock: if it does not launch, the "put the old app back" path at startup can never fire (harmless, but worth knowing).
+5. `codesign` accepts the pinned requirement as written (the updater logs a refusal if not).
+6. Same account on the Mac and a browser: join from the browser while the Mac is in a call; the Mac says it moved. Then close the Mac's lid for a minute while the browser holds the call, open it: the browser keeps the call. A real Wi-Fi drop on a single device: the call comes back. (The Linux checks only cut WebSockets; real media and UDP loss are unproven.)
+
+**Gate at merge (integrated branch, devbox, 2026-10-02 night):** typecheck clean; `npm test` server 377/377, web 527/527; desktop unit tests 130/130 under xvfb; `npm run test:voice` ALL PASS (125) against LiveKit 1.13.6 (API 8797, vite 5183, LiveKit 7880). `npm run test:desktop`: 14 checks pass, then the self-update section stops at make-update because it needs Wes's private signing key (`~/.scryproof/update-key.pem`), so that section only runs on Wes's PC; the same stop happens on the pre-Mac base. Two harness notes for this box: the check needs `web/dist` built first and `DESKTOP_CHECK_SERVER` pointed at the running API, and Electron needs `ELECTRON_DISABLE_SANDBOX=1` here because the downloaded `chrome-sandbox` is not root-owned (the pre-Mac base fails identically without it).
+
 ## Mac desktop: six spikes run, build spec written (2026-10-02)
 
 Trey's ruling: **Mac only**; Matt owns Linux; Windows keeps shipping as is.
