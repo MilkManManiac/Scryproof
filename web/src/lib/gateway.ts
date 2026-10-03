@@ -123,9 +123,12 @@ export class Gateway {
     }
   }
 
-  send(event: ClientEvent): void {
-    if (this.socket?.readyState !== WebSocket.OPEN) return;
+  get isOpen(): boolean { return this.socket?.readyState === WebSocket.OPEN; }
+
+  send(event: ClientEvent): boolean {
+    if (!this.isOpen || !this.socket) return false;
     this.socket.send(encodeEvent(event));
+    return true;
   }
 
   close(): void {

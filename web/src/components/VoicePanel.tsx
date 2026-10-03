@@ -20,7 +20,7 @@ import type { PublicUser, VoiceState } from '@scryproof/shared';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
-import { publicOrigin } from '../lib/desktop';
+import { DesktopAppLink } from './DesktopAppLink';
 import { voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
@@ -242,7 +242,7 @@ export function VoiceStage(
   const occupants = Object.values(state.voiceStates).filter(inPlace);
   const selfId = state.user?.id;
   const myState = occupants.find((entry) => entry.userId === selfId);
-  const here = Boolean(myState);
+  const here = Boolean(myState) && voice.phase !== 'moved' && voice.phase !== 'ended';
   // `mine` from the moment Join is pressed; `live` only once the server lists
   // us. A join that dies before that point (a browser that cannot encrypt,
   // a refusal from the gateway) is still ours to explain.
@@ -658,13 +658,11 @@ export function VoiceStage(
         </div>
       )}
 
-      {mine && voice.phase === 'failed' ? (
+      {mine && (voice.phase === 'failed' || voice.phase === 'moved' || voice.phase === 'ended') ? (
         <p className="voice-stage-error">
           {voice.error}
           {voice.installer ? (
-            <a className="voice-stage-error-link" href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
-              Get the desktop app for Windows
-            </a>
+            <DesktopAppLink className="voice-stage-error-link">{(system) => `Get the desktop app for ${system}`}</DesktopAppLink>
           ) : null}
         </p>
       ) : null}
@@ -673,7 +671,7 @@ export function VoiceStage(
 
       {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
-        {myState ? (
+        {myState && voice.phase !== 'moved' && voice.phase !== 'ended' ? (
           <>
             <button
               type="button"
@@ -852,8 +850,8 @@ export function ConnectionPanel() {
 
   let tone: 'good' | 'warn' | 'bad' = 'good';
   let headline = 'Encrypted';
-  if (voice.phase === 'failed') {
-    tone = 'bad';
+  if (voice.phase === 'failed' || voice.phase === 'moved' || voice.phase === 'ended') {
+    tone = voice.phase !== 'failed' ? 'warn' : 'bad';
     headline = voice.error ?? 'Not connected';
   } else if (voice.phase !== 'connected') {
     tone = 'warn';

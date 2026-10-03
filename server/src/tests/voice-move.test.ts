@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Permission, type ServerDetail, type ServerEvent } from '@scryproof/shared';
+import type { Connection } from '../gateway/hub';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-voice-move-'));
 process.env.DATA_DIR = dataDir;
@@ -25,6 +26,7 @@ const { registerUser, createSession } = await import('../services/auth.js');
 const { buildApp } = await import('../app.js');
 const { config } = await import('../config.js');
 const hub = await import('../gateway/hub.js');
+const { handleVoiceStateIntent, handleVoiceSignal } = await import('../gateway/voice.js');
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 
@@ -151,6 +153,200 @@ describe('moving someone between voice channels', () => {
     await app.close();
     await closeDatabase();
     rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('a second device takes over, rotates, and the replaced socket cannot interfere', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    const secondHeard: ServerEvent[] = [];
+    const second: Connection = {
+      ...first, id: 'second-device',
+      ws: { readyState: 1, send: (raw: string) => secondHeard.push(JSON.parse(raw)) } as never,
+    };
+    hub.addConnection(second);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    const epoch = hub.voiceEpoch(lounge);
+    heard.length = 0;
+    secondHeard.length = 0;
+    await handleVoiceStateIntent(second, { channelId: lounge, join: true });
+    assert.equal(hub.voiceEpoch(lounge), epoch + 1, 'new device needs a fresh encryption epoch even in the same room');
+    assert.ok(secondHeard.some((event) => event.t === 'voice_membership' && event.d.epoch === epoch + 1));
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    assert.deepEqual(hub.voiceOccupants(lounge), [friend.id]);
+    assert.equal(hub.ownsVoice(first), false);
+    assert.equal(hub.ownsVoice(second, lounge), true);
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
+    await handleVoiceStateIntent(first, { channelId: lounge, selfMute: true });
+    assert.equal(hub.getVoiceState(server.id, friend.id)?.selfMute, false);
+    assert.deepEqual(hub.clearVoiceForConnection(first), []);
+    assert.deepEqual(hub.voiceOccupants(lounge), [friend.id]);
+    // Another person sends a key: only the active device gets its envelope.
+    const peerHeard: ServerEvent[] = [];
+    const peer: Connection = { ...first, id: 'peer', userId: owner.id,
+      ws: { readyState: 1, send: (raw: string) => peerHeard.push(JSON.parse(raw)) } as never };
+    hub.addConnection(peer);
+    await handleVoiceStateIntent(peer, { channelId: lounge, join: true });
+    const signal = { channelId: lounge, epoch: hub.voiceEpoch(lounge), kind: 'key' as const, payload: { sealed: 'opaque' } };
+    handleVoiceSignal(first, signal);
+    assert.equal(peerHeard.filter((event) => event.t === 'voice_signal').length, 0);
+    handleVoiceSignal(peer, signal);
+    assert.equal(heard.filter((event) => event.t === 'voice_signal').length, 0);
+    assert.equal(secondHeard.filter((event) => event.t === 'voice_signal').length, 1);
+    // Deliberately joining from the old device is permitted, unlike a late mute.
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    assert.equal(hub.ownsVoice(first, lounge), true);
+    assert.equal(hub.ownsVoice(second), false);
+    // Socket loss clears voice even with another signed-in device online.
+    hub.removeConnection(first);
+    assert.equal(hub.clearVoiceForConnection(first).length, 1);
+    assert.deepEqual(hub.voiceOccupants(lounge), [owner.id]);
+    hub.addConnection(first);
+    await handleVoiceStateIntent(peer, { channelId: null });
+    hub.removeConnection(peer);
+    hub.removeConnection(second);
+  });
+
+  it('owner rejoin gets another epoch, while automatic resume cannot reclaim another session', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    const nextHeard: ServerEvent[] = [];
+    const next: Connection = { ...first, id: 'resume-next', sessionId: 'different-session', callChannelId: null,
+      ws: { readyState: 1, send: (raw: string) => nextHeard.push(JSON.parse(raw)) } as never };
+    hub.addConnection(next);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    const epoch = hub.voiceEpoch(lounge);
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, requestId: 'explicit-owner-rejoin' });
+    assert.equal(hub.voiceEpoch(lounge), epoch + 1);
+    assert.ok(heard.some((event) => event.t === 'voice_membership' && event.d.epoch === epoch + 1));
+    assert.ok(heard.some((event) => event.t === 'voice_owned' && event.d.requestId === 'explicit-owner-rejoin'));
+    await handleVoiceStateIntent(next, { channelId: lounge, join: true });
+    const claimedEpoch = hub.voiceEpoch(lounge);
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', requestId: 'offline-resume' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced' && event.d.requestId === 'offline-resume'));
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    // Even a fresh gateway socket must not steal the other session's seat.
+    const fresh: Connection = { ...first, id: 'resume-fresh', callReplaced: false, callChannelId: null };
+    hub.addConnection(fresh);
+    await handleVoiceStateIntent(fresh, { channelId: lounge, join: 'resume', requestId: 'fresh-resume' });
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    heard.length = 0;
+    await handleVoiceStateIntent(fresh, { channelId: lounge });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.equal(hub.voiceEpoch(lounge), claimedEpoch);
+    // Old bundles get an answer for late controls rather than hanging silently.
+    heard.length = 0;
+    await handleVoiceStateIntent(first, { channelId: lounge, selfMute: true });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    await handleVoiceStateIntent(next, { channelId: null });
+    assert.equal(hub.ownsVoice(next), false);
+    hub.removeConnection(next); hub.removeConnection(fresh);
+  });
+
+  it('same-owner resume preserves epoch, and sibling tabs cannot resume a selected call', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, tabId: 'selected-tab' });
+    const epoch = hub.voiceEpoch(lounge);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', tabId: 'selected-tab', requestId: 'stable-resume' });
+    assert.equal(hub.voiceEpoch(lounge), epoch);
+    assert.ok(heard.some((event) => event.t === 'voice_owned' && event.d.requestId === 'stable-resume'));
+    const sibling: Connection = { ...first, id: 'sibling-tab', callChannelId: null, callTabId: undefined, callReplaced: false };
+    hub.addConnection(sibling);
+    heard.length = 0;
+    await handleVoiceStateIntent(sibling, { channelId: lounge, join: 'resume', tabId: 'sibling-tab' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    assert.equal(hub.ownsVoice(first, lounge), true);
+    // The selected tab also survives a shared outage with no active owner.
+    hub.clearVoiceForConnection(first, true);
+    heard.length = 0;
+    await handleVoiceStateIntent(sibling, { channelId: lounge, join: 'resume', tabId: 'sibling-tab' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_replaced'));
+    await handleVoiceStateIntent(first, { channelId: lounge, join: 'resume', tabId: 'selected-tab' });
+    assert.equal(hub.ownsVoice(first, lounge), true);
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
+    hub.removeConnection(sibling);
+  });
+
+  it('an obsolete closing socket cannot clear its resumed tab', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true, tabId: 'same-tab' });
+    const epoch = hub.voiceEpoch(lounge);
+    hub.removeConnection(first);
+    const next: Connection = { ...first, id: 'same-tab-new-socket', callChannelId: null, callDmId: null };
+    hub.addConnection(next);
+    await handleVoiceStateIntent(next, { channelId: lounge, join: 'resume', tabId: 'same-tab' });
+    assert.deepEqual(hub.clearVoiceForConnection(first, true), []);
+    assert.equal(hub.ownsVoice(next, lounge), true);
+    assert.deepEqual(hub.voiceOccupants(lounge), [friend.id]);
+    assert.equal(hub.voiceEpoch(lounge), epoch);
+    await handleVoiceStateIntent(next, { channelId: null });
+    hub.removeConnection(next); hub.addConnection(first);
+  });
+
+  it('a deliberate leave cannot be undone by an offline device resume', async () => {
+    const laptop = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: true, tabId: 'sleeping-laptop' });
+    hub.clearVoiceForConnection(laptop, true);
+    const desktop: Connection = { ...laptop, id: 'deliberate-leave-desktop', sessionId: 'desktop-session', callChannelId: null };
+    hub.addConnection(desktop);
+    await handleVoiceStateIntent(desktop, { channelId: lounge, join: true, tabId: 'desktop-tab' });
+    await handleVoiceStateIntent(desktop, { channelId: null });
+    heard.length = 0;
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: 'resume', tabId: 'sleeping-laptop', requestId: 'after-hangup' });
+    assert.ok(heard.some((event) => event.t === 'error' && event.d.code === 'voice_left' && event.d.requestId === 'after-hangup'));
+    assert.equal(hub.ownsVoice(laptop), false);
+    assert.deepEqual(hub.voiceOccupants(lounge), []);
+    // A human may still explicitly rejoin after the deliberate hang-up.
+    await handleVoiceStateIntent(laptop, { channelId: lounge, join: true, tabId: 'sleeping-laptop' });
+    assert.equal(hub.ownsVoice(laptop, lounge), true);
+    await handleVoiceStateIntent(laptop, { channelId: null });
+    hub.removeConnection(desktop);
+  });
+
+  it('server removal retires socket ownership without a client leave', async () => {
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    await (await import('../gateway/voice.js')).disconnectFromVoice(server.id, friend.id);
+    assert.equal(hub.ownsVoice(first), false);
+    await handleVoiceStateIntent(first, { channelId: lounge, join: true });
+    hub.removeUserFromServer(friend.id, server.id);
+    assert.equal(hub.ownsVoice(first), false);
+    first.servers.add(server.id);
+  });
+
+  it('issued channel tokens use the configured shorter join lifetime', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const response = await app.inject({ method: 'POST', url: `/api/channels/${lounge}/voice/token`, headers: { cookie: friend.cookie } });
+    assert.equal(response.statusCode, 200);
+    const { token, expiresInSeconds } = response.json();
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    const after = Math.floor(Date.now() / 1000);
+    if (process.env.LIVEKIT_TOKEN_TTL_SECONDS === undefined) assert.equal(config.livekit.tokenTtlSeconds, 600);
+    assert.equal(expiresInSeconds, config.livekit.tokenTtlSeconds);
+    assert.ok(claims.exp >= before + expiresInSeconds && claims.exp <= after + expiresInSeconds);
+    assert.equal(claims.sub, friend.id);
+  });
+
+  it('DM takeover rotates too, and a replaced DM device cannot leave the new call', async () => {
+    const dm = await app.inject({ method: 'POST', url: '/api/dms', headers: { cookie: friend.cookie }, payload: { userId: owner.id } });
+    assert.equal(dm.statusCode, 200, dm.body);
+    const dmId = dm.json().dm.id;
+    const first = hub.connectionsForUser(friend.id)[0]!;
+    const second: Connection = { ...first, id: 'second-dm-device', callChannelId: null, callDmId: null };
+    hub.addConnection(second);
+    await handleVoiceStateIntent(first, { channelId: null, dmId, join: true });
+    const epoch = hub.voiceEpoch(dmId);
+    await handleVoiceStateIntent(second, { channelId: null, dmId, join: true });
+    assert.equal(hub.voiceEpoch(dmId), epoch + 1);
+    assert.equal(hub.ownsVoice(first), false);
+    assert.equal(hub.ownsVoice(second, dmId), true);
+    await handleVoiceStateIntent(first, { channelId: null, leave: 'cleanup' });
+    assert.deepEqual(hub.voiceOccupants(dmId), [friend.id]);
+    await handleVoiceStateIntent(second, { channelId: null });
+    assert.deepEqual(hub.voiceOccupants(dmId), []);
+    hub.removeConnection(second);
   });
 
   it('moves them: tells them where to, then takes them out of the old call', async () => {

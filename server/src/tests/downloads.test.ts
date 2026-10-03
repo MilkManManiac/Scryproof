@@ -30,6 +30,12 @@ describe('/download/', () => {
     writeFileSync(join(dataDir, 'downloads', 'installer.json'), manifest);
     writeFileSync(join(dataDir, 'downloads', 'Scryproof-Setup.exe'), Buffer.from('MZ!'));
     writeFileSync(join(dataDir, 'downloads', 'secret.txt'), 'not for you');
+    writeFileSync(join(dataDir, 'downloads', 'Scryproof.dmg'), 'dmg bytes');
+    writeFileSync(join(dataDir, 'downloads', 'Scryproof-mac-arm64.zip'), 'zip bytes');
+    writeFileSync(join(dataDir, 'downloads', 'installer-mac-arm64.json'), manifest);
+    writeFileSync(join(dataDir, 'downloads', 'installer-mac-arm64.json.bak'), 'not for you');
+    writeFileSync(join(dataDir, 'downloads', 'constructor'), 'not for you');
+    writeFileSync(join(dataDir, 'downloads', 'toString'), 'not for you');
     const { registerDownloadRoutes } = await import('../routes/downloads.js');
     app = Fastify();
     await registerDownloadRoutes(app);
@@ -56,8 +62,24 @@ describe('/download/', () => {
     assert.equal(response.body, 'MZ!');
   });
 
+  for (const [name, type, bytes, attachment] of [
+    ['Scryproof.dmg', 'application/x-apple-diskimage', 'dmg bytes', true],
+    ['Scryproof-mac-arm64.zip', 'application/zip', 'zip bytes', true],
+    ['installer-mac-arm64.json', 'application/json', manifest, false],
+  ] as const) {
+    it(`serves ${name} with its type and cache policy`, async () => {
+      const response = await app.inject({ method: 'GET', url: `/download/${name}` });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.headers['content-type'], type);
+      assert.equal(response.headers['content-length'], String(Buffer.byteLength(bytes)));
+      assert.equal(response.headers['cache-control'], 'no-store');
+      assert.equal(response.headers['content-disposition'], attachment ? `attachment; filename="${name}"` : undefined);
+      assert.equal(response.body, bytes);
+    });
+  }
+
   it('serves nothing that is not on the list', async () => {
-    for (const url of ['/download/secret.txt', '/download/..%2Finstaller.json', '/download/installer.json.part']) {
+    for (const url of ['/download/secret.txt', '/download/..%2Finstaller.json', '/download/installer.json.part', '/download/installer-mac-arm64.json.bak', '/download/../installer.json', '/download/constructor', '/download/toString']) {
       const response = await app.inject({ method: 'GET', url });
       assert.equal(response.statusCode, 404, url);
     }

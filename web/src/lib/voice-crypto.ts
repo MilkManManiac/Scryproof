@@ -669,6 +669,14 @@ export class VoiceCall {
         rejected.push(announcement);
         continue;
       }
+      // One account has one call seat. Only a signature-checked announcement
+      // may retire its previous device. A new identity still needs consent;
+      // takeover is never permission to bypass pinning.
+      for (const old of [...this.members, ...this.awaitingConsent]) {
+        if (announcement.userId !== this.userId && old.announcement.userId === announcement.userId && old.announcement.deviceId !== announcement.deviceId) {
+          this.remove(old.announcement.userId, old.announcement.deviceId);
+        }
+      }
       const seat = VoiceCall.seat(announcement.userId, announcement.deviceId);
       const verdict =
         selfSeat || this.approvedHere.get(seat) === fingerprint

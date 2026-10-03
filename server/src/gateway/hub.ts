@@ -54,6 +54,10 @@ export interface Connection {
   followsMoves?: boolean;
   /** The server voice channel this device joined, if any: which device is in the call. */
   callChannelId?: string | null;
+  callDmId?: string | null;
+  /** Ignore late controls from a replaced device until it explicitly joins again. */
+  callReplaced?: boolean;
+  callTabId?: string;
 }
 
 const connections = new Map<string, Connection>();
@@ -68,6 +72,38 @@ const voiceStates = new Map<string, VoiceState>();
  * need to be part of the key: moving from one conversation's call to another
  * replaces the entry.
  */
+// Remember the selected tab briefly through a gateway outage. This is only
+// in-memory recovery state; explicit leave and server removals discard it.
+const selectedVoice = new Map<string, { tabId: string; sessionId: string; roomId: string; until: number }>();
+const deliberatelyLeft = new Map<string, number>();
+const RECOVERY_WINDOW_MS = 10 * 60_000;
+setInterval(() => {
+  for (const [userId, until] of deliberatelyLeft) if (until <= Date.now()) deliberatelyLeft.delete(userId);
+  for (const [userId, selected] of selectedVoice) {
+    if (selected.until <= Date.now() && !connectionsForUser(userId).some((c) => ownsVoice(c))) selectedVoice.delete(userId);
+  }
+}, 60_000).unref();
+/** A human hang-up invalidates every automatic recovery for this account. */
+export function invalidateVoiceRecovery(userId: string): void {
+  selectedVoice.delete(userId);
+  deliberatelyLeft.set(userId, Date.now() + RECOVERY_WINDOW_MS);
+}
+
+export function resumeRefusal(connection: Connection, roomId: string, tabId: string): 'voice_left' | 'voice_replaced' | null {
+  const selected = selectedVoice.get(connection.userId);
+  if (selected && selected.until <= Date.now() && !connectionsForUser(connection.userId).some((c) => ownsVoice(c))) selectedVoice.delete(connection.userId);
+  const active = selectedVoice.get(connection.userId);
+  if (active) {
+    if (active.roomId !== roomId) return 'voice_left';
+    return active.tabId === tabId && active.sessionId === connection.sessionId ? null : 'voice_replaced';
+  }
+  return (deliberatelyLeft.get(connection.userId) ?? 0) > Date.now() ? 'voice_left' : null;
+}
+
+export function canResumeVoice(connection: Connection, roomId: string, tabId: string): boolean {
+  return resumeRefusal(connection, roomId, tabId) === null;
+}
+
 const voiceKey = (serverId: string | null, userId: string): string => `${serverId ?? 'dm'}:${userId}`;
 
 export function addConnection(connection: Connection): void {
@@ -83,6 +119,66 @@ export function removeConnection(connection: Connection): void {
   if (!set) return;
   set.delete(connection);
   if (set.size === 0) byUser.delete(connection.userId);
+}
+
+/** The one gateway connection allowed to exchange this person's call keys. */
+export function ownsVoice(connection: Connection, roomId?: string): boolean {
+  const room = connection.callChannelId ?? connection.callDmId;
+  return !!room && (roomId === undefined || room === roomId);
+}
+
+/** Transfer before broadcasting membership, so the old device gets no new keys. */
+export function claimVoice(connection: Connection, roomId: string, dm = false, joining = false, tabId = connection.id): void {
+  const previous = selectedVoice.get(connection.userId);
+  if (joining && previous && previous.roomId !== roomId) invalidateVoiceRecovery(connection.userId);
+  let replaced = false;
+  for (const other of connectionsForUser(connection.userId)) {
+    if (other === connection || !ownsVoice(other)) continue;
+    const differentRoom = (other.callChannelId ?? other.callDmId) !== roomId;
+    const differentTab = other.callTabId !== tabId || other.sessionId !== connection.sessionId;
+    replaced ||= differentTab;
+    other.callChannelId = null;
+    other.callDmId = null;
+    other.callReplaced = true;
+    if (differentTab && other.ws.readyState === 1) other.ws.send(JSON.stringify({
+      t: 'error', d: { code: differentRoom ? 'voice_left' : 'voice_replaced', message: differentRoom ? 'You left this call on another device.' : 'You joined this call from another device.' },
+    }));
+  }
+  connection.callChannelId = dm ? null : roomId;
+  connection.callDmId = dm ? roomId : null;
+  connection.callReplaced = false;
+  connection.callTabId = tabId;
+  selectedVoice.set(connection.userId, { tabId, sessionId: connection.sessionId, roomId, until: Date.now() + RECOVERY_WINDOW_MS });
+  // Same account and same room still means new call keys. setVoiceState sees
+  // no user-level membership change, so it cannot trigger this rotation.
+  if ((replaced || joining) && voiceOccupants(roomId).includes(connection.userId)) voiceMembershipChanged(roomId);
+}
+
+/** Server removals retire ownership along with the corresponding presence. */
+function releaseVoiceOwner(userId: string, roomId: string): void {
+  if (selectedVoice.get(userId)?.roomId === roomId) selectedVoice.delete(userId);
+  for (const connection of connectionsForUser(userId)) {
+    if (!ownsVoice(connection, roomId)) continue;
+    connection.callChannelId = null;
+    connection.callDmId = null;
+  }
+}
+
+/** Replaced or idle sockets must never clear the current device's presence. */
+export function clearVoiceForConnection(connection: Connection, recovering = false): ClearedVoiceState[] {
+  if (!ownsVoice(connection)) return [];
+  const selected = selectedVoice.get(connection.userId);
+  // An error can remove a socket before its close event. A fresh socket may
+  // already have resumed the tab by then; the obsolete close clears nothing.
+  if (connectionsForUser(connection.userId).some((other) => other !== connection && ownsVoice(other))) {
+    connection.callChannelId = null; connection.callDmId = null;
+    return [];
+  }
+  connection.callChannelId = null;
+  connection.callDmId = null;
+  const cleared = clearVoiceStatesForUser(connection.userId);
+  if (recovering && selected) selectedVoice.set(connection.userId, { ...selected, until: Date.now() + RECOVERY_WINDOW_MS });
+  return cleared;
 }
 
 export function isOnline(userId: string): boolean {
@@ -371,7 +467,10 @@ export function setVoiceState(state: VoiceState): void {
   const before = previous ? voiceRoomOf(previous) : null;
   const after = voiceRoomOf(state);
 
-  if (after === null) voiceStates.delete(key);
+  if (after === null) {
+    voiceStates.delete(key);
+    if (before) releaseVoiceOwner(state.userId, before);
+  }
   else voiceStates.set(key, state);
 
   // Muting and unmuting come through here too and must not rotate anything.
@@ -412,7 +511,10 @@ export function clearVoiceStatesForUser(
       leftDmId: state.dmId,
     });
     const room = voiceRoomOf(state);
-    if (room) voiceMembershipChanged(room);
+    if (room) {
+      releaseVoiceOwner(userId, room);
+      voiceMembershipChanged(room);
+    }
   }
   return cleared;
 }
