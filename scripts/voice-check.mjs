@@ -362,7 +362,6 @@ async function checkTakeover(connected) {
   })()`);
   const blockedSockets = await alex.callOffline(true);
   check('the old device loses both gateway and LiveKit sockets without closing HMR', blockedSockets >= 2);
-  await sleep(8000);
   check('Vite HMR stays connected while the call network is blocked', await alex.evaluate(
     `window.__callSockets.some((socket) => !socket.callSocket && socket.readyState === WebSocket.OPEN)`));
   await alexSecond.open();
@@ -379,6 +378,9 @@ async function checkTakeover(connected) {
   check('after approval the peer sees exactly one account seat, on the current device', replacedPair.every(Boolean) &&
     (await wes.snapshot()).people.filter((p) => p.userId === alex.userId).length === 1 &&
     (await wes.snapshot()).people[0]?.deviceId === held?.deviceId);
+  const stable = { peerEpoch: (await wes.snapshot()).epoch, ownerEpoch: (await alexSecond.snapshot()).epoch,
+    generation: await alexSecond.evaluate(`window.__voice.generation`) };
+  await alex.signalOffline('media', false);
   const decoded = await alexSecond.listenTo(wes.userId);
   check('the replacement decodes the peer with the right key', decoded.energy > 0.001,
     `+${decoded.packets} packets, +${decoded.energy.toFixed(4)} energy`);
@@ -387,11 +389,9 @@ async function checkTakeover(connected) {
     `+${peerDecoded.energy.toFixed(4)} energy`);
   check('the replacement and peer compute the same verification code',
     (await alexSecond.snapshot()).code === (await wes.snapshot()).code);
-  const stable = { peerEpoch: (await wes.snapshot()).epoch, ownerEpoch: (await alexSecond.snapshot()).epoch,
-    generation: await alexSecond.evaluate(`window.__voice.generation`) };
-  await alex.signalOffline('media', false);
-  await sleep(25000);
+  await sleep(12000);
   check('returning old media before its gateway never changes the selected device epoch or transport',
+    (await alex.evaluate(`window.__staleRoom.options.reconnectPolicy.nextRetryDelayInMs({ elapsedMs: 0, retryCount: 0 }) === null`)) &&
     (await wes.snapshot()).epoch === stable.peerEpoch && (await alexSecond.snapshot()).epoch === stable.ownerEpoch &&
     (await alexSecond.evaluate(`window.__voice.generation`)) === stable.generation);
   check('the old device has no live media socket while its gateway is absent', await alex.evaluate(
@@ -468,7 +468,52 @@ async function checkTakeover(connected) {
   check('clicking the same channel after failure rejoins encrypted', retried.every(Boolean) && (await alexSecond.snapshot()).encrypted);
   const heardAgain = await alexSecond.listenTo(wes.userId);
   check('audio decodes again after that same-channel retry', heardAgain.energy > 0.001);
-  await alexSecond.clickButton('Leave');
+  await checkEndings(connected);
+}
+
+async function checkEndings(connected) {
+  for (const person of [wes, alexSecond]) {
+    await person.evaluate(`document.querySelector('.rail > span > .rail-item')?.click()`);
+    await person.until(`Boolean(document.querySelector('.channel.voice'))`);
+  }
+  await wes.clickVoiceChannel(); await alexSecond.clickVoiceChannel();
+  const heldAtStart = await wes.until(`window.__voice.getSnapshot().people.find((p) => p.state === 'held')`, 1000);
+  if (heldAtStart) await wes.evaluate(`window.__voice.approve('${alexSecond.userId}', '${heldAtStart.deviceId}')`);
+  await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+  // A short test override exercises the shipped wall-clock limit without
+  // waiting a minute. The production default remains sixty seconds.
+  await alexSecond.evaluate(`window.__voice.recoveryWindowMs = 2500`);
+  await alexSecond.callOffline(true);
+  await sleep(3500);
+  const expired = await alexSecond.snapshot();
+  check('sleep beyond the recovery window ends in plain words', expired.phase === 'ended' && expired.error === 'You were disconnected from the call.');
+  await alexSecond.callOffline(false);
+  await sleep(6000);
+  const noAudio = await wes.listenTo(alexSecond.userId, 2000);
+  check('an expired call never rejoins or reappears to the peer',
+    (await alexSecond.snapshot()).phase === 'ended' && (await wes.snapshot()).people.length === 0 && noAudio.energy <= 0,
+    JSON.stringify({ phase: (await alexSecond.snapshot()).phase, people: (await wes.snapshot()).people.map((p) => p.userId), energy: noAudio.energy }));
+  await alexSecond.evaluate(`window.__voice.recoveryWindowMs = 60000`);
+  await alexSecond.clickVoiceChannel();
+  await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+
+  // The original tab comes back online only after a deliberate hang-up from
+  // the selected replacement. It must hear "left", not reclaim the mic.
+  await alex.clickVoiceChannel();
+  await Promise.all([wes.until(connected), alex.until(connected)]);
+  await alex.callOffline(true);
+  await alexSecond.clickVoiceChannel();
+  await Promise.all([wes.until(connected), alexSecond.until(connected)]);
+  await alexSecond.until(`Boolean(document.querySelector('button[aria-label="Leave"]'))`, 10000);
+  check('device two deliberately presses Leave on its active call', await alexSecond.clickButton('Leave'), JSON.stringify({ phase: (await alexSecond.snapshot()).phase }));
+  await alexSecond.until(`window.__voice.getSnapshot().phase === 'ended'`, 10000);
+  await alex.callOffline(false);
+  const leftElsewhere = await alex.until(`window.__voice.getSnapshot().phase === 'ended'`, 45000);
+  check('a deliberate leave on device two refuses the offline device quietly', Boolean(leftElsewhere) &&
+    (await alex.snapshot()).error === 'You left this call on another device.', JSON.stringify({ phase: (await alex.snapshot()).phase, error: (await alex.snapshot()).error, second: (await alexSecond.snapshot()).phase }));
+  await sleep(2000);
+  check('the offline device never restores the deliberately ended call', (await wes.snapshot()).people.length === 0 &&
+    (await alex.snapshot()).phase === 'ended', JSON.stringify({ phase: (await alex.snapshot()).phase, error: (await alex.snapshot()).error, people: (await wes.snapshot()).people.map((p) => p.userId) }));
   await wes.clickButton('Leave');
 }
 
@@ -495,6 +540,11 @@ async function main() {
   check('both connect, and each holds the other\'s verified key', Boolean(wesReady && alexReady),
     `wes: ${w.phase} ${w.error ?? ''} ${JSON.stringify(w.people.map((p) => p.state))}   alex: ${a.phase} ${a.error ?? ''} ${JSON.stringify(a.people.map((p) => p.state))}`);
   if (!wesReady || !alexReady) return;
+  if (process.env.VOICE_CHECK_ENDING_ONLY === '1') {
+    await alexSecond.open(); await alexSecond.signIn();
+    await checkEndings(connected);
+    return;
+  }
   if (process.env.VOICE_CHECK_TAKEOVER_ONLY === '1') {
     await checkTakeover(connected);
     const errors = [...wes.complaints, ...alex.complaints, ...alexSecond.complaints];

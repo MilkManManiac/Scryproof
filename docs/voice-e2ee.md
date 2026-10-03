@@ -261,11 +261,20 @@ SignalReconnecting. No disconnected room is left running an automatic
 cached-token retry loop.
 
 An unexpected media disconnect keeps the selected call pending and rebuilds
-through gateway approval. A closed gateway fails fast into waiting for its
+through gateway approval for at most sixty seconds from the loss, measured
+with `Date.now()` so laptop sleep counts. After the bound it ends with
+"You were disconnected from the call." and requires an explicit user join.
+The same bound covers a gateway that remains open but never answers.
+An explicit join made offline retains its claiming callback until accepted;
+it does not become an automatic resume. A closed gateway fails fast into waiting for its
 next ready; it neither silently drops an ownership request nor turns a
 network outage into a terminal failure. Recoverable media failures retry
-through gateway approval. Terminal refusals and explicit endings still send
-Leave; non-owner leaves are ignored.
+through gateway approval. Definitive server refusals remain terminal. Automatic transport cleanup is
+labelled separately from a human hang-up. A deliberate leave from any login
+invalidates all recovery selections for the account, with a short in-memory
+left marker; a later resume gets `voice_left` and ends quietly as "You left
+this call on another device." An explicit change of room also prevents the
+old room resuming. A fresh explicit join may reopen a call.
 
 A resume from the socket already owning the room does not rotate the epoch.
 The client retains its call keypair, sender key, admitted identities, and
@@ -383,6 +392,29 @@ TURN behavior. Recovery selection expires after the ten-minute outage window
 when no tab owns presence; after expiry, the first valid resume may select
 an otherwise unowned call.
 
+### Integrated recovery-bound review (2026-10-02)
+
+This follow-up is based on `voice-r3`, including the other Mac lanes and the
+first-run tour test correction. Desktop download-store initialization is now
+lazy, so importing the bridge without a browser location does not crash the
+voice unit tests. The targeted checks include the Mac, Windows, Mac-browser,
+and platform wiring files, run from the web workspace so its JSX configuration
+is used. The recovery-bound test advances wall clock across sixty seconds,
+not just a timer tick, and an offline explicit join keeps `join: true`.
+
+The browser expiry case uses a short override on the dev-only `__voice`
+instance; the shipped constructor default is sixty seconds. The staggered
+probe now returns media immediately after approval, checks the actual Room
+retry policy as well as epoch and transport stability, and must turn red if
+SDK retry is enabled. Another case explicitly hangs up the selected device
+while its sibling is offline and verifies the sibling ends with the left
+message rather than restoring its microphone.
+
+Compatibility note: an old bundle without tab ids cannot safely identify its
+resuming tab after a socket change. It may still see the moved message until
+it reloads the updated bundle. Mapping all such tabs to the login cookie
+would reintroduce the sibling-tab takeover bug, so that fallback is not used.
+
 ## Firefox
 
 Refused from voice with an explanation, not accommodated by turning encryption
@@ -413,3 +445,25 @@ energy stays at exactly zero, which is what "cannot decrypt" looks like from
 outside. Then a leave and rejoin: the epoch moves, fresh keys are exchanged
 with nobody touching anything, the verdict is `known`, and audio comes back.
 All 14 checks passed on 2026-09-17.
+
+
+Final `voice-r4` verification: 125 of 125 real LiveKit browser checks passed
+on the integrated tree, including the tour-state fix. Targeted tests passed
+102 web checks (voice plus all four desktop wiring/platform files) and 44
+server checks; both TypeScript project checks passed. The wall-clock expiry,
+deliberate-leave marker, and staggered SDK-policy guard were each made red
+by mutation before restoring them. Importing desktop wiring no longer reads
+a browser location at module load.
+
+The live ending probe exposed a second-device join race: an account-wide
+old departure could cancel the new device's pending join. Presence now carries
+a server-stamped owner tab, and the client only applies an own-call departure
+for that tab. The ending checks measure visible membership and decoded audio;
+LiveKit may retain a disconnected participant object briefly for its own
+resume grace period, which is not a returned call or a live microphone.
+
+Physical Mac sleep/wake and Wi-Fi changes still need testing. The browser
+expiry test uses a short dev-instance override, while the unit test advances
+`Date.now()` across the shipped sixty-second threshold. Old pre-tab-id bundles
+may require a reload after a gateway blip; no cookie-based fallback was added
+because it would let sibling tabs resume one another's calls.
