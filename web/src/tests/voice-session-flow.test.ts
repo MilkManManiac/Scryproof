@@ -363,3 +363,21 @@ test('a connection that has not said what it can do is not sent a join', async (
   await assert.rejects(requestVoiceOwnership(fake.deps, { kind: 'channel', id: 'room' }, true), VoiceGatewayUnavailable);
   assert.equal(fake.sent.length, 0);
 });
+
+test('on a gateway without ownership, being kicked by another copy of the app gives the call up quietly', async () => {
+  identity = await createDeviceIdentity('legacy-kicked'); pins = new MemoryIdentityStore();
+  const ends: { phase: string; quiet?: boolean }[] = [];
+  let checks = 0;
+  const session = new VoiceSession(() => 'me', () => {}, (phase, quiet) => ends.push({ phase, quiet }),
+    async () => { checks += 1; return true; }, 60_000, () => true);
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    const opened = Room.opened.length;
+    Room.opened.at(-1)!.emit(livekit.RoomEvent.Disconnected, livekit.DisconnectReason.DUPLICATE_IDENTITY);
+    await until(() => session.getSnapshot().phase === 'moved');
+    assert.equal(session.getSnapshot().error, 'You joined this call from another device.');
+    assert.equal(checks, 0, 'it did not try to take the call back');
+    assert.equal(Room.opened.length, opened, 'no second connection that would kick the other device');
+    assert.deepEqual(ends, [{ phase: 'moved', quiet: true }], 'the app is told, quietly, so no leave reaches the gateway');
+  } finally { await session.leave(); }
+});

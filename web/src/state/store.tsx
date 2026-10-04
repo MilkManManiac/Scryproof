@@ -1063,11 +1063,16 @@ export function StoreProvider({
     voiceRef.current = new VoiceSession(
       () => selfId.current ?? '',
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
-      () => {
+      (_phase, quiet) => {
         currentCall.current = null;
-        gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
+        // Taken over by another copy of this app on a gateway that has no
+        // ownership: that gateway would read a leave as this person leaving,
+        // and so evict the device that just took the call.
+        if (!quiet) gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
       },
       (place) => requestVoiceOwnership(place, 'resume'),
+      undefined,
+      () => gatewayConfirmsOwnership.current === false,
     );
   }
   const voice = voiceRef.current;
@@ -1251,7 +1256,12 @@ export function StoreProvider({
       );
     };
 
-    const handleEvent = (event: ServerEvent): void => {
+    /**
+     * `current` is false for a frame that arrived on a socket since replaced
+     * (it waited in the queue behind a slow decrypt). What such a `ready` says
+     * about the gateway is not about the connection now open.
+     */
+    const handleEvent = (event: ServerEvent, current = true): void => {
       dispatch({ type: 'gateway', event });
       for (const listener of eventListeners.current) listener(event);
 
@@ -1473,7 +1483,7 @@ export function StoreProvider({
 
       if (event.t === 'ready') {
         // Before anything below can ask the gateway for a call (the resume).
-        gatewayConfirmsOwnership.current = event.d.voiceOwnership === true;
+        if (current) gatewayConfirmsOwnership.current = event.d.voiceOwnership === true;
         selfId.current = event.d.user.id;
         notices.use(event.d.user.id);
         // A fresh gateway connection means the server forgot we were in a
@@ -1487,7 +1497,7 @@ export function StoreProvider({
           if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
         }
         const place = currentCall.current;
-        if (place) {
+        if (place && current) {
           void voice.resume();
         }
       }
@@ -1658,15 +1668,20 @@ export function StoreProvider({
     // a sealed message is opened first, which is asynchronous, and nothing
     // behind it may overtake it (a delete arriving before its create).
     let queue: Promise<void> = Promise.resolve();
+    // Bumped on every connection status change, so a frame can be told apart
+    // from one that belongs to a socket that has since been replaced.
+    let connectionSeq = 0;
     const gateway = new Gateway({
       onEvent: (raw) => {
+        const received = connectionSeq;
         queue = queue.then(async () => {
           const event = await prepareEvent(raw).catch(() => raw);
-          handleEvent(event);
+          handleEvent(event, received === connectionSeq);
         });
       },
       onStatus: (status) => {
         // A new connection knows nothing until its own `ready` says so.
+        connectionSeq += 1;
         gatewayConfirmsOwnership.current = undefined;
         if (status === 'reconnecting' && currentCall.current) voice.gatewayLost();
         dispatch({ type: 'connection', status });

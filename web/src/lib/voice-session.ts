@@ -25,6 +25,7 @@
  */
 
 import {
+  DisconnectReason,
   Room,
   RoomEvent,
   ScreenSharePresets,
@@ -365,9 +366,16 @@ export class VoiceSession {
     /** Read when needed: the session outlives sign-in, so the id is not known at construction. */
     private readonly whoAmI: () => string,
     private readonly send: SendSignal,
-    private readonly ended: (phase: 'failed' | 'moved' | 'ended') => void = () => undefined,
+    /** `quiet`: tell the app the call is over without telling the gateway anything. */
+    private readonly ended: (phase: 'failed' | 'moved' | 'ended', quiet?: boolean) => void = () => undefined,
     private readonly confirmOwnership: (place: CallPlace) => Promise<boolean> = async () => { throw new VoiceGatewayUnavailable(); },
     private recoveryWindowMs = 60_000,
+    /**
+     * True when the gateway is known not to confirm call ownership. Such a
+     * gateway lets two copies of this app share one LiveKit identity, so one
+     * taking the call kicks the other, and resuming would just kick it back.
+     */
+    private readonly gatewayLacksOwnership: () => boolean = () => false,
   ) {}
 
   private get userId(): string {
@@ -591,13 +599,13 @@ export class VoiceSession {
   }
 
   /** Tear down media and keys while keeping the reason visible in the panel. */
-  async end(phase: 'failed' | 'moved' | 'ended', error: string): Promise<void> {
+  async end(phase: 'failed' | 'moved' | 'ended', error: string, quiet = false): Promise<void> {
     this.clearRecovery();
     this.pendingEntry = null;
     const place = { channelId: this.snapshot.channelId, dmId: this.snapshot.dmId };
     const leaving = this.leave();
     const generation = this.generation;
-    this.ended(phase);
+    this.ended(phase, quiet);
     this.update({ ...IDLE, ...place, phase, error });
     await leaving;
     if (this.generation === generation) this.update({ ...IDLE, ...place, phase, error });
@@ -1631,8 +1639,16 @@ export class VoiceSession {
 
     // The policy blocks normal retries. These events also stop the SDK's
     // browser-online shortcut before it can carry a cached-token call.
-    const recover = () => {
+    const recover = (reason?: unknown) => {
       if (this.room !== room || this.snapshot.phase !== 'connected') return;
+      // Another device took the call. A gateway with ownership decides who
+      // holds it, so the owner resumes. One without it has no owner to ask:
+      // the other device is simply in, and reconnecting would kick it back out
+      // and start a contest. Give the call up, and say nothing to the gateway.
+      if (reason === DisconnectReason.DUPLICATE_IDENTITY && this.gatewayLacksOwnership()) {
+        void this.end('moved', MOVED_CALL_MESSAGE, true);
+        return;
+      }
       void this.resume();
     };
     window.addEventListener('offline', recover);
