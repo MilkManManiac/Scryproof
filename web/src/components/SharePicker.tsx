@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { answerShare, onShareRequest, refreshShare, type ShareRequest, type ShareSource } from '../lib/desktop';
+import { useVoice } from '../state/useVoice';
 import { Modal } from './Modal';
 
 /** Often enough to look live, seldom enough to stay cheap: the pictures are small. */
@@ -22,6 +23,7 @@ const REFRESH_MS = 2000;
 type Tab = 'screen' | 'window';
 
 export function SharePicker() {
+  const music = useVoice().musicBusy;
   const [request, setRequest] = useState<ShareRequest | null>(null);
   const [tab, setTab] = useState<Tab>('screen');
   const [selected, setSelected] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function SharePicker() {
 
   return (
     <Modal
-      title="Share your screen"
+      title={music ? 'Share music' : 'Share your screen'}
       className="share-picker"
       onClose={cancel}
       footer={
@@ -101,11 +103,12 @@ export function SharePicker() {
             Cancel
           </button>
           <button type="button" className="button inline" disabled={!selected} onClick={() => share(selected)}>
-            Share
+            {music ? 'Share audio' : 'Share'}
           </button>
         </>
       }
     >
+      {music ? <p className="field-note">Choose a source and turn on Include sound. Only audio will be sent to the call.</p> : null}
       <div className="settings-tabs share-picker-tabs" role="tablist">
         {(
           [

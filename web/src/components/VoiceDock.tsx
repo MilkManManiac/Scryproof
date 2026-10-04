@@ -16,6 +16,7 @@
 import { useState } from 'react';
 import type { VoiceState } from '@scryproof/shared';
 
+import { MixerButton } from './CallMixer';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
 import { CameraGlyph, HangUpGlyph, ScreenGlyph, SoundboardGlyph } from './glyphs';
@@ -68,8 +69,16 @@ export function VoiceDock({ mine }: { mine: VoiceState }) {
         <button
           type="button"
           className={call.sharing ? 'voice-dock-button on' : 'voice-dock-button'}
-          disabled={!connected || !call.can.screenShare}
-          title={call.can.screenShare ? (call.sharing ? 'Stop sharing' : 'Share your screen') : 'Not allowed here'}
+          disabled={!connected || !call.can.screenShare || call.musicSharing || call.musicBusy}
+          title={
+            call.musicSharing || call.musicBusy
+              ? 'Stop sharing music in the mixer first'
+              : call.can.screenShare
+                ? call.sharing
+                  ? 'Stop sharing'
+                  : 'Share your screen'
+                : 'Not allowed here'
+          }
           onClick={() => void session.setScreenShare(!call.sharing)}
         >
           <ScreenGlyph size={18} />
@@ -92,6 +101,7 @@ export function VoiceDock({ mine }: { mine: VoiceState }) {
         </button>
         <ActivitiesButton inCall />
       </div>
+      <MixerButton dock />
       {boardOpen && boardReady && server ? <SoundBoard server={server} onClose={() => setBoardOpen(false)} /> : null}
     </div>
   );

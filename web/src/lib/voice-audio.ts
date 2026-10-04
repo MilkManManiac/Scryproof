@@ -204,7 +204,7 @@ export class OutputMix {
 
   setVolumeFor(userId: string, volume: number): void {
     const voice = this.voices.get(userId);
-    if (voice) voice.gain.gain.value = volume;
+    if (voice) voice.gain.gain.setTargetAtTime(volume, this.context.currentTime, 0.015);
   }
 
   setVolume(volume: number): void {

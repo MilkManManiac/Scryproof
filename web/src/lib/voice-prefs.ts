@@ -6,6 +6,11 @@
 
 import { canRunModel } from './voice-audio';
 
+export const MAX_PERSON_VOLUME = 4;
+export function safeVolume(value: unknown, maximum = MAX_PERSON_VOLUME): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(maximum, value)) : 1;
+}
+
 export type InputMode = 'open' | 'threshold' | 'push';
 
 export type ShareHeight = 720 | 1080 | 1440 | 0;
@@ -63,7 +68,7 @@ export interface VoicePrefs {
   pushKey: string;
   /** 0 to 2. Everyone you hear is multiplied by this. */
   outputVolume: number;
-  /** Per person, 0 to 2, by user id. Missing means 1. */
+  /** Per source, 0 to 4, by user id (with :screen or :music for shares). Missing means 1. */
   volumes: Record<string, number>;
   /**
    * 0 to 1. Every soundboard clip you hear, yours included, on top of the
@@ -122,8 +127,18 @@ function load(): VoicePrefs {
     const stored = JSON.parse(raw) as Partial<VoicePrefs> & { noiseSuppression?: boolean };
     // Before there were three kinds, suppression was a switch. Someone who
     // turned it off meant off; everyone else gets the new default.
-    const noiseMode = isNoiseMode(stored.noiseMode) ? stored.noiseMode : stored.noiseSuppression === false ? 'off' : DEFAULTS.noiseMode;
-    return { ...DEFAULTS, ...stored, noiseMode, volumes: { ...(stored.volumes ?? {}) } };
+    const noiseMode = isNoiseMode(stored.noiseMode)
+      ? stored.noiseMode
+      : stored.noiseSuppression === false
+        ? 'off'
+        : DEFAULTS.noiseMode;
+    return {
+      ...DEFAULTS,
+      ...stored,
+      noiseMode,
+      outputVolume: safeVolume(stored.outputVolume, 2),
+      volumes: Object.fromEntries(Object.entries(stored.volumes ?? {}).map(([key, value]) => [key, safeVolume(value)])),
+    };
   } catch {
     return DEFAULTS;
   }
@@ -136,7 +151,14 @@ export const voicePrefs = {
   get: (): VoicePrefs => current,
 
   set(patch: Partial<VoicePrefs>): void {
-    current = { ...current, ...patch };
+    current = {
+      ...current,
+      ...patch,
+      outputVolume: safeVolume(patch.outputVolume ?? current.outputVolume, 2),
+      volumes: patch.volumes
+        ? Object.fromEntries(Object.entries(patch.volumes).map(([key, value]) => [key, safeVolume(value)]))
+        : current.volumes,
+    };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
     } catch {
@@ -146,6 +168,7 @@ export const voicePrefs = {
   },
 
   setVolumeFor(userId: string, volume: number): void {
+    volume = safeVolume(volume);
     const volumes = { ...current.volumes };
     if (volume === 1) delete volumes[userId];
     else volumes[userId] = volume;
@@ -201,7 +224,10 @@ export function cameraOptions(prefs: Pick<VoicePrefs, 'cameraDeviceId' | 'camera
 }
 
 /** How much to spend sending the camera, to match what was asked for. */
-export function cameraEncoding(prefs: Pick<VoicePrefs, 'cameraHeight' | 'cameraFps'>): { maxBitrate: number; maxFramerate: number } {
+export function cameraEncoding(prefs: Pick<VoicePrefs, 'cameraHeight' | 'cameraFps'>): {
+  maxBitrate: number;
+  maxFramerate: number;
+} {
   const height = prefs.cameraHeight in CAMERA_MBPS ? prefs.cameraHeight : 720;
   const fps = prefs.cameraFps in CAMERA_FPS_FACTOR ? prefs.cameraFps : 30;
   return { maxBitrate: Math.round(CAMERA_MBPS[height] * CAMERA_FPS_FACTOR[fps] * 1_000_000), maxFramerate: fps };

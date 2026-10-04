@@ -139,6 +139,11 @@ class Person {
     });
 
     await this.send('Page.enable');
+    // Fresh test profiles otherwise show the first-run tour over the stream:
+    // JS button clicks bypass it, but the real wheel and drag checks cannot.
+    await this.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: "try { localStorage.setItem('scryproof.walkthrough.v1', 'done'); } catch {}",
+    });
     await this.send('Runtime.enable');
   }
 

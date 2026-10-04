@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-04-call-mixer',
+    date: '2026-10-04',
+    title: 'Your call, your mix',
+    notes: [
+      'Open Mixer in your call controls to balance everyone in one place. People appear as they join, and your saved voice and stream levels follow them. Boost quiet sources up to 400%, mute them for yourself, or reset to 100%.',
+      'Share music without sending video. Other people can choose Listen in their mixer and set their own music volume. Every new share starts silent until they opt in. Choose a music tab with audio in a supported browser; Windows desktop sharing includes all computer sound.',
+    ],
+  },
+  {
     id: '2026-10-02-desktop-update-link',
     date: '2026-10-02',
     title: 'Get the desktop update from Scryproof',

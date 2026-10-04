@@ -18,10 +18,11 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PublicUser, VoiceState } from '@scryproof/shared';
 
 import { useDms } from '../state/dms';
+import { MixerButton } from './CallMixer';
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
 import { publicOrigin } from '../lib/desktop';
-import { voicePrefs } from '../lib/voice-prefs';
+import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
@@ -571,7 +572,7 @@ export function VoiceStage(
                   type="range"
                   className="voice-range"
                   min={0}
-                  max={200}
+                  max={MAX_PERSON_VOLUME * 100}
                   step={5}
                   value={Math.round(screenVolume(bigVideo.userId) * 100)}
                   onChange={(event) =>
@@ -673,6 +674,7 @@ export function VoiceStage(
 
       {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
+        {live ? <MixerButton /> : null}
         {myState ? (
           <>
             <button
@@ -710,7 +712,8 @@ export function VoiceStage(
           <button
             type="button"
             className={`call-button${voice.sharing ? ' on' : ''}`}
-            title={voice.sharing ? 'Stop sharing' : 'Share your screen'}
+            disabled={voice.musicSharing || voice.musicBusy}
+            title={voice.musicSharing || voice.musicBusy ? 'Stop sharing music in the mixer first' : voice.sharing ? 'Stop sharing' : 'Share your screen'}
             aria-label={voice.sharing ? 'Stop sharing' : 'Share your screen'}
             onClick={() => void session.setScreenShare(!voice.sharing)}
           >
