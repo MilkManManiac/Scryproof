@@ -5,6 +5,7 @@
  * the address bar is the answer.
  */
 
+import { idleShareHint, updateFollowUp } from './activity-status';
 import { newerDesktopRelease } from './desktop-version';
 
 interface DesktopBridge {
@@ -88,6 +89,19 @@ export function isMacPlatform(
 ): boolean {
   return /^mac/i.test(platform) && touchPoints < 2;
 }
+
+/**
+ * Whether the shell can send the machine's own sound with a share (Windows
+ * only: `share-menu.js` canShareSound). Shells that send no platform are the
+ * older Windows ones.
+ */
+export const canShareSound = bridge?.platform === undefined || bridge.platform === 'win32';
+
+/** The Activities toolbar's hint before gameplay is shared, for this shell. */
+export const activityShareHint = (): string => idleShareHint(isDesktop, canShareSound);
+
+/** What the update fallback says to do after downloading, for this shell. */
+export const updateDownloadFollowUp = (): string => updateFollowUp(onMacApp);
 
 export interface DesktopDownload {
   href: string;
@@ -223,9 +237,13 @@ export async function shellUpdateHow(): Promise<'restart' | 'download'> {
   }
 }
 
-/** Manual fallback only for shells without automatic installer support. */
+/**
+ * Manual fallback only for shells without automatic installer support. The
+ * manifest it reads is the Windows installer's; the Mac app updates from its
+ * own Mac manifest and never offers (or compares against) that installer.
+ */
 export function onDesktopRelease(listener: (version: string) => void): () => void {
-  if (!bridge || canInstallShellUpdate) return () => {};
+  if (!bridge || onMacApp || canInstallShellUpdate) return () => {};
   let active = true;
   let checking = false;
   const controller = new AbortController();

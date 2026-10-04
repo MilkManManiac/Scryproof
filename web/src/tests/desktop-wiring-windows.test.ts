@@ -43,6 +43,7 @@ const { PushToTalkKey } = await import('../components/PushToTalkKey');
 const { ScreenRecordingNote } = await import('../components/ShareMacNotes');
 const { DesktopAppLink } = await import('../components/DesktopAppLink');
 const { UpdateBanner } = await import('../components/UpdateBanner');
+const { DesktopInstallerLink } = await import('../components/DesktopInstallerLink');
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 // Somebody is looking at each of these, as on a screen, so the shell is asked.
@@ -73,5 +74,14 @@ describe('the Windows app, whatever the shell could say about a Mac', () => {
     const html = linkText();
     assert.match(html, /Scryproof-Setup\.exe/);
     assert.match(html, /for Windows/);
+  });
+
+  it('keeps the Windows share-sound hint and run-the-installer text', () => {
+    assert.match(desktop.activityShareHint(), /Enable sound only if it will not capture your call/);
+    assert.match(desktop.updateDownloadFollowUp(), /run the installer/);
+  });
+
+  it('keeps the Windows installer in the fallback link', () => {
+    assert.match(render(createElement(DesktopInstallerLink, { prominent: true })), /Scryproof-Setup\.exe/);
   });
 });
