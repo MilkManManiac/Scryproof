@@ -4,6 +4,8 @@ Living state. Update this at the end of every working session.
 
 ## Music listener avatars and live meters (2026-10-04, local branch `feat/music-listeners`)
 
+Implemented in `bacb143`. Push/PR publication is pending Matt’s explicit approval: automatic approval review rejected pushing this new code and screenshots under the earlier mixer permission. No remote branch or PR was created by this session.
+
 Built on `63f48b3`, after the call mixer release. Each music source now shows a row of listener avatars and a count beneath its fader; the sharer sees the same row on their own Music together card. Uses the existing profile avatar, with initials as a fallback and names on hover. Rows wrap on narrow screens. Listening is opt-in and visible to everyone in that call, explained beside Share music.
 
 Presence means the current music publication is selected, subscribed, unmuted, and has nonzero music and master volume while undeafened. It cannot prove that someone's physical speakers are audible. Stop listening, zero volume, deafen, leaving, and ending/restarting a share remove the relevant indicators. Old clients do not report presence until they receive the client update. No new installer or server migration is needed.
