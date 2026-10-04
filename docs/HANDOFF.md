@@ -2,7 +2,15 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-04, ~01:30 ET)
+## Pick up here (2026-10-04, ~02:15 ET)
+
+**Built, committed locally, NOT deployed: the Trey theme** (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His picture is `assets/gen/trey-a.jpg`, served at 1376x771 as `/backdrops/trey.jpg`. Tokens are in `web/src/themes/trey.css`, and the motion is one word, `trey`, in `web/src/components/trey-scene.ts`, pinned to the painting the way `camp` is. What moves: 300+ stars over sky only (a cloud-top line keeps them off the clouds) with the painted stars flashing cross glints; constellations that draw themselves; the great star breathing, with a turning sunburst and light dripping down its beam, going nova every 22 to 40 s; meteors every few seconds and a shower every 40 to 70 s; lightning flashes inside the dark clouds; a light band running along the lit cloud rim; vapour banks; the fire's flicker, sparks, pops and smoke; gusting snow in three depths, warm near the fire, and drift off the snowfield. The theme sits second in the picker, and What's new has an entry. On ultrawide windows the star wins and the fire's base is cropped (`--backdrop-position: center 60%`). Web tests 556/556, typecheck clean. Next: Wes looks, then deploys on his word.
+
+![Trey theme](shots/theme-trey.png)
+![The scene alone](shots/theme-trey-scene.png)
+![The star going nova](shots/theme-trey-nova.png)
+
+## Before that (2026-10-04, ~01:30 ET)
 
 **LIVE 2026-10-04 01:19 ET (client 1791091058650, no new installer):** Matt's mobile Activities (PR #5), Matt's call mixer + opt-in music (PR #7), Trey's Mac desktop app + same-account call takeover + older-server fallback (PRs #6, #8). Merge fixes by Claude: (1) `updateVoice` now sends `tabId`, so a mute/deafen click on a fresh gateway socket during reconnect can't end your own call as "moved"; (2) `VoiceCall.retireOtherDevices` (voice-crypto.ts): a person's new device only retires their old one once it is trusted (pinned or approved). An unapproved, possibly server-forged device no longer evicts the real one; test updated. Mac-only desktop tests skip on Windows.
 

@@ -1,0 +1,91 @@
+/*
+ * Trey: a great four-pointed star over a snowfield at night, a wall of cloud
+ * lit cream from below, and a fire burning in the snow by some ruined towers.
+ *
+ * From Wes's picture (2026-10-04, `assets/gen/trey-a.jpg`). Wes: "call this
+ * the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some
+ * snow, stars going nuts, cluonds, etc."
+ *
+ * Surfaces are the night between the clouds, the accent is the star's warm
+ * light, and the lit cloud's cream stands where the other themes have gold.
+ * Dim text is the cold of the snow. Every token the hall sets is set here.
+ *
+ * What moves is one word, `trey` (trey-scene.ts), pinned to points in the
+ * painting the way `camp` is.
+ */
+
+:root[data-theme='trey'] {
+  --bg: #06141b;
+  --bg-rgb: 6 20 27;
+
+  --panel-rgb: 11 27 35;
+  --panel-alpha: 0.55;
+  --panel-solid: #0b1b23;
+  --panel-2: #12252e;
+  --panel-3: #1a303a;
+  --panel-4: #243c47;
+
+  --line: #1d333d;
+  --line-strong: #2c4955;
+  --edge: inset 0 0 0 1px rgb(236 222 200 / 0.07);
+  --hi: inset 0 1px 0 rgb(236 222 200 / 0.06);
+
+  --text: #f3f1ec;
+  --text-muted: #d6d9d8;
+  /* The snow. */
+  --text-dim: #a6bac4;
+  --text-faint: #7c909a;
+
+  /* The star. */
+  --accent: #f2b468;
+  --accent-bright: #ffcd8c;
+  --accent-dim: #9a6a2c;
+  --accent-wash: rgb(242 180 104 / 0.13);
+  --on-accent: #1c1206;
+
+  /* The lit cloud, where the other themes have gold. */
+  --gold: #efd9bb;
+  --gold-dim: #9c8a72;
+
+  --good: #56c48c;
+  --warn: #e3b04d;
+  --bad: #e46a5c;
+  --speaking: #5fd39a;
+
+  --shadow-1: 0 1px 1px hsl(200 60% 3% / 0.55), 0 4px 10px -3px hsl(200 60% 3% / 0.55);
+  --shadow-2: 0 1px 2px hsl(200 60% 3% / 0.55), 0 8px 18px -6px hsl(200 60% 3% / 0.65),
+    0 22px 44px -14px hsl(200 60% 3% / 0.6);
+  --shadow-3: 0 2px 4px hsl(200 60% 3% / 0.55), 0 16px 32px -8px hsl(200 60% 3% / 0.7),
+    0 40px 80px -20px hsl(200 60% 3% / 0.75);
+
+  /* The painting. On a normal screen it fits top to bottom. On an
+     ultrawide one the star and the fire cannot both fit, so the star wins
+     and the fire's sparks still rise into the bottom edge. */
+  --backdrop: url('/backdrops/trey.jpg');
+  --backdrop-position: center 60%;
+  /* The hearth layer breathes on the fire; trey-scene draws the rest. */
+  --glow-color: rgb(255 140 60 / 0.14);
+  --glow-position: 65% 92%;
+  --ambient-motion: trey;
+  --star-color: 236 242 255;
+  --star-depth: 0.3;
+  --ambient-sprite: none;
+
+  color-scheme: dark;
+}
+
+/* The shared room darkens the bottom third hard. Here the fire is in that
+   third, so the fall to dark starts later and stops short. */
+:root[data-theme='trey'] .ambient,
+:root[data-theme='trey'] .settings-backdrop {
+  background-image:
+    radial-gradient(120% 90% at 50% 15%, transparent 45%, rgb(0 0 0 / 0.3) 100%),
+    linear-gradient(
+      180deg,
+      rgb(var(--bg-rgb) / 0.04) 0%,
+      rgb(var(--bg-rgb) / 0.1) 55%,
+      rgb(var(--bg-rgb) / 0.3) 86%,
+      rgb(var(--bg-rgb) / 0.55) 100%
+    ),
+    var(--backdrop);
+}

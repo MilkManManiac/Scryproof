@@ -25,6 +25,9 @@
  *             (camp-scene.ts): fire, rolling fog, birds, staffs, and more
  *   lake      Lady of the Lake's whole scene, pinned the same way
  *             (lake-scene.ts): lanterns, petals, ripples, koi, the sword
+ *   trey      the Trey theme's whole scene, pinned the same way
+ *             (trey-scene.ts): the great star, meteor showers, lightning
+ *             in the cloud, the fire, snow
  *
  * The rules that keep it from being a screensaver: everything is small and
  * dim, it runs at thirty frames a second and not sixty, it stops dead when
@@ -40,6 +43,7 @@ import { theme } from '../lib/theme';
 
 import { campScene, type Scene } from './camp-scene';
 import { lakeScene } from './lake-scene';
+import { treyScene } from './trey-scene';
 
 interface Ember {
   x: number;
@@ -348,7 +352,13 @@ export function Ambient() {
         : [];
       meteor = null;
       meteorAt = motion.has('shooting') ? now + 6_000 + Math.random() * 20_000 : Infinity;
-      camp = motion.has('camp') ? campScene(readBackdrop()) : motion.has('lake') ? lakeScene() : null;
+      camp = motion.has('camp')
+        ? campScene(readBackdrop())
+        : motion.has('lake')
+          ? lakeScene()
+          : motion.has('trey')
+            ? treyScene(readBackdrop())
+            : null;
       camp?.resize(width, height, readBackdropPosition());
     };
 
