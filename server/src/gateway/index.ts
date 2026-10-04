@@ -234,6 +234,10 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       sessionId: connection.sessionId,
       // Decided on the server; the client only hides the button.
       canCreateServers: await canCreateServers(connection.userId),
+      // This gateway answers a call join with `voice_owned` (or a
+      // `voice_replaced` / `voice_left` error). A client must not wait for
+      // that from a gateway that does not say so: an older one never sends it.
+      voiceOwnership: true,
     },
   };
 

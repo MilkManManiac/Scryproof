@@ -54,7 +54,8 @@ import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
-import { VoiceSession, VoiceGatewayUnavailable, VoiceGatewayRefused, VoiceCallLeft, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
+import { VoiceSession, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
+import { requestVoiceOwnership as requestOwnership } from '../lib/voice-ownership';
 import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
@@ -1030,37 +1031,36 @@ export function StoreProvider({
   const voiceSeen = useRef(new Map<string, VoiceState>());
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
+  /**
+   * Whether the connected gateway confirms call ownership, as its `ready`
+   * frame said. Unknown (undefined) from the moment a connection starts until
+   * that connection's `ready` lands: it is per connection, never remembered
+   * across a reconnect, because the server behind it may have been replaced.
+   */
+  const gatewayConfirmsOwnership = useRef<boolean | undefined>(undefined);
+
   /** Ownership must be confirmed before media can claim the account identity. */
-  const requestVoiceOwnership = (place: CallPlace, join: true | 'resume'): Promise<boolean> => new Promise((resolve, reject) => {
-    const gateway = gatewayRef.current;
-    if (!gateway?.isOpen) { reject(new VoiceGatewayUnavailable()); return; }
-    const requestId = crypto.randomUUID();
-    const done = (owned: boolean): void => {
-      clearTimeout(timer);
-      eventListeners.current.delete(listen);
-      resolve(owned);
-    };
-    const listen = (event: ServerEvent): void => {
-      if (event.t === 'voice_owned' && event.d.requestId === requestId && event.d.roomId === place.id) done(true);
-      if (event.t === 'error' && event.d.requestId === requestId) {
-        if (event.d.code === 'voice_replaced') done(false);
-        else if (event.d.code === 'voice_left') { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceCallLeft()); }
-        else { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceGatewayRefused(event.d.message)); }
+  const requestVoiceOwnership = (place: CallPlace, join: true | 'resume'): Promise<boolean> => requestOwnership({
+    gateway: () => gatewayRef.current,
+    confirms: () => gatewayConfirmsOwnership.current,
+    listen: (listener) => {
+      eventListeners.current.add(listener);
+      return () => { eventListeners.current.delete(listener); };
+    },
+    leaveFirst: (target) => {
+      let held = false;
+      for (const [key, room] of selfRooms.current) {
+        if (room === target.id) { held = true; selfRooms.current.delete(key); }
       }
-    };
-    const timer = setTimeout(() => {
-      eventListeners.current.delete(listen);
-      reject(new VoiceGatewayUnavailable(gateway.isOpen));
-    }, 10_000);
-    eventListeners.current.add(listen);
-    const sent = gateway.send({ t: 'voice_state', d: {
-      ...intentFor(place, join), ...standingVoice(), requestId, tabId: voiceTabId,
+      return held;
+    },
+    intent: (target, how, requestId) => ({
+      ...intentFor(target, how), ...standingVoice(), requestId, tabId: voiceTabId,
       // A rebuilt call stopped its camera and share. Ownership confirmation
       // of an already connected room preserves them instead.
       ...(voiceRef.current?.getSnapshot().phase === 'connecting' ? { cameraOn: false, sharingScreen: false } : {}),
-    } });
-    if (!sent) { clearTimeout(timer); eventListeners.current.delete(listen); reject(new VoiceGatewayUnavailable()); }
-  });
+    }),
+  }, place, join);
 
   // One session object for the life of the app. It is idle until a call is
   // joined, and it reaches the gateway through the ref so it never holds a
@@ -1070,11 +1070,16 @@ export function StoreProvider({
     voiceRef.current = new VoiceSession(
       () => selfId.current ?? '',
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
-      () => {
+      (_phase, quiet) => {
         currentCall.current = null;
-        gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
+        // Taken over by another copy of this app on a gateway that has no
+        // ownership: that gateway would read a leave as this person leaving,
+        // and so evict the device that just took the call.
+        if (!quiet) gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
       },
       (place) => requestVoiceOwnership(place, 'resume'),
+      undefined,
+      () => gatewayConfirmsOwnership.current === false,
     );
   }
   const voice = voiceRef.current;
@@ -1258,7 +1263,12 @@ export function StoreProvider({
       );
     };
 
-    const handleEvent = (event: ServerEvent): void => {
+    /**
+     * `current` is false for a frame that arrived on a socket since replaced
+     * (it waited in the queue behind a slow decrypt). What such a `ready` says
+     * about the gateway is not about the connection now open.
+     */
+    const handleEvent = (event: ServerEvent, current = true): void => {
       dispatch({ type: 'gateway', event });
       for (const listener of eventListeners.current) listener(event);
 
@@ -1479,6 +1489,8 @@ export function StoreProvider({
       }
 
       if (event.t === 'ready') {
+        // Before anything below can ask the gateway for a call (the resume).
+        if (current) gatewayConfirmsOwnership.current = event.d.voiceOwnership === true;
         selfId.current = event.d.user.id;
         notices.use(event.d.user.id);
         // A fresh gateway connection means the server forgot we were in a
@@ -1492,7 +1504,7 @@ export function StoreProvider({
           if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
         }
         const place = currentCall.current;
-        if (place) {
+        if (place && current) {
           void voice.resume();
         }
       }
@@ -1663,14 +1675,21 @@ export function StoreProvider({
     // a sealed message is opened first, which is asynchronous, and nothing
     // behind it may overtake it (a delete arriving before its create).
     let queue: Promise<void> = Promise.resolve();
+    // Bumped on every connection status change, so a frame can be told apart
+    // from one that belongs to a socket that has since been replaced.
+    let connectionSeq = 0;
     const gateway = new Gateway({
       onEvent: (raw) => {
+        const received = connectionSeq;
         queue = queue.then(async () => {
           const event = await prepareEvent(raw).catch(() => raw);
-          handleEvent(event);
+          handleEvent(event, received === connectionSeq);
         });
       },
       onStatus: (status) => {
+        // A new connection knows nothing until its own `ready` says so.
+        connectionSeq += 1;
+        gatewayConfirmsOwnership.current = undefined;
         if (status === 'reconnecting' && currentCall.current) voice.gatewayLost();
         dispatch({ type: 'connection', status });
         if (status === 'closed') onSignedOut();
