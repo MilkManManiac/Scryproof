@@ -10282,3 +10282,18 @@ kbd {
 }
 
 .modal-backdrop:has(.share-picker) { z-index: 120; }
+
+/* Who is tuned into this source, immediately below its music fader. */
+.mixer-listeners { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-height: 28px; margin: 4px 0 8px; color: var(--text-muted); font-size: 11px; }
+.mixer-listeners ul { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 0; }
+.mixer-listeners li { display: flex; border: 2px solid var(--panel-solid); border-radius: 50%; }
+.mixer-listeners .avatar.small { width: 26px; height: 26px; font-size: 10px; }
+.mixer-music .mixer-listeners { margin-top: 12px; }
+.mixer-music .mixer-listener-note { margin-top: 10px; font-size: 10px; color: var(--text-dim); }
+
+/* Decoded output meters: fixed dB scale, green through amber to red near full scale. */
+.mixer-level { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; margin: -3px 0 7px; --meter-level: 0%; }
+.mixer-level-track { position: relative; flex: 1; height: 6px; overflow: hidden; border-radius: 2px; background: var(--line); }
+.mixer-level-track i { position: absolute; inset: 0; background: linear-gradient(to right, #5caf7c 0%, #7ac18d 75%, #d7b260 86%, #dd6965 96%); clip-path: inset(0 calc(100% - var(--meter-level)) 0 0); transition: clip-path 80ms linear; }
+.mixer-level-number { width: 52px; flex-shrink: 0; color: var(--text-dim); text-align: right; font: 10px var(--mono); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .mixer-level-track i { transition: none; } }

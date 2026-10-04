@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-04-music-listeners',
+    date: '2026-10-04',
+    title: 'See your mix and who is listening',
+    notes: [
+      'Live green level bars and dB readings show the sound from each person, music share, stream, and soundboard, plus your overall call output. Adjust a slider and watch its level change.',
+      'Little profile pictures beneath each music share show who is listening, including on your own sharing card. Everyone in the call can see them. Stop listening, mute the music, deafen, or leave and your picture drops out.',
+    ],
+  },
+  {
     id: '2026-10-04-call-mixer',
     date: '2026-10-04',
     title: 'Your call, your mix',
