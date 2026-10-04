@@ -215,7 +215,205 @@ membership change.
 - **Not yet proven beyond one PC.** Two browsers and a local LiveKit 1.13.6.
   Never on the real box, never through TURN, never with three people.
 - **One device per person in a call.** LiveKit identifies a participant by the
-  token's identity, which is the bare user id, so two devices collide there.
+  token's identity, which stays the bare user id. Joining from another device
+  transfers that account's call to it; it does not add a second participant.
+  The gateway retires the previous socket before rotating the encryption
+  epoch, even when the account stays in the same room. Only the current
+  socket may send or receive key envelopes, or clear that call's presence.
+  A valid signed announcement retires the previous device's cryptographic
+  seat. An unfamiliar device still waits for approval, and a changed key is
+  still held: transferring presence is never permission to trust a new key.
+
+## Same-account takeover and terminal disconnects
+
+The observed second-device hang had a control-plane cause: `setVoiceState`
+rotated only when the user's room changed. A second connection joining that
+same room therefore received no membership event. Its call stayed at epoch
+zero, installed no own media key, and sent no announcement. LiveKit could
+also disconnect the old participant because both tokens use the user id.
+The old socket remained eligible to relay keys, and its later Leave cleared
+presence for the whole account. Gateway tests now cover that same-room join,
+DM takeover, late mute/leave controls, and envelopes scoped to the owner.
+Every explicit join rotates even when the account and socket already own
+that room: a rebuilt session has new call keys and cannot start at epoch zero.
+The client waits for a correlated gateway ownership acknowledgement before
+connecting to LiveKit.
+
+Automatic gateway rejoins use `join: 'resume'`. Ownership is tied to a random
+per-document tab id and the authenticated login session, so sibling tabs of
+one browser do not share the call claim. The selected tab is retained in
+memory through an outage for a ten-minute recovery window, including when
+no socket currently owns presence. Explicit leave and server removals clear
+it, and expired offline selections are pruned. A different tab must explicitly
+claim the call; it cannot win a race just by waking first.
+
+Unlabelled legacy joins get `voice_replaced` instead of silently taking a
+selected tab's call. Such a bundle must update to explicitly move a call;
+it may still join when there is no other selection. Only the gateway's
+`voice_replaced` answer ends a recovering device as moved.
+
+**LiveKit does not control recovery.** In installed livekit-client 2.22.3,
+`RoomOptions.reconnectPolicy.nextRetryDelayInMs` returning null stops both
+normal signal-resume and full-reconnect scheduling in `RTCEngine.handleDisconnect`.
+The SDK's browser-online shortcut can invoke `attemptReconnect` directly,
+so the session also tears down on browser offline, Reconnecting, and
+SignalReconnecting. No disconnected room is left running an automatic
+cached-token retry loop.
+
+An unexpected media disconnect keeps the selected call pending and rebuilds
+through gateway approval for at most sixty seconds from the loss, measured
+with `Date.now()` so laptop sleep counts. After the bound it ends with
+"You were disconnected from the call." and requires an explicit user join.
+The same bound covers a gateway that remains open but never answers.
+An explicit join made offline retains its claiming callback until accepted;
+it does not become an automatic resume. A closed gateway fails fast into waiting for its
+next ready; it neither silently drops an ownership request nor turns a
+network outage into a terminal failure. Recoverable media failures retry
+through gateway approval. Definitive server refusals remain terminal. Automatic transport cleanup is
+labelled separately from a human hang-up. A deliberate leave from any login
+invalidates all recovery selections for the account, with a short in-memory
+left marker; a later resume gets `voice_left` and ends quietly as "You left
+this call on another device." An explicit change of room also prevents the
+old room resuming. A fresh explicit join may reopen a call.
+
+A resume from the socket already owning the room does not rotate the epoch.
+The client retains its call keypair, sender key, admitted identities, and
+received sender keys while replacing the media Room and worker, so a new
+transport does not invent a different key in that epoch. Explicit joins,
+real tab handovers, and actual membership changes still rotate. Losing a
+gateway socket clears presence and rotates the peers, so its later rejoin
+is a membership change and receives a fresh epoch.
+
+Approval re-announces the approving peer to the approved device. Receiving a
+repeat announcement resends the same epoch's sender key, so the key refused
+while the sender was held is obtained after approval. It does not rotate or
+relax identity checks, and ciphertext is not retained while consent is pending.
+
+**The server can trigger retirement.** A signed announcement from a different
+device of a remote user retires their previous seat before consent is decided.
+Announcements bind the channel/call id, but do not sign the epoch. A hostile
+relay can replay an old signed device announcement or inject a self-signed
+new-device announcement to evict the current remote seat. That is denial of
+service, not permission to decrypt: new or changed identities still get no
+keys until approved. Check the named device warning and read matching
+verification codes with the people actually in the call before approving a
+replacement. Own-user announcements never retire this device's own seat.
+Owner-only routing also prevents the previous device receiving any newly
+rotated envelopes sealed for its old call key during the announcement race.
+
+### Token lifetime and reconnects
+
+The application default is now ten minutes, reduced from fifteen. This
+bounds a just-issued cached join token to LiveKit 1.13.6's refresh floor.
+Reducing it further would not tighten tokens already held by a connected
+client: LiveKit immediately refreshes them and refreshes every five minutes,
+issuing at least ten minutes of remaining validity. An explicitly configured
+longer `LIVEKIT_TOKEN_TTL_SECONDS` still overrides the application default.
+See [`RoomManager.refreshToken` at v1.13.6](https://github.com/livekit/livekit/blob/v1.13.6/pkg/service/roommanager.go).
+
+The installed SDK replaces `RTCEngine.token` on `onTokenRefresh` and uses it
+for both `resumeConnection` and `restartConnection`; an expired token can
+make a full reconnect unrecoverable. Shortening initial expiry therefore
+cannot be the ownership lock. Disabling SDK retries and gateway-approved recovery prevent an offline tab
+from repeatedly reattaching its cached token. A deliberately forced raw
+LiveKit connect can still kick the owner once; that owner recovers through
+the gateway using its existing epoch. LiveKit identities stay per account.
+
+### Review verification (2026-10-02)
+
+Targeted Node tests passed 41 server and 51 client checks, with concurrency
+capped at eight; both TypeScript project checks passed. The session test
+uses real WebCrypto and proves approval secures both directions without
+another epoch. Deliberately disabling approval's re-announcement, cross-session
+resume refusal, same-room owner rotation, or moved-ending Leave made the
+corresponding tests fail. The moved-ending mutation reproduced a real
+LiveKit presence ghost rather than only changing a mocked snapshot.
+
+The full browser run passed 109 of 112 checks against LiveKit 1.13.6.
+All takeover, owner recovery, and same-channel retry checks passed. The three
+failures were the existing screen-zoom checks (wheel in, pan, and double-click
+out); the exact pre-change archive from `f4074d2^` passed 88 of 91 and failed
+the same three checks on its isolated API and web ports. They are outside
+this voice change and were not modified.
+
+After tightening the final legacy-join guard, the focused live takeover run
+passed all 25 checks. It blocks only gateway and LiveKit WebSockets, keeps
+Vite's HMR connected, moves the call, approves the new identity, and restores
+the old device's network. It also forces a cached-token LiveKit-only connect
+to kick the owner and proves that owner recovers with decoded encrypted audio.
+A fresh legacy gateway socket is refused, an owner can rejoin the same room,
+and both moved and failed terminal endings clear owned presence.
+
+Replay locally with the application's API, Vite, and local LiveKit running:
+
+```bash
+VOICE_CHECK_WEB=http://localhost:5183 VOICE_CHECK_TAKEOVER_ONLY=1 \
+  testrun scryproof voice-takeover -- npm run test:voice
+```
+
+This is separate headless Chromium profiles on one Linux machine. Actual Mac
+sleep/wake, real microphone/camera permissions, two physical machines, TURN,
+and slow or lossy networks still need the coordinator's device test. The
+stale-token recovery can briefly interrupt the selected device's media while
+its ownership confirmation and encrypted reconnect finish.
+
+### Recovery review verification (2026-10-02)
+
+The second review found that SDK-driven signal resume could run while the
+application gateway was offline. That could either turn a single-device
+outage into a permanent failed call, or repeatedly reattach a replaced tab
+to the selected user's LiveKit identity. SDK retries are now disabled and
+all application recovery keeps the pending call until gateway approval.
+
+Targeted checks passed 43 server and 54 client tests, including same-owner
+epoch retention, sibling-tab refusal with and without a live owner, obsolete
+socket cleanup, pending-call recovery, and definitive permission refusals.
+Both TypeScript project checks passed. The requested guards were proved by
+mutation: treating a gateway outage as terminal failed the pending-call test;
+enabling SDK retries failed the Room policy assertion; rotating on owned
+resume failed the unchanged-epoch assertion.
+
+The final focused browser check passed all 32 checks against LiveKit 1.13.6.
+A single device's gateway was blocked, its media socket dropped, and the
+gateway restored after fifteen seconds: the peer decoded its audio again.
+A replaced device's media network returned twenty-five seconds before its
+gateway: the selected device had no epoch changes or transport rebuilds.
+After approving the replacement, the peer's decoded audio energy was positive.
+These checks remain in the harness, and Vite's HMR socket stays untouched.
+
+The full voice check passed 117 of 120 checks. The only failures were the
+three existing zoom checks. The coordinator identified the first-run tour
+backdrop as the cause and fixed the test's tour state on `mac-integration`;
+this branch leaves that independently owned change for integration.
+
+Physical Mac lid-close and Wi-Fi loss still need testing: browser socket
+blocking does not suspend JavaScript, reproduce OS device changes, or prove
+TURN behavior. Recovery selection expires after the ten-minute outage window
+when no tab owns presence; after expiry, the first valid resume may select
+an otherwise unowned call.
+
+### Integrated recovery-bound review (2026-10-02)
+
+This follow-up is based on `voice-r3`, including the other Mac lanes and the
+first-run tour test correction. Desktop download-store initialization is now
+lazy, so importing the bridge without a browser location does not crash the
+voice unit tests. The targeted checks include the Mac, Windows, Mac-browser,
+and platform wiring files, run from the web workspace so its JSX configuration
+is used. The recovery-bound test advances wall clock across sixty seconds,
+not just a timer tick, and an offline explicit join keeps `join: true`.
+
+The browser expiry case uses a short override on the dev-only `__voice`
+instance; the shipped constructor default is sixty seconds. The staggered
+probe now returns media immediately after approval, checks the actual Room
+retry policy as well as epoch and transport stability, and must turn red if
+SDK retry is enabled. Another case explicitly hangs up the selected device
+while its sibling is offline and verifies the sibling ends with the left
+message rather than restoring its microphone.
+
+Compatibility note: an old bundle without tab ids cannot safely identify its
+resuming tab after a socket change. It may still see the moved message until
+it reloads the updated bundle. Mapping all such tabs to the login cookie
+would reintroduce the sibling-tab takeover bug, so that fallback is not used.
 
 ## Firefox
 
@@ -247,3 +445,25 @@ energy stays at exactly zero, which is what "cannot decrypt" looks like from
 outside. Then a leave and rejoin: the epoch moves, fresh keys are exchanged
 with nobody touching anything, the verdict is `known`, and audio comes back.
 All 14 checks passed on 2026-09-17.
+
+
+Final `voice-r4` verification: 125 of 125 real LiveKit browser checks passed
+on the integrated tree, including the tour-state fix. Targeted tests passed
+102 web checks (voice plus all four desktop wiring/platform files) and 44
+server checks; both TypeScript project checks passed. The wall-clock expiry,
+deliberate-leave marker, and staggered SDK-policy guard were each made red
+by mutation before restoring them. Importing desktop wiring no longer reads
+a browser location at module load.
+
+The live ending probe exposed a second-device join race: an account-wide
+old departure could cancel the new device's pending join. Presence now carries
+a server-stamped owner tab, and the client only applies an own-call departure
+for that tab. The ending checks measure visible membership and decoded audio;
+LiveKit may retain a disconnected participant object briefly for its own
+resume grace period, which is not a returned call or a live microphone.
+
+Physical Mac sleep/wake and Wi-Fi changes still need testing. The browser
+expiry test uses a short dev-instance override, while the unit test advances
+`Date.now()` across the shipped sixty-second threshold. Old pre-tab-id bundles
+may require a reload after a gateway blip; no cookie-based fallback was added
+because it would let sibling tabs resume one another's calls.

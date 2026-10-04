@@ -24,6 +24,11 @@ import * as hub from './hub.js';
 
 export interface VoiceStateIntent {
   channelId: string | null;
+  /** Distinguishes a deliberate rejoin from a late mute on a replaced socket. */
+  join?: boolean | 'resume';
+  requestId?: string;
+  tabId?: string;
+  leave?: 'cleanup';
   /** A conversation's call to be in. Only read when `channelId` is null. */
   dmId?: string | null;
   selfMute?: boolean;
@@ -32,19 +37,61 @@ export interface VoiceStateIntent {
   cameraOn?: boolean;
 }
 
+// Permission checks await the database. Serialize per account so two joins
+// cannot both claim the seat after observing the same old owner.
+const voiceIntents = new Map<string, Promise<void>>();
 export async function handleVoiceStateIntent(
   connection: hub.Connection,
   intent: VoiceStateIntent,
 ): Promise<void> {
+  const next = (voiceIntents.get(connection.userId) ?? Promise.resolve())
+    .catch(() => undefined).then(() => applyVoiceStateIntent(connection, intent));
+  voiceIntents.set(connection.userId, next);
+  try { await next; } finally {
+    if (voiceIntents.get(connection.userId) === next) voiceIntents.delete(connection.userId);
+  }
+}
+
+async function applyVoiceStateIntent(
+  connection: hub.Connection,
+  intent: VoiceStateIntent,
+): Promise<void> {
+  const roomId = intent.channelId ?? intent.dmId;
+  const tabId = typeof intent.tabId === 'string' && intent.tabId.length <= 128 ? intent.tabId : connection.callTabId ?? connection.id;
+  const otherOwner = hub.connectionsForUser(connection.userId).find((other) =>
+    other !== connection && hub.ownsVoice(other) && (other.callTabId !== tabId || other.sessionId !== connection.sessionId),
+  );
+  const refusal = roomId && intent.join !== true ? hub.resumeRefusal(connection, roomId, tabId) : null;
+  if (roomId && ((intent.join !== true && otherOwner) ||
+    refusal ||
+    (connection.callReplaced && intent.join !== true && intent.join !== 'resume'))) {
+    // Neither a resume nor an unlabelled legacy join may claim another
+    // login session's call. Old bundles get an answer too, including on a
+    // fresh gateway socket. A silent refusal would let them connect
+    // media with a cached account token while waiting forever for call keys.
+    connection.ws.send(JSON.stringify({ t: 'error', d: {
+      code: refusal ?? 'voice_replaced', message: refusal === 'voice_left' ? 'You left this call on another device.' : 'You joined this call from another device.', requestId: intent.requestId,
+    } }));
+    return;
+  }
   if (intent.channelId === null && typeof intent.dmId === 'string') {
-    await handleDmCallIntent(connection, intent.dmId, intent);
+    await handleDmCallIntent(connection, intent.dmId, { ...intent, tabId });
     return;
   }
 
   // Leaving: clear every voice state this user holds and tell whoever could see it.
   if (intent.channelId === null) {
-    connection.callChannelId = null;
-    await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+    if (intent.leave !== 'cleanup') {
+      hub.invalidateVoiceRecovery(connection.userId);
+      for (const other of hub.connectionsForUser(connection.userId)) {
+        if (other !== connection && hub.ownsVoice(other) && other.ws.readyState === 1) other.ws.send(JSON.stringify({
+          t: 'error', d: { code: 'voice_left', message: 'You left this call on another device.' },
+        }));
+      }
+      await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+      return;
+    }
+    await hub.announceCleared(hub.clearVoiceForConnection(connection));
     return;
   }
 
@@ -55,11 +102,10 @@ export async function handleVoiceStateIntent(
     .where(eq(channels.id, intent.channelId))
     .limit(1);
 
-  if (!channel || channel.type !== 'voice') return;
-  if (!connection.servers.has(channel.serverId)) return;
+  if (!channel || channel.type !== 'voice' || !connection.servers.has(channel.serverId)) { refuseVoice(connection, intent); return; }
 
   const ctx = await loadMemberContext(channel.serverId, connection.userId);
-  if (!ctx) return;
+  if (!ctx) { refuseVoice(connection, intent); return; }
 
   const permissions = await computePermissionsInChannel(ctx, channel.id);
 
@@ -67,11 +113,15 @@ export async function handleVoiceStateIntent(
     connection.ws.send(
       JSON.stringify({
         t: 'error',
-        d: { code: 'missing_permissions', message: 'You cannot join that voice channel.' },
+        d: { code: 'missing_permissions', message: 'You cannot join that voice channel.', requestId: intent.requestId },
       }),
     );
     return;
   }
+
+  if (connection.ws.readyState !== 1) return;
+  const wasOwner = hub.ownsVoice(connection, channel.id);
+  hub.claimVoice(connection, channel.id, false, intent.join === true, tabId);
 
   // One call at a time. A person has one microphone, and their device holds
   // one set of call keys; standing in two servers' voice channels at once, or
@@ -94,9 +144,10 @@ export async function handleVoiceStateIntent(
     });
   }
 
-  const staying = previous?.channelId === channel.id;
+  const staying = previous?.channelId === channel.id && wasOwner;
 
   const state: VoiceState = {
+    ownerTabId: connection.callTabId,
     userId: connection.userId,
     serverId: channel.serverId,
     channelId: channel.id,
@@ -114,11 +165,11 @@ export async function handleVoiceStateIntent(
     cameraOn: (intent.cameraOn ?? (staying && previous.cameraOn)) && has(permissions, Permission.VIDEO),
   };
 
+  if (connection.ws.readyState !== 1) return;
+  if (!hub.ownsVoice(connection, channel.id)) { refuseVoice(connection, intent); return; }
   hub.setVoiceState(state);
-  // This device is the one in the call now, whichever was before.
-  for (const other of hub.connectionsForUser(connection.userId)) other.callChannelId = null;
-  connection.callChannelId = channel.id;
   await hub.announceVoiceState(channel.serverId, channel.id, state);
+  confirmVoice(connection, channel.id, intent);
 
   logger.debug(
     { userId: connection.userId, channelId: channel.id },
@@ -149,11 +200,15 @@ async function handleDmCallIntent(
     // it, which rotates the key the others hold so this device loses it. The
     // departure goes first so the client hangs up before it reads why.
     if (hub.getDmVoiceState(connection.userId)?.dmId === dmId) {
-      await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
+      await hub.announceCleared(hub.clearVoiceForConnection(connection));
     }
-    connection.ws.send(JSON.stringify({ t: 'error', d: { code, message } }));
+    connection.ws.send(JSON.stringify({ t: 'error', d: { code, message, requestId: intent.requestId } }));
     return;
   }
+
+  if (connection.ws.readyState !== 1) return;
+  const wasOwner = hub.ownsVoice(connection, dmId);
+  hub.claimVoice(connection, dmId, true, intent.join === true, typeof intent.tabId === 'string' ? intent.tabId : connection.id);
 
   // Leaves any server call, and any other conversation's call, first. The
   // conversation's own entry is kept so that muting does not look like
@@ -163,9 +218,10 @@ async function handleDmCallIntent(
   );
 
   const previous = hub.getDmVoiceState(connection.userId);
-  const staying = previous?.dmId === dmId;
+  const staying = previous?.dmId === dmId && wasOwner;
 
   const state: VoiceState = {
+    ownerTabId: connection.callTabId,
     userId: connection.userId,
     serverId: null,
     channelId: null,
@@ -178,11 +234,24 @@ async function handleDmCallIntent(
     cameraOn: intent.cameraOn ?? (staying && previous.cameraOn),
   };
 
+  if (connection.ws.readyState !== 1 || !hub.ownsVoice(connection, dmId)) return;
   hub.setVoiceState(state);
-  connection.callChannelId = null;
   await hub.announceDmVoiceState(dmId, state);
+  confirmVoice(connection, dmId, intent);
 
   logger.debug({ userId: connection.userId, dmId }, 'dm call state updated');
+}
+
+function refuseVoice(connection: hub.Connection, intent: VoiceStateIntent): void {
+  connection.ws.send(JSON.stringify({ t: 'error', d: {
+    code: 'voice_unavailable', message: 'You cannot join that call.', requestId: intent.requestId,
+  } }));
+}
+
+/** A correlated acknowledgement gates the client's LiveKit connect. */
+function confirmVoice(connection: hub.Connection, roomId: string, intent: VoiceStateIntent): void {
+  if (typeof intent.requestId !== 'string' || !hub.ownsVoice(connection, roomId) || connection.ws.readyState !== 1) return;
+  connection.ws.send(JSON.stringify({ t: 'voice_owned', d: { roomId, requestId: intent.requestId } }));
 }
 
 /** Force someone out of voice. Used by MUTE_MEMBERS and MOVE_MEMBERS. */
@@ -236,16 +305,19 @@ export function handleVoiceSignal(
   // A message labelled with an old epoch is about a set of people that no
   // longer exists, and every client would refuse it anyway.
   const occupants = hub.voiceOccupants(channelId);
-  if (!occupants.includes(connection.userId)) return;
+  if (!occupants.includes(connection.userId) || !hub.ownsVoice(connection, channelId)) return;
   if (epoch !== hub.voiceEpoch(channelId)) return;
 
   const recipients = to === undefined ? occupants : occupants.includes(to) ? [to] : [];
 
   for (const userId of recipients) {
     if (userId === connection.userId) continue;
-    hub.sendToUser(userId, {
-      t: 'voice_signal',
-      d: { channelId, epoch, kind, payload, from: connection.userId },
-    });
+    for (const recipient of hub.connectionsForUser(userId)) {
+      if (!hub.ownsVoice(recipient, channelId) || recipient.ws.readyState !== 1) continue;
+      recipient.ws.send(JSON.stringify({
+        t: 'voice_signal',
+        d: { channelId, epoch, kind, payload, from: connection.userId },
+      }));
+    }
   }
 }

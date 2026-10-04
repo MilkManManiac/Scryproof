@@ -11,7 +11,8 @@
 
 import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
 
-import { canZoom, isDesktop, publicOrigin } from "../lib/desktop";
+import { canZoom, isDesktop } from "../lib/desktop";
+import { useDesktopDownload } from "../lib/desktop-hooks";
 import { interfaceScale, SCALE_STEPS } from "../lib/interface-scale";
 import { theme } from "../lib/theme";
 import { THEMES } from "../lib/themes";
@@ -40,6 +41,18 @@ function tokensFor(id: string): CSSProperties {
     }
   }
   return tokens as CSSProperties;
+}
+
+/** What an app too old to zoom is told. Its own component, so the download is only looked up where it is shown. */
+function NeedsNewerApp() {
+  const download = useDesktopDownload();
+  return download ? (
+    <>
+      Needs the newest desktop app: <a href={download.href}>download it</a> and run it once.
+    </>
+  ) : (
+    <>Needs the newest desktop app.</>
+  );
 }
 
 export function ThemePicker({ onClose }: { onClose: () => void }) {
@@ -109,13 +122,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
         {canZoom ? (
           "Also kept on this computer only."
         ) : isDesktop ? (
-          <>
-            Needs the newest desktop app:{" "}
-            <a href={`${publicOrigin()}/download/Scryproof-Setup.exe`}>
-              download it
-            </a>{" "}
-            and run it once.
-          </>
+          <NeedsNewerApp />
         ) : (
           "In a browser, hold Ctrl and press + or - to do the same."
         )}

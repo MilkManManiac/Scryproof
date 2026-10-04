@@ -51,7 +51,7 @@ export type ServerEvent =
    * `blocks` is the ids this person has blocked, so the first paint already
    * collapses their messages rather than showing them and taking them back.
    */
-  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string; canCreateServers?: boolean } }
+  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string; canCreateServers?: boolean; voiceOwnership?: boolean } }
   | { t: 'heartbeat_ack'; d: { at: number } }
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }
@@ -196,7 +196,8 @@ export type ServerEvent =
   | { t: 'dm_read'; d: { dmId: Snowflake; lastReadMessageId: Snowflake } }
   /** "Again" on a jump in a conversation. Only the message id: the server cannot read what it says. */
   | { t: 'dm_spawn_replay'; d: { dmId: Snowflake; messageId: Snowflake } }
-  | { t: 'error'; d: { code: string; message: string } };
+  | { t: 'voice_owned'; d: { roomId: string; requestId: string } }
+  | { t: 'error'; d: { code: string; message: string; requestId?: string } };
 
 export type ClientEvent =
   | { t: 'heartbeat' }
@@ -209,6 +210,14 @@ export type ClientEvent =
       d: {
         /** A server voice channel to be in, or null with no `dmId` to leave any call. */
         channelId: Snowflake | null;
+        /** true claims the call; resume never takes it from another session. */
+        join?: boolean | 'resume';
+        /** Correlates ownership confirmation before any media connect. */
+        requestId?: string;
+        /** Identifies this tab across gateway reconnects, not a LiveKit identity. */
+        tabId?: string;
+        /** Terminal transport cleanup is not a user's deliberate hang-up. */
+        leave?: 'cleanup';
         /** A direct message conversation to be in the call of. Only read when `channelId` is null. */
         dmId?: Snowflake | null;
         selfMute?: boolean;

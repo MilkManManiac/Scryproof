@@ -13,9 +13,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { answerShare, onShareRequest, refreshShare, type ShareRequest, type ShareSource } from '../lib/desktop';
+import { answerShare, onMacApp, onShareRequest, refreshShare, type ShareRequest, type ShareSource } from '../lib/desktop';
 import { useVoice } from '../state/useVoice';
 import { Modal } from './Modal';
+import { ScreenRecordingNote, ShareSound, soundToShare } from './ShareMacNotes';
 
 /** Often enough to look live, seldom enough to stay cheap: the pictures are small. */
 const REFRESH_MS = 2000;
@@ -74,7 +75,7 @@ export function SharePicker() {
   const share = (id: string | null) => {
     if (!id) return;
     setRequest(null);
-    answerShare({ id, withSound: request.sound !== null && withSound });
+    answerShare({ id, withSound: soundToShare(onMacApp, request.sound !== null, withSound) });
   };
 
   const screens = request.sources.filter((source) => source.kind === 'screen');
@@ -88,17 +89,13 @@ export function SharePicker() {
       onClose={cancel}
       footer={
         <>
-          {request.sound !== null ? (
-            <label className="share-picker-sound">
-              <input
-                type="checkbox"
-                className="perm-switch"
-                checked={withSound}
-                onChange={(event) => setWithSound(event.target.checked)}
-              />
-              <span>{request.soundLabel}</span>
-            </label>
-          ) : null}
+          <ShareSound
+            mac={onMacApp}
+            offered={request.sound !== null}
+            label={request.soundLabel}
+            checked={withSound}
+            onChange={setWithSound}
+          />
           <button type="button" className="button secondary inline" onClick={cancel}>
             Cancel
           </button>
@@ -109,6 +106,7 @@ export function SharePicker() {
       }
     >
       {music ? <p className="field-note">Choose a source and turn on Include sound. Only audio will be sent to the call.</p> : null}
+      <ScreenRecordingNote />
       <div className="settings-tabs share-picker-tabs" role="tablist">
         {(
           [

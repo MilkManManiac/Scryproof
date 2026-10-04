@@ -662,3 +662,47 @@ describe('a device nobody expected', () => {
     assert.equal(wes.awaitingConsent.length, 0);
   });
 });
+
+
+test('takeover retires the old device only once the new one is approved', async () => {
+  const peer = await makeDevice('peer');
+  const old = await makeDevice('account');
+  await connect([peer, old]);
+  const identity = await createDeviceIdentity('account-second-device');
+  const callKeys = await createCallKeypair();
+  const replacement = await announce(CALL, 'account', identity, callKeys);
+  const forged = { ...replacement, signature: old.announcement.signature };
+  assert.equal((await peer.call.admit([forged])).rejected.length, 1);
+  assert.ok(peer.call.members.some((member) => member.announcement.deviceId === old.announcement.deviceId));
+  peer.call.rotate(2);
+  await peer.call.admit([replacement]);
+  // An unapproved device never pushes out the one already trusted: a forged
+  // "new device" from the server must not evict the real one.
+  assert.deepEqual(
+    peer.call.members.filter((member) => member.announcement.userId === 'account').map((member) => member.announcement.deviceId),
+    [old.announcement.deviceId],
+  );
+  assert.equal(peer.call.awaitingConsent[0]?.verdict, 'new-device');
+  assert.equal((await peer.call.distribute()).filter((key) => key.recipientDeviceId === identity.deviceId).length, 0);
+  await peer.call.approve('account', identity.deviceId);
+  assert.equal(peer.call.members.some((member) => member.announcement.deviceId === old.announcement.deviceId), false);
+  const sent = (await peer.call.distribute()).filter((key) => key.recipientId === 'account');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.recipientDeviceId, identity.deviceId);
+  const newCall = new VoiceCall({ callId: CALL, userId: 'account', identity, callKeys, pins: new MemoryIdentityStore() });
+  await newCall.admit([replacement, peer.announcement]);
+  newCall.rotate(2);
+  assert.ok(await newCall.accept(sent[0]!));
+  assert.equal(await old.call.accept(sent[0]!), null);
+});
+
+
+test('another own-user announcement never retires this device from its own verification set', async () => {
+  const self = await makeDevice('self');
+  await self.call.admit([self.announcement]);
+  const otherIdentity = await createDeviceIdentity('self-other');
+  const otherKeys = await createCallKeypair();
+  await self.call.admit([await announce(CALL, 'self', otherIdentity, otherKeys)]);
+  assert.ok(self.call.members.some((member) => member.announcement.deviceId === self.call.identity.deviceId));
+  assert.equal(self.call.members.find((member) => member.announcement.deviceId === self.call.identity.deviceId)?.fingerprint, self.call.identity.fingerprint);
+});

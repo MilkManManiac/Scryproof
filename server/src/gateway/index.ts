@@ -234,6 +234,10 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       sessionId: connection.sessionId,
       // Decided on the server; the client only hides the button.
       canCreateServers: await canCreateServers(connection.userId),
+      // This gateway answers a call join with `voice_owned` (or a
+      // `voice_replaced` / `voice_left` error). A client must not wait for
+      // that from a gateway that does not say so: an older one never sends it.
+      voiceOwnership: true,
     },
   };
 
@@ -251,6 +255,8 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
 }
 
 async function announceDeparture(connection: hub.Connection): Promise<void> {
+  // Voice belongs to this socket even when another signed-in window remains.
+  await hub.announceCleared(hub.clearVoiceForConnection(connection, true));
   // Other devices may still be connected; only announce a real disconnect.
   if (hub.connectionsForUser(connection.userId).length > 0) return;
 
@@ -258,9 +264,6 @@ async function announceDeparture(connection: hub.Connection): Promise<void> {
   for (const serverId of connection.servers) {
     hub.broadcastToServer(serverId, { t: 'presence_update', d: presence });
   }
-
-  // Someone whose browser died should not be left standing in a voice channel.
-  await hub.announceCleared(hub.clearVoiceStatesForUser(connection.userId));
 }
 
 async function handleClientEvent(

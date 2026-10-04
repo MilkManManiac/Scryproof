@@ -37,6 +37,15 @@ export const CHANGELOG: readonly Release[] = [
     ],
   },
   {
+    id: '2026-10-02-mac',
+    date: '2026-10-02',
+    title: 'A Mac app is on its way',
+    notes: [
+      'The desktop app is being built for Mac, with what the Windows one does: push-to-talk with a game in front, a picker for the screen or window to share, and updating itself. It is not out yet; on a Mac, use a browser for now. It is for Apple silicon Macs (M1 and newer), not Intel ones. The moment it is published, the download link offers the app on a Mac; until then, a Mac sees no download link.',
+      'On a Mac, push-to-talk from another app needs the Accessibility switch, and sharing needs Screen Recording. The app will say so when it matters, with a button to the right page in System Settings. Sharing a screen from a Mac has no sound for now.',
+    ],
+  },
+  {
     id: '2026-10-02-desktop-update-link',
     date: '2026-10-02',
     title: 'Get the desktop update from Scryproof',

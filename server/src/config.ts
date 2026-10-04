@@ -133,8 +133,12 @@ export const config = {
       'LIVEKIT_API_SECRET',
       isProduction ? '' : 'devsecret-devsecret-devsecret-devsecret',
     ),
-    /** How long a join token stays valid. Short on purpose. */
-    tokenTtlSeconds: optionalNumber('LIVEKIT_TOKEN_TTL_SECONDS', 900),
+    /**
+     * Match LiveKit 1.13.6's refreshed-token floor (ten minutes). A shorter
+     * initial TTL would be extended immediately by its refreshToken path.
+     * Ownership is confirmed through our gateway on every reconnect.
+     */
+    tokenTtlSeconds: optionalNumber('LIVEKIT_TOKEN_TTL_SECONDS', 600),
   },
 
   /**

@@ -54,7 +54,8 @@ import { Gateway, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
-import { VoiceSession, type CallPlace } from '../lib/voice-session';
+import { VoiceSession, MOVED_CALL_MESSAGE, shouldJoinCall, type CallPlace } from '../lib/voice-session';
+import { requestVoiceOwnership as requestOwnership } from '../lib/voice-ownership';
 import { voicePrefs } from '../lib/voice-prefs';
 import { sounds } from '../lib/voice-audio';
 import { MutedTalkWatch, WATCH_EVERY_MS, muteCue, mutedTalkNote, talkingLevel } from '../lib/mute-state';
@@ -198,8 +199,15 @@ const standingVoice = (): { selfMute: boolean; selfDeaf: boolean } => {
   return { selfMute, selfDeaf };
 };
 
-const intentFor = (place: CallPlace): { channelId: string | null; dmId: string | null } =>
-  place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id };
+// Per document, not sessionStorage: window.open can copy a tab's storage.
+const voiceTabId = crypto.randomUUID();
+
+const intentFor = (place: CallPlace, join: boolean | 'resume' = false): { channelId: string | null; dmId: string | null; join?: boolean | 'resume' } => ({
+  ...(place.kind === 'channel' ? { channelId: place.id, dmId: null } : { channelId: null, dmId: place.id }),
+  // A deliberate join may take the call back; a late mute from a replaced
+  // device may not. Older gateways harmlessly ignore this optional field.
+  ...(join ? { join } : {}),
+});
 
 /** First text channel the member can see, for landing on a sensible default. */
 function firstVisibleChannel(server: ServerDetail | undefined): string | null {
@@ -1023,6 +1031,37 @@ export function StoreProvider({
   const voiceSeen = useRef(new Map<string, VoiceState>());
   const eventListeners = useRef(new Set<(event: ServerEvent) => void>());
 
+  /**
+   * Whether the connected gateway confirms call ownership, as its `ready`
+   * frame said. Unknown (undefined) from the moment a connection starts until
+   * that connection's `ready` lands: it is per connection, never remembered
+   * across a reconnect, because the server behind it may have been replaced.
+   */
+  const gatewayConfirmsOwnership = useRef<boolean | undefined>(undefined);
+
+  /** Ownership must be confirmed before media can claim the account identity. */
+  const requestVoiceOwnership = (place: CallPlace, join: true | 'resume'): Promise<boolean> => requestOwnership({
+    gateway: () => gatewayRef.current,
+    confirms: () => gatewayConfirmsOwnership.current,
+    listen: (listener) => {
+      eventListeners.current.add(listener);
+      return () => { eventListeners.current.delete(listener); };
+    },
+    leaveFirst: (target) => {
+      let held = false;
+      for (const [key, room] of selfRooms.current) {
+        if (room === target.id) { held = true; selfRooms.current.delete(key); }
+      }
+      return held;
+    },
+    intent: (target, how, requestId) => ({
+      ...intentFor(target, how), ...standingVoice(), requestId, tabId: voiceTabId,
+      // A rebuilt call stopped its camera and share. Ownership confirmation
+      // of an already connected room preserves them instead.
+      ...(voiceRef.current?.getSnapshot().phase === 'connecting' ? { cameraOn: false, sharingScreen: false } : {}),
+    }),
+  }, place, join);
+
   // One session object for the life of the app. It is idle until a call is
   // joined, and it reaches the gateway through the ref so it never holds a
   // socket that has since been replaced.
@@ -1031,6 +1070,16 @@ export function StoreProvider({
     voiceRef.current = new VoiceSession(
       () => selfId.current ?? '',
       (signal) => gatewayRef.current?.send({ t: 'voice_signal', d: signal }),
+      (_phase, quiet) => {
+        currentCall.current = null;
+        // Taken over by another copy of this app on a gateway that has no
+        // ownership: that gateway would read a leave as this person leaving,
+        // and so evict the device that just took the call.
+        if (!quiet) gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null, leave: 'cleanup' } });
+      },
+      (place) => requestVoiceOwnership(place, 'resume'),
+      undefined,
+      () => gatewayConfirmsOwnership.current === false,
     );
   }
   const voice = voiceRef.current;
@@ -1214,7 +1263,12 @@ export function StoreProvider({
       );
     };
 
-    const handleEvent = (event: ServerEvent): void => {
+    /**
+     * `current` is false for a frame that arrived on a socket since replaced
+     * (it waited in the queue behind a slow decrypt). What such a `ready` says
+     * about the gateway is not about the connection now open.
+     */
+    const handleEvent = (event: ServerEvent, current = true): void => {
       dispatch({ type: 'gateway', event });
       for (const listener of eventListeners.current) listener(event);
 
@@ -1435,6 +1489,8 @@ export function StoreProvider({
       }
 
       if (event.t === 'ready') {
+        // Before anything below can ask the gateway for a call (the resume).
+        if (current) gatewayConfirmsOwnership.current = event.d.voiceOwnership === true;
         selfId.current = event.d.user.id;
         notices.use(event.d.user.id);
         // A fresh gateway connection means the server forgot we were in a
@@ -1448,16 +1504,20 @@ export function StoreProvider({
           if (entry.userId === event.d.user.id && room) selfRooms.current.set(voiceKey(entry.serverId, entry.userId), room);
         }
         const place = currentCall.current;
-        if (place) {
-          void voice.join(place, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
-          );
+        if (place && current) {
+          void voice.resume();
         }
       }
       // The only errors the gateway sends are refusals of something we just
       // asked for. Mid-join, that is the join: show it rather than sit on
       // "connecting" forever.
-      if (event.t === 'error' && currentCall.current) {
+      if (event.t === 'error' && event.d.code === 'voice_left' && currentCall.current && !event.d.requestId) {
+        currentCall.current = null;
+        void voice.end('ended', 'You left this call on another device.');
+      } else if (event.t === 'error' && event.d.code === 'voice_replaced' && currentCall.current && !event.d.requestId) {
+        currentCall.current = null;
+        void voice.end('moved', MOVED_CALL_MESSAGE);
+      } else if (event.t === 'error' && currentCall.current && !event.d.requestId) {
         currentCall.current = null;
         voice.fail(event.d.message);
       }
@@ -1472,7 +1532,7 @@ export function StoreProvider({
           currentCall.current = next;
           if (openChannel.current === event.d.fromChannelId) dispatch({ type: 'select-channel', channelId: event.d.channelId });
           void voice.join(next, () =>
-            gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(next), ...standingVoice() } }),
+            requestVoiceOwnership(next, true),
           );
         }
       }
@@ -1503,7 +1563,7 @@ export function StoreProvider({
           // a call somewhere else announces leaving the old one, and that
           // must not hang up the new one.
           const place = currentCall.current;
-          if (place && left === place.id) {
+          if (place && left === place.id && (!event.d.ownerTabId || event.d.ownerTabId === voiceTabId)) {
             currentCall.current = null;
             void voice.leave();
           }
@@ -1615,14 +1675,22 @@ export function StoreProvider({
     // a sealed message is opened first, which is asynchronous, and nothing
     // behind it may overtake it (a delete arriving before its create).
     let queue: Promise<void> = Promise.resolve();
+    // Bumped on every connection status change, so a frame can be told apart
+    // from one that belongs to a socket that has since been replaced.
+    let connectionSeq = 0;
     const gateway = new Gateway({
       onEvent: (raw) => {
+        const received = connectionSeq;
         queue = queue.then(async () => {
           const event = await prepareEvent(raw).catch(() => raw);
-          handleEvent(event);
+          handleEvent(event, received === connectionSeq);
         });
       },
       onStatus: (status) => {
+        // A new connection knows nothing until its own `ready` says so.
+        connectionSeq += 1;
+        gatewayConfirmsOwnership.current = undefined;
+        if (status === 'reconnecting' && currentCall.current) voice.gatewayLost();
         dispatch({ type: 'connection', status });
         if (status === 'closed') onSignedOut();
         // A fresh connection starts out as nobody looking; say otherwise.
@@ -1680,14 +1748,14 @@ export function StoreProvider({
   const joinCall = useCallback(
     (place: CallPlace) => {
       const current = currentCall.current;
-      if (current && current.kind === place.kind && current.id === place.id) return;
+      if (!shouldJoinCall(current, place, voice.getSnapshot().phase)) return;
       currentCall.current = place;
       // The session prepares its keys first and only then tells the gateway,
       // because the gateway answers a join with the membership event at once.
       // The gateway takes this person out of any other call as it puts them
       // in this one: one call at a time, a server's or a conversation's.
       void voice.join(place, () =>
-        gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...standingVoice() } }),
+        requestVoiceOwnership(place, true),
       );
     },
     [voice],
@@ -1699,7 +1767,7 @@ export function StoreProvider({
   const leaveVoice = useCallback(() => {
     currentCall.current = null;
     gatewayRef.current?.send({ t: 'voice_state', d: { channelId: null } });
-    void voice.leave();
+    void voice.end('ended', 'You left the call.');
   }, [voice]);
 
   const updateVoice = useCallback(
@@ -1711,7 +1779,7 @@ export function StoreProvider({
       if (Object.keys(remembered).length) voicePrefs.set(remembered);
       const place = currentCall.current;
       if (!place) return;
-      gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...patch } });
+      gatewayRef.current?.send({ t: 'voice_state', d: { ...intentFor(place), ...patch, tabId: voiceTabId } });
     },
     [],
   );

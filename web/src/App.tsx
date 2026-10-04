@@ -13,13 +13,12 @@ import type { SelfUser } from '@scryproof/shared';
 
 import { api } from './lib/api';
 import { flatChannelOrder } from './lib/channel-order';
-import { applyClientUpdate, applyShellUpdate, onClientUpdate, onDesktopRelease, onShellUpdate } from './lib/desktop';
-import { DesktopReleaseNotice } from './components/DesktopReleaseNotice';
 import { useShortcuts } from './lib/shortcuts';
 import { LAYER_OPENED, OPEN_DOCK, on } from './lib/signals';
 import { useBackButton } from './lib/back';
 import { useDrawerSwipe } from './lib/swipe';
 import { usePhone } from './lib/usePhone';
+import { useVoice } from './state/useVoice';
 import { subscribeWalkthrough, walkthroughDue, walkthroughOpened } from './lib/walkthrough';
 import type { Shortcuts } from './lib/shortcuts';
 import { can, useChannelPermissions } from './lib/usePermissions';
@@ -46,6 +45,7 @@ import { Stage } from './components/Stage';
 import { ChannelSettings } from './components/settings/ChannelSettings';
 import { authorityFor } from './components/settings/authority';
 import { UserPanel } from './components/UserPanel';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Walkthrough } from './components/Walkthrough';
 import { GuideGate } from './components/Guide';
 import { PurdleGate } from './components/Purdle';
@@ -116,56 +116,6 @@ export function App() {
 }
 
 /**
- * A newer client is ready: in the app, fetched and checked and waiting; in a
- * browser, published. Switching to it is a reload, which would hang up a
- * call, so the person picks the moment. Nothing reloads on its own (Wes,
- * 2026-09-21). Left alone, it is simply there next time the app or the tab
- * is opened.
- *
- * In the app, a newer installer can be waiting too. That one wins: it carries
- * a client of its own, and restarting installs both.
- */
-function UpdateBanner({ inVoice }: { inVoice: boolean }) {
-  const [client, setClient] = useState(false);
-  const [shell, setShell] = useState(false);
-  const [release, setRelease] = useState<string | null>(null);
-  useEffect(() => onClientUpdate(() => setClient(true)), []);
-  useEffect(() => onShellUpdate(() => setShell(true)), []);
-  useEffect(() => onDesktopRelease(setRelease), []);
-  if (shell) {
-    return (
-      <div className="banner update">
-        A new version of the app is ready.{' '}
-        {inVoice ? (
-          'Restart to install when your call is over.'
-        ) : (
-          <button type="button" className="link-button" onClick={applyShellUpdate}>
-            Restart to install
-          </button>
-        )}
-      </div>
-    );
-  }
-  const available = release ? <DesktopReleaseNotice version={release} /> : null;
-  if (!client) return available;
-  return (
-    <>
-      {available}
-      <div className="banner update">
-        A newer Scryproof is ready.{' '}
-        {inVoice ? (
-          'Reload when your call is over.'
-        ) : (
-          <button type="button" className="link-button" onClick={applyClientUpdate}>
-            Reload now
-          </button>
-        )}
-      </div>
-    </>
-  );
-}
-
-/**
  * The walkthrough, opened from the menu, or by itself once for someone new.
  * By itself it waits its turn: an invite link opens a dialog on first sign-in
  * too, and two things talking at once is how both get closed unread.
@@ -190,6 +140,7 @@ function WalkthroughGate() {
 }
 
 function Shell() {
+  const call = useVoice();
   const { state, loadMembers, selectChannel, selectServer, markRead } = useStore();
   const server = useSelectedServer();
   const channel = useSelectedChannel();
@@ -305,7 +256,7 @@ function Shell() {
     );
   }
 
-  const inVoice = Object.values(state.voiceStates).some(
+  const inVoice = call.phase !== 'moved' && call.phase !== 'ended' && Object.values(state.voiceStates).some(
     (voice) => voice.userId === state.user?.id,
   );
 

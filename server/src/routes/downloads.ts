@@ -29,13 +29,16 @@ import { notFound } from '../lib/http-error.js';
 const DOWNLOADS: Record<string, string> = {
   'Scryproof-Setup.exe': 'application/vnd.microsoft.portable-executable',
   'installer.json': 'application/json',
+  'Scryproof.dmg': 'application/x-apple-diskimage',
+  'Scryproof-mac-arm64.zip': 'application/zip',
+  'installer-mac-arm64.json': 'application/json',
 };
 
 export const downloadsDir = (): string => resolve(config.dataDir, 'downloads');
 
 export async function registerDownloadRoutes(app: FastifyInstance): Promise<void> {
   const serve = async (name: string, reply: FastifyReply) => {
-    const type = DOWNLOADS[name];
+    const type = Object.hasOwn(DOWNLOADS, name) ? DOWNLOADS[name] : undefined;
     if (!type) throw notFound('There is no such download.');
     const path = resolve(downloadsDir(), name);
     let size: number;

@@ -689,6 +689,7 @@ export class VoiceCall {
       }
       this.held.delete(seat);
       this.participants.set(seat, participant);
+      this.retireOtherDevices(announcement.userId, announcement.deviceId);
     }
 
     return { rejected, flagged };
@@ -717,10 +718,27 @@ export class VoiceCall {
     this.held.delete(seat);
     const approved: Participant = { ...participant, verdict: 'known' };
     this.participants.set(seat, approved);
+    this.retireOtherDevices(userId, deviceId);
     void acceptIdentityChange(this.pins, userId, deviceId, participant.fingerprint).catch((problem: unknown) =>
       onUnsaved?.(problem),
     );
     return approved;
+  }
+
+  /**
+   * One account has one call seat. A device only takes it over once it is
+   * trusted here (pinned, or approved by a person). An unapproved device for
+   * someone never pushes their current device out: otherwise a forged "new
+   * device" from the server would evict the real one and make the approval
+   * prompt look routine.
+   */
+  private retireOtherDevices(userId: string, deviceId: string): void {
+    if (userId === this.userId) return;
+    for (const old of [...this.members, ...this.awaitingConsent]) {
+      if (old.announcement.userId === userId && old.announcement.deviceId !== deviceId) {
+        this.remove(old.announcement.userId, old.announcement.deviceId);
+      }
+    }
   }
 
   /** Drop someone who left. */
