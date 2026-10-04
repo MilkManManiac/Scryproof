@@ -3769,9 +3769,7 @@ wheel/drag events can reach the streamed picture.
 Nothing is merged or deployed. Milk's review and normal release remain the next
 steps; do not represent local Chrome checks as hosted or Windows verification.
 
-Publication status: automatic approval review rejected the combined commit/push/PR
-command because it required explicit authorization to publish this new mixer
-payload to `MilkManManiac/Scryproof`. The feature is preserved locally on
-`feat/call-mixer`; no remote branch or PR has been created for it. The prepared
-PR body is `/tmp/scryproof-mixer-pr.md`. Ask Matt to approve pushing that branch
-and opening its PR, then publish without repeating the implementation work.
+Matt approved publication. The mixer is open for Milk's review as
+[PR #7](https://github.com/MilkManManiac/Scryproof/pull/7) on `feat/call-mixer`.
+Implementation commit: `935d3a5`. The earlier publication approval gate is resolved;
+merging and deployment remain subject to Milk's review and normal release process.
