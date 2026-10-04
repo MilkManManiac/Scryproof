@@ -1047,6 +1047,13 @@ export function StoreProvider({
       eventListeners.current.add(listener);
       return () => { eventListeners.current.delete(listener); };
     },
+    leaveFirst: (target) => {
+      let held = false;
+      for (const [key, room] of selfRooms.current) {
+        if (room === target.id) { held = true; selfRooms.current.delete(key); }
+      }
+      return held;
+    },
     intent: (target, how, requestId) => ({
       ...intentFor(target, how), ...standingVoice(), requestId, tabId: voiceTabId,
       // A rebuilt call stopped its camera and share. Ownership confirmation

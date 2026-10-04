@@ -381,3 +381,94 @@ test('on a gateway without ownership, being kicked by another copy of the app gi
     assert.deepEqual(ends, [{ phase: 'moved', quiet: true }], 'the app is told, quietly, so no leave reaches the gateway');
   } finally { await session.leave(); }
 });
+
+test('on a gateway without ownership, only a duplicate-identity kick gives the call up; other drops still resume', async () => {
+  identity = await createDeviceIdentity('legacy-drops'); pins = new MemoryIdentityStore();
+  const ends: { phase: string; quiet?: boolean }[] = [];
+  let checks = 0;
+  const session = new VoiceSession(() => 'me', () => {}, (phase, quiet) => ends.push({ phase, quiet }),
+    async () => { checks += 1; return true; }, 60_000, () => true);
+  try {
+    await session.join({ kind: 'channel', id: 'room' }, async () => true);
+    // A drop that names another reason, then one that names none, then LiveKit's own reconnect.
+    for (const [index, emit] of [
+      (room: Room) => room.emit(livekit.RoomEvent.Disconnected, livekit.DisconnectReason.SERVER_SHUTDOWN),
+      (room: Room) => room.emit(livekit.RoomEvent.Disconnected),
+      (room: Room) => room.emit(livekit.RoomEvent.Reconnecting),
+    ].entries()) {
+      const before = Room.opened.at(-1)!;
+      emit(before);
+      await until(() => checks === index + 1 && Room.opened.at(-1) !== before && session.getSnapshot().phase === 'connected');
+    }
+    assert.deepEqual(ends, [], 'an ordinary drop is not being taken over');
+  } finally { await session.leave(); }
+});
+
+/**
+ * A gateway of the older kind, reduced to the one rule that matters here: it
+ * announces a room's membership (and a new epoch) only when someone arrives in
+ * or leaves it. Joining a room it already holds says nothing.
+ */
+function legacyServer(deliver: (membership: { channelId: string; epoch: number; members: string[] }) => void) {
+  const state = { room: null as string | null, epoch: 0 };
+  const sent: ClientEvent[] = [];
+  const gateway = {
+    isOpen: true,
+    send(event: ClientEvent) {
+      sent.push(event);
+      if (event.t !== 'voice_state') return true;
+      const next = event.d.channelId;
+      if (next === state.room) return true;
+      if (state.room) state.epoch += 1;
+      state.room = next;
+      if (next) { state.epoch += 1; deliver({ channelId: next, epoch: state.epoch, members: ['me'] }); }
+      return true;
+    },
+  };
+  return { state, gateway, sent };
+}
+
+test('on a gateway without ownership, a deliberate join of a room it already holds leaves first so the call gets keys', async () => {
+  identity = await createDeviceIdentity('legacy-rejoin'); pins = new MemoryIdentityStore();
+  const place = { kind: 'channel' as const, id: 'room' };
+  let session: InstanceType<typeof VoiceSession>;
+  const server = legacyServer((membership) => { void session.onMembership(membership); });
+  let held = false; // the app's own record of being announced in this room
+  const deps = {
+    gateway: () => server.gateway,
+    confirms: () => false,
+    listen: () => () => {},
+    leaveFirst: () => { const was = held; held = false; return was; },
+    intent: (target: { id: string }, join: true | 'resume', requestId: string) => ({ channelId: target.id, dmId: null, join, requestId, tabId: 'tab' }),
+  };
+  session = new VoiceSession(() => 'me', () => {}, () => {}, (where) => requestVoiceOwnership(deps, where, 'resume'), 60_000, () => true);
+  try {
+    // The server already holds this person in the room: the other copy of the app was bumped.
+    server.state.room = 'room'; server.state.epoch = 3; held = true;
+    await session.join(place, () => requestVoiceOwnership(deps, place, true));
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(session.getSnapshot().epoch, 5, 'the departure and the arrival each moved the epoch, and the new call heard it');
+    assert.deepEqual(server.sent.map((event) => event.t === 'voice_state' ? event.d.channelId : 'other'), [null, 'room']);
+
+    // A resume (a media blip, a reconnect) never leaves first: that would rotate keys each time.
+    held = true;
+    const before = server.sent.length;
+    await session.resume();
+    assert.deepEqual(server.sent.slice(before).map((event) => event.t === 'voice_state' ? event.d.channelId : 'other'), ['room']);
+    assert.equal(server.state.epoch, 5);
+
+    // Joining a room the server does not hold sends just the join.
+    server.state.room = null; held = false;
+    const fresh = server.sent.length;
+    await requestVoiceOwnership(deps, { kind: 'channel', id: 'elsewhere' }, true);
+    assert.deepEqual(server.sent.slice(fresh).map((event) => event.t === 'voice_state' ? event.d.channelId : 'other'), ['elsewhere']);
+  } finally { await session.leave(); }
+});
+
+test('a gateway that confirms ownership is never sent a leave before a join', async () => {
+  const fake = fakeGateway();
+  fake.link.confirms = true;
+  const asked = requestVoiceOwnership({ ...fake.deps, leaveFirst: () => true }, { kind: 'channel', id: 'room' }, true);
+  assert.deepEqual(fake.voiceStates().map((event) => event.d.channelId), ['room']);
+  await assert.rejects(asked, VoiceGatewayUnavailable);
+});

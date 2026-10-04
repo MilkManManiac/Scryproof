@@ -34,6 +34,20 @@ export interface OwnershipDeps {
   listen: (listener: (event: ServerEvent) => void) => () => void;
   /** The `voice_state` payload for this request. */
   intent: (place: CallPlace, join: true | 'resume', requestId: string) => Extract<ClientEvent, { t: 'voice_state' }>['d'];
+  /**
+   * Only asked of a gateway that does not confirm ownership, and only for a
+   * deliberate join. True when that gateway already holds this person in this
+   * very room (a copy of the app on this account was bumped out of it, or this
+   * device is taking it from another): the caller has dropped what it knew
+   * about being there, so that the departure about to be announced is not
+   * taken for being removed from the call being joined.
+   *
+   * Such a gateway changes a room's membership, and so its epoch, only when
+   * the room changes. A join into a room it already holds gives the new call
+   * no membership event and so no keys, ever. Leaving first makes the join a
+   * real arrival.
+   */
+  leaveFirst?: (place: CallPlace) => boolean;
   newRequestId?: () => string;
   timeoutMs?: number;
 }
@@ -66,6 +80,8 @@ export function requestVoiceOwnership(
       // An older gateway: the join is the whole conversation. It has no
       // `voice_owned` to send and no other session of this person to be
       // replaced by, so being sent is being owned.
+      // Never for a resume: that would rotate the call's keys on every media blip.
+      if (join === true && deps.leaveFirst?.(place)) gateway.send({ t: 'voice_state', d: { channelId: null } });
       if (!gateway.send({ t: 'voice_state', d: payload })) reject(new VoiceGatewayUnavailable());
       else resolve(true);
       return;
