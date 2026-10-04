@@ -4,9 +4,11 @@ Living state. Update this at the end of every working session.
 
 ## Pick up here (2026-10-04, ~01:30 ET)
 
-**Merged on main, pushed, NOT deployed:** Matt's mobile Activities (PR #5), Matt's call mixer + opt-in music (PR #7), Trey's Mac desktop app + same-account call takeover + older-server fallback (PRs #6, #8). Merge fixes by Claude: (1) `updateVoice` now sends `tabId`, so a mute/deafen click on a fresh gateway socket during reconnect can't end your own call as "moved"; (2) `VoiceCall.retireOtherDevices` (voice-crypto.ts): a person's new device only retires their old one once it is trusted (pinned or approved). An unapproved, possibly server-forged device no longer evicts the real one; test updated. Mac-only desktop tests skip on Windows.
+**LIVE 2026-10-04 01:19 ET (client 1791091058650, no new installer):** Matt's mobile Activities (PR #5), Matt's call mixer + opt-in music (PR #7), Trey's Mac desktop app + same-account call takeover + older-server fallback (PRs #6, #8). Merge fixes by Claude: (1) `updateVoice` now sends `tabId`, so a mute/deafen click on a fresh gateway socket during reconnect can't end your own call as "moved"; (2) `VoiceCall.retireOtherDevices` (voice-crypto.ts): a person's new device only retires their old one once it is trusted (pinned or approved). An unapproved, possibly server-forged device no longer evicts the real one; test updated. Mac-only desktop tests skip on Windows.
 
-**Next:** deploy to scryproof.com (server first: the takeover needs the new gateway; then the signed client release; no new Windows installer). Ask Wes first. Then Trey publishes the Mac build (`scripts/publish-mac.sh`). The Drain The Swamp touch fix waits on Matt pushing `fix/scryproof-mobile-activities` (the hosted game source exists only on his PC).
+Proven live: health ok, the box serves client 1791091058650, and the served bundle carries the mixer, the mobile Activities layout, the Mac changelog entry and the `voiceOwnership` handling. Not proven: nobody has used the mixer, music sharing or a device takeover on the live site yet.
+
+**Next:** Trey publishes the Mac build (`scripts/publish-mac.sh`). The Drain The Swamp touch fix waits on Matt pushing `fix/scryproof-mobile-activities` (the hosted game source exists only on his PC).
 
 **Open follow-ups from review (non-blocking):** Mac DMG fallback isn't checked against the signed manifest; Mac entitlements `disable-library-validation` and `allow-unsigned-executable-memory` are probably unnecessary; `ownerTabId` is broadcast in presence to everyone; LiveKit token routes don't check call ownership (only affects your own account, never decryption). Mac shell is 0.5.5, same number as the Windows installer: bump before the next Windows installer.
 
