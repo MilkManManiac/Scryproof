@@ -17,15 +17,15 @@
  * snow, stars going nuts, clouds." Second pass, after seeing it: "drop the
  * snow and the like wild bursts from the stars. Twinkles are great. Shooting
  * stars are great. Fire effects seemed great. Maybe add some clouds moving.
- * Maybe some dark birds flying."
+ * Maybe some dark birds flying." Third: the fire's pops were too explosive
+ * and the drips falling off the star had to go.
  *
  * What moves, back to front:
  *   stars      a dense field over the sky only (never on a cloud), each
  *              twinkling on its own clock
  *   lines      now and then a few stars join into a constellation that draws
  *              itself and fades
- *   the star   breathes, its fine rays shimmer and turn slowly, light drips
- *              down its long beam
+ *   the star   breathes, its fine rays shimmer and turn slowly
  *   meteors    every few seconds, and now and then a shower out of one point
  *   lightning  flashes deep inside the dark clouds, two or three at a time
  *   cloud      streaks of cloud sliding across the sky and the star, loose
@@ -33,8 +33,8 @@
  *              a band of light running along the lit rim
  *   birds      dark flocks, pairs and lone birds crossing the sky and the
  *              face of the lit cloud
- *   fire       flickering light on the snow, sparks pouring up and leaning
- *              with the wind, pops that throw a burst, smoke
+ *   fire       flickering light on the snow, sparks rising and leaning with
+ *              the wind, smoke
  *
  * The same rules as the rest of Ambient: thirty frames a second, stopped
  * when the tab is hidden, never started under reduce motion.
@@ -232,7 +232,6 @@ export function treyScene(backdropUrl: string | null): Scene {
   const start = performance.now();
   const embers: Particle[] = [];
   const smoke: Particle[] = [];
-  const drips: Particle[] = [];
   const meteors: Meteor[] = [];
   const strikes: Strike[] = [];
   const flocks: Flock[] = [];
@@ -243,8 +242,6 @@ export function treyScene(backdropUrl: string | null): Scene {
   let radiant: Point = { x: 1200, y: 20 };
   let strikeAt = start + rand(3_000, 7_000);
   let flockAt = start + rand(1_500, 4_000);
-  let popAt = start + rand(1_000, 3_000);
-  let pop = -1;
   let sweep = -1;
   let sweepAt = start + rand(3_000, 6_000);
   let lineAt = start + rand(4_000, 9_000);
@@ -322,17 +319,18 @@ export function treyScene(backdropUrl: string | null): Scene {
     context.globalAlpha = 1;
   };
 
-  const spawnEmber = (fast = false): Particle => {
-    const speed = fast ? rand(80, 170) : rand(30, 85);
-    const heading = -Math.PI / 2 + rand(-0.75, 0.75);
+  const spawnEmber = (): Particle => {
+    // Rising, not thrown: slow, and mostly straight up.
+    const speed = rand(25, 65);
+    const heading = -Math.PI / 2 + rand(-0.5, 0.5);
     return {
       x: FIRE.x + rand(-16, 16),
       y: FIRE.y + rand(-14, 4),
       vx: Math.cos(heading) * speed,
       vy: Math.sin(heading) * speed,
       life: 0,
-      span: fast ? rand(900, 2000) : rand(1500, 4200),
-      size: rand(0.6, fast ? 1.9 : 1.5),
+      span: rand(1500, 4200),
+      size: rand(0.6, 1.5),
       spin: rand(1, 4),
       angle: rand(0, Math.PI * 2),
     };
@@ -503,17 +501,6 @@ export function treyScene(backdropUrl: string | null): Scene {
         context.stroke();
       }
       dot(context, STAR.x, STAR.y, 3, 'rgb(255 250 240 / 0.9)');
-      // Light dripping down the long beam toward the cloud.
-      if (drips.length < 6 && Math.random() < dt / 700) {
-        drips.push({ x: STAR.x, y: STAR.y + 12, vx: 0, vy: rand(50, 110), life: 0, span: rand(2500, 4000), size: rand(0.8, 1.5), spin: 0, angle: 0 });
-      }
-      age(drips, dt);
-      for (const drip of drips) {
-        const t = drip.life / drip.span;
-        const alpha = t < 0.1 ? t / 0.1 : 1 - t;
-        glow(context, drip.x, drip.y, 9, '255 230 190', alpha * 0.5);
-        dot(context, drip.x, drip.y, drip.size, `rgb(255 244 224 / ${alpha})`);
-      }
 
       // Meteors: one every few seconds, and a shower now and then, all out
       // of one point in the sky.
@@ -672,31 +659,17 @@ export function treyScene(backdropUrl: string | null): Scene {
         glow(context, puff.x, puff.y, radius, '150 160 168', alpha);
       }
 
-      // The fire: light on the snow, flickering on three odd clocks, and a
-      // flash when it pops.
+      // The fire: light on the snow, flickering on three odd clocks.
       const flicker =
-        0.62 + 0.15 * Math.sin(now / 83) + 0.1 * Math.sin(now / 41 + 1.3) + 0.08 * Math.sin(now / 197 + 0.4) + rand(-0.06, 0.06);
-      if (pop < 0 && now >= popAt) {
-        pop = 0;
-        for (let index = 0; index < 18 + Math.floor(Math.random() * 18); index += 1) embers.push(spawnEmber(true));
-      }
-      let popLight = 0;
-      if (pop >= 0) {
-        pop += dt;
-        popLight = Math.max(0, 1 - pop / 500);
-        if (pop > 500) {
-          pop = -1;
-          popAt = now + rand(1_500, 4_500);
-        }
-      }
+        0.62 + 0.12 * Math.sin(now / 83) + 0.08 * Math.sin(now / 41 + 1.3) + 0.08 * Math.sin(now / 197 + 0.4) + rand(-0.04, 0.04);
       context.globalCompositeOperation = 'screen';
-      glow(context, FIRE.x, FIRE.y, 280, '255 130 50', 0.22 * flicker + popLight * 0.12);
-      glow(context, FIRE.x, FIRE.y - 6, 70, '255 196 120', 0.5 * flicker + popLight * 0.3);
+      glow(context, FIRE.x, FIRE.y, 280, '255 130 50', 0.22 * flicker);
+      glow(context, FIRE.x, FIRE.y - 6, 70, '255 196 120', 0.5 * flicker);
       glow(context, FIRE.x, FIRE.y - 14, 22, '255 236 190', 0.6 * flicker);
 
-      // Sparks pouring up, wandering, leaning with the wind; yellow, then
+      // Sparks rising, wandering, leaning with the wind; yellow, then
       // orange, then red as they cool.
-      while (embers.length < 140) embers.push(spawnEmber());
+      while (embers.length < 110) embers.push(spawnEmber());
       age(embers, dt);
       context.globalCompositeOperation = 'lighter';
       for (const ember of embers) {

@@ -10,12 +10,12 @@ Living state. Update this at the end of every working session.
 - **Fitted to height:** unlike every other theme, this one is fitted to the window's height (`background-size: ... auto 100%` in `trey.css`; `trey-scene.ts` resize uses `height / IH`), not cover. So a wide window never zooms the fire out. Wide windows get plain night colour at the sides, under the side panels.
 - **What moves** (`trey-scene.ts`, word `trey`):
   - star twinkles over sky only, plus self-drawing constellations
-  - the great star breathing, with shimmering rays and light dripping down the beam (no nova, no flares)
+  - the great star breathing, with shimmering rays (no nova, no flares, no drips: Wes, third pass)
   - shooting stars every few seconds, and showers
   - lightning flashes inside the dark clouds
   - cirrus streaks across the sky, loose cloud wisps drifting past the cloud wall, and a light band along the lit rim
   - dark bird flocks
-  - fire flicker, sparks, pops and smoke
+  - fire flicker, slow rising sparks and smoke (the pops were cut as too explosive)
 - **Removed:** the snow, the nova and the star flares.
 - **Checks:** web tests 556/556, typecheck clean.
 - **Next:** Wes looks, then deploys on his word.
