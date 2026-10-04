@@ -10099,8 +10099,8 @@ kbd {
 }
 .activity-resume {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  right: max(16px, env(safe-area-inset-right));
   z-index: 55;
   display: flex;
   align-items: center;
@@ -10114,26 +10114,116 @@ kbd {
 .voice-dock-row {
   grid-template-columns: repeat(2, 1fr);
 }
-@media (max-width: 640px) {
-  .activity-player {
-    inset: 0;
-    border-radius: 0;
-  }
-  .activity-toolbar {
-    padding: 8px;
-  }
-  .activity-hint {
-    padding: 6px 8px;
-    font-size: 12px;
-  }
-  .activity-title small {
+/* Touch layouts stay compact when the phone rotates past chat's breakpoint. */
+.activity-options {
+  display: contents;
+}
+.activity-options[hidden] {
+  display: none;
+}
+.activity-toolbar > .activity-options > .activity-hint {
+  flex-basis: 100%;
+  padding: 0;
+}
+.activity-player.compact {
+  inset: 0;
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  border: 0;
+  border-radius: 0;
+}
+.activity-player.compact .activity-toolbar {
+  min-height: 52px;
+  padding: 4px 8px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+.activity-player.compact .activity-title {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  font-size: 14px;
+}
+.activity-player.compact .activity-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-player.compact .activity-title svg,
+.activity-player.compact .activity-title small {
+  display: none;
+}
+.activity-back,
+.activity-menu-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  touch-action: manipulation;
+}
+.activity-menu-toggle {
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+.activity-menu-toggle[aria-expanded='true'] {
+  background: var(--line);
+}
+.activity-player.compact .activity-options:not([hidden]) {
+  display: block;
+  position: absolute;
+  top: calc(56px + env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  left: max(8px, env(safe-area-inset-left));
+  max-height: calc(100% - 64px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  z-index: 2;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-3);
+}
+.activity-player.compact .activity-controls {
+  gap: 8px;
+}
+.activity-player.compact .activity-controls button {
+  min-height: 44px;
+  flex: 1 1 140px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.activity-player.compact .activity-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.activity-rotate-hint {
+  margin: 0;
+  padding: 10px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.activity-player.compact .activity-call {
+  padding: 4px 8px;
+  max-height: 30%;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.activity-player.compact .activity-call .connection-panel {
+  flex-wrap: wrap;
+  padding: 4px 0;
+  gap: 4px 10px;
+}
+@media (orientation: landscape) {
+  .activity-rotate-hint {
     display: none;
-  }
-  .activity-controls {
-    gap: 5px;
-  }
-  .activity-controls button {
-    padding: 6px 8px;
-    font-size: 12px;
   }
 }

@@ -20,7 +20,7 @@ import {
 } from '../lib/desktop';
 import { DesktopInstallerLink } from './DesktopInstallerLink';
 import { useBackButton } from '../lib/back';
-import { usePhone } from '../lib/usePhone';
+import { useActivityCompact } from '../lib/useActivityCompact';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
 import { Modal } from './Modal';
@@ -154,7 +154,8 @@ function ActivityPlayer({
 }) {
   const { state, voice: session, leaveVoice, updateVoice } = useStore();
   const call = useVoice();
-  const phone = usePhone();
+  const compact = useActivityCompact();
+  const [controlsOpen, setControlsOpen] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<'loading' | ActivityStatus>('loading');
   const [attempt, setAttempt] = useState(0);
@@ -169,7 +170,11 @@ function ActivityPlayer({
     (person) => person.userId === state.user?.id,
   );
   const connected = call.phase === 'connected';
-  useBackButton(phone && !minimized, () => void minimize());
+  useBackButton(compact && !minimized, () => void minimize());
+  useBackButton(compact && !minimized && controlsOpen, () =>
+    setControlsOpen(false),
+  );
+  useBackButton(compact && ending, () => setEnding(false));
 
   useEffect(() => {
     mounted.current = true;
@@ -243,84 +248,148 @@ function ActivityPlayer({
   }
   async function minimize() {
     if (shareBusy) return;
-    if (await stopGameplayShare()) activities.minimize();
+    if (await stopGameplayShare()) {
+      setControlsOpen(false);
+      activities.minimize();
+    }
   }
   async function end() {
     if (shareBusy) return;
     if (await stopGameplayShare()) activities.end();
   }
 
-  const sharingWhy = !connected
-    ? 'Join a voice or video call to share gameplay'
-    : !call.can.screenShare
-      ? 'Screen sharing is not allowed in this call'
-      : undefined;
+  const sharingWhy =
+    !navigator.mediaDevices?.getDisplayMedia && !isDesktop
+      ? 'This browser does not support sharing your screen. You can still play while in a call.'
+      : !connected
+        ? 'Join a voice or video call to share gameplay'
+        : !call.can.screenShare
+          ? 'Screen sharing is not allowed in this call'
+          : undefined;
   return createPortal(
     <>
       <section
-        className={`activity-player${minimized ? ' minimized' : ''}`}
+        className={`activity-player${compact ? ' compact' : ''}${minimized ? ' minimized' : ''}`}
         aria-label={game.name}
         aria-hidden={minimized}
       >
         <header className="activity-toolbar">
+          {compact ? (
+            <button
+              type="button"
+              className="activity-back"
+              aria-label="Back to Scryproof"
+              title="Back to Scryproof"
+              disabled={shareBusy}
+              onClick={() => void minimize()}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <path d="m14 6-6 6 6 6" />
+              </svg>
+            </button>
+          ) : null}
           <span className="activity-title">
             <ActivityGlyph />
             <strong>{game.name}</strong>
             <small>Single player</small>
           </span>
-          <div className="activity-controls">
-            {mine ? (
+          {compact ? (
+            <button
+              type="button"
+              className="activity-menu-toggle"
+              aria-expanded={controlsOpen}
+              aria-controls="activity-options"
+              onClick={() => setControlsOpen(!controlsOpen)}
+            >
+              {controlsOpen
+                ? 'Done'
+                : call.sharing
+                  ? 'Sharing · Options'
+                  : 'Options'}
+            </button>
+          ) : null}
+          <div
+            id="activity-options"
+            className="activity-options"
+            hidden={compact && !controlsOpen}
+            onKeyDown={(event) => {
+              if (compact && event.key === 'Escape') {
+                setControlsOpen(false);
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLButtonElement>('.activity-menu-toggle')
+                  ?.focus();
+              }
+            }}
+          >
+            <div className="activity-controls">
+              {mine ? (
+                <button
+                  type="button"
+                  aria-pressed={mine.selfMute}
+                  onClick={() => updateVoice({ selfMute: !mine.selfMute })}
+                >
+                  {mine.selfMute ? 'Unmute mic' : 'Mute mic'}
+                </button>
+              ) : null}
               <button
                 type="button"
-                aria-pressed={mine.selfMute}
-                onClick={() => updateVoice({ selfMute: !mine.selfMute })}
+                className={call.sharing ? 'primary' : ''}
+                disabled={
+                  !!sharingWhy ||
+                  shareBusy ||
+                  (!call.sharing && status !== 'ready')
+                }
+                title={sharingWhy}
+                onClick={() => void share()}
               >
-                {mine.selfMute ? 'Unmute mic' : 'Mute mic'}
+                {call.sharing
+                  ? 'Stop sharing'
+                  : shareBusy
+                    ? 'Opening share picker…'
+                    : 'Share gameplay'}
               </button>
-            ) : null}
-            <button
-              type="button"
-              className={call.sharing ? 'primary' : ''}
-              disabled={
-                !!sharingWhy ||
-                shareBusy ||
-                (!call.sharing && status !== 'ready')
-              }
-              title={sharingWhy}
-              onClick={() => void share()}
-            >
-              {call.sharing
-                ? 'Stop sharing'
-                : shareBusy
-                  ? 'Opening share picker…'
-                  : 'Share gameplay'}
-            </button>
-            <button
-              type="button"
-              disabled={shareBusy}
-              onClick={() => void minimize()}
-            >
-              Back to Scryproof
-            </button>
-            <button
-              type="button"
-              disabled={shareBusy}
-              onClick={() => setEnding(true)}
-            >
-              End activity
-            </button>
+              {!compact ? (
+                <button
+                  type="button"
+                  disabled={shareBusy}
+                  onClick={() => void minimize()}
+                >
+                  Back to Scryproof
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={shareBusy}
+                onClick={() => setEnding(true)}
+              >
+                End activity
+              </button>
+            </div>
+            <p className="activity-hint">
+              {sharingWhy ??
+                (call.sharing
+                  ? ownedShare.current
+                    ? 'Your screen is shared. Friends can press Watch. Returning to Scryproof stops gameplay sharing.'
+                    : 'Your existing screen share is still running. Stop sharing before returning if you want to keep chat private.'
+                  : isDesktop
+                    ? 'Share the Scryproof window so friends can watch. Enable sound only if it will not capture your call.'
+                    : 'Choose this Scryproof tab when sharing. Friends in your call can press Watch on your stream.')}
+            </p>
           </div>
         </header>
-        <p className="activity-hint">
-          {sharingWhy ??
-            (call.sharing
-              ? ownedShare.current
-                ? 'Your screen is shared. Friends can press Watch. Returning to Scryproof stops gameplay sharing.'
-                : 'Your existing screen share is still running. Stop sharing before returning if you want to keep chat private.'
-              : isDesktop
-                ? 'Share the Scryproof window so friends can watch. Enable sound only if it will not capture your call.'
-                : 'Choose this Scryproof tab when sharing. Friends in your call can press Watch on your stream.')}
-        </p>
+        {compact ? (
+          <p className="activity-rotate-hint">
+            Turn your device sideways for a larger game view.
+          </p>
+        ) : null}
         <div className="activity-stage">
           <iframe
             key={attempt}

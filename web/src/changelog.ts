@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-02-mobile-activities',
+    date: '2026-10-02',
+    title: 'More room to play on phones and tablets',
+    notes: [
+      'Activities keeps a compact toolbar when you turn your device sideways. Options holds the extra controls, and the game fits around your screen edges. Rotating or returning to chat keeps your game running.',
+    ],
+  },
+  {
     id: '2026-10-02-desktop-update-link',
     date: '2026-10-02',
     title: 'Get the desktop update from Scryproof',
