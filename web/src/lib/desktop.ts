@@ -223,9 +223,13 @@ export async function shellUpdateHow(): Promise<'restart' | 'download'> {
   }
 }
 
-/** Manual fallback only for shells without automatic installer support. */
+/**
+ * Manual fallback only for shells without automatic installer support. The
+ * manifest it reads is the Windows installer's; the Mac app updates from its
+ * own Mac manifest and never offers (or compares against) that installer.
+ */
 export function onDesktopRelease(listener: (version: string) => void): () => void {
-  if (!bridge || canInstallShellUpdate) return () => {};
+  if (!bridge || onMacApp || canInstallShellUpdate) return () => {};
   let active = true;
   let checking = false;
   const controller = new AbortController();

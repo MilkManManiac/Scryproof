@@ -45,6 +45,7 @@ const { PushToTalkKey } = await import('../components/PushToTalkKey');
 const { ScreenRecordingNote } = await import('../components/ShareMacNotes');
 const { DesktopAppLink } = await import('../components/DesktopAppLink');
 const { UpdateBanner } = await import('../components/UpdateBanner');
+const { DesktopInstallerLink } = await import('../components/DesktopInstallerLink');
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 // Somebody is looking at each of these, as on a screen, so the shell is asked.
@@ -80,6 +81,38 @@ describe('the Mac app, with nothing granted and an update waiting', () => {
   it('offers no download link and asks the server about none: it is installed, and not on the server\'s origin', () => {
     assert.deepEqual(heads, []);
     assert.equal(linkText(), '');
+  });
+});
+
+describe('the Windows installer fallback, on a Mac shell', () => {
+  it('never reads the Windows installer manifest, even from a shell with no applyShellUpdate', () => {
+    const before = heads.length;
+    const requests: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      requests.push(String(url));
+      return { ok: true, json: async () => ({ version: '9.9.9' }) } as Response;
+    }) as unknown as typeof fetch;
+    try {
+      const stop = desktop.onDesktopRelease(() => assert.fail('a Mac must not be offered the Windows installer'));
+      stop();
+    } finally {
+      globalThis.fetch = original;
+    }
+    assert.deepEqual(requests, []);
+    assert.equal(heads.length, before);
+  });
+
+  for (const file of ['../components/DesktopInstallerLink.tsx', '../components/DesktopReleaseNotice.tsx', '../components/Activities.tsx']) {
+    it(`${file.slice(14)} does not name an installer itself`, () => {
+      assert.doesNotMatch(readFileSync(new URL(file, import.meta.url), 'utf8'), /Scryproof-Setup|Scryproof\.dmg|\.exe/);
+    });
+  }
+
+  it('links the disk image, not the Windows installer, from the fallback link', () => {
+    const html = render(createElement(DesktopInstallerLink, { prominent: true }));
+    assert.match(html, /Scryproof\.dmg/);
+    assert.doesNotMatch(html, /\.exe/);
   });
 });
 

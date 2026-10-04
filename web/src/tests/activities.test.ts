@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readActivityStatus } from '../lib/activity-status';
+import { idleShareHint, readActivityStatus } from '../lib/activity-status';
 const origin = 'https://activities.scryproof.com';
 const frame = {} as Window;
 const message = (overrides: Record<string, unknown> = {}) =>
@@ -67,4 +67,12 @@ test('only status reports for the active game are accepted, including normal qui
       null,
     );
   }
+});
+
+test('the share hint offers sound on Windows and the browser tab elsewhere, never sound on a Mac', () => {
+  assert.match(idleShareHint(true, false), /Enable sound only if/);
+  assert.match(idleShareHint(false, false), /Choose this Scryproof tab/);
+  const mac = idleShareHint(true, true);
+  assert.match(mac, /no sound/);
+  assert.doesNotMatch(mac, /Enable sound/);
 });

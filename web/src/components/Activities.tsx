@@ -9,6 +9,7 @@ import {
   type Activity,
 } from '../lib/activities';
 import {
+  idleShareHint,
   readActivityStatus,
   type ActivityStatus,
 } from '../lib/activity-status';
@@ -16,6 +17,7 @@ import {
   canEmbedActivities,
   canInstallShellUpdate,
   isDesktop,
+  onMacApp,
   publicOrigin,
 } from '../lib/desktop';
 import { DesktopInstallerLink } from './DesktopInstallerLink';
@@ -317,9 +319,7 @@ function ActivityPlayer({
               ? ownedShare.current
                 ? 'Your screen is shared. Friends can press Watch. Returning to Scryproof stops gameplay sharing.'
                 : 'Your existing screen share is still running. Stop sharing before returning if you want to keep chat private.'
-              : isDesktop
-                ? 'Share the Scryproof window so friends can watch. Enable sound only if it will not capture your call.'
-                : 'Choose this Scryproof tab when sharing. Friends in your call can press Watch on your stream.')}
+              : idleShareHint(isDesktop, onMacApp))}
         </p>
         <div className="activity-stage">
           <iframe
