@@ -2,13 +2,26 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-04, ~02:15 ET)
+## Pick up here (2026-10-04, ~02:45 ET)
 
-**Built, committed locally, NOT deployed: the Trey theme** (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His picture is `assets/gen/trey-a.jpg`, served at 1376x771 as `/backdrops/trey.jpg`. Tokens are in `web/src/themes/trey.css`, and the motion is one word, `trey`, in `web/src/components/trey-scene.ts`, pinned to the painting the way `camp` is. What moves: 300+ stars over sky only (a cloud-top line keeps them off the clouds) with the painted stars flashing cross glints; constellations that draw themselves; the great star breathing, with a turning sunburst and light dripping down its beam, going nova every 22 to 40 s; meteors every few seconds and a shower every 40 to 70 s; lightning flashes inside the dark clouds; a light band running along the lit cloud rim; vapour banks; the fire's flicker, sparks, pops and smoke; gusting snow in three depths, warm near the fire, and drift off the snowfield. The theme sits second in the picker, and What's new has an entry. On ultrawide windows the star wins and the fire's base is cropped (`--backdrop-position: center 60%`). Web tests 556/556, typecheck clean. Next: Wes looks, then deploys on his word.
+**Built, committed locally, NOT deployed: the Trey theme, second pass.** First pass (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His notes on it: "it kinda droppped the fire from the zoom in. I want to keep that. Then drop the snow and the like wild bursts from the stars. Twinkles are great. Shooting stars are great. Fire effects seemed great. Maybe add some clounds moving. Maybe some dark birds flying."
+
+- **Painting:** his picture is `assets/gen/trey-a.jpg`. It is served as `/backdrops/trey.jpg` at 1376x871: the picture at 1376x771, plus 100 px of blurred snowfield underneath so the fire clears the composer, with both sides faded to `--bg`. It was built by a one-off PIL script (not committed; the steps are in the trey-scene.ts header).
+- **Fitted to height:** unlike every other theme, this one is fitted to the window's height (`background-size: ... auto 100%` in `trey.css`; `trey-scene.ts` resize uses `height / IH`), not cover. So a wide window never zooms the fire out. Wide windows get plain night colour at the sides, under the side panels.
+- **What moves** (`trey-scene.ts`, word `trey`):
+  - star twinkles over sky only, plus self-drawing constellations
+  - the great star breathing, with shimmering rays and light dripping down the beam (no nova, no flares)
+  - shooting stars every few seconds, and showers
+  - lightning flashes inside the dark clouds
+  - cirrus streaks across the sky, loose cloud wisps drifting past the cloud wall, and a light band along the lit rim
+  - dark bird flocks
+  - fire flicker, sparks, pops and smoke
+- **Removed:** the snow, the nova and the star flares.
+- **Checks:** web tests 556/556, typecheck clean.
+- **Next:** Wes looks, then deploys on his word.
 
 ![Trey theme](shots/theme-trey.png)
 ![The scene alone](shots/theme-trey-scene.png)
-![The star going nova](shots/theme-trey-nova.png)
 
 ## Before that (2026-10-04, ~01:30 ET)
 

@@ -2,41 +2,51 @@
  * Trey: everything that moves in the Trey theme's painting, pinned to the
  * painting itself, the way camp-scene.ts does it for Loaf v2.
  *
- * The painting is `assets/gen/trey-a.jpg` (Wes's picture, 2026-10-04),
- * served at 1376 x 771 as `/backdrops/trey.jpg`: a night sky over a
- * snowfield, one great four-pointed star high on the left, a wall of cloud lit
- * cream from below on the right, a dark mass of cloud on the left, and a fire
- * burning in the snow beside some ruined towers. Wes: "Go nuts with the alive
- * function. Fire effects. maybe some snow, stars going nuts, clouds, etc."
- * Every point here is in the painting's own pixels and goes through the
- * `background-size: cover` arithmetic before it is drawn.
+ * The painting is `assets/gen/trey-a.jpg` (Wes's picture, 2026-10-04): a
+ * night sky over a snowfield, one great four-pointed star high on the left, a
+ * wall of cloud lit cream from below on the right, a dark mass of cloud on the
+ * left, and a fire burning in the snow beside some ruined towers. It is served
+ * as `/backdrops/trey.jpg` at 1376 x 871: the picture at 1376 x 771 with 100
+ * pixels of blurred snowfield added under it, so the fire sits high enough to
+ * stay clear of the composer. Unlike the other scenes it is fitted to the
+ * window's height, never cover, so a wide window cannot zoom the fire out of
+ * the picture. Every point here is in the served painting's pixels and goes
+ * through that arithmetic before it is drawn.
+ *
+ * Wes, first pass: "Go nuts with the alive function. Fire effects. maybe some
+ * snow, stars going nuts, clouds." Second pass, after seeing it: "drop the
+ * snow and the like wild bursts from the stars. Twinkles are great. Shooting
+ * stars are great. Fire effects seemed great. Maybe add some clouds moving.
+ * Maybe some dark birds flying."
  *
  * What moves, back to front:
- *   stars      a dense field over the sky only (never on a cloud), twinkling
- *              fast, flaring often; the painted stars flash with cross glints
+ *   stars      a dense field over the sky only (never on a cloud), each
+ *              twinkling on its own clock
  *   lines      now and then a few stars join into a constellation that draws
  *              itself and fades
- *   the star   breathes, its sunburst shimmers and turns, its arms reach;
- *              light drips down the long beam; every half minute or so it
- *              goes nova: a flash, a ring, and a spray of stardust
- *   meteors    every few seconds, and now and then a whole shower at once
+ *   the star   breathes, its fine rays shimmer and turn slowly, light drips
+ *              down its long beam
+ *   meteors    every few seconds, and now and then a shower out of one point
  *   lightning  flashes deep inside the dark clouds, two or three at a time
- *   cloud      the lit rim breathes, a band of light runs along it, and
- *              banks of vapour slide across both clouds and the sky
+ *   cloud      streaks of cloud sliding across the sky and the star, loose
+ *              wisps of cloud drifting past in front of the cloud wall, and
+ *              a band of light running along the lit rim
+ *   birds      dark flocks, pairs and lone birds crossing the sky and the
+ *              face of the lit cloud
  *   fire       flickering light on the snow, sparks pouring up and leaning
  *              with the wind, pops that throw a burst, smoke
- *   snow       three depths of snowfall over everything, warm where it
- *              passes the fire, with gusts that blow it sideways and lift
- *              drift off the snowfield
  *
  * The same rules as the rest of Ambient: thirty frames a second, stopped
  * when the tab is hidden, never started under reduce motion.
  */
 
-import { bank, type Scene } from './camp-scene';
+import { bank, type FogBank, type Scene } from './camp-scene';
 
 const IW = 1376;
-const IH = 771;
+const IH = 871;
+
+/** How far in from each side the served painting fades to --bg. */
+const EDGE = 110;
 
 const STAR = { x: 522, y: 177 };
 const FIRE = { x: 895, y: 722 };
@@ -62,6 +72,10 @@ const STORMS: readonly { x: number; y: number }[] = [
   { x: 1010, y: 430 }, { x: 1240, y: 470 },
 ];
 
+/** Where birds fly. High: the open sky. Low: across the face of the lit cloud, where a dark bird shows best. */
+const HIGH = { left: 0, right: IW, top: 40, bottom: 190 };
+const LOW = { left: 380, right: IW, top: 300, bottom: 470 };
+
 interface Point {
   x: number;
   y: number;
@@ -71,9 +85,6 @@ interface Star extends Point {
   size: number;
   phase: number;
   rate: number;
-  flareAt: number;
-  /** A painted star, or one in eight of the rest: flares with a cross glint. */
-  glints: boolean;
   warm: boolean;
 }
 
@@ -95,17 +106,20 @@ interface Meteor extends Point {
   tail: number;
 }
 
-interface Flake extends Point {
-  depth: number;
+interface Bird extends Point {
   size: number;
-  fall: number;
-  sway: number;
-  phase: number;
+  flap: number;
+  rate: number;
 }
 
-interface Strike {
-  x: number;
-  y: number;
+interface Flock {
+  birds: Bird[];
+  vx: number;
+  vy: number;
+  lane: typeof HIGH;
+}
+
+interface Strike extends Point {
   life: number;
   /** When each flash in the strike peaks, in its own clock. */
   flashes: number[];
@@ -118,8 +132,40 @@ interface Constellation {
   span: number;
 }
 
+interface Wisp extends Point {
+  texture: HTMLCanvasElement | null;
+  width: number;
+  height: number;
+  /** Painting pixels a second. */
+  speed: number;
+  alpha: number;
+}
+
 const rand = (low: number, high: number) => low + Math.random() * (high - low);
-const FLARE_MS = 700;
+
+/** One loose cloud: soft blobs bunched toward the middle, thinning at both ends. */
+function wispTexture(width: number, height: number, rgb: string): HTMLCanvasElement | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  for (let index = 0; index < 34; index += 1) {
+    const across = rand(-1, 1);
+    const fall = 1 - Math.abs(across) * 0.7;
+    const x = width / 2 + across * width * 0.36;
+    const y = height / 2 + rand(-0.18, 0.12) * height * fall;
+    const radius = rand(0.22, 0.42) * height * fall;
+    const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+    const alpha = rand(0.08, 0.2);
+    gradient.addColorStop(0, `rgb(${rgb} / ${alpha})`);
+    gradient.addColorStop(0.6, `rgb(${rgb} / ${alpha * 0.4})`);
+    gradient.addColorStop(1, `rgb(${rgb} / 0)`);
+    context.fillStyle = gradient;
+    context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  return canvas;
+}
 
 function cloudTop(x: number): number {
   for (let index = 1; index < CLOUD_TOP.length; index += 1) {
@@ -135,7 +181,7 @@ function skyPoint(): Point {
   for (;;) {
     const x = rand(0, IW);
     const y = rand(4, cloudTop(x) - 14);
-    if (y > 4 && Math.hypot(x - STAR.x, (y - STAR.y) * 1.4) > 70) return { x, y };
+    if (Math.hypot(x - STAR.x, (y - STAR.y) * 1.4) > 70) return { x, y };
   }
 }
 
@@ -144,20 +190,16 @@ export function treyScene(backdropUrl: string | null): Scene {
   let offsetX = 0;
   let offsetY = 0;
 
-  const start = performance.now();
   const stars: Star[] = Array.from({ length: 260 }, () => ({
     ...skyPoint(),
     size: rand(0.4, 1.3),
     phase: rand(0, Math.PI * 2),
     rate: rand(0.6, 2.4),
-    flareAt: start + rand(0, 20_000),
-    glints: Math.random() < 0.12,
     warm: Math.random() < 0.3,
   }));
 
   // Find the painted stars: read the painting once and keep the bright specks
-  // above the clouds. They get the loudest flares, since they are the ones the
-  // eye already knows are there.
+  // above the clouds, so the ones the eye already knows are there twinkle too.
   if (backdropUrl) {
     const image = new Image();
     image.onload = () => {
@@ -180,52 +222,27 @@ export function treyScene(backdropUrl: string | null): Scene {
           found.push({ x, y });
         }
       }
-      const now = performance.now();
       for (const point of found.slice(0, 60)) {
-        stars.push({
-          ...point,
-          size: 1.2,
-          phase: rand(0, Math.PI * 2),
-          rate: rand(0.8, 1.8),
-          flareAt: now + rand(0, 8_000),
-          glints: true,
-          warm: true,
-        });
+        stars.push({ ...point, size: 1.2, phase: rand(0, Math.PI * 2), rate: rand(0.8, 1.8), warm: true });
       }
     };
     image.src = backdropUrl;
   }
 
-  const flakes: Flake[] = [];
-  for (const [depth, count] of [[0, 90], [1, 80], [2, 45]] as const) {
-    for (let index = 0; index < count; index += 1) {
-      flakes.push({
-        x: rand(-40, IW + 40),
-        y: rand(-20, IH),
-        depth,
-        size: [0.7, 1.3, 2.3][depth]! * rand(0.8, 1.25),
-        fall: [16, 30, 52][depth]! * rand(0.8, 1.2),
-        sway: rand(4, 14),
-        phase: rand(0, Math.PI * 2),
-      });
-    }
-  }
-
+  const start = performance.now();
   const embers: Particle[] = [];
   const smoke: Particle[] = [];
-  const dust: Particle[] = [];
   const drips: Particle[] = [];
-  const drift: Particle[] = [];
   const meteors: Meteor[] = [];
   const strikes: Strike[] = [];
+  const flocks: Flock[] = [];
   const constellations: Constellation[] = [];
   let meteorAt = start + rand(1_000, 3_000);
   let showerAt = start + rand(15_000, 30_000);
   let showerLeft = 0;
   let radiant: Point = { x: 1200, y: 20 };
   let strikeAt = start + rand(3_000, 7_000);
-  let novaAt = start + rand(8_000, 14_000);
-  let nova = -1;
+  let flockAt = start + rand(1_500, 4_000);
   let popAt = start + rand(1_000, 3_000);
   let pop = -1;
   let sweep = -1;
@@ -235,12 +252,27 @@ export function treyScene(backdropUrl: string | null): Scene {
   let gustAt = start + rand(6_000, 12_000);
   let gustLife = -1;
 
-  // Vapour, built once. Painting pixels a second.
-  const highWisp = bank(205, 60, 1300, -7, 0.4, 0.3, '196 212 228');
-  const litVapour = bank(470, 170, 1250, 9, 0.32, 0.5, '238 222 200');
-  const leftVapour = bank(400, 260, 1100, 5, 0.2, 0.6, '120 140 156');
-  const ruinsMist = bank(645, 130, 1100, -14, 0.5, 0.8, '170 188 204');
-  const spindrift = bank(740, 80, 900, 45, 0.5, 0.4, '222 234 242');
+  // Cloud, built once. Painting pixels a second: quick enough to see moving,
+  // slow enough to be weather. Streaks are flattened blobs.
+  const highStreaks = bank(95, 70, 1300, 11, 0.7, 0.3, '150 170 186');
+  const starStreaks = bank(190, 80, 1150, -8, 0.75, 0.32, '170 186 200');
+  const ruinsMist = bank(650, 130, 1100, -14, 0.3, 0.8, '170 188 204');
+  // Loose clouds drifting left to right past the cloud wall, at three
+  // depths: the nearer, the bigger, darker and quicker.
+  const wisps: Wisp[] = Array.from({ length: 7 }, (_, index) => {
+    const near = index % 3;
+    const width = [220, 300, 400][near]!;
+    const height = [60, 80, 110][near]!;
+    return {
+      texture: wispTexture(width, height, ['150 168 182', '96 114 128', '40 56 66'][near]!),
+      x: rand(-width, IW),
+      y: rand(220, 520),
+      width,
+      height,
+      speed: [9, 14, 20][near]! * rand(0.85, 1.15),
+      alpha: [0.8, 0.85, 0.9][near]!,
+    };
+  });
 
   const X = (x: number) => offsetX + x * scale;
   const Y = (y: number) => offsetY + y * scale;
@@ -263,18 +295,6 @@ export function treyScene(backdropUrl: string | null): Scene {
     context.fill();
   };
 
-  /** A four-point glint: two thin crossed strokes, the level one longer. */
-  const cross = (context: CanvasRenderingContext2D, x: number, y: number, reach: number, rgb: string, alpha: number) => {
-    context.strokeStyle = `rgb(${rgb} / ${alpha})`;
-    context.lineWidth = S(0.7);
-    context.beginPath();
-    context.moveTo(X(x - reach), Y(y));
-    context.lineTo(X(x + reach), Y(y));
-    context.moveTo(X(x), Y(y - reach * 1.2));
-    context.lineTo(X(x), Y(y + reach * 1.2));
-    context.stroke();
-  };
-
   const age = (list: Particle[], dt: number) => {
     const seconds = dt / 1000;
     for (let index = list.length - 1; index >= 0; index -= 1) {
@@ -290,7 +310,7 @@ export function treyScene(backdropUrl: string | null): Scene {
     }
   };
 
-  const drawBank = (context: CanvasRenderingContext2D, fog: ReturnType<typeof bank>, now: number) => {
+  const drawBank = (context: CanvasRenderingContext2D, fog: FogBank, now: number) => {
     if (!fog.texture) return;
     const shift = ((((now / 1000) * fog.speed) % fog.tile) + fog.tile) % fog.tile;
     context.globalAlpha = fog.alpha * (0.8 + 0.2 * Math.sin(fog.phase + now / 7000));
@@ -349,9 +369,34 @@ export function treyScene(backdropUrl: string | null): Scene {
     };
   };
 
+  const spawnFlock = (): Flock => {
+    const low = Math.random() < 0.5;
+    const lane = low ? LOW : HIGH;
+    const leftward = Math.random() < 0.5;
+    const roll = Math.random();
+    const count = roll < 0.25 ? 1 : roll < 0.45 ? 2 : 3 + Math.floor(Math.random() * 6);
+    const startX = leftward ? lane.right + 40 : lane.left - 60;
+    const startY = rand(lane.top, lane.bottom);
+    const size = rand(6.5, 10);
+    return {
+      lane,
+      vx: rand(45, 80) * (leftward ? -1 : 1),
+      vy: rand(-5, 4),
+      birds: Array.from({ length: count }, (_, index) => ({
+        // A loose V: each bird a little behind and to the side of the one before.
+        x: startX - (leftward ? -1 : 1) * index * rand(14, 22),
+        y: startY + (index % 2 ? 1 : -1) * Math.ceil(index / 2) * rand(6, 11),
+        size: size * rand(0.85, 1.15),
+        flap: rand(0, Math.PI * 2),
+        rate: rand(7, 10),
+      })),
+    };
+  };
+
   return {
     resize(width, height, position) {
-      scale = Math.max(width / IW, height / IH);
+      // Fitted to the height, as trey.css lays the painting out, not cover.
+      scale = height / IH;
       offsetX = (width - IW * scale) * position.x;
       offsetY = (height - IH * scale) * position.y;
     },
@@ -359,11 +404,11 @@ export function treyScene(backdropUrl: string | null): Scene {
     draw(context, now, dt) {
       const seconds = dt / 1000;
 
-      // The wind: a steady lean, and every so often a gust that builds over
-      // two seconds and dies over four.
+      // The wind, for the sparks and smoke: a steady lean, and every so often
+      // a gust that builds over two seconds and dies over four.
       if (gustLife < 0 && now >= gustAt) {
         gustLife = 0;
-        gust = rand(50, 110) * (Math.random() < 0.8 ? 1 : -1);
+        gust = rand(40, 90) * (Math.random() < 0.8 ? 1 : -1);
       }
       let wind = 10;
       if (gustLife >= 0) {
@@ -375,33 +420,19 @@ export function treyScene(backdropUrl: string | null): Scene {
         } else wind += gust * (t < 0.33 ? t / 0.33 : 1 - (t - 0.33) / 0.67);
       }
 
-      // Stars, only over open sky, quick and restless.
+      // Stars, only over open sky, each twinkling on its own clock.
       context.globalCompositeOperation = 'lighter';
       for (const star of stars) {
         const breath = 0.5 + 0.5 * Math.sin(star.phase + (now / 1000) * star.rate);
         const rgb = star.warm ? '255 232 196' : '226 238 255';
-        let alpha = 0.12 + breath * breath * 0.7;
-        let size = star.size;
-        const since = now - star.flareAt;
-        if (since >= 0) {
-          if (since > FLARE_MS) star.flareAt = now + (star.glints ? rand(3_000, 11_000) : rand(6_000, 22_000));
-          else {
-            const swell = Math.sin((since / FLARE_MS) * Math.PI);
-            alpha = Math.min(1, alpha + swell);
-            size *= 1 + swell * 1.2;
-            glow(context, star.x, star.y, size * 6, rgb, swell * 0.35);
-            if (star.glints) cross(context, star.x, star.y, 5 + swell * 9, rgb, swell * 0.8);
-          }
-        }
-        dot(context, star.x, star.y, size, `rgb(${rgb} / ${alpha})`);
+        dot(context, star.x, star.y, star.size, `rgb(${rgb} / ${0.12 + breath * breath * 0.7})`);
       }
 
       // Constellations: a few neighbours joined, the line drawing itself
       // star to star, holding, and fading.
-      if (now >= lineAt && stars.length) {
+      if (now >= lineAt) {
         lineAt = now + rand(9_000, 18_000);
-        const first = stars[Math.floor(Math.random() * stars.length)]!;
-        const chain: Point[] = [first];
+        const chain: Point[] = [stars[Math.floor(Math.random() * stars.length)]!];
         for (let link = 0; link < 4 + Math.floor(Math.random() * 3); link += 1) {
           const tip = chain[chain.length - 1]!;
           const next = stars
@@ -438,79 +469,40 @@ export function treyScene(backdropUrl: string | null): Scene {
         for (const point of shape.stars) dot(context, point.x, point.y, 1.4, `rgb(240 246 255 / ${alpha * 2.4})`);
       }
 
-      // The great star. A breathing halo, a shimmering sunburst that turns,
-      // arms that reach, and now and then a nova.
+      // The great star: a breathing halo, fine rays that shimmer and turn,
+      // and the painted cross lit along its length.
       const breath = 0.8 + 0.2 * Math.sin(now / 1700) + 0.06 * Math.sin(now / 230);
-      let blast = 0;
-      if (nova < 0 && now >= novaAt) {
-        nova = 0;
-        for (let index = 0; index < 60; index += 1) {
-          const angle = rand(0, Math.PI * 2);
-          const speed = rand(30, 140);
-          dust.push({
-            x: STAR.x,
-            y: STAR.y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 0,
-            span: rand(1500, 3500),
-            size: rand(0.6, 1.5),
-            spin: 0,
-            angle: 0,
-          });
-        }
-      }
-      if (nova >= 0) {
-        nova += dt;
-        const t = nova / 2200;
-        if (t >= 1) {
-          nova = -1;
-          novaAt = now + rand(22_000, 40_000);
-        } else {
-          blast = t < 0.12 ? t / 0.12 : 1 - (t - 0.12) / 0.88;
-          // A soft shell of light rolling outward, not a drawn circle.
-          const radius = S(10 + t * 240);
-          const ring = context.createRadialGradient(X(STAR.x), Y(STAR.y), radius * 0.7, X(STAR.x), Y(STAR.y), radius);
-          ring.addColorStop(0, 'rgb(255 230 190 / 0)');
-          ring.addColorStop(0.8, `rgb(255 230 190 / ${0.22 * (1 - t)})`);
-          ring.addColorStop(1, 'rgb(255 230 190 / 0)');
-          context.fillStyle = ring;
-          context.fillRect(X(STAR.x) - radius, Y(STAR.y) - radius, radius * 2, radius * 2);
-        }
-      }
-      glow(context, STAR.x, STAR.y, 150 + blast * 160, '255 214 160', 0.16 * breath + blast * 0.3);
-      glow(context, STAR.x, STAR.y, 34 + blast * 30, '255 240 215', 0.6 * breath + blast * 0.4);
-      // The sunburst: fine rays round the core, each with its own shimmer.
+      glow(context, STAR.x, STAR.y, 150, '255 214 160', 0.16 * breath);
+      glow(context, STAR.x, STAR.y, 34, '255 240 215', 0.6 * breath);
       const turn = now / 40_000;
       context.lineWidth = S(0.5);
       for (let ray = 0; ray < 56; ray += 1) {
         const angle = turn + (ray / 56) * Math.PI * 2;
         const flick = 0.5 + 0.5 * Math.sin(now / (180 + (ray % 7) * 37) + ray * 2.1);
-        const length = (26 + (ray % 5) * 9 + flick * 14) * (1 + blast * 0.8);
-        context.strokeStyle = `rgb(255 226 186 / ${(0.12 + flick * 0.18) * breath + blast * 0.3})`;
+        const length = 26 + (ray % 5) * 9 + flick * 14;
+        context.strokeStyle = `rgb(255 226 186 / ${(0.12 + flick * 0.18) * breath})`;
         context.beginPath();
         context.moveTo(X(STAR.x + Math.cos(angle) * 6), Y(STAR.y + Math.sin(angle) * 6));
         context.lineTo(X(STAR.x + Math.cos(angle) * length), Y(STAR.y + Math.sin(angle) * length));
         context.stroke();
       }
-      // The arms: the painted cross, lit along its length and reaching further.
-      const reach = 1 + 0.12 * Math.sin(now / 900) + blast * 0.9;
+      const reach = 1 + 0.08 * Math.sin(now / 900);
       for (const [dx, dy, length, width] of [
         [-1, 0, 120, 1.4], [1, 0, 135, 1.4], [0, -1, 150, 1.6], [0, 1, 260, 1.2],
       ] as const) {
         const far = length * reach;
         const gradient = context.createLinearGradient(X(STAR.x), Y(STAR.y), X(STAR.x + dx * far), Y(STAR.y + dy * far));
-        gradient.addColorStop(0, `rgb(255 240 214 / ${0.7 * breath + blast * 0.3})`);
+        gradient.addColorStop(0, `rgb(255 240 214 / ${0.7 * breath})`);
         gradient.addColorStop(0.3, `rgb(255 222 170 / ${0.3 * breath})`);
         gradient.addColorStop(1, 'rgb(255 222 170 / 0)');
         context.strokeStyle = gradient;
-        context.lineWidth = S(width * (1 + blast));
+        context.lineWidth = S(width);
         context.beginPath();
         context.moveTo(X(STAR.x), Y(STAR.y));
         context.lineTo(X(STAR.x + dx * far), Y(STAR.y + dy * far));
         context.stroke();
       }
-      dot(context, STAR.x, STAR.y, 3 + blast * 2, `rgb(255 250 240 / ${0.9})`);
+      dot(context, STAR.x, STAR.y, 3, 'rgb(255 250 240 / 0.9)');
       // Light dripping down the long beam toward the cloud.
       if (drips.length < 6 && Math.random() < dt / 700) {
         drips.push({ x: STAR.x, y: STAR.y + 12, vx: 0, vy: rand(50, 110), life: 0, span: rand(2500, 4000), size: rand(0.8, 1.5), spin: 0, angle: 0 });
@@ -521,13 +513,6 @@ export function treyScene(backdropUrl: string | null): Scene {
         const alpha = t < 0.1 ? t / 0.1 : 1 - t;
         glow(context, drip.x, drip.y, 9, '255 230 190', alpha * 0.5);
         dot(context, drip.x, drip.y, drip.size, `rgb(255 244 224 / ${alpha})`);
-      }
-      age(dust, dt);
-      for (const mote of dust) {
-        mote.vx *= 0.985;
-        mote.vy = mote.vy * 0.985 + 8 * seconds;
-        const t = mote.life / mote.span;
-        dot(context, mote.x, mote.y, mote.size, `rgb(255 236 204 / ${(1 - t) * 0.9})`);
       }
 
       // Meteors: one every few seconds, and a shower now and then, all out
@@ -573,6 +558,11 @@ export function treyScene(backdropUrl: string | null): Scene {
         dot(context, meteor.x, meteor.y, 1.3, `rgb(255 255 255 / ${bright})`);
       }
 
+      // Cloud streaks sliding across the high sky and over the star.
+      context.globalCompositeOperation = 'source-over';
+      drawBank(context, highStreaks, now);
+      drawBank(context, starStreaks, now);
+
       // Lightning, deep in the dark cloud: a strike is two to four flashes
       // in under a second, sometimes with a second strike nearby.
       if (now >= strikeAt) {
@@ -606,30 +596,67 @@ export function treyScene(backdropUrl: string | null): Scene {
       // The cloud's lit rim: each point breathes on its own clock, and a band
       // of light runs along the whole edge every so often.
       if (sweep < 0 && now >= sweepAt) sweep = 0;
-      let sweepAt01 = -1;
+      let along01 = -1;
       if (sweep >= 0) {
         sweep += dt;
-        sweepAt01 = sweep / 3500;
-        if (sweepAt01 >= 1) {
+        along01 = sweep / 3500;
+        if (along01 >= 1) {
           sweep = -1;
-          sweepAt01 = -1;
+          along01 = -1;
           sweepAt = now + rand(8_000, 15_000);
         }
       }
       RIM.forEach(([x, y], index) => {
         const along = index / (RIM.length - 1);
-        const band = sweepAt01 < 0 ? 0 : Math.max(0, 1 - Math.abs(along - sweepAt01) * 6);
+        const band = along01 < 0 ? 0 : Math.max(0, 1 - Math.abs(along - along01) * 6);
         const pulse = 0.6 + 0.4 * Math.sin(now / 2300 + index * 0.9);
-        glow(context, x, y, 85, '255 222 178', 0.07 * pulse + band * 0.16 + blast * 0.12);
+        glow(context, x, y, 85, '255 222 178', 0.07 * pulse + band * 0.16);
       });
 
-      // Vapour sliding through it all.
+      // Loose clouds drifting past; each comes back in from the left at a
+      // new height when it has crossed.
       context.globalCompositeOperation = 'source-over';
-      drawBank(context, highWisp, now);
-      drawBank(context, leftVapour, now);
-      context.globalCompositeOperation = 'screen';
-      drawBank(context, litVapour, now);
-      context.globalCompositeOperation = 'source-over';
+      for (const wisp of wisps) {
+        wisp.x += wisp.speed * seconds;
+        if (wisp.x > IW + 20) {
+          wisp.x = -wisp.width - rand(0, 300);
+          wisp.y = rand(220, 520);
+        }
+        if (!wisp.texture) continue;
+        context.globalAlpha = wisp.alpha;
+        context.drawImage(wisp.texture, X(wisp.x), Y(wisp.y - wisp.height / 2), wisp.width * scale, wisp.height * scale);
+      }
+      context.globalAlpha = 1;
+
+      // Birds: a new flock every few seconds, two in the air at most, dark
+      // against the sky and the lit cloud.
+      if (flocks.length < 2 && now >= flockAt) {
+        flocks.push(spawnFlock());
+        flockAt = now + rand(4_000, 10_000);
+      }
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.strokeStyle = 'rgb(6 12 16 / 0.88)';
+      for (let index = flocks.length - 1; index >= 0; index -= 1) {
+        const flock = flocks[index]!;
+        let gone = true;
+        for (const bird of flock.birds) {
+          bird.x += flock.vx * seconds;
+          bird.y += flock.vy * seconds + Math.sin(now / 600 + bird.flap) * 0.08;
+          bird.flap += bird.rate * seconds;
+          if (bird.x > flock.lane.left - 120 && bird.x < flock.lane.right + 120) gone = false;
+          const wing = Math.sin(bird.flap);
+          const span = bird.size;
+          context.lineWidth = S(1.3);
+          context.beginPath();
+          context.moveTo(X(bird.x - span), Y(bird.y - wing * span * 0.6));
+          context.quadraticCurveTo(X(bird.x - span * 0.4), Y(bird.y - wing * span * 0.2 - 1), X(bird.x), Y(bird.y));
+          context.quadraticCurveTo(X(bird.x + span * 0.4), Y(bird.y - wing * span * 0.2 - 1), X(bird.x + span), Y(bird.y - wing * span * 0.6));
+          context.stroke();
+        }
+        if (gone) flocks.splice(index, 1);
+      }
+
       drawBank(context, ruinsMist, now);
 
       // Smoke off the fire, leaning with the wind.
@@ -683,37 +710,17 @@ export function treyScene(backdropUrl: string | null): Scene {
         dot(context, ember.x, ember.y, ember.size * (1 - t * 0.5), `rgb(255 ${g} ${b} / ${alpha * 0.95})`);
       }
 
-      // Drift lifting off the snowfield, harder in a gust.
-      context.globalCompositeOperation = 'source-over';
-      spindrift.speed = 30 + Math.abs(wind) * 0.9;
-      drawBank(context, spindrift, now);
-      if (drift.length < 40 && Math.random() < (dt / 120) * (0.3 + Math.abs(wind) / 60)) {
-        drift.push({ x: rand(-60, IW), y: rand(690, 765), vx: wind * rand(2, 3.5), vy: -rand(4, 16), life: 0, span: rand(1500, 3000), size: rand(0.6, 1.3), spin: 0, angle: 0 });
-      }
-      age(drift, dt);
-      for (const grain of drift) {
-        const t = grain.life / grain.span;
-        dot(context, grain.x, grain.y, grain.size, `rgb(234 242 248 / ${Math.sin(t * Math.PI) * 0.7})`);
-      }
-
-      // Snow over everything, three depths; flakes by the fire take its colour.
-      for (const flake of flakes) {
-        const push = [0.45, 0.75, 1.1][flake.depth]!;
-        flake.y += flake.fall * seconds;
-        flake.x += (wind * push + Math.sin(now / 1300 + flake.phase) * flake.sway) * seconds;
-        if (flake.y > IH + 8) {
-          flake.y = -8;
-          flake.x = rand(-40, IW + 40);
-        }
-        if (flake.x > IW + 40) flake.x = -40;
-        if (flake.x < -40) flake.x = IW + 40;
-        const near = Math.max(0, 1 - Math.hypot(flake.x - FIRE.x, flake.y - FIRE.y) / 170);
-        const r = 236 + near * 19;
-        const g = Math.round(242 - near * 70);
-        const b = Math.round(250 - near * 150);
-        const alpha = [0.45, 0.65, 0.85][flake.depth]!;
-        dot(context, flake.x, flake.y, flake.size, `rgb(${r} ${g} ${b} / ${alpha})`);
-      }
+      // The painting's sides fade into the room (trey.css); fade everything
+      // drawn here the same way, and clear what fell outside it.
+      const fade = EDGE / IW;
+      const edges = context.createLinearGradient(X(0), 0, X(IW), 0);
+      edges.addColorStop(0, 'rgb(0 0 0 / 0)');
+      edges.addColorStop(fade, 'rgb(0 0 0 / 1)');
+      edges.addColorStop(1 - fade, 'rgb(0 0 0 / 1)');
+      edges.addColorStop(1, 'rgb(0 0 0 / 0)');
+      context.globalCompositeOperation = 'destination-in';
+      context.fillStyle = edges;
+      context.fillRect(-1e4, -1e4, 1e5, 1e5);
       context.globalCompositeOperation = 'source-over';
     },
   };

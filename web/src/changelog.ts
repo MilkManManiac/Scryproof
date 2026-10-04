@@ -24,7 +24,7 @@ export const CHANGELOG: readonly Release[] = [
     date: '2026-10-04',
     title: 'The Trey theme',
     notes: [
-      'A new theme under Themes: a great star over a snowfield, a fire burning by the ruins, and a whole sky that will not sit still. Snow blows in gusts, sparks pour off the fire, lightning moves inside the clouds, and every so often the star goes off.',
+      'A new theme under Themes: a great star over a snowfield, a fire burning by the ruins, and a sky that will not sit still. Stars twinkle, shooting stars come every few seconds and sometimes in showers, clouds drift, dark birds cross, lightning moves inside the clouds, and sparks pour off the fire.',
     ],
   },
   {
