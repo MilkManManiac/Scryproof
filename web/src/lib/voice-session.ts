@@ -25,6 +25,7 @@
  */
 
 import {
+  AudioPresets,
   Room,
   RoomEvent,
   ScreenSharePresets,
@@ -40,6 +41,7 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 
 import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
+import { captureMusic, MUSIC_TRACK, musicSound } from './music-share';
 import { api, ApiError } from './api';
 import { holdPushKey } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
@@ -51,7 +53,15 @@ import { HOLD_MS, MicGate, OutputMix, audioContext, withHold } from './voice-aud
 /** Joining and leaving a call: whichever sounds this person picked in Notifications. */
 const callSound = (moment: 'joined' | 'left'): void => playSound(notifyPrefs.get().moments[moment].sound);
 import { MicProcessor, isVoiceEffect, needsProcessor, type MicChoice } from './voice-effects';
-import { cameraEncoding, cameraOptions, captureOptions, screenShareOptions, usesModel, voicePrefs, type VoicePrefs } from './voice-prefs';
+import {
+  cameraEncoding,
+  cameraOptions,
+  captureOptions,
+  screenShareOptions,
+  usesModel,
+  voicePrefs,
+  type VoicePrefs,
+} from './voice-prefs';
 import {
   VoiceCall,
   announce,
@@ -128,6 +138,14 @@ export interface VoiceStats {
  */
 export type CallPlace = { kind: 'channel'; id: string } | { kind: 'dm'; id: string };
 
+export interface SharedAudio {
+  userId: string;
+  sid: string;
+  kind: 'screen' | 'music';
+  listening: boolean;
+  muted: boolean;
+}
+
 export interface VoiceSnapshot {
   phase: VoicePhase;
   /** The voice channel this call is in. Null for a call in a conversation. */
@@ -152,6 +170,10 @@ export interface VoiceSnapshot {
   camera: boolean;
   sharing: boolean;
   videos: VoiceVideo[];
+  sharedAudio: SharedAudio[];
+  musicSharing: boolean;
+  musicBusy: boolean;
+  musicError: string | null;
   /** Why the camera or screen share did not start, in words. */
   mediaError: string | null;
   /** One line for the voice panel when our share stopped on its own. Cleared by the next share. */
@@ -197,6 +219,10 @@ const IDLE: VoiceSnapshot = {
   camera: false,
   sharing: false,
   videos: [],
+  sharedAudio: [],
+  musicSharing: false,
+  musicBusy: false,
+  musicError: null,
   mediaError: null,
   shareNotice: null,
   lastShareStop: null,
@@ -235,12 +261,10 @@ function isWrappedKey(value: Record<string, unknown>): value is Record<string, u
  */
 export const screenSound = (userId: string): string => `${userId}:screen`;
 const boardSound = (userId: string): string => `${userId}:soundboard`;
-const mixKey = (userId: string, source: Track.Source): string =>
-  source === Track.Source.ScreenShareAudio
-    ? screenSound(userId)
-    : source === Track.Source.Unknown
-      ? boardSound(userId)
-      : userId;
+const mixKey = (userId: string, source: Track.Source, name?: string): string => {
+  if (source === Track.Source.ScreenShareAudio) return name === MUSIC_TRACK ? musicSound(userId) : screenSound(userId);
+  return source === Track.Source.Unknown ? boardSound(userId) : userId;
+};
 /** The saved volume for one entry in the mix: the screen's own, or the person's. */
 const savedVolume = (prefs: VoicePrefs, userId: string, source: Track.Source): number => {
   if (source === Track.Source.ScreenShareAudio) return prefs.volumes[screenSound(userId)] ?? 1;
@@ -337,6 +361,12 @@ export class VoiceSession {
   private readonly screenSoundOn = new Set<string>();
   /** True while our own Stop is taking the share down, so that is not reported as the share dying. */
   private stoppingShare = false;
+  private shareBusy = false;
+  private musicTrack: MediaStreamTrack | null = null;
+  private musicTurn = 0;
+  private musicUnpublishing = false;
+  /** Publication IDs, not people: a new music share always needs fresh consent. */
+  private readonly musicListening = new Set<string>();
   /** Set when the screen track itself ended (the window closed, the browser's own Stop bar). */
   private shareEnded: string | null = null;
 
@@ -513,6 +543,12 @@ export class VoiceSession {
     this.hiddenCameras.clear();
     this.watching.clear();
     this.screenSoundOn.clear();
+    this.musicListening.clear();
+    this.musicTurn += 1;
+    this.musicTrack?.stop();
+    this.musicTrack = null;
+    this.musicUnpublishing = false;
+    this.shareBusy = false;
     this.stoppingShare = false;
     this.shareEnded = null;
     this.stopWatching?.();
@@ -604,7 +640,10 @@ export class VoiceSession {
 
   setServerMuted(muted: boolean): void {
     this.serverMuted = muted;
-    if (muted) this.board?.playing?.stop();
+    if (muted) {
+      this.board?.playing?.stop();
+      void this.stopMusic();
+    }
   }
 
   /**
@@ -651,6 +690,91 @@ export class VoiceSession {
     return { ok: true };
   }
 
+  /* -------------------------- shared music -------------------------- */
+
+  async startMusic(): Promise<void> {
+    const room = this.room;
+    if (!room || this.snapshot.phase !== 'connected' || !this.snapshot.can.screenShare || this.serverMuted) return;
+    if (this.musicTrack || this.snapshot.musicBusy || this.musicUnpublishing) return;
+    if (this.shareBusy || room.localParticipant.isScreenShareEnabled) {
+      this.update({ musicError: 'Stop your screen share before sharing music.' });
+      return;
+    }
+    const turn = ++this.musicTurn;
+    this.update({ musicBusy: true, musicError: null });
+    let track: MediaStreamTrack | null = null;
+    const current = () =>
+      this.room === room && this.musicTurn === turn && !this.serverMuted && this.snapshot.phase === 'connected';
+    try {
+      track = await captureMusic();
+      if (!current()) {
+        track.stop();
+        return;
+      }
+      this.musicTrack = track;
+      track.addEventListener(
+        'ended',
+        () => {
+          if (this.musicTrack === track) void this.stopMusic();
+        },
+        { once: true },
+      );
+      await room.localParticipant.publishTrack(track, {
+        source: Track.Source.ScreenShareAudio,
+        name: MUSIC_TRACK,
+        audioPreset: AudioPresets.musicHighQualityStereo,
+        forceStereo: true,
+        dtx: false,
+      });
+      if (!current() || track.readyState === 'ended') {
+        track.stop();
+        if (this.musicTrack === track) this.musicTrack = null;
+        await room.localParticipant.unpublishTrack(track).catch(() => undefined);
+        return;
+      }
+      this.refreshVideos();
+    } catch (problem) {
+      track?.stop();
+      if (this.musicTrack === track) this.musicTrack = null;
+      if (current() && !(problem instanceof Error && problem.name === 'NotAllowedError')) {
+        this.update({ musicError: problem instanceof Error ? problem.message : 'Audio sharing could not start.' });
+      }
+    } finally {
+      if (this.room === room && this.musicTurn === turn) {
+        this.update({ musicBusy: false });
+        this.refreshVideos();
+      }
+    }
+  }
+
+  async stopMusic(): Promise<void> {
+    if (this.musicUnpublishing) return;
+    const turn = ++this.musicTurn;
+    const room = this.room;
+    const track = this.musicTrack;
+    this.musicTrack = null;
+    track?.stop();
+    this.musicUnpublishing = Boolean(track);
+    this.update({ musicBusy: Boolean(track), musicError: null });
+    if (room && track) await room.localParticipant.unpublishTrack(track).catch(() => undefined);
+    if (this.room === room && this.musicTurn === turn) {
+      this.musicUnpublishing = false;
+      this.update({ musicBusy: false });
+      this.refreshVideos();
+    }
+  }
+
+  setMusicListening(userId: string, sid: string, on: boolean): void {
+    const publication = this.room?.remoteParticipants.get(userId)?.trackPublications.get(sid);
+    if (!publication || publication.source !== Track.Source.ScreenShareAudio || publication.trackName !== MUSIC_TRACK)
+      return;
+    if (on) this.musicListening.add(sid);
+    else this.musicListening.delete(sid);
+    this.mix?.setVolumeFor(musicSound(userId), on ? (voicePrefs.get().volumes[musicSound(userId)] ?? 1) : 0);
+    this.syncSubscription(publication, userId);
+    this.refreshVideos();
+  }
+
   /* --------------------------- camera and screen --------------------------- */
 
   /**
@@ -674,7 +798,12 @@ export class VoiceSession {
 
   async setScreenShare(on: boolean, forActivity = false): Promise<void> {
     const room = this.room;
-    if (!room || !this.snapshot.can.screenShare) return;
+    if (!room || !this.snapshot.can.screenShare || this.shareBusy) return;
+    if (on && (this.musicTrack || this.snapshot.musicBusy || this.musicUnpublishing)) {
+      this.update({ mediaError: 'Stop sharing music in the mixer before sharing your screen.' });
+      return;
+    }
+    this.shareBusy = true;
     this.update(on ? { mediaError: null, shareNotice: null } : { mediaError: null });
     const quality = screenShareOptions(voicePrefs.get());
     this.stoppingShare = !on;
@@ -708,6 +837,7 @@ export class VoiceSession {
         },
       );
     } catch (problem) {
+      if (this.room !== room) return;
       // Closing the picker without choosing is not an error worth a message.
       const cancelled = problem instanceof Error && problem.name === 'NotAllowedError';
       if (!cancelled) {
@@ -715,7 +845,10 @@ export class VoiceSession {
         this.update({ mediaError: message, ...(on ? { lastShareStop: { reason: message, at: Date.now() } } : {}) });
       }
     } finally {
-      this.stoppingShare = false;
+      if (this.room === room) {
+        this.shareBusy = false;
+        this.stoppingShare = false;
+      }
     }
     if (this.room === room) this.refreshVideos();
   }
@@ -753,7 +886,6 @@ export class VoiceSession {
     if (userId === this.userId) return;
     if (source === 'camera') this.hiddenCameras.delete(userId);
     this.watching.add(`${userId}:${source}`);
-    if (source === 'screen') this.screenSoundOn.delete(userId);
     this.syncSubscriptions();
     this.refreshVideos();
   }
@@ -771,6 +903,7 @@ export class VoiceSession {
     if (on) this.screenSoundOn.add(userId);
     else this.screenSoundOn.delete(userId);
     this.mix?.setVolumeFor(screenSound(userId), screenGain(voicePrefs.get().volumes[screenSound(userId)] ?? 1, on));
+    this.syncSubscriptions();
     this.refreshVideos();
   }
 
@@ -798,11 +931,15 @@ export class VoiceSession {
             : source === Track.Source.ScreenShare
               ? 'screen'
               : source === Track.Source.ScreenShareAudio
-                ? 'screen-audio'
+                ? publication.trackName === MUSIC_TRACK
+                  ? 'music'
+                  : 'screen-audio'
                 : 'other',
       kind: publication.kind === Track.Kind.Video ? 'video' : 'audio',
     };
     const want = shouldSubscribe(facts, {
+      music: this.musicListening.has(publication.trackSid),
+      screenSound: this.screenSoundOn.has(userId),
       camera: this.watching.has(`${userId}:camera`),
       screen: this.watching.has(`${userId}:screen`),
       cameraHidden: this.hiddenCameras.has(userId),
@@ -848,9 +985,22 @@ export class VoiceSession {
     const room = this.room;
     if (!room) return;
     const videos: VoiceVideo[] = [];
+    const sharedAudio: SharedAudio[] = [];
     const hiddenCameras: string[] = [];
     for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
       for (const publication of participant.trackPublications.values()) {
+        if (publication.source === Track.Source.ScreenShareAudio && publication.kind === Track.Kind.Audio) {
+          const music = publication.trackName === MUSIC_TRACK;
+          sharedAudio.push({
+            userId: participant.identity,
+            sid: publication.trackSid,
+            kind: music ? 'music' : 'screen',
+            muted: publication.isMuted,
+            listening: music
+              ? this.musicListening.has(publication.trackSid)
+              : this.screenSoundOn.has(participant.identity),
+          });
+        }
         if (
           publication.source === Track.Source.Camera &&
           participant !== room.localParticipant &&
@@ -874,9 +1024,12 @@ export class VoiceSession {
           ? publication.track
             ? 'playing'
             : null
-          : streamState({ watching: this.watching.has(`${participant.identity}:${source}`), hasTrack: Boolean(publication.track) });
+          : streamState({
+              watching: this.watching.has(`${participant.identity}:${source}`),
+              hasTrack: Boolean(publication.track),
+            });
         if (!state) continue;
-        const sound = source === 'screen' && Boolean(participant.getTrackPublication(Track.Source.ScreenShareAudio)?.track);
+        const sound = source === 'screen' && Boolean(participant.getTrackPublication(Track.Source.ScreenShareAudio));
         videos.push({
           userId: participant.identity,
           source,
@@ -889,6 +1042,12 @@ export class VoiceSession {
     }
     this.update({
       videos,
+      sharedAudio,
+      musicSharing: Boolean(
+        this.musicTrack &&
+        this.musicTrack.readyState === 'live' &&
+        room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.trackName === MUSIC_TRACK,
+      ),
       hiddenCameras,
       camera: room.localParticipant.isCameraEnabled,
       sharing: room.localParticipant.isScreenShareEnabled,
@@ -904,8 +1063,7 @@ export class VoiceSession {
 
   private micTrack(): LocalAudioTrack | undefined {
     return this.room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack as
-      | LocalAudioTrack
-      | undefined;
+      LocalAudioTrack | undefined;
   }
 
   private rebuildGate(): void {
@@ -1126,6 +1284,11 @@ export class VoiceSession {
         screenGain(now.volumes[screenSound(person.identity)] ?? 1, this.screenSoundOn.has(person.identity)),
       );
       this.mix?.setVolumeFor(boardSound(person.identity), volume * now.soundboardVolume);
+      const music = person.getTrackPublication(Track.Source.ScreenShareAudio);
+      this.mix?.setVolumeFor(
+        musicSound(person.identity),
+        music && this.musicListening.has(music.trackSid) ? (now.volumes[musicSound(person.identity)] ?? 1) : 0,
+      );
     }
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
 
@@ -1173,7 +1336,11 @@ export class VoiceSession {
     await track.mediaStreamTrack
       .applyConstraints(
         quality.resolution
-          ? { width: { max: quality.resolution.width }, height: { max: quality.resolution.height }, frameRate: { max: fps } }
+          ? {
+              width: { max: quality.resolution.width },
+              height: { max: quality.resolution.height },
+              frameRate: { max: fps },
+            }
           : { frameRate: { max: fps } },
       )
       .catch(() => undefined);
@@ -1290,7 +1457,10 @@ export class VoiceSession {
       // The yes lets them in now. Remembering it, for later calls and for
       // channels, is written behind it and never holds up the key.
       const unsaved = (problem: unknown) =>
-        console.warn('Scryproof let that device into this call, but could not save the approval on this device. It will ask again next time.', problem);
+        console.warn(
+          'Scryproof let that device into this call, but could not save the approval on this device. It will ask again next time.',
+          problem,
+        );
       const approved = await call.approve(userId, deviceId, unsaved);
       if (!approved) return;
       void letInEverywhere(userId, deviceId, approved.fingerprint, unsaved);
@@ -1351,6 +1521,7 @@ export class VoiceSession {
 
   private listenTo(room: Room): void {
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
+      if (this.room !== room) return;
       // The unknown source is granted for the soundboard, which is sound. The
       // grant cannot say "sound only", so a picture under that source is
       // somebody's client misbehaving: stop fetching it and draw nothing.
@@ -1379,41 +1550,76 @@ export class VoiceSession {
       let volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
       // A screen's sound arrives silent. The speaker button on its tile is what turns it up.
       if (publication.source === Track.Source.ScreenShareAudio) {
-        volume = screenGain(volume, this.screenSoundOn.has(participant.identity));
+        volume =
+          publication.trackName === MUSIC_TRACK
+            ? screenGain(
+                voicePrefs.get().volumes[musicSound(participant.identity)] ?? 1,
+                this.musicListening.has(publication.trackSid),
+              )
+            : screenGain(volume, this.screenSoundOn.has(participant.identity));
       }
       const voice = publication.source === Track.Source.Microphone;
-      this.mix.add(mixKey(participant.identity, publication.source), track.mediaStreamTrack, volume, voice);
+      this.mix.add(
+        mixKey(participant.identity, publication.source, publication.trackName),
+        track.mediaStreamTrack,
+        volume,
+        voice,
+      );
       // A screen's sound arriving is what puts a volume slider on its tile.
       if (publication.source === Track.Source.ScreenShareAudio) this.refreshVideos();
     });
 
     room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication, participant) => {
-      if (track.kind === Track.Kind.Audio) this.mix?.remove(mixKey(participant.identity, publication.source));
+      if (this.room !== room) return;
+      if (track.kind === Track.Kind.Audio)
+        this.mix?.remove(mixKey(participant.identity, publication.source, publication.trackName));
       if (track.kind !== Track.Kind.Audio || publication.source === Track.Source.ScreenShareAudio) this.refreshVideos();
     });
 
     // Someone turning a camera on while it is hidden here: do not fetch it.
     // Either way the list of hidden cameras may have changed.
     room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      if (this.room !== room) return;
       this.syncSubscription(publication, participant.identity);
       this.refreshVideos();
     });
     // A share that ended is over: the next one from the same person is a new
     // card, and its sound starts off again.
     room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+      if (this.room !== room) return;
       if (publication.source === Track.Source.ScreenShare) {
         this.watching.delete(`${participant.identity}:screen`);
         this.screenSoundOn.delete(participant.identity);
+      }
+      if (publication.source === Track.Source.ScreenShareAudio) {
+        this.musicListening.delete(publication.trackSid);
+        this.screenSoundOn.delete(participant.identity);
+        this.mix?.remove(mixKey(participant.identity, publication.source, publication.trackName));
       }
       if (publication.source === Track.Source.Camera) this.watching.delete(`${participant.identity}:camera`);
       this.refreshVideos();
     });
     // People already in the call when we arrive, and people arriving after.
-    room.on(RoomEvent.ParticipantConnected, () => this.syncSubscriptions());
+    room.on(RoomEvent.ParticipantConnected, () => {
+      if (this.room !== room) return;
+      this.syncSubscriptions();
+      this.refreshVideos();
+    });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      if (this.room !== room) return;
       this.watching.delete(`${participant.identity}:camera`);
       this.watching.delete(`${participant.identity}:screen`);
       this.screenSoundOn.delete(participant.identity);
+      for (const publication of participant.trackPublications.values())
+        this.musicListening.delete(publication.trackSid);
+      for (const key of [
+        participant.identity,
+        screenSound(participant.identity),
+        musicSound(participant.identity),
+        boardSound(participant.identity),
+      ])
+        this.mix?.remove(key);
+      this.refreshVideos();
     });
 
     // Our own share ending without our Stop. The track's own "ended" comes
@@ -1421,6 +1627,7 @@ export class VoiceSession {
     // by unpublishing inside the same event, before our listener on the track
     // has run. So the unpublish waits one turn for the reason.
     room.on(RoomEvent.LocalTrackPublished, (publication) => {
+      if (this.room !== room) return;
       if (publication.source !== Track.Source.ScreenShare) return;
       this.shareEnded = null;
       publication.track?.on(TrackEvent.Ended, () => {
@@ -1428,6 +1635,16 @@ export class VoiceSession {
       });
     });
     room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (this.room !== room) return;
+      if (publication.trackName === MUSIC_TRACK && publication.track?.mediaStreamTrack === this.musicTrack) {
+        // The SDK or server can remove a track without our Stop button.
+        // Its capture must end too, and the next attempt must be allowed.
+        this.musicTrack?.stop();
+        this.musicTrack = null;
+        ++this.musicTurn;
+        this.musicUnpublishing = false;
+        this.update({ musicBusy: false });
+      }
       if (publication.source !== Track.Source.ScreenShare || this.stoppingShare) return;
       setTimeout(() => {
         if (this.room === room) this.noteShareStop(this.shareEnded ?? 'the call stopped sending it, with no reason given');
@@ -1446,12 +1663,14 @@ export class VoiceSession {
     }
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers: LiveKitParticipant[]) => {
+      if (this.room !== room) return;
       this.serverSpeakers = speakers.map((speaker) => speaker.identity);
       this.refreshSpeaking();
     });
 
     room.on(RoomEvent.Disconnected, () => {
       if (this.room !== room) return;
+      void this.stopMusic();
       this.update({ phase: 'failed', encrypted: false, error: 'The call connection was lost.' });
     });
   }
@@ -1599,11 +1818,9 @@ export class VoiceSession {
    */
   private refreshSpeaking(): void {
     const heard = (this.mix?.talking() ?? []).filter(
-      (key) => !key.endsWith(':screen') && !key.endsWith(':soundboard'),
+      (key) => !key.endsWith(':screen') && !key.endsWith(':soundboard') && !key.endsWith(':music'),
     );
-    const fallback = this.serverSpeakers.filter(
-      (id) => id !== this.userId && !(this.mix?.has(id) ?? false),
-    );
+    const fallback = this.serverSpeakers.filter((id) => id !== this.userId && !(this.mix?.has(id) ?? false));
     const speaking = new Set([...heard, ...fallback]);
     if (this.selfSpeaking()) speaking.add(this.userId);
 
@@ -1618,7 +1835,13 @@ export class VoiceSession {
    * hear, as opposed to what was asked for. For the checks: a stage that
    * fails to start falls back quietly, by design, so only this can tell.
    */
-  debugMic(): { processor: boolean; suppressing: boolean; guarding: boolean; effect: string | null; guarded: string[] } {
+  debugMic(): {
+    processor: boolean;
+    suppressing: boolean;
+    guarding: boolean;
+    effect: string | null;
+    guarded: string[];
+  } {
     const processor = this.micTrack()?.getProcessor();
     const mic = processor instanceof MicProcessor ? processor : null;
     return {

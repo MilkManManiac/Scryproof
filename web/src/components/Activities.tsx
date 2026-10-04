@@ -21,6 +21,7 @@ import {
 import { DesktopInstallerLink } from './DesktopInstallerLink';
 import { useBackButton } from '../lib/back';
 import { useActivityCompact } from '../lib/useActivityCompact';
+import { MixerButton } from './CallMixer';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
 import { Modal } from './Modal';
@@ -434,6 +435,7 @@ function ActivityPlayer({
             <button type="button" onClick={() => leaveVoice()}>
               Leave call
             </button>
+            <MixerButton />
             <ConnectionPanel />
           </div>
         ) : null}

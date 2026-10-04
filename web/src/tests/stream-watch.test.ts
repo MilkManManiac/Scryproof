@@ -81,3 +81,19 @@ describe('screenGain', () => {
     assert.equal(screenGain(1.5, true), 1.5);
   });
 });
+
+
+describe('mixer subscriptions', () => {
+  it('listens to stream audio independently of video', () => {
+    const listen = { ...none, screenSound: true };
+    assert.equal(shouldSubscribe(screenSound, listen), true);
+    assert.equal(shouldSubscribe(screen, listen), false);
+    assert.equal(shouldSubscribe(camera, listen), false);
+  });
+  it('music requires its own consent even when watching or hearing the person’s screen', () => {
+    const music: PublicationFacts = { source: 'music', kind: 'audio' };
+    assert.equal(shouldSubscribe(music, { ...none, screen: true, screenSound: true }), false);
+    assert.equal(shouldSubscribe(music, { ...none, music: true }), true);
+    assert.equal(shouldSubscribe({ source: 'music', kind: 'video' }, { ...none, music: true }), false);
+  });
+});

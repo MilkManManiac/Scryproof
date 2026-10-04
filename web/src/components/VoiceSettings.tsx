@@ -336,7 +336,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
         <div className="toggle-row">
           <span>
             Everyone's volume
-            <span className="field-note">Each person also has their own: click them in the call.</span>
+            <span className="field-note">Open the call mixer to balance voices, streams and music.</span>
           </span>
           <span className="voice-volume">
             <input

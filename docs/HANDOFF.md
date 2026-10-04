@@ -3733,3 +3733,81 @@ Scryproof review: [PR #5](https://github.com/MilkManManiac/Scryproof/pull/5).
 The additional desktop input check exercised the actual app with keyboard movement
 and a held mouse click: the bag reached 0.030 before idle auto-scooping could begin.
 Local preview uses http://localhost:5179 with the fixed game on 5180.
+
+## Call mixer and opt-in music (2026-10-04, prepared for review)
+
+Matt asked for one place to balance everyone in a call, stronger volume boosts,
+and audio-only music sharing that other callers choose to hear.
+
+`feat/call-mixer` adds a labeled Mixer control to the call dock, channel/DM call
+stage, and Activities call footer. The panel follows the actual call even when
+another server is on screen. Participants appear/leave with the call; voice,
+stream, and music gains are independent, local, and saved per person/source.
+Per-source gains reach 400%; the existing master reaches 200%. Mute restores the
+previous level, Reset returns to 100%, and deafen still silences the full mix.
+Existing profile/context/stream sliders use the same saved values and limits.
+ConnectionPanel stays visible in the mixer, including identity consent notices.
+
+Music uses the existing screen-audio publication permission and encrypted room.
+It is named `scryproof-music`, never published as the soundboard's automatically
+received Unknown source. Listeners subscribe only after Listen, by publication
+ID; restarting a share requires fresh consent. Capture asks the existing native
+picker for sound, stops every video track locally, and publishes only audio with
+the stereo music preset. Music and screen sharing occupy one slot per person.
+No server permissions, encryption/key handling, desktop shell, third-party
+services, dependencies, or deployment configuration were added or changed.
+
+Cancel, missing audio, failed publication, leaving during capture, a closed
+source, moderator mute, and an SDK/server unpublication all release the capture
+or invalidate late results. Old room events cannot modify a new call. The desktop
+picker opens above the mixer and labels the action Share audio.
+
+**Platform limits:** browser tab audio capture is the preferred source. The
+current Windows shell's existing loopback captures all computer sound, including
+the call; the mixer and picker explain the echo risk. This change does not add
+per-application Windows capture. Platforms without audio capture can still listen
+if they support Scryproof's encrypted calls. Physical Windows, iPhone, iPad,
+Android, and tablet acceptance remain outstanding. No new EXE is needed; after
+review this ships through the normal signed-client release.
+
+**Local verification:** the real Chrome/LiveKit mixer check exercises native tab
+audio capture, no outgoing video, no music subscription before opt-in, decoded
+music after opt-in, measured 400% gain, mute/restore, per-share consent, roster
+updates, keyboard focus, deafen, and failure cleanup. Screenshots show the actual
+local app at desktop and phone widths; they are not physical-device evidence.
+Final checks passed: typecheck, all 51 web test files, production web build
+(existing bundle-size warning only), all 91 existing real-browser call checks,
+and the complete mixer integration. The mixer test also confirmed encrypted
+packets continue arriving with the wrong key while decoded music stops, screen
+audio is actually decoded without downloading its picture after key recovery,
+and SDK-initiated unpublication stops the captured source. Desktop and mobile
+screenshots were refreshed from that final run.
+
+Reproduce with an isolated dev API (`DATA_DIR=/tmp/scryproof-mixer-dev`, port
+8797), seeded accounts, Vite (`API_PORT=8797 WEB_PORT=5179`), and the normal local
+LiveKit service. Then:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node scripts/mixer-check.mjs
+VOICE_CHECK_WEB=http://localhost:5179 npm run test:voice
+npm run typecheck
+npm run test --workspace web
+npm run build --workspace web
+```
+
+Run the two browser scripts sequentially: they use the same seeded call accounts.
+The mixer script is restricted to localhost. Capture failures are injected only
+after its successful native capture path has been exercised. The existing voice
+check now dismisses the first-run walkthrough in its fresh profiles so real
+wheel/drag events can reach the streamed picture.
+
+![Call mixer in a real local call](shots/call-mixer-desktop.png)
+![Call mixer at phone width](shots/call-mixer-mobile.png)
+
+Nothing is merged or deployed. Milk's review and normal release remain the next
+steps; do not represent local Chrome checks as hosted or Windows verification.
+
+Matt approved publication. The mixer is open for Milk's review as
+[PR #7](https://github.com/MilkManManiac/Scryproof/pull/7) on `feat/call-mixer`.
+Implementation commit: `935d3a5`. The earlier publication approval gate is resolved;
+merging and deployment remain subject to Milk's review and normal release process.

@@ -29,7 +29,7 @@ import type { PublicUser } from '@scryproof/shared';
 
 import { localNames, nameFor } from '../lib/local-names';
 import { placeBeside } from '../lib/place';
-import { voicePrefs } from '../lib/voice-prefs';
+import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { useDms } from '../state/dms';
 import { useStore } from '../state/store';
 import { Avatar } from './Avatar';
@@ -321,7 +321,7 @@ function ProfileCard({
               type="range"
               className="voice-range"
               min={0}
-              max={200}
+              max={MAX_PERSON_VOLUME * 100}
               step={5}
               value={Math.round(volume * 100)}
               onChange={(event) => voicePrefs.setVolumeFor(user.id, Number(event.target.value) / 100)}

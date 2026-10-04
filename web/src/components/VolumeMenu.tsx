@@ -13,7 +13,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 
-import { voicePrefs } from '../lib/voice-prefs';
+import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { Menu, MenuItem } from './Menu';
 
 /** Where a right-click landed, kept far enough from the edges for the menu to fit. */
@@ -96,7 +96,7 @@ export function VolumeMenu({
             type="range"
             className="voice-range"
             min={0}
-            max={200}
+            max={MAX_PERSON_VOLUME * 100}
             step={5}
             value={percent}
             onChange={(event) => voicePrefs.setVolumeFor(userId, Number(event.target.value) / 100)}

@@ -13,7 +13,7 @@
 
 export interface PublicationFacts {
   /** 'other' is the soundboard's track, and anything a client should not be sending. */
-  source: 'microphone' | 'camera' | 'screen' | 'screen-audio' | 'other';
+  source: 'microphone' | 'camera' | 'screen' | 'screen-audio' | 'music' | 'other';
   kind: 'audio' | 'video';
 }
 
@@ -23,6 +23,10 @@ export interface WatchFacts {
   screen: boolean;
   /** The viewer used Hide on this person's camera. Hide wins over Watch. */
   cameraHidden: boolean;
+  /** Audio can be heard from the mixer without watching the picture. */
+  screenSound?: boolean;
+  /** Consent for this exact music publication; never inherited by a new share. */
+  music?: boolean;
 }
 
 /** Whether to be receiving this publication right now. */
@@ -33,8 +37,11 @@ export function shouldSubscribe(publication: PublicationFacts, watch: WatchFacts
     case 'camera':
       return watch.camera && !watch.cameraHidden;
     case 'screen':
-    case 'screen-audio':
       return watch.screen;
+    case 'screen-audio':
+      return publication.kind === 'audio' && (watch.screen || watch.screenSound === true);
+    case 'music':
+      return publication.kind === 'audio' && watch.music === true;
     default:
       // The soundboard is sound. A picture under that source is somebody's
       // client misbehaving, and nobody asked to see it.
