@@ -2,9 +2,9 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-04, ~02:45 ET)
+## Pick up here (2026-10-04, ~03:25 ET)
 
-**Built, committed locally, NOT deployed: the Trey theme, second pass.** First pass (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His notes on it: "it kinda droppped the fire from the zoom in. I want to keep that. Then drop the snow and the like wild bursts from the stars. Twinkles are great. Shooting stars are great. Fire effects seemed great. Maybe add some clounds moving. Maybe some dark birds flying."
+**LIVE 2026-10-04 03:23 ET (client 1791098537801, no new installer): the Trey theme** (Wes: "yea its good deploy it"). Proven live: health ok, the box serves client 1791098537801, `/backdrops/trey.jpg` matches the local file byte for byte (165917), and the served bundle carries the theme CSS and its What's new entry. Not proven: nobody has picked it signed in on the live site yet. Below is how it got here, over three passes. First pass (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His notes on it: "it kinda droppped the fire from the zoom in. I want to keep that. Then drop the snow and the like wild bursts from the stars. Twinkles are great. Shooting stars are great. Fire effects seemed great. Maybe add some clounds moving. Maybe some dark birds flying."
 
 - **Painting:** his picture is `assets/gen/trey-a.jpg`. It is served as `/backdrops/trey.jpg` at 1376x871: the picture at 1376x771, plus 100 px of blurred snowfield underneath so the fire clears the composer, with both sides faded to `--bg`. It was built by a one-off PIL script (not committed; the steps are in the trey-scene.ts header).
 - **Fitted to height:** unlike every other theme, this one is fitted to the window's height (`background-size: ... auto 100%` in `trey.css`; `trey-scene.ts` resize uses `height / IH`), not cover. So a wide window never zooms the fire out. Wide windows get plain night colour at the sides, under the side panels.
@@ -18,7 +18,7 @@ Living state. Update this at the end of every working session.
   - fire flicker, slow rising sparks and smoke (the pops were cut as too explosive)
 - **Removed:** the snow, the nova and the star flares.
 - **Checks:** web tests 556/556, typecheck clean.
-- **Next:** Wes looks, then deploys on his word.
+- **Next:** nothing pending on it. Trey picks it under Themes.
 
 ![Trey theme](shots/theme-trey.png)
 ![The scene alone](shots/theme-trey-scene.png)
