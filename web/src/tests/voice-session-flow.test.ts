@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { registerHooks } from 'node:module';
 import { mock, test } from 'node:test';
 import * as livekit from 'livekit-client';
-import type { VoiceSignal } from '@scryproof/shared';
+import type { ClientEvent, ServerEvent, VoiceSignal } from '@scryproof/shared';
 import { MemoryIdentityStore, createDeviceIdentity, type DeviceIdentity } from '../lib/voice-crypto';
 
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -254,4 +254,112 @@ test('a server that never answers a join is bounded from the request, not its fi
     await work;
     assert.equal(session.getSnapshot().phase, 'ended');
   } finally { answer?.(false); await session.leave(); }
+});
+
+
+/* ----------------- a gateway that does or does not confirm ownership ----------------- */
+
+const { requestVoiceOwnership } = await import('../lib/voice-ownership');
+
+/** A gateway socket the test controls, and the one capability its `ready` frame states. */
+function fakeGateway() {
+  const sent: ClientEvent[] = [];
+  const listeners = new Set<(event: ServerEvent) => void>();
+  const gateway = {
+    isOpen: true,
+    send(event: ClientEvent) { if (!gateway.isOpen) return false; sent.push(event); return true; },
+  };
+  const link = { confirms: undefined as boolean | undefined };
+  const deps = {
+    gateway: () => gateway,
+    confirms: () => link.confirms,
+    listen: (listener: (event: ServerEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    intent: (place: { kind: 'channel' | 'dm'; id: string }, join: true | 'resume', requestId: string) => ({
+      channelId: place.id, dmId: null, join, requestId, tabId: 'tab',
+    }),
+    timeoutMs: 40,
+  };
+  const voiceStates = () => sent.filter((event) => event.t === 'voice_state');
+  return { gateway, link, deps, sent, listeners, voiceStates };
+}
+
+test('a gateway that never confirms ownership still lets a join reach the token and media connect', async () => {
+  identity = await createDeviceIdentity('old-gateway-join'); pins = new MemoryIdentityStore();
+  const fake = fakeGateway();
+  fake.link.confirms = false; // its `ready` had no voiceOwnership
+  const ends: string[] = [];
+  const place = { kind: 'channel' as const, id: 'room' };
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase),
+    (where) => requestVoiceOwnership(fake.deps, where, 'resume'));
+  try {
+    await session.join(place, () => requestVoiceOwnership(fake.deps, place, true));
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(Room.opened.at(-1)?.connects, 1, 'media connected once, on the first attempt');
+    // Outlast the ownership timeout: nothing may tear the call down and ask again.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(fake.voiceStates().length, 1, 'one join announced, so no membership churn for everyone else');
+    assert.deepEqual(ends, []);
+  } finally { await session.leave(); }
+});
+
+test('a gateway that never confirms ownership resumes after a reconnect without a retry loop', async () => {
+  identity = await createDeviceIdentity('old-gateway-resume'); pins = new MemoryIdentityStore();
+  const fake = fakeGateway();
+  fake.link.confirms = false;
+  const ends: string[] = [];
+  const place = { kind: 'channel' as const, id: 'room' };
+  const session = new VoiceSession(() => 'me', () => {}, (phase) => ends.push(phase),
+    (where) => requestVoiceOwnership(fake.deps, where, 'resume'));
+  try {
+    await session.join(place, () => requestVoiceOwnership(fake.deps, place, true));
+    assert.equal(session.getSnapshot().phase, 'connected');
+    // The socket drops: the client waits, saying nothing to the gateway.
+    fake.gateway.isOpen = false; fake.link.confirms = undefined;
+    session.gatewayLost();
+    await until(() => session.getSnapshot().phase === 'connecting' && session.getSnapshot().error !== null);
+    assert.equal(fake.voiceStates().length, 1);
+    // The new connection opens, but until its `ready` lands the client still says nothing.
+    fake.gateway.isOpen = true;
+    await session.resume();
+    assert.equal(fake.voiceStates().length, 1, 'no join before the new connection says what it can do');
+    // `ready` without voiceOwnership arrives and resumes the call.
+    fake.link.confirms = false;
+    const connectsBefore = Room.opened.reduce((total, room) => total + room.connects, 0);
+    await session.resume();
+    assert.equal(session.getSnapshot().phase, 'connected');
+    assert.equal(Room.opened.reduce((total, room) => total + room.connects, 0), connectsBefore + 1);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(session.getSnapshot().phase, 'connected');
+    const sentJoins = fake.voiceStates().map((event) => event.d.join);
+    assert.deepEqual(sentJoins, [true, 'resume'], 'one join and one resume, nothing repeated');
+    assert.deepEqual(ends, []);
+  } finally { await session.leave(); }
+});
+
+test('a gateway that advertises ownership is still waited on, and still bounded', async () => {
+  const fake = fakeGateway();
+  fake.link.confirms = true;
+  const place = { kind: 'channel' as const, id: 'room' };
+  const answered = requestVoiceOwnership(fake.deps, place, true);
+  const asked = fake.voiceStates()[0]!;
+  assert.equal(fake.listeners.size, 1, 'it is listening for the answer');
+  for (const listener of [...fake.listeners]) listener({ t: 'voice_owned', d: { roomId: 'room', requestId: asked.d.requestId! } });
+  assert.equal(await answered, true);
+  assert.equal(fake.listeners.size, 0);
+
+  const replaced = requestVoiceOwnership(fake.deps, place, 'resume');
+  const second = fake.voiceStates()[1]!;
+  for (const listener of [...fake.listeners]) listener({ t: 'error', d: { code: 'voice_replaced', message: 'moved', requestId: second.d.requestId! } });
+  assert.equal(await replaced, false);
+
+  const silent = requestVoiceOwnership(fake.deps, place, true);
+  await assert.rejects(silent, (problem) => problem instanceof VoiceGatewayUnavailable && problem.retry === true);
+  assert.equal(fake.listeners.size, 0);
+});
+
+test('a connection that has not said what it can do is not sent a join', async () => {
+  const fake = fakeGateway();
+  await assert.rejects(requestVoiceOwnership(fake.deps, { kind: 'channel', id: 'room' }, true), VoiceGatewayUnavailable);
+  assert.equal(fake.sent.length, 0);
 });
