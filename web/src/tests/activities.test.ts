@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { idleShareHint, readActivityStatus } from '../lib/activity-status';
+import { idleShareHint, readActivityStatus, updateFollowUp } from '../lib/activity-status';
 const origin = 'https://activities.scryproof.com';
 const frame = {} as Window;
 const message = (overrides: Record<string, unknown> = {}) =>
@@ -69,10 +69,15 @@ test('only status reports for the active game are accepted, including normal qui
   }
 });
 
-test('the share hint offers sound on Windows and the browser tab elsewhere, never sound on a Mac', () => {
-  assert.match(idleShareHint(true, false), /Enable sound only if/);
-  assert.match(idleShareHint(false, false), /Choose this Scryproof tab/);
-  const mac = idleShareHint(true, true);
-  assert.match(mac, /no sound/);
-  assert.doesNotMatch(mac, /Enable sound/);
+test('the share hint offers sound only where the shell can share it, and the browser tab elsewhere', () => {
+  assert.match(idleShareHint(true, true), /Enable sound only if/);
+  assert.match(idleShareHint(false, true), /Choose this Scryproof tab/);
+  const silent = idleShareHint(true, false);
+  assert.match(silent, /no sound/);
+  assert.doesNotMatch(silent, /Enable sound/);
+});
+test('a downloaded update is installed by running it on Windows and replacing the app on a Mac', () => {
+  assert.match(updateFollowUp(false), /run the installer/);
+  assert.match(updateFollowUp(true), /replace the old app/);
+  assert.doesNotMatch(updateFollowUp(true), /installer/);
 });

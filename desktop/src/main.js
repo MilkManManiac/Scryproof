@@ -541,7 +541,10 @@ function armPermissions(ses) {
 
   // Windows has no picker of its own to hand over to, so the page draws one.
   ses.setDisplayMediaRequestHandler((request, done) => {
-    if (!shellPermission(request.frame?.url, 'display-capture')) return done({});
+    if (!shellPermission(request.frame?.url, 'display-capture')) {
+      try { done({}); } catch { /* an empty answer throws to cancel; that is the cancel */ }
+      return;
+    }
     void openSharePicker(request, done);
   });
 }

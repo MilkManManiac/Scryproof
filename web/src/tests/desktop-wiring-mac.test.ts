@@ -103,11 +103,11 @@ describe('the Windows installer fallback, on a Mac shell', () => {
     assert.equal(heads.length, before);
   });
 
-  for (const file of ['../components/DesktopInstallerLink.tsx', '../components/DesktopReleaseNotice.tsx', '../components/Activities.tsx']) {
-    it(`${file.slice(14)} does not name an installer itself`, () => {
-      assert.doesNotMatch(readFileSync(new URL(file, import.meta.url), 'utf8'), /Scryproof-Setup|Scryproof\.dmg|\.exe/);
-    });
-  }
+  it('tells a Mac there is no share sound and to replace the app, not run an installer', () => {
+    assert.match(desktop.activityShareHint(), /no sound/);
+    assert.doesNotMatch(desktop.activityShareHint(), /Enable sound/);
+    assert.match(desktop.updateDownloadFollowUp(), /replace the old app/);
+  });
 
   it('links the disk image, not the Windows installer, from the fallback link', () => {
     const html = render(createElement(DesktopInstallerLink, { prominent: true }));

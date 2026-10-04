@@ -76,6 +76,11 @@ describe('the Windows app, whatever the shell could say about a Mac', () => {
     assert.match(html, /for Windows/);
   });
 
+  it('keeps the Windows share-sound hint and run-the-installer text', () => {
+    assert.match(desktop.activityShareHint(), /Enable sound only if it will not capture your call/);
+    assert.match(desktop.updateDownloadFollowUp(), /run the installer/);
+  });
+
   it('keeps the Windows installer in the fallback link', () => {
     assert.match(render(createElement(DesktopInstallerLink, { prominent: true })), /Scryproof-Setup\.exe/);
   });

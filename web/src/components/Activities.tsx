@@ -9,16 +9,15 @@ import {
   type Activity,
 } from '../lib/activities';
 import {
-  idleShareHint,
   readActivityStatus,
   type ActivityStatus,
 } from '../lib/activity-status';
 import {
+  activityShareHint,
   canEmbedActivities,
   canInstallShellUpdate,
-  isDesktop,
-  onMacApp,
   publicOrigin,
+  updateDownloadFollowUp,
 } from '../lib/desktop';
 import { DesktopInstallerLink } from './DesktopInstallerLink';
 import { useBackButton } from '../lib/back';
@@ -94,15 +93,13 @@ export function ActivitiesGate() {
                   <details className="activity-update-help">
                     <summary>Trouble updating?</summary>
                     <p>
-                      <DesktopInstallerLink /> and run the installer when your
-                      call is over.
+                      <DesktopInstallerLink /> {updateDownloadFollowUp()}
                     </p>
                   </details>
                 </>
               ) : (
                 <p>
-                  <DesktopInstallerLink /> and run the installer when your call
-                  is over.
+                  <DesktopInstallerLink /> {updateDownloadFollowUp()}
                 </p>
               )}
               <p>
@@ -319,7 +316,7 @@ function ActivityPlayer({
               ? ownedShare.current
                 ? 'Your screen is shared. Friends can press Watch. Returning to Scryproof stops gameplay sharing.'
                 : 'Your existing screen share is still running. Stop sharing before returning if you want to keep chat private.'
-              : idleShareHint(isDesktop, onMacApp))}
+              : activityShareHint())}
         </p>
         <div className="activity-stage">
           <iframe
