@@ -3723,14 +3723,13 @@ physical iPhone/iPad/Android and PWA acceptance remain outstanding.
 ![Phone landscape, real game and local encrypted call in Chrome touch emulation](shots/activities-mobile-landscape.png)
 ![Phone portrait, same running game after rotation in Chrome touch emulation](shots/activities-mobile-portrait.png)
 
-No mobile fix is deployed. Automatic approval review blocked pushing the separate
-game fix to GitHub/opening its PR because it did not find explicit authorization
-to export that payload to the game fork/upstream. Both local game branches are
-complete; publishing that game PR needs Matt's approval. Wes's release review
-boundary remains in place.
+No mobile fix is deployed. Matt approved publishing the separate game fix, now
+open as [Drain The Swamp PR #1](https://github.com/MilkManManiac/DrainTheSwamp/pull/1).
+Wes can review both PRs together. The game PR uses the older upstream base;
+export from the preserved hosted-source branch documented above to retain the
+existing gameplay changes. Wes's release review boundary remains in place.
 
 Scryproof review: [PR #5](https://github.com/MilkManManiac/Scryproof/pull/5).
 The additional desktop input check exercised the actual app with keyboard movement
 and a held mouse click: the bag reached 0.030 before idle auto-scooping could begin.
-The game PR still awaits Matt's response to the separate publishing permission
-question. Local preview is at http://localhost:5179 with the fixed game on 5180.
+Local preview uses http://localhost:5179 with the fixed game on 5180.

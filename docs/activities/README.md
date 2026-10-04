@@ -99,8 +99,8 @@ multi-touch actions independent. Touch players get touch instructions.
 Matt's tested game source is preserved in his DrainTheSwamp checkout as
 `fix/scryproof-mobile-activities` (`89f8505`, based on the hosted `b26ac6e`). The
 local export tested here is `abfb48855954-6a9b4e6fd8e6`; the later commit adds only
-the regression test. A separate upstream-based review branch contains just the
-mobile fix: `/tmp/scryproof-mobile-game-pr`, `fix/mobile-touch-menus-review`.
+the regression test. The upstream-based [game PR #1](https://github.com/MilkManManiac/DrainTheSwamp/pull/1)
+contains just the mobile fix on `fix/mobile-touch-menus` (`2320dff`).
 Upstream master is older than the hosted source; rebuilding from it would remove
 existing gameplay changes. Do not deploy that older base over the activity.
 
