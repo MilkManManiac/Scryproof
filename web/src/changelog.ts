@@ -20,8 +20,8 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-10-04-music-listeners',
-    date: '2026-10-04',
+    id: '2026-10-06-music-listeners',
+    date: '2026-10-06',
     title: 'See your mix and who is listening',
     notes: [
       'Live green level bars and dB readings show the sound from each person, music share, stream, and soundboard, plus your overall call output. Adjust a slider and watch its level change.',
