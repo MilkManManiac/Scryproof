@@ -18,14 +18,20 @@ export interface ParsedPoll {
   options: string[];
   /** `/poll*` allows more than one pick. */
   multiple: boolean;
+  /** `/poll~` keeps the votes hidden until the poll closes, and never says who picked what. */
+  secret: boolean;
 }
 
 export type ParsePollResult = { ok: true; poll: ParsedPoll } | { ok: false; error: string };
 
 const PARSE_ERROR = 'A poll needs a question and at least two choices, separated by |.';
 
-/** `/poll ...` or `/poll* ...`. Anchored, so it never fires on a word that merely starts with "poll". */
-const POLL_COMMAND_RE = /^\/poll(\*)?\s+([\s\S]+)$/i;
+/**
+ * `/poll ...`, with `*` for more than one pick and `~` for secret, in either
+ * order (`/poll*~`, `/poll~*`). Anchored, so it never fires on a word that
+ * merely starts with "poll".
+ */
+const POLL_COMMAND_RE = /^\/poll([*~]{0,2})\s+([\s\S]+)$/i;
 
 /**
  * Recognises a `/poll` line and parses it in one pass. Returns null when the
@@ -36,7 +42,9 @@ export function parsePollCommand(content: string): ParsePollResult | null {
   const match = POLL_COMMAND_RE.exec(content.trim());
   if (!match) return null;
 
-  const multiple = match[1] === '*';
+  const marks = match[1] ?? '';
+  const multiple = marks.includes('*');
+  const secret = marks.includes('~');
   const [question = '', ...options] = (match[2] ?? '').split('|').map((part) => part.trim());
 
   const questionOk = question.length >= POLL_LIMITS.question.min && question.length <= POLL_LIMITS.question.max;
@@ -47,5 +55,5 @@ export function parsePollCommand(content: string): ParsePollResult | null {
 
   if (!questionOk || !optionsOk) return { ok: false, error: PARSE_ERROR };
 
-  return { ok: true, poll: { question, options, multiple } };
+  return { ok: true, poll: { question, options, multiple, secret } };
 }

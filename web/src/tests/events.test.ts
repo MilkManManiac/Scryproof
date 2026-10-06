@@ -23,6 +23,7 @@ const event = (id: string, startsAt: string, patch: Partial<ScheduledEvent> = {}
   createdBy: 'wes',
   createdAt: '2026-09-01T00:00:00.000Z',
   counts: { going: 0, maybe: 0, no: 0 },
+  voters: { going: [], maybe: [], no: [] },
   myAnswer: null,
   ...patch,
 });
@@ -72,11 +73,13 @@ describe('the list', () => {
   test("somebody else's answer changes the counts and not mine", () => {
     const list = [event('a', '2026-09-23T19:00:00.000Z', { myAnswer: 'maybe' })];
     const counts = { going: 1, maybe: 1, no: 0 };
-    const theirs = withAnswer(list, { eventId: 'a', userId: 'alex', answer: 'going', counts }, 'wes');
+    const voters = { going: ['alex'], maybe: ['wes'], no: [] };
+    const theirs = withAnswer(list, { eventId: 'a', userId: 'alex', answer: 'going', counts, voters }, 'wes');
     assert.deepEqual(theirs[0]?.counts, counts);
+    assert.deepEqual(theirs[0]?.voters, voters);
     assert.equal(theirs[0]?.myAnswer, 'maybe');
 
-    const mine = withAnswer(list, { eventId: 'a', userId: 'wes', answer: null, counts }, 'wes');
+    const mine = withAnswer(list, { eventId: 'a', userId: 'wes', answer: null, counts, voters }, 'wes');
     assert.equal(mine[0]?.myAnswer, null);
   });
 });

@@ -20,6 +20,7 @@ import {
   usesModel,
   shareCostLabel,
   voicePrefs,
+  MAX_MIC_VOLUME,
   type CameraFps,
   type CameraHeight,
   type InputMode,
@@ -78,7 +79,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
 
   const [modelFailed, setModelFailed] = useState(false);
 
-  const { inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard } = prefs;
+  const { inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard, micVolume } = prefs;
   const voiceEffect = isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none';
   const suppress = usesModel(prefs);
 
@@ -90,7 +91,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
     setMeterError(null);
 
     const options = captureOptions(voicePrefs.get());
-    openMeter(options, setLevel, hearing ? { suppress, guard: loudnessGuard, effect: voiceEffect } : null)
+    openMeter(options, setLevel, hearing ? { suppress, guard: loudnessGuard, effect: voiceEffect, volume: micVolume } : null)
       .then(async (meter) => {
         if (cancelled) return meter.stop();
         stop = meter.stop;
@@ -116,7 +117,7 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
       cancelled = true;
       stop?.();
     };
-  }, [inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard, hearing, suppress, voiceEffect]);
+  }, [inputDeviceId, noiseMode, echoCancellation, autoGain, loudnessGuard, hearing, suppress, voiceEffect, micVolume]);
 
   useEffect(() => {
     if (!capturingKey) return;
@@ -134,6 +135,17 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
   const cameras = devices.filter((device) => device.kind === 'videoinput');
   const speakers = devices.filter((device) => device.kind === 'audiooutput' && device.deviceId !== 'default');
   const open = prefs.inputMode !== 'threshold' || level >= prefs.thresholdDb;
+  // The bar is the microphone as it comes in, which is what the threshold
+  // line is measured against. What is sent is that plus the volume, so the
+  // warning works it out rather than the bar moving under the line.
+  // Held for two seconds after the last loud moment, so it does not flicker.
+  const loud = level + 20 * Math.log10(micVolume) >= -1;
+  const [clipping, setClipping] = useState(false);
+  useEffect(() => {
+    if (loud) return setClipping(true);
+    const timer = setTimeout(() => setClipping(false), 2000);
+    return () => clearTimeout(timer);
+  }, [loud]);
 
   return (
     <Modal
@@ -186,6 +198,30 @@ export function VoiceSettings({ onClose }: { onClose: () => void }) {
               ? 'Talk normally and drag the line to just below where your voice reaches. The bar dims when you would not be heard.'
               : 'Say something. If the bar does not move, this is the wrong microphone.')}
         </p>
+
+        <label className="toggle-row">
+          <span>
+            Microphone volume
+            <span className="field-note">
+              {clipping
+                ? 'Too loud: your voice is breaking up at this volume. Turn it down a little.'
+                : 'How loud you are for everyone. Turn it up if people keep turning you up. Hear it, below, plays it back.'}
+            </span>
+          </span>
+          <span className="voice-volume">
+            <input
+              type="range"
+              className="voice-range"
+              min={50}
+              max={MAX_MIC_VOLUME * 100}
+              step={5}
+              value={Math.round(micVolume * 100)}
+              onChange={(event) => voicePrefs.set({ micVolume: Number(event.target.value) / 100 })}
+              aria-label="Microphone volume, for everyone"
+            />
+            <span className="voice-volume-number">{Math.round(micVolume * 100)}%</span>
+          </span>
+        </label>
 
         <div className="voice-modes" role="radiogroup" aria-label="When your microphone is live">
           {MODES.map((mode) => (

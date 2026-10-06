@@ -189,24 +189,29 @@ export async function effectChain(context: BaseAudioContext, input: AudioNode, e
 
 /* ------------------------ the microphone, for LiveKit ----------------------- */
 
-/** What `MicProcessor` runs, in this order: the guard's high-pass, the noise model, the guard, the changer. */
+/**
+ * What `MicProcessor` runs, in this order: the guard's high-pass, the noise
+ * model, the guard, the volume, the changer.
+ */
 export interface MicChoice {
   /** Run the noise model (`noise-model.ts`). */
   suppress: boolean;
   /** Run the loudness guard (`loudness-guard.ts`). */
   guard: boolean;
   effect: VoiceEffect;
+  /** How loud the voice is sent; 1 is as it came in. After the guard, so a knock is caught before it is turned up. */
+  volume: number;
 }
 
 /** Whether a microphone needs a processor at all. Without one it is sent as the browser hands it over. */
 export function needsProcessor(choice: MicChoice): boolean {
-  return choice.suppress || choice.guard || choice.effect !== 'none';
+  return choice.suppress || choice.guard || choice.effect !== 'none' || choice.volume !== 1;
 }
 
 /**
  * Sits between the microphone and LiveKit, as a LiveKit track processor:
  * microphone, then the high-pass, then the noise model, then the loudness
- * guard, then the voice changer, then out to be encrypted. So the changer
+ * guard, then the volume, then the voice changer, then out to be encrypted. So the changer
  * never has to work on a keyboard or a knock, and nothing anyone hears was
  * ever the raw room.
  *
@@ -248,7 +253,7 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
   private suppressor: Bridge | null = null;
   /** cleaned to guarded: the guard. */
   private limiter: Bridge | null = null;
-  /** guarded to outlet: the changer. */
+  /** guarded to outlet: the changer. `guarded` itself carries the volume. */
   private chain: EffectChain | null = null;
   private chainEffect: VoiceEffect | null = null;
   /** What each stage was last built for; null before the first build. */
@@ -270,6 +275,7 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
     this.shaped = context.createGain();
     this.cleaned = context.createGain();
     this.guarded = context.createGain();
+    this.guarded.gain.value = current.volume;
     this.outlet = context.createMediaStreamDestination();
   }
 
@@ -287,11 +293,13 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
     this.listenTo(options.track);
   }
 
-  /** Change the model, the guard or the effect in place. The published track does not change. */
+  /** Change the model, the guard, the volume or the effect in place. The published track does not change. */
   async set(choice: MicChoice): Promise<void> {
     const now = this.current;
-    if (choice.suppress === now.suppress && choice.guard === now.guard && choice.effect === now.effect) return;
     this.current = choice;
+    // A volume is one number and needs nothing rebuilt.
+    this.guarded.gain.setTargetAtTime(choice.volume, this.context.currentTime, 0.015);
+    if (choice.suppress === now.suppress && choice.guard === now.guard && choice.effect === now.effect) return;
     await this.build(choice);
   }
 

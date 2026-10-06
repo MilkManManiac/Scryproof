@@ -29,6 +29,7 @@ import type {
   PublicUser,
   Role,
   RsvpAnswer,
+  RsvpVoters,
   ScheduledEvent,
   SelfUser,
   Server,
@@ -433,7 +434,7 @@ export const api = {
       del<{ ok: true }>(`/api/servers/${serverId}/events/${eventId}`),
     /** Null takes the answer back. */
     answer: (serverId: string, eventId: string, answer: RsvpAnswer | null) =>
-      put<{ answer: RsvpAnswer | null; counts: Record<RsvpAnswer, number> }>(
+      put<{ answer: RsvpAnswer | null; counts: Record<RsvpAnswer, number>; voters: RsvpVoters }>(
         `/api/servers/${serverId}/events/${eventId}/rsvp`,
         { answer },
       ),

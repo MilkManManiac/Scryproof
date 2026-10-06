@@ -20,6 +20,18 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-06-who-voted',
+    date: '2026-10-06',
+    title: 'See who voted, and turn yourself up',
+    notes: [
+      'Hover a poll option to see who picked it, and hover Going, Maybe or Can\'t on an event to see who answered. Polls from before today stay anonymous.',
+      'Make a secret poll with /poll~ and nobody sees the votes until the poll is closed, so nobody gets swayed. Even then the names stay hidden.',
+      'Microphone volume in Voice settings turns you up, or down, for everyone at once. Too quiet? Raise it here, so nobody has to turn you up on their end. Hear it plays you back so you can check.',
+      'Stream and music volume now tops out at 200%, which makes low levels easier to set.',
+      'With the window on half the screen, the message box no longer turns into a tall, narrow column, and the channel name no longer draws over the topic.',
+    ],
+  },
+  {
     id: '2026-10-06-music-listeners',
     date: '2026-10-06',
     title: 'See your mix and who is listening',

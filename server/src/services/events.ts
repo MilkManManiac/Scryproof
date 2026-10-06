@@ -8,7 +8,7 @@
 
 import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 
-import type { RsvpAnswer, ScheduledEvent, ScheduledEventBase } from '@scryproof/shared';
+import type { RsvpAnswer, RsvpVoters, ScheduledEvent, ScheduledEventBase } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
 import { eventRsvps, events, members, type EventRow } from '../db/schema.js';
@@ -16,7 +16,16 @@ import { eventRsvps, events, members, type EventRow } from '../db/schema.js';
 /** How far ahead of the start a reminder goes out. */
 export const REMINDER_LEAD_MS = 60 * 60 * 1000;
 
-const emptyCounts = (): Record<RsvpAnswer, number> => ({ going: 0, maybe: 0, no: 0 });
+/** Everyone's answers to one event: how many, and who. */
+export interface RsvpTally {
+  counts: Record<RsvpAnswer, number>;
+  voters: RsvpVoters;
+}
+
+export const emptyTally = (): RsvpTally => ({
+  counts: { going: 0, maybe: 0, no: 0 },
+  voters: { going: [], maybe: [], no: [] },
+});
 
 function isAnswer(value: string): value is RsvpAnswer {
   return value === 'going' || value === 'maybe' || value === 'no';
@@ -32,7 +41,7 @@ function isAnswer(value: string): value is RsvpAnswer {
  */
 export function toWire(
   row: EventRow,
-  counts: Record<RsvpAnswer, number>,
+  answers: RsvpTally,
   canSeeChannel: (channelId: string) => boolean,
 ): ScheduledEventBase {
   return {
@@ -44,29 +53,31 @@ export function toWire(
     startsAt: new Date(row.startsAt).toISOString(),
     createdBy: row.createdBy,
     createdAt: new Date(row.createdAt).toISOString(),
-    counts,
+    counts: answers.counts,
+    voters: answers.voters,
   };
 }
 
-/** Going, Maybe and Can't, counted, for each of a set of events. */
-export async function countAnswers(eventIds: readonly string[]): Promise<Map<string, Record<RsvpAnswer, number>>> {
-  const result = new Map<string, Record<RsvpAnswer, number>>();
-  for (const id of eventIds) result.set(id, emptyCounts());
+/**
+ * Going, Maybe and Can't for each of a set of events: counted, and who said
+ * each. An answer is as public as the count it adds to, so everyone in the
+ * server gets both; hovering an answer in "Coming up" names the people.
+ */
+export async function countAnswers(eventIds: readonly string[]): Promise<Map<string, RsvpTally>> {
+  const result = new Map<string, RsvpTally>();
+  for (const id of eventIds) result.set(id, emptyTally());
   if (eventIds.length === 0) return result;
 
   const rows = await getDb()
-    .select({
-      eventId: eventRsvps.eventId,
-      answer: eventRsvps.answer,
-      count: sql<number>`count(*)::int`,
-    })
+    .select({ eventId: eventRsvps.eventId, userId: eventRsvps.userId, answer: eventRsvps.answer })
     .from(eventRsvps)
-    .where(inArray(eventRsvps.eventId, [...eventIds]))
-    .groupBy(eventRsvps.eventId, eventRsvps.answer);
+    .where(inArray(eventRsvps.eventId, [...eventIds]));
 
   for (const row of rows) {
-    const counts = result.get(row.eventId);
-    if (counts && isAnswer(row.answer)) counts[row.answer] = Number(row.count);
+    const tally = result.get(row.eventId);
+    if (!tally || !isAnswer(row.answer)) continue;
+    tally.counts[row.answer] += 1;
+    tally.voters[row.answer].push(row.userId);
   }
   return result;
 }
@@ -102,7 +113,7 @@ export async function listUpcoming(
   return rows.map((row) => {
     const answer = myAnswers.get(row.id);
     return {
-      ...toWire(row, counts.get(row.id) ?? emptyCounts(), canSeeChannel),
+      ...toWire(row, counts.get(row.id) ?? emptyTally(), canSeeChannel),
       myAnswer: answer && isAnswer(answer) ? answer : null,
     };
   });

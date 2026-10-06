@@ -50,6 +50,13 @@ export interface PollBody {
   multiple: boolean;
   /** ISO timestamp once closed, so a closed poll needs no separate flag to agree with. */
   closedAt: string | null;
+  /**
+   * 'shown' says who picked what; 'secret' hides the tally until close and
+   * never names anyone. Missing on every poll made before this existed, and
+   * missing means anonymous: counts only, for good, because that is what
+   * people voted under. See `services/polls.ts`.
+   */
+  visibility?: 'shown' | 'secret';
 }
 
 const id = () => text('id').primaryKey();

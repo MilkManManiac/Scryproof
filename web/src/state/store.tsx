@@ -639,9 +639,10 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     }
 
     case 'poll_update': {
-      // Public tally only. `mine` is left exactly as it was: the vote that
+      // The tally as everyone may see it (names on a shown poll, nothing on
+      // an open secret one). `mine` is left exactly as it was: the vote that
       // caused this event, if it was ours, already came back on the request
-      // that made it, and someone else's pick is never sent to us at all.
+      // that made it.
       const existing = state.messages[event.d.channelId];
       if (!existing) return state;
       return {
@@ -650,7 +651,10 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
           ...state.messages,
           [event.d.channelId]: existing.map((message) =>
             message.id === event.d.messageId && message.poll
-              ? { ...message, poll: { ...message.poll, counts: event.d.counts, closedAt: event.d.closedAt } }
+              ? {
+                  ...message,
+                  poll: { ...message.poll, counts: event.d.counts, voters: event.d.voters, closedAt: event.d.closedAt },
+                }
               : message,
           ),
         },

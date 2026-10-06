@@ -7,7 +7,7 @@
  * actually have to be there.
  */
 
-import type { RsvpAnswer, ScheduledEvent, ScheduledEventBase } from '@scryproof/shared';
+import type { RsvpAnswer, RsvpVoters, ScheduledEvent, ScheduledEventBase } from '@scryproof/shared';
 
 /**
  * What `<input type="datetime-local">` gives back ("2026-09-25T19:00") is a
@@ -86,10 +86,16 @@ export function withEvent(
     : [...events, merged];
 }
 
-/** New counts for everyone; a new answer for this person only if it was theirs. */
+/** New counts and names for everyone; a new answer for this person only if it was theirs. */
 export function withAnswer(
   events: readonly ScheduledEvent[],
-  change: { eventId: string; userId: string; answer: RsvpAnswer | null; counts: Record<RsvpAnswer, number> },
+  change: {
+    eventId: string;
+    userId: string;
+    answer: RsvpAnswer | null;
+    counts: Record<RsvpAnswer, number>;
+    voters: RsvpVoters;
+  },
   selfId: string | null,
 ): ScheduledEvent[] {
   return events.map((entry) =>
@@ -97,6 +103,7 @@ export function withAnswer(
       ? {
           ...entry,
           counts: change.counts,
+          voters: change.voters,
           myAnswer: change.userId === selfId ? change.answer : entry.myAnswer,
         }
       : entry,

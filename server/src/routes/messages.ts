@@ -23,7 +23,7 @@ import {
   roll as rollDice,
   validateMessageContent,
 } from '@scryproof/shared';
-import type { Attachment, Message, Reaction, ReplyPreview } from '@scryproof/shared';
+import type { Attachment, Message, Reaction, ReplyPreview, ServerEvent } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
@@ -129,7 +129,7 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
   // one-off, or a message being broadcast to everyone) leaves it out.
   const bookmarked = viewerId ? await isBookmarked(viewerId, messageIds) : null;
   const pollTallies = await tallyForMessages(
-    rows.filter((row) => row.poll).map((row) => ({ messageId: row.id, optionCount: row.poll?.options.length ?? 0 })),
+    rows.flatMap((row) => (row.poll ? [{ messageId: row.id, poll: row.poll }] : [])),
     viewerId,
   );
 
@@ -155,6 +155,25 @@ export async function hydrate(rows: MessageRow[], viewerId?: string): Promise<Me
       });
     })
     .filter((message): message is Message => message !== null);
+}
+
+/**
+ * The `poll_update` everyone in the channel hears: the hydrated poll minus
+ * `mine`, which belongs only to whoever the hydrate was for. The tally is
+ * already cut down to what the poll allows anyone to see.
+ */
+function pollUpdateOf(
+  messageId: string,
+  channelId: string,
+  poll: NonNullable<Message['poll']>,
+): Extract<ServerEvent, { t: 'poll_update' }>['d'] {
+  return {
+    messageId,
+    channelId,
+    counts: poll.counts,
+    ...(poll.voters ? { voters: poll.voters } : {}),
+    closedAt: poll.closedAt,
+  };
 }
 
 /** What a sealed message carries besides its body. Shared by sending and editing. */
@@ -454,7 +473,13 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       if (!pollMatch.ok) throw badRequest(pollMatch.error, 'bad_poll');
       content = pollMatch.poll.question;
       kind = 'poll';
-      poll = { question: pollMatch.poll.question, options: pollMatch.poll.options, multiple: pollMatch.poll.multiple, closedAt: null };
+      poll = {
+        question: pollMatch.poll.question,
+        options: pollMatch.poll.options,
+        multiple: pollMatch.poll.multiple,
+        closedAt: null,
+        visibility: pollMatch.poll.secret ? 'secret' : 'shown',
+      };
     }
 
     if (!content && !body.ciphertext && attachmentIds.length === 0) {
@@ -1002,11 +1027,12 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
   /* ---------------------------------- polls --------------------------------- */
 
   /**
-   * Voting replaces the caller's own picks. The broadcast carries only the
-   * public tally, never who voted for what and never anyone else's picks, so
-   * it is `poll_update`, not `message_update`: the HTTP response here is the
-   * only place the caller's own `mine` goes out, because it is only ever
-   * true for them.
+   * Voting replaces the caller's own picks. The broadcast carries only what
+   * everyone may see of the tally (`services/polls.ts` decides that: names
+   * on a shown poll, nothing on an open secret one), never the caller's own
+   * picks, so it is `poll_update`, not `message_update`: the HTTP response
+   * here is the only place the caller's own `mine` goes out, because it is
+   * only ever true for them.
    */
   app.put('/api/messages/:messageId/votes', async (request) => {
     const user = requireUser(request);
@@ -1043,7 +1069,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     await hub.broadcastToChannel(
       ctx.serverId,
       existing.channelId,
-      { t: 'poll_update', d: { messageId, channelId: existing.channelId, counts: hydrated.poll.counts, closedAt: hydrated.poll.closedAt } },
+      { t: 'poll_update', d: pollUpdateOf(messageId, existing.channelId, hydrated.poll) },
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
     );
 
@@ -1083,7 +1109,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     await hub.broadcastToChannel(
       ctx.serverId,
       existing.channelId,
-      { t: 'poll_update', d: { messageId, channelId: existing.channelId, counts: hydrated.poll.counts, closedAt: hydrated.poll.closedAt } },
+      { t: 'poll_update', d: pollUpdateOf(messageId, existing.channelId, hydrated.poll) },
       Permission.VIEW_CHANNEL | Permission.READ_MESSAGE_HISTORY,
     );
 

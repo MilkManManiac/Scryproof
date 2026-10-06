@@ -13,7 +13,10 @@ import type { RsvpAnswer, ScheduledEvent, ServerDetail } from '@scryproof/shared
 
 import { ApiError, api } from '../lib/api';
 import { fullWhen, toLocalInput, toUtcIso, upcoming, whenLabel } from '../lib/events';
+import { nameFor, useLocalNames } from '../lib/local-names';
+import { nameOf } from '../lib/mentions';
 import { canOnServer } from '../lib/usePermissions';
+import { useStore } from '../state/store';
 import { Modal } from './Modal';
 
 /** The sidebar is narrow; more than this and the channels start below the fold. */
@@ -39,6 +42,8 @@ function useMinute(): number {
 }
 
 export function ComingUp({ server }: { server: ServerDetail }) {
+  const { state } = useStore();
+  useLocalNames();
   const now = useMinute();
   const canPlan = canOnServer(server, Permission.MANAGE_EVENTS);
   const [dialog, setDialog] = useState<{ kind: 'new' } | { kind: 'edit'; event: ScheduledEvent } | null>(null);
@@ -56,6 +61,20 @@ export function ComingUp({ server }: { server: ServerDetail }) {
     const channel = channelId ? server.channels.find((entry) => entry.id === channelId) : undefined;
     if (!channel) return null;
     return channel.type === 'voice' ? `♫ ${channel.name}` : `#${channel.name}`;
+  };
+
+  // Hovering Going, Maybe or Can't names who said it. The server sends the
+  // ids with the counts; the names come from the member list already loaded.
+  const members = state.members[server.id] ?? [];
+  const whoSaid = (event: ScheduledEvent, choice: RsvpAnswer): string => {
+    const ids = event.voters?.[choice] ?? [];
+    if (ids.length === 0) return 'Nobody yet';
+    return ids
+      .map((userId) => {
+        const member = members.find((entry) => entry.userId === userId);
+        return member ? nameOf(member) : nameFor(userId, 'Someone');
+      })
+      .join(', ');
   };
 
   const answer = (event: ScheduledEvent, choice: RsvpAnswer) => {
@@ -109,6 +128,7 @@ export function ComingUp({ server }: { server: ServerDetail }) {
                   key={choice}
                   className={event.myAnswer === choice ? 'coming-up-answer chosen' : 'coming-up-answer'}
                   aria-pressed={event.myAnswer === choice}
+                  title={whoSaid(event, choice)}
                   onClick={() => answer(event, choice)}
                 >
                   {label} <span className="coming-up-count">{event.counts[choice]}</span>

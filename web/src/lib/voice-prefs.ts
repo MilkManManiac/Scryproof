@@ -7,6 +7,17 @@
 import { canRunModel } from './voice-audio';
 
 export const MAX_PERSON_VOLUME = 4;
+/**
+ * A share's sound stops at 200%. Wes: "Noone wants to listen to a stream at
+ * anything over 200%", and half the range on the same slider makes a low
+ * level easier to land on. A quiet voice still gets the full 400%.
+ */
+export const MAX_STREAM_VOLUME = 2;
+/** How far your own microphone can be turned up, for everyone: 300%. */
+export const MAX_MIC_VOLUME = 3;
+/** The ceiling for one entry in `volumes`, by its key (see `volumes` below). */
+export const maxVolumeFor = (key: string): number =>
+  key.endsWith(':screen') || key.endsWith(':music') ? MAX_STREAM_VOLUME : MAX_PERSON_VOLUME;
 export function safeVolume(value: unknown, maximum = MAX_PERSON_VOLUME): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(maximum, value)) : 1;
 }
@@ -68,7 +79,13 @@ export interface VoicePrefs {
   pushKey: string;
   /** 0 to 2. Everyone you hear is multiplied by this. */
   outputVolume: number;
-  /** Per source, 0 to 4, by user id (with :screen or :music for shares). Missing means 1. */
+  /**
+   * 0.5 to 3. How loud your voice is sent, for everyone at once, so a quiet
+   * microphone does not leave each listener turning you up on their own
+   * (Wes: "the quiet matt bug").
+   */
+  micVolume: number;
+  /** Per source, by user id (with :screen or :music for shares, which stop at 2), 0 to 4. Missing means 1. */
   volumes: Record<string, number>;
   /**
    * 0 to 1. Every soundboard clip you hear, yours included, on top of the
@@ -107,6 +124,7 @@ const DEFAULTS: VoicePrefs = {
   thresholdDb: -50,
   pushKey: 'Backquote',
   outputVolume: 1,
+  micVolume: 1,
   volumes: {},
   soundboardVolume: 1,
   sounds: true,
@@ -137,7 +155,10 @@ function load(): VoicePrefs {
       ...stored,
       noiseMode,
       outputVolume: safeVolume(stored.outputVolume, 2),
-      volumes: Object.fromEntries(Object.entries(stored.volumes ?? {}).map(([key, value]) => [key, safeVolume(value)])),
+      micVolume: safeVolume(stored.micVolume, MAX_MIC_VOLUME),
+      volumes: Object.fromEntries(
+        Object.entries(stored.volumes ?? {}).map(([key, value]) => [key, safeVolume(value, maxVolumeFor(key))]),
+      ),
     };
   } catch {
     return DEFAULTS;
@@ -155,8 +176,9 @@ export const voicePrefs = {
       ...current,
       ...patch,
       outputVolume: safeVolume(patch.outputVolume ?? current.outputVolume, 2),
+      micVolume: safeVolume(patch.micVolume ?? current.micVolume, MAX_MIC_VOLUME),
       volumes: patch.volumes
-        ? Object.fromEntries(Object.entries(patch.volumes).map(([key, value]) => [key, safeVolume(value)]))
+        ? Object.fromEntries(Object.entries(patch.volumes).map(([key, value]) => [key, safeVolume(value, maxVolumeFor(key))]))
         : current.volumes,
     };
     try {
@@ -168,7 +190,7 @@ export const voicePrefs = {
   },
 
   setVolumeFor(userId: string, volume: number): void {
-    volume = safeVolume(volume);
+    volume = safeVolume(volume, maxVolumeFor(userId));
     const volumes = { ...current.volumes };
     if (volume === 1) delete volumes[userId];
     else volumes[userId] = volume;
