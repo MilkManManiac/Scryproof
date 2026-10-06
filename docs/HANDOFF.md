@@ -2,9 +2,9 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-05)
+## Pick up here (2026-10-06)
 
-**Merged to main, not deployed:** Matt's music listener avatars and live level meters (PR #9, section below). Client-only: no installer, no migration. Deploy needs Wes's word.
+**LIVE 2026-10-06 00:38 ET (client 1791261436352, no new installer): Matt's music listener avatars and live level meters** (PR #9, section below; Wes: "deploy"). Merged with no code changes; typecheck clean, web 560/560. What's new entry re-dated to 2026-10-06 so `release.sh` would accept it. Proven live: health ok, the box serves client 1791261436352, and the served bundle carries the presence topic and the What's new entry. Not proven: nobody has opened the mixer in a real call on the live site yet. PR #8 (Trey's Mac older-server fix) still shows open on GitHub though its code is in main.
 
 ## Trey theme live (2026-10-04, ~03:25 ET)
 
