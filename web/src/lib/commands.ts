@@ -188,7 +188,8 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
       key: 'poll',
       written: '/poll',
       name: '/poll',
-      note: 'ask the room: /poll Which night? | Friday | Saturday',
+      // Votes show who picked what by default; `~` hides them until close.
+      note: 'ask the room: /poll Which night? | Friday | Saturday (/poll* for several picks, /poll~ to hide votes until it closes)',
     },
     { key: 'init', written: '/init', name: '/init', note: 'start an initiative tracker for this channel' },
     { key: 'purdle', written: '/purdle', name: '/purdle', note: "open today's Purdle (only you see it)" },

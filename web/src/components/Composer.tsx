@@ -62,7 +62,7 @@ interface Offer {
 }
 
 /** Commands the server carries out by reading the text: not possible where it cannot read it. */
-const SERVER_COMMAND = /^\/(?:roll|r|poll|init)(?:\s|$)/i;
+const SERVER_COMMAND = /^\/(?:roll|r|poll[*~]{0,2}|init)(?:\s|$)/i;
 
 export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) {
   const { state, sendTyping, replyTo, applyTracker } = useStore();
@@ -276,6 +276,21 @@ export function Composer({ channel, mask }: { channel: Channel; mask: bigint }) 
     const timer = setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => clearInterval(timer);
   }, [cooldown]);
+
+  // A window dragged narrower or wider re-wraps what is typed, so the box is
+  // measured again; otherwise a box grown tall in a narrow window stays tall.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    let width = element.clientWidth;
+    const watch = new ResizeObserver(() => {
+      if (element.clientWidth === width) return;
+      width = element.clientWidth;
+      grow();
+    });
+    watch.observe(element);
+    return () => watch.disconnect();
+  }, []);
 
   function grow() {
     const element = input.current;

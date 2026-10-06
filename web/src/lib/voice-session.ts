@@ -1306,6 +1306,7 @@ export class VoiceSession {
       suppress: usesModel(prefs),
       guard: prefs.loudnessGuard,
       effect: isVoiceEffect(prefs.voiceEffect) ? prefs.voiceEffect : 'none',
+      volume: prefs.micVolume,
     };
   }
 
@@ -1516,7 +1517,8 @@ export class VoiceSession {
     if (
       now.voiceEffect !== before.voiceEffect ||
       now.noiseMode !== before.noiseMode ||
-      now.loudnessGuard !== before.loudnessGuard
+      now.loudnessGuard !== before.loudnessGuard ||
+      now.micVolume !== before.micVolume
     ) {
       await this.applyMicChoice();
     }

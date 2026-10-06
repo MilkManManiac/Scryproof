@@ -24,7 +24,7 @@ const { initDatabase, closeDatabase, runMigrations, getDb } = await import('../d
 const { MIGRATIONS_FOLDER } = await import('../db/paths.js');
 const { eventRsvps, events, memberRoles, members, roles, servers, users } = await import('../db/schema.js');
 const { uuidv7 } = await import('../lib/ids.js');
-const { claimDueReminders } = await import('../services/events.js');
+const { claimDueReminders, listUpcoming } = await import('../services/events.js');
 const { createSession } = await import('../services/auth.js');
 const { buildApp } = await import('../app.js');
 const { config } = await import('../config.js');
@@ -200,6 +200,44 @@ describe('events', () => {
         payload: { title: 'Last week', startsAt: new Date(Date.now() - 60_000).toISOString() },
       });
       assert.equal(response.statusCode, 400);
+      await app.close();
+    });
+  });
+
+  describe('who answered', () => {
+    it('says who gave each answer, on the answer itself and on the list', async () => {
+      const app = await buildApp();
+      const db = getDb();
+
+      const guest = await makeUser('guest');
+      await db.insert(members).values({ serverId, userId: guest.id });
+      const eventId = uuidv7();
+      await db.insert(events).values({
+        id: eventId,
+        serverId,
+        title: 'Session 15',
+        startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdBy: ownerId,
+      });
+      await db.insert(eventRsvps).values({ eventId, userId: ownerId, answer: 'maybe' });
+
+      // The answer goes through the route, so this is the same payload the
+      // `event_rsvp` broadcast carries.
+      const session = await createSession(guest, null);
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/servers/${serverId}/events/${eventId}/rsvp`,
+        headers: { cookie: `${config.cookieName}=${session.token}` },
+        payload: { answer: 'going' },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      const answered = response.json() as { counts: Record<string, number>; voters: Record<string, string[]> };
+      assert.deepEqual(answered.counts, { going: 1, maybe: 1, no: 0 });
+      assert.deepEqual(answered.voters, { going: [guest.id], maybe: [ownerId], no: [] });
+
+      // And the list a member loads first carries the same names.
+      const listed = (await listUpcoming(serverId, ownerId, () => true)).find((event) => event.id === eventId);
+      assert.deepEqual(listed?.voters, { going: [guest.id], maybe: [ownerId], no: [] });
       await app.close();
     });
   });

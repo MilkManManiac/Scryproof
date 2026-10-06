@@ -18,6 +18,7 @@ import type {
   ReadState,
   Role,
   RsvpAnswer,
+  RsvpVoters,
   ScheduledEvent,
   ScheduledEventBase,
   SelfUser,
@@ -74,12 +75,22 @@ export type ServerEvent =
    */
   | { t: 'channel_keys'; d: { channelId: Snowflake; current: number; wanted: boolean } }
   /**
-   * A poll's public tally after a vote or a close. Never who voted for what,
-   * and never anyone else's picks, which is why this is not `message_update`:
-   * that carries the whole message, and a viewer's own picks are only theirs
-   * to see.
+   * A poll's tally after a vote or a close, as much of it as everyone may
+   * see: `voters` only on a 'shown' poll, `counts` all zeros on a secret
+   * poll still open (see `Message['poll']`). Never the viewer's own picks, which
+   * is why this is not `message_update`: that carries the whole message, and
+   * `mine` is only each person's own to see.
    */
-  | { t: 'poll_update'; d: { messageId: Snowflake; channelId: Snowflake; counts: number[]; closedAt: Timestamp | null } }
+  | {
+      t: 'poll_update';
+      d: {
+        messageId: Snowflake;
+        channelId: Snowflake;
+        counts: number[];
+        voters?: Snowflake[][];
+        closedAt: Timestamp | null;
+      };
+    }
   /**
    * A channel's initiative tracker after any change, whole, so a missed event
    * cannot leave anyone looking at the wrong turn. `tracker` is null once the
@@ -123,7 +134,10 @@ export type ServerEvent =
   | { t: 'event_create'; d: ScheduledEvent }
   | { t: 'event_update'; d: ScheduledEventBase }
   | { t: 'event_delete'; d: { id: Snowflake; serverId: Snowflake } }
-  /** Somebody answered, or took their answer back (`answer` null). The counts are whole. */
+  /**
+   * Somebody answered, or took their answer back (`answer` null). The counts
+   * and the list of who said what are whole, not a change.
+   */
   | {
       t: 'event_rsvp';
       d: {
@@ -132,6 +146,7 @@ export type ServerEvent =
         userId: Snowflake;
         answer: RsvpAnswer | null;
         counts: Record<RsvpAnswer, number>;
+        voters: RsvpVoters;
       };
     }
   /** Sent once, about an hour before, to each member who said Going or Maybe. */

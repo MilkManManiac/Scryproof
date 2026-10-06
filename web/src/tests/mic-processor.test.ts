@@ -36,6 +36,9 @@ class FakeNode {
 
 class FakeParam {
   value = 0;
+  setTargetAtTime(value: number): void {
+    this.value = value;
+  }
 }
 
 class FakeWorkletNode extends FakeNode {
@@ -100,7 +103,7 @@ function expected(choice: Choice): string[] {
 const CHOICES: Choice[] = [];
 for (const suppress of [true, false])
   for (const guard of [true, false])
-    for (const effect of ['none', 'chipmunk'] as const) CHOICES.push({ suppress, guard, effect });
+    for (const effect of ['none', 'chipmunk'] as const) CHOICES.push({ suppress, guard, effect, volume: 1 });
 
 const label = (choice: Choice) => `${choice.suppress ? 'model' : 'no model'}, ${choice.guard ? 'guard' : 'no guard'}, ${choice.effect}`;
 
@@ -134,8 +137,16 @@ describe('the microphone chain', () => {
     }
   });
 
+  test('a volume change turns the voice up without rebuilding anything', async () => {
+    const { processor, microphone } = await start({ suppress: false, guard: true, effect: 'none', volume: 1 });
+    const before = routes(microphone);
+    await processor.set({ suppress: false, guard: true, effect: 'none', volume: 2.5 });
+    assert.deepEqual(routes(microphone), before);
+    assert.equal((processor as unknown as { guarded: { gain: FakeParam } }).guarded.gain.value, 2.5);
+  });
+
   test('taking it down leaves nothing joined', async () => {
-    const { processor, microphone } = await start({ suppress: true, guard: true, effect: 'chipmunk' });
+    const { processor, microphone } = await start({ suppress: true, guard: true, effect: 'chipmunk', volume: 1 });
     await processor.destroy();
     assert.deepEqual(routes(microphone), []);
   });

@@ -185,6 +185,9 @@ export type RsvpAnswer = 'going' | 'maybe' | 'no';
 
 export const RSVP_ANSWERS: readonly RsvpAnswer[] = ['going', 'maybe', 'no'];
 
+/** User ids per answer. An answer is public to the server, the same as the count. */
+export type RsvpVoters = Record<RsvpAnswer, Snowflake[]>;
+
 /**
  * An event as everyone in the server sees it. The caller's own answer is not
  * part of this, because the same copy is broadcast to every member.
@@ -203,6 +206,8 @@ export interface ScheduledEventBase {
   createdBy: Snowflake;
   createdAt: Timestamp;
   counts: Record<RsvpAnswer, number>;
+  /** Who gave each answer, so hovering Going, Maybe or Can't can name them. */
+  voters: RsvpVoters;
 }
 
 /** An event plus the answer of whoever is looking at it. */
@@ -294,6 +299,9 @@ export interface ReadState {
 /** Past this the sidebar says "99+": counting further is work nobody reads. */
 export const UNREAD_COUNT_CAP = 100;
 
+/** See `Message['poll']`. */
+export type PollVisibility = 'shown' | 'secret' | 'anonymous';
+
 export interface Message {
   id: Snowflake;
   channelId: Snowflake;
@@ -310,16 +318,28 @@ export interface Message {
   /** Plaintext body. Null when the channel is end-to-end encrypted. */
   content: string | null;
   /**
-   * Present only when `kind` is 'poll'. `counts` and `mine` are read-path
-   * data, not stored columns: `counts` is everyone's tally, `mine` is which
-   * options the viewer themself picked, so it differs by who is asking.
+   * Present only when `kind` is 'poll'. `counts`, `voters` and `mine` are
+   * read-path data, not stored columns: `counts` is everyone's tally, `mine`
+   * is which options the viewer themself picked, so it differs by who is
+   * asking.
+   *
+   * `visibility` decides what the server sends. 'shown' (the default for a
+   * new poll) carries `voters`, the user ids behind each option. 'secret'
+   * (`/poll~`) sends `counts` as all zeros until the poll closes, so nobody is
+   * swayed by how it is going, and never sends `voters`. 'anonymous' is
+   * every poll made before voters were shown: people voted on the promise
+   * that nobody would see who picked what, so those keep counts only, for
+   * good.
    */
   poll?: {
     question: string;
     options: string[];
     multiple: boolean;
     closedAt: Timestamp | null;
+    visibility: PollVisibility;
     counts: number[];
+    /** Only on a 'shown' poll: who picked each option, in option order. */
+    voters?: Snowflake[][];
     mine: number[];
   };
   /**

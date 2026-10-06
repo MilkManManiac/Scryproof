@@ -8,7 +8,7 @@ import { nameFor, useLocalNames } from '../lib/local-names';
 import { isDesktop } from '../lib/desktop';
 import { musicSound } from '../lib/music-share';
 import { screenSound } from '../lib/voice-session';
-import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
+import { MAX_PERSON_VOLUME, MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import type { PublicUser } from '@scryproof/shared';
 import { Avatar, initials } from './Avatar';
 import { ConnectionPanel } from './VoicePanel';
@@ -386,6 +386,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                         label={label}
                         source={key}
                         value={prefs.volumes[key] ?? 1}
+                        max={MAX_STREAM_VOLUME}
                         disabled={!share.listening}
                         onChange={(value) => voicePrefs.setVolumeFor(key, value)}
                       />

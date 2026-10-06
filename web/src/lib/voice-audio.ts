@@ -8,8 +8,7 @@
 
 import { type Bridge, splice } from './audio-graph';
 import { openGuard, openHighPass } from './loudness-guard';
-import { effectChain, type EffectChain } from './voice-effects';
-import type { VoiceEffect } from './voice-prefs';
+import { effectChain, type EffectChain, type MicChoice } from './voice-effects';
 
 /* --------------------------------- levels ---------------------------------- */
 
@@ -391,7 +390,7 @@ export class MicGate {
 export async function openMeter(
   constraints: MediaTrackConstraints,
   onLevel: (db: number) => void,
-  preview: { suppress: boolean; guard: boolean; effect: VoiceEffect } | null = null,
+  preview: MicChoice | null = null,
 ): Promise<{ stop: () => void; suppressing: boolean }> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   const context = audioContext();
@@ -430,7 +429,10 @@ export async function openMeter(
         suppressing = suppressor !== null;
       }
       if (preview.guard) add(await openGuard(context).catch(() => null));
-      chain = await effectChain(context, end, preview.effect);
+      const volume = context.createGain();
+      volume.gain.value = preview.volume;
+      end.connect(volume);
+      chain = await effectChain(context, volume, preview.effect);
       chain.output.connect(context.destination);
     } catch (problem) {
       stop();

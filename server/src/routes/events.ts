@@ -23,7 +23,7 @@ import * as hub from '../gateway/hub.js';
 import { badRequest, notFound } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as audit from '../services/audit.js';
-import { countAnswers, countUpcoming, listUpcoming, toWire } from '../services/events.js';
+import { countAnswers, countUpcoming, emptyTally, listUpcoming, toWire } from '../services/events.js';
 import {
   computePermissionsInChannel,
   requireMember,
@@ -121,7 +121,7 @@ async function viewFor(ctx: MemberContext, row: EventRow): Promise<ScheduledEven
   ]);
   const answer = mine?.answer;
   return {
-    ...toWire(row, counts.get(row.id) ?? { going: 0, maybe: 0, no: 0 }, (id) => visible.has(id)),
+    ...toWire(row, counts.get(row.id) ?? emptyTally(), (id) => visible.has(id)),
     myAnswer: answer === 'going' || answer === 'maybe' || answer === 'no' ? answer : null,
   };
 }
@@ -131,9 +131,9 @@ async function viewFor(ctx: MemberContext, row: EventRow): Promise<ScheduledEven
  * id; everyone else gets the same event without it.
  */
 async function announce(row: EventRow, kind: 'event_create' | 'event_update'): Promise<void> {
-  const counts = (await countAnswers([row.id])).get(row.id) ?? { going: 0, maybe: 0, no: 0 };
+  const answers = (await countAnswers([row.id])).get(row.id) ?? emptyTally();
   const build = (canSee: boolean): ServerEvent => {
-    const base = toWire(row, counts, () => canSee);
+    const base = toWire(row, answers, () => canSee);
     // A new event has no answers yet, so nobody's own answer is anything but none.
     return kind === 'event_create' ? { t: kind, d: { ...base, myAnswer: null } } : { t: kind, d: base };
   };
@@ -287,15 +287,16 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
         .onConflictDoUpdate({ target: [eventRsvps.eventId, eventRsvps.userId], set: { answer } });
     }
 
-    const counts = (await countAnswers([eventId])).get(eventId) ?? { going: 0, maybe: 0, no: 0 };
+    const { counts, voters } = (await countAnswers([eventId])).get(eventId) ?? emptyTally();
 
-    // The whole count goes out rather than a plus-one, so a missed event
-    // cannot leave anyone's numbers wrong for good.
+    // The whole count and the whole list of who said what go out rather
+    // than a plus-one, so a missed event cannot leave anyone's numbers or
+    // names wrong for good.
     hub.broadcastToServer(serverId, {
       t: 'event_rsvp',
-      d: { eventId, serverId, userId: user.id, answer, counts },
+      d: { eventId, serverId, userId: user.id, answer, counts, voters },
     });
 
-    return { answer, counts };
+    return { answer, counts, voters };
   });
 }

@@ -976,7 +976,10 @@ select {
   color: var(--gold);
 }
 
+/* Starts from nothing and takes what is left, so in a narrow window the topic
+   gives way before the channel name does; the name was being drawn over it. */
 .main-topic {
+  flex: 1 1 0;
   color: var(--text-dim);
   font-size: 13px;
   border-left: 1px solid var(--line-strong);
@@ -1663,6 +1666,7 @@ select {
   flex: 0 0 auto;
   padding: 0 18px 18px;
   position: relative;
+  container-type: inline-size;
 }
 
 /* The one lifted thing on the screen. The light lands where you type. */
@@ -1728,6 +1732,12 @@ select {
 .composer-label-mark {
   color: var(--text-faint);
 }
+/* In a narrow window the typing gets the room; the header still names the channel. */
+@container (max-width: 560px) {
+  .composer-label {
+    display: none;
+  }
+}
 .composer-box:focus-within .composer-label {
   color: var(--text-muted);
 }
@@ -1753,6 +1763,10 @@ select {
 
 .composer-input {
   flex: 1 1 auto;
+  /* Never squeezed to a sliver by the label and the buttons: a window on half
+     a screen left it a few letters wide, every word wrapped, and the box grew
+     to its full height (squii, 2026-10-01). */
+  min-width: 8rem;
   background: none;
   border: none;
   outline: none;

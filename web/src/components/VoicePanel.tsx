@@ -22,7 +22,7 @@ import { MixerButton } from './CallMixer';
 import { useStore } from '../state/store';
 import { useTimeoutEnd } from '../lib/usePermissions';
 import { DesktopAppLink } from './DesktopAppLink';
-import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
+import { MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
@@ -572,7 +572,7 @@ export function VoiceStage(
                   type="range"
                   className="voice-range"
                   min={0}
-                  max={MAX_PERSON_VOLUME * 100}
+                  max={MAX_STREAM_VOLUME * 100}
                   step={5}
                   value={Math.round(screenVolume(bigVideo.userId) * 100)}
                   onChange={(event) =>

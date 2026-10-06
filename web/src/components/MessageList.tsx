@@ -21,7 +21,7 @@ import { ApiError, api } from '../lib/api';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
 import { guide, guideTopicOf } from '../lib/guide';
 import { jumpTo } from '../lib/jump';
-import { useLocalNames } from '../lib/local-names';
+import { nameFor, useLocalNames } from '../lib/local-names';
 import { DELETED_ROLE, fromDraft, nameOf, pingableRoles, pingsHeldRole, toDraft, toPlainLine } from '../lib/mentions';
 import { CHANNEL_MEMORY_CHANGED, EDIT_LAST, on } from '../lib/signals';
 import { BottomPin } from '../lib/stick-to-bottom';
@@ -696,15 +696,41 @@ function RollLine({ content }: { content: string }) {
 /**
  * A poll: the question already prints as the message's ordinary text above
  * this, so here is just the choices, a click to vote, and who may close it.
- * The server holds the truth; this draws whatever it last sent back.
+ * The server holds the truth; this draws whatever it last sent back. What
+ * that is depends on the poll (see `Message['poll']`): hovering a choice
+ * names who picked it only when the server sent names, and an open secret
+ * poll arrives with every count at zero, so there is nothing here to hide.
  */
-function PollView({ message, selfId, canManage }: { message: Message; selfId?: string; canManage: boolean }) {
+function PollView({
+  message,
+  selfId,
+  canManage,
+  members,
+}: {
+  message: Message;
+  selfId?: string;
+  canManage: boolean;
+  members: Member[];
+}) {
   const { applyMessage } = useStore();
   const poll = message.poll;
   if (!poll) return null;
 
   const closed = Boolean(poll.closedAt);
-  const total = poll.counts.reduce((sum, count) => sum + count, 0);
+  // An open secret poll's counts are all zeros from the server; not drawn.
+  const counts = poll.visibility === 'secret' && !closed ? null : poll.counts;
+  const total = counts ? counts.reduce((sum, count) => sum + count, 0) : 0;
+  const voterNames = (index: number): string | undefined => {
+    const ids = poll.voters?.[index];
+    if (!ids) return undefined;
+    if (ids.length === 0) return 'Nobody yet';
+    return ids
+      .map((userId) => {
+        const member = members.find((entry) => entry.userId === userId);
+        return member ? nameOf(member) : nameFor(userId, 'Someone');
+      })
+      .join(', ');
+  };
   const canClose = !closed && (message.authorId === selfId || canManage);
 
   async function vote(index: number) {
@@ -737,7 +763,7 @@ function PollView({ message, selfId, canManage }: { message: Message; selfId?: s
   return (
     <div className="poll">
       {poll.options.map((option, index) => {
-        const count = poll.counts[index] ?? 0;
+        const count = counts?.[index] ?? 0;
         const share = total > 0 ? Math.round((count / total) * 100) : 0;
         const mine = poll.mine.includes(index);
         return (
@@ -746,16 +772,20 @@ function PollView({ message, selfId, canManage }: { message: Message; selfId?: s
             type="button"
             className={mine ? 'poll-option mine' : 'poll-option'}
             disabled={closed}
+            title={voterNames(index)}
             onClick={() => void vote(index)}
           >
             <span className="poll-option-bar" style={{ width: `${share}%` }} />
             <span className="poll-option-text">{option}</span>
-            <span className="poll-option-count">{count}</span>
+            {counts ? <span className="poll-option-count">{count}</span> : null}
           </button>
         );
       })}
       <div className="poll-footer">
-        <span>{closed ? 'Closed' : 'Open'}</span>
+        <span>
+          {closed ? 'Closed' : 'Open'}
+          {poll.visibility === 'secret' ? (closed ? ' · secret vote' : ' · Votes hidden until the poll closes') : null}
+        </span>
         {canClose ? (
           <button type="button" className="poll-close" onClick={() => void close()}>
             Close
@@ -1176,7 +1206,12 @@ function MessageRow({
                 <div className="message-text">
                   <strong>{message.content}</strong>
                 </div>
-                <PollView message={message} selfId={selfId} canManage={can(mask, Permission.MANAGE_MESSAGES)} />
+                <PollView
+                  message={message}
+                  selfId={selfId}
+                  canManage={can(mask, Permission.MANAGE_MESSAGES)}
+                  members={members}
+                />
               </>
             ) : spawn ? (
               <PlayLine character={spawn} again={() => api.messages.replay(message.id)} />
