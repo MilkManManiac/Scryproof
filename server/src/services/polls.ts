@@ -9,7 +9,9 @@
  *
  * - 'shown' (a new `/poll`): counts, and who picked each option.
  * - 'secret' (`/poll~`): nothing about anyone else until the poll closes,
- *   then counts only. Never who picked what.
+ *   then counts only. Never who picked what. While it is open the counts go
+ *   out as zeros, not null: an app that has not taken its update yet reads
+ *   them as numbers, and a null there would take its whole screen down.
  * - 'anonymous' (any poll stored without a `visibility`, which is every poll
  *   made before voters were shown): counts only, for good. People voted on
  *   the promise that nobody would see their pick, and that does not change
@@ -29,8 +31,8 @@ import { pollVotes, type PollBody } from '../db/schema.js';
 
 export interface PollTally {
   visibility: PollVisibility;
-  /** Null while a secret poll is open: there is nothing the viewer may count yet. */
-  counts: number[] | null;
+  /** All zeros while a secret poll is open: there is nothing the viewer may count yet. */
+  counts: number[];
   /** Only on a 'shown' poll: user ids per option, in option order. */
   voters?: string[][];
   mine: number[];
@@ -85,7 +87,7 @@ export async function tallyForMessages(
     if (visibility === 'shown') {
       result.set(messageId, { visibility, counts: tally.counts, voters: tally.voters, mine: tally.mine });
     } else if (visibility === 'secret' && !poll.closedAt) {
-      result.set(messageId, { visibility, counts: null, mine: tally.mine });
+      result.set(messageId, { visibility, counts: tally.counts.map(() => 0), mine: tally.mine });
     } else {
       result.set(messageId, { visibility, counts: tally.counts, mine: tally.mine });
     }

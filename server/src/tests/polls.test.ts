@@ -197,7 +197,7 @@ describe('poll votes', () => {
     await setVotes(id, otherId, [0]);
 
     const during = (await tallyForMessages([{ messageId: id, poll: open }], userId)).get(id);
-    assert.equal(during?.counts, null);
+    assert.deepEqual(during?.counts, [0, 0, 0]);
     assert.equal(during?.voters, undefined);
     // The voter still sees their own pick.
     assert.deepEqual(during?.mine, [2]);

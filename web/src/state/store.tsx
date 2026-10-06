@@ -639,7 +639,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
     }
 
     case 'poll_update': {
-      // The tally as everyone may see it (names on a shown poll, nothing on
+      // The tally as everyone may see it (names on a shown poll, zeros on
       // an open secret one). `mine` is left exactly as it was: the vote that
       // caused this event, if it was ours, already came back on the request
       // that made it.

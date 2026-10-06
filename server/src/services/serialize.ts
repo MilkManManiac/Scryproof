@@ -210,15 +210,10 @@ export function message(
             options: row.poll.options,
             multiple: row.poll.multiple,
             closedAt: row.poll.closedAt,
-            // Without a tally from `polls.ts`, say as little as the poll
-            // allows: no voters, and no counts at all for an open secret one.
+            // Without a tally from `polls.ts`, say as little as any poll
+            // allows: no voters and no counts.
             visibility: extras.poll?.visibility ?? visibilityOf(row.poll),
-            counts:
-              extras.poll?.counts !== undefined
-                ? extras.poll.counts
-                : row.poll.visibility === 'secret' && !row.poll.closedAt
-                  ? null
-                  : new Array(row.poll.options.length).fill(0),
+            counts: extras.poll?.counts ?? new Array(row.poll.options.length).fill(0),
             ...(extras.poll?.voters ? { voters: extras.poll.voters } : {}),
             mine: extras.poll?.mine ?? [],
           },

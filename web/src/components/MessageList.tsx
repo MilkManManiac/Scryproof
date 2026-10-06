@@ -699,7 +699,7 @@ function RollLine({ content }: { content: string }) {
  * The server holds the truth; this draws whatever it last sent back. What
  * that is depends on the poll (see `Message['poll']`): hovering a choice
  * names who picked it only when the server sent names, and an open secret
- * poll arrives with no counts at all, so there is nothing here to hide.
+ * poll arrives with every count at zero, so there is nothing here to hide.
  */
 function PollView({
   message,
@@ -717,7 +717,8 @@ function PollView({
   if (!poll) return null;
 
   const closed = Boolean(poll.closedAt);
-  const counts = poll.counts;
+  // An open secret poll's counts are all zeros from the server; not drawn.
+  const counts = poll.visibility === 'secret' && !closed ? null : poll.counts;
   const total = counts ? counts.reduce((sum, count) => sum + count, 0) : 0;
   const voterNames = (index: number): string | undefined => {
     const ids = poll.voters?.[index];

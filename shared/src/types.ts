@@ -325,7 +325,7 @@ export interface Message {
    *
    * `visibility` decides what the server sends. 'shown' (the default for a
    * new poll) carries `voters`, the user ids behind each option. 'secret'
-   * (`/poll~`) sends `counts` as null until the poll closes, so nobody is
+   * (`/poll~`) sends `counts` as all zeros until the poll closes, so nobody is
    * swayed by how it is going, and never sends `voters`. 'anonymous' is
    * every poll made before voters were shown: people voted on the promise
    * that nobody would see who picked what, so those keep counts only, for
@@ -337,7 +337,7 @@ export interface Message {
     multiple: boolean;
     closedAt: Timestamp | null;
     visibility: PollVisibility;
-    counts: number[] | null;
+    counts: number[];
     /** Only on a 'shown' poll: who picked each option, in option order. */
     voters?: Snowflake[][];
     mine: number[];

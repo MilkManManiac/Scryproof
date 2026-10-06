@@ -76,8 +76,8 @@ export type ServerEvent =
   | { t: 'channel_keys'; d: { channelId: Snowflake; current: number; wanted: boolean } }
   /**
    * A poll's tally after a vote or a close, as much of it as everyone may
-   * see: `voters` only on a 'shown' poll, `counts` null on a secret poll
-   * still open (see `Message['poll']`). Never the viewer's own picks, which
+   * see: `voters` only on a 'shown' poll, `counts` all zeros on a secret
+   * poll still open (see `Message['poll']`). Never the viewer's own picks, which
    * is why this is not `message_update`: that carries the whole message, and
    * `mine` is only each person's own to see.
    */
@@ -86,7 +86,7 @@ export type ServerEvent =
       d: {
         messageId: Snowflake;
         channelId: Snowflake;
-        counts: number[] | null;
+        counts: number[];
         voters?: Snowflake[][];
         closedAt: Timestamp | null;
       };
