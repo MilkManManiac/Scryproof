@@ -111,6 +111,9 @@ export function withHold(
 export class OutputMix {
   private readonly context = audioContext();
   private readonly master = this.context.createGain();
+  private readonly outputMeter = this.context.createAnalyser();
+  private readonly boardMeter = this.context.createAnalyser();
+  private readonly boardMeterGain = this.context.createGain();
   private readonly voices = new Map<string, Voice>();
   private readonly scratch = new Float32Array(1024);
   private deafened = false;
@@ -120,6 +123,10 @@ export class OutputMix {
 
   constructor() {
     this.master.connect(this.context.destination);
+    // Analysis-only branches: they never connect to speakers or transmit audio.
+    this.outputMeter.fftSize = this.boardMeter.fftSize = 1024;
+    this.master.connect(this.outputMeter);
+    this.boardMeterGain.connect(this.boardMeter);
     // A running total rather than a level, because a level is a single instant
     // and speech (or a test beep) is mostly gaps. The total only ever climbs
     // while decrypted sound is really arriving.
@@ -156,6 +163,7 @@ export class OutputMix {
     analyser.fftSize = 1024;
     gain.gain.value = volume;
     source.connect(gain).connect(analyser).connect(this.master);
+    if (userId.endsWith(':soundboard')) analyser.connect(this.boardMeterGain);
     const voice: Voice = { source, gain, analyser, pump, energy: 0, loudUntil: 0, guardable, guard: null, guardTurn: 0 };
     this.voices.set(userId, voice);
     if (guardable && this.guarding) void this.guardVoice(voice);
@@ -210,11 +218,29 @@ export class OutputMix {
   setVolume(volume: number): void {
     this.volume = volume;
     this.master.gain.value = this.deafened ? 0 : volume;
+    this.boardMeterGain.gain.value = this.master.gain.value;
   }
 
   setDeafened(deafened: boolean): void {
     this.deafened = deafened;
     this.master.gain.value = deafened ? 0 : this.volume;
+    this.boardMeterGain.gain.value = this.master.gain.value;
+  }
+
+  /** Local clips already carry master volume and deafen before reaching these taps. */
+  monitorLocalSoundboard(node: AudioNode): void {
+    node.connect(this.outputMeter);
+    node.connect(this.boardMeter);
+  }
+
+  /** Post-fader RMS dBFS. Read only while the mixer is visible; never sent to peers. */
+  levelOf(key: string): number {
+    if (this.context.state !== 'running' || this.deafened || this.volume <= 0) return -100;
+    if (key === ':output') return readDb(this.outputMeter, this.scratch);
+    if (key === ':soundboard') return readDb(this.boardMeter, this.scratch);
+    const voice = this.voices.get(key);
+    if (!voice) return -100;
+    return Math.max(-100, readDb(voice.analyser, this.scratch) + 20 * Math.log10(this.volume));
   }
 
   /** Send the mix to a chosen speaker. Not every browser can; those keep the default. */
@@ -256,6 +282,9 @@ export class OutputMix {
     clearInterval(this.sampler);
     for (const userId of [...this.voices.keys()]) this.remove(userId);
     this.master.disconnect();
+    this.boardMeterGain.disconnect();
+    this.outputMeter.disconnect();
+    this.boardMeter.disconnect();
   }
 }
 

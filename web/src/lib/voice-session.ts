@@ -42,6 +42,7 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 
 import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
+import { MusicAudience, MUSIC_AUDIENCE_TOPIC, MUSIC_AUDIENCE_REFRESH_MS, readMusicAudience } from './music-audience';
 import { captureMusic, MUSIC_TRACK, musicSound } from './music-share';
 import { api, ApiError } from './api';
 import { holdPushKey, onAccessibilityGranted } from './desktop';
@@ -156,6 +157,7 @@ export interface VoiceStats {
 export type CallPlace = { kind: 'channel'; id: string } | { kind: 'dm'; id: string };
 
 export interface SharedAudio {
+  listeners: string[];
   userId: string;
   sid: string;
   kind: 'screen' | 'music';
@@ -389,6 +391,11 @@ export class VoiceSession {
   private musicUnpublishing = false;
   /** Publication IDs, not people: a new music share always needs fresh consent. */
   private readonly musicListening = new Set<string>();
+  private readonly musicAudience = new MusicAudience();
+  private audienceSent = '';
+  private audienceSentAt = 0;
+  private audienceWork: Promise<void> = Promise.resolve();
+  private readonly audienceRequests = new Map<string, number>();
   /** Set when the screen track itself ended (the window closed, the browser's own Stop bar). */
   private shareEnded: string | null = null;
 
@@ -587,6 +594,7 @@ export class VoiceSession {
 
       this.clearRecovery();
       this.update({ phase: 'connected', encrypted: room.isE2EEEnabled });
+      this.announceMusicAudience(true);
       if (voicePrefs.get().sounds) callSound('joined');
       this.statsTimer = setInterval(() => void this.measure(), STATS_INTERVAL_MS);
     } catch (problem) {
@@ -666,6 +674,11 @@ export class VoiceSession {
     this.watching.clear();
     this.screenSoundOn.clear();
     this.musicListening.clear();
+    this.musicAudience.clear();
+    this.audienceRequests.clear();
+    this.audienceSent = '';
+    this.audienceSentAt = 0;
+    this.audienceWork = Promise.resolve();
     this.musicTurn += 1;
     this.musicTrack?.stop();
     this.musicTrack = null;
@@ -703,6 +716,7 @@ export class VoiceSession {
     this.deafened = deafened;
     this.mix?.setDeafened(deafened);
     this.tuneSoundboard();
+    this.refreshVideos();
   }
 
   /* ------------------------------- soundboard ------------------------------ */
@@ -740,6 +754,7 @@ export class VoiceSession {
     }
     const local = context.createGain();
     local.connect(context.destination);
+    this.outputMix().monitorLocalSoundboard(local);
     this.board = { destination, track, local, playing: null };
     this.tuneSoundboard();
     this.update({ soundboard: true });
@@ -884,6 +899,70 @@ export class VoiceSession {
       this.update({ musicBusy: false });
       this.refreshVideos();
     }
+  }
+
+  private outputMix(): OutputMix {
+    if (!this.mix) {
+      this.mix = new OutputMix();
+      this.mix.setVolume(voicePrefs.get().outputVolume);
+      this.mix.setDeafened(this.deafened);
+      this.mix.setGuarding(voicePrefs.get().loudnessGuard);
+      const speaker = voicePrefs.get().outputDeviceId;
+      if (speaker) void this.mix.setOutputDevice(speaker);
+    }
+    return this.mix;
+  }
+
+  /** Local decoded output level for the visible mixer, in dBFS. */
+  mixerLevel(source: string): number {
+    return this.mix?.levelOf(source) ?? -100;
+  }
+
+  /** Selected music with audible local settings. This is presence, not a claim about someone's speakers. */
+  private activeMusicSelections(): string[] {
+    const prefs = voicePrefs.get();
+    if (this.deafened || prefs.outputVolume <= 0) return [];
+    const sids: string[] = [];
+    for (const participant of this.room?.remoteParticipants.values() ?? []) {
+      if ((prefs.volumes[musicSound(participant.identity)] ?? 1) <= 0) continue;
+      for (const publication of participant.trackPublications.values()) {
+        if (
+          publication.source === Track.Source.ScreenShareAudio && publication.trackName === MUSIC_TRACK &&
+          this.musicListening.has(publication.trackSid) && publication.track && !publication.isMuted
+        ) sids.push(publication.trackSid);
+      }
+    }
+    return sids.sort();
+  }
+
+  private announceMusicAudience(request = false, destination?: string): void {
+    const room = this.room;
+    if (!room || this.snapshot.phase !== 'connected') return;
+    const selection = JSON.stringify(this.activeMusicSelections());
+    const now = Date.now();
+    if (
+      !request && !destination && selection === this.audienceSent &&
+      now - this.audienceSentAt < MUSIC_AUDIENCE_REFRESH_MS
+    ) return;
+    if (!destination) {
+      this.audienceSent = selection;
+      this.audienceSentAt = now;
+    }
+    // Serialize full snapshots and compute the selection when sending, so quick
+    // Listen/mute/deafen changes cannot finish in the wrong order.
+    this.audienceWork = this.audienceWork
+      .then(async () => {
+        if (this.room !== room || this.snapshot.phase !== 'connected') return;
+        const payload = new TextEncoder().encode(JSON.stringify({ listening: this.activeMusicSelections(), request }));
+        await room.localParticipant.publishData(payload, {
+          reliable: true,
+          topic: MUSIC_AUDIENCE_TOPIC,
+          ...(destination ? { destinationIdentities: [destination] } : {}),
+        });
+      })
+      .catch(() => {
+        // A transient send failure is repaired by the next presence refresh.
+      });
   }
 
   setMusicListening(userId: string, sid: string, on: boolean): void {
@@ -1108,6 +1187,8 @@ export class VoiceSession {
     if (!room) return;
     const videos: VoiceVideo[] = [];
     const sharedAudio: SharedAudio[] = [];
+    this.musicAudience.update(this.userId, this.activeMusicSelections());
+    const present = new Set([this.userId, ...room.remoteParticipants.keys()]);
     const hiddenCameras: string[] = [];
     for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
       for (const publication of participant.trackPublications.values()) {
@@ -1117,6 +1198,7 @@ export class VoiceSession {
             userId: participant.identity,
             sid: publication.trackSid,
             kind: music ? 'music' : 'screen',
+            listeners: music ? this.musicAudience.listeners(publication.trackSid, present) : [],
             muted: publication.isMuted,
             listening: music
               ? this.musicListening.has(publication.trackSid)
@@ -1174,6 +1256,7 @@ export class VoiceSession {
       camera: room.localParticipant.isCameraEnabled,
       sharing: room.localParticipant.isScreenShareEnabled,
     });
+    this.announceMusicAudience();
   }
 
   /** The microphone's level right now in dBFS, before the gate. -100 when there is no microphone. */
@@ -1417,6 +1500,7 @@ export class VoiceSession {
         music && this.musicListening.has(music.trackSid) ? (now.volumes[musicSound(person.identity)] ?? 1) : 0,
       );
     }
+    if (now.outputVolume !== before.outputVolume || now.volumes !== before.volumes) this.refreshVideos();
     if (now.outputDeviceId !== before.outputDeviceId) await this.mix?.setOutputDevice(now.outputDeviceId);
 
     const captureChanged =
@@ -1707,6 +1791,21 @@ export class VoiceSession {
   /* --------------------------------- media -------------------------------- */
 
   private listenTo(room: Room): void {
+    room.on(RoomEvent.DataReceived, (bytes, participant, _kind, topic) => {
+      if (
+        this.room !== room || topic !== MUSIC_AUDIENCE_TOPIC || !participant ||
+        room.remoteParticipants.get(participant.identity) !== participant
+      ) return;
+      const message = readMusicAudience(bytes);
+      if (!message) return;
+      this.musicAudience.update(participant.identity, message.listening);
+      this.refreshVideos();
+      const now = Date.now();
+      if (message.request && now - (this.audienceRequests.get(participant.identity) ?? 0) >= 1000) {
+        this.audienceRequests.set(participant.identity, now);
+        this.announceMusicAudience(false, participant.identity);
+      }
+    });
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
       if (this.room !== room) return;
       // The unknown source is granted for the soundboard, which is sound. The
@@ -1726,14 +1825,7 @@ export class VoiceSession {
         this.capPicture(publication);
         return this.refreshVideos();
       }
-      if (!this.mix) {
-        this.mix = new OutputMix();
-        this.mix.setVolume(voicePrefs.get().outputVolume);
-        this.mix.setDeafened(this.deafened);
-        this.mix.setGuarding(voicePrefs.get().loudnessGuard);
-        const speaker = voicePrefs.get().outputDeviceId;
-        if (speaker) void this.mix.setOutputDevice(speaker);
-      }
+      const mix = this.outputMix();
       let volume = savedVolume(voicePrefs.get(), participant.identity, publication.source);
       // A screen's sound arrives silent. The speaker button on its tile is what turns it up.
       if (publication.source === Track.Source.ScreenShareAudio) {
@@ -1746,7 +1838,7 @@ export class VoiceSession {
             : screenGain(volume, this.screenSoundOn.has(participant.identity));
       }
       const voice = publication.source === Track.Source.Microphone;
-      this.mix.add(
+      mix.add(
         mixKey(participant.identity, publication.source, publication.trackName),
         track.mediaStreamTrack,
         volume,
@@ -1780,6 +1872,7 @@ export class VoiceSession {
       }
       if (publication.source === Track.Source.ScreenShareAudio) {
         this.musicListening.delete(publication.trackSid);
+        this.musicAudience.end(publication.trackSid);
         this.screenSoundOn.delete(participant.identity);
         this.mix?.remove(mixKey(participant.identity, publication.source, publication.trackName));
       }
@@ -1794,6 +1887,8 @@ export class VoiceSession {
     });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       if (this.room !== room) return;
+      this.musicAudience.remove(participant.identity);
+      this.audienceRequests.delete(participant.identity);
       this.watching.delete(`${participant.identity}:camera`);
       this.watching.delete(`${participant.identity}:screen`);
       this.screenSoundOn.delete(participant.identity);
@@ -1823,6 +1918,7 @@ export class VoiceSession {
     });
     room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
       if (this.room !== room) return;
+      this.musicAudience.end(publication.trackSid);
       if (publication.trackName === MUSIC_TRACK && publication.track?.mediaStreamTrack === this.musicTrack) {
         // The SDK or server can remove a track without our Stop button.
         // Its capture must end too, and the next attempt must be allowed.
@@ -1885,6 +1981,7 @@ export class VoiceSession {
     const room = this.room;
     if (!room) return;
 
+    if (this.snapshot.sharedAudio.some((share) => share.kind === 'music')) this.refreshVideos();
     const reports: RTCStatsReport[] = [];
     for (const publication of room.localParticipant.trackPublications.values()) {
       const report = await publication.track?.getRTCStatsReport();

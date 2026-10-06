@@ -132,10 +132,79 @@ try {
   await listener.waitForFunction((key) => (window.__voice.mix?.energyOf(key) ?? 0) > 0.003, key);
   assert.equal(await listener.evaluate(() => window.__voice.getSnapshot().encrypted), true);
   report('opt-in receives and decodes real encrypted music');
+  const listenerId = await listener.evaluate(() => window.__ownVoice().userId);
+  const listenersOf = (page) =>
+    page.evaluate(
+      () => window.__voice.getSnapshot().sharedAudio.find((share) => share.kind === 'music')?.listeners ?? [],
+    );
+  const waitForListeners = (page, ids) =>
+    page.waitForFunction((ids) => {
+      const actual = window.__voice.getSnapshot().sharedAudio.find((share) => share.kind === 'music')?.listeners ?? [];
+      return JSON.stringify([...actual].sort()) === JSON.stringify([...ids].sort());
+    }, ids);
+  await waitForListeners(owner, [listenerId]);
+  await waitForListeners(listener, [listenerId]);
+  assert.equal(await owner.locator(`.mixer-music .mixer-listeners [data-user-id="${listenerId}"]`).count(), 1);
+  assert.equal(await listener.locator(`.mixer-source .mixer-listeners [data-user-id="${listenerId}"]`).count(), 1);
+  const observer = await login('mara');
+  await join(observer);
+  await openMixer(observer);
+  await waitForListeners(observer, [listenerId]);
+  report('sharer, listener, and a late joiner see the listener avatar without opting the newcomer in');
+  const observerId = await observer.evaluate(() => window.__ownVoice().userId);
+  await observer.getByRole('button', { name: /^Listen to .* music$/ }).click();
+  await waitForListeners(owner, [listenerId, observerId]);
+  await waitForListeners(listener, [listenerId, observerId]);
+  await waitForListeners(observer, [listenerId, observerId]);
+  await mkdir('docs/shots', { recursive: true });
+  await listener.screenshot({ path: 'docs/shots/music-listeners-desktop.png' });
+  await owner.screenshot({ path: 'docs/shots/music-listeners-sharer.png' });
+  await listener.setViewportSize({ width: 390, height: 844 });
+  await listener.locator('.mixer-source .mixer-listeners').scrollIntoViewIfNeeded();
+  await listener.screenshot({ path: 'docs/shots/music-listeners-mobile.png' });
+  assert.equal(await listener.locator('.call-mixer').evaluate((el) => el.scrollWidth <= window.innerWidth), true);
+  await listener.setViewportSize({ width: 1400, height: 940 });
+  await observer.getByRole('button', { name: /^Stop listening to .* music$/ }).click();
+  await waitForListeners(owner, [listenerId]);
+  const musicSid = await owner.evaluate(
+    () => window.__voice.getSnapshot().sharedAudio.find((share) => share.kind === 'music').sid,
+  );
+  // A payload cannot claim another person's identity: the room transport identifies its sender.
+  await observer.evaluate(
+    async ({ sid, impostor }) => {
+      await window.__voice.room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ listening: [sid], userId: impostor })),
+        {
+          reliable: true,
+          topic: 'scryproof.music-listeners.v1',
+        },
+      );
+    },
+    { sid: musicSid, impostor: ownerId },
+  );
+  await waitForListeners(owner, [listenerId, observerId]);
+  assert.ok(!(await listenersOf(owner)).includes(ownerId));
+  await observer.getByRole('button', { name: 'Close mixer' }).click();
+  await observer.getByRole('button', { name: 'Leave the call', exact: true }).click();
+  await waitForListeners(owner, [listenerId]);
+  await observer.context().close();
+  report(
+    'multiple listeners appear under the right source; sender identity is not taken from payloads; leaving clears avatars',
+  );
+  // Let the departure's key rotation settle before comparing steady-state gain.
+  await listener.waitForFunction(
+    () =>
+      window.__voice.getSnapshot().people.length === 1 &&
+      window.__voice.getSnapshot().people.every((person) => person.state === 'secured'),
+  );
+  await pause(1200);
   const e0 = await energy(listener, key);
   await pause(1500);
   const base = (await energy(listener, key)) - e0;
   const musicRange = listener.getByRole('slider', { name: / music volume$/ });
+  const musicMeter = listener.getByRole('meter', { name: / music level$/ });
+  const baseDb = Number(await musicMeter.getAttribute('aria-valuenow'));
+  assert.ok(baseDb > -60 && baseDb < -12, `measured music level ${baseDb} dB`);
   await setRange(musicRange, 400);
   await pause(250);
   const e1 = await energy(listener, key);
@@ -143,19 +212,50 @@ try {
   const boosted = (await energy(listener, key)) - e1;
   assert.ok(boosted / base > 10 && boosted / base < 23, `4x amplitude energy ratio ${boosted / base}`);
   report(`400% boost changes actual decoded signal (${(boosted / base).toFixed(1)}× energy)`);
+  const boostedDb = Number(await musicMeter.getAttribute('aria-valuenow'));
+  assert.ok(Math.abs(boostedDb - baseDb - 12) <= 2, `4x amplitude raises meter by 12 dB: ${baseDb} -> ${boostedDb}`);
+  report('live music meter measures decoded signal and shows the 12 dB boost');
   await listener.getByRole('button', { name: /^Mute .* music$/ }).click();
   await pause(400);
+  await waitForListeners(owner, []);
   const quiet = await energy(listener, key);
   await pause(800);
   assert.ok((await energy(listener, key)) - quiet < 0.00001);
+  assert.equal(await musicMeter.getAttribute('aria-valuenow'), '-60');
   await listener.getByRole('button', { name: /^Unmute .* music$/ }).click();
   assert.equal(await musicRange.inputValue(), '400');
+  await waitForListeners(owner, [listenerId]);
   report('mute is silent and unmute restores the chosen boost');
+  const outputRange = listener.getByRole('slider', { name: 'Call output volume' });
+  await setRange(outputRange, 50);
+  await pause(250);
+  assert.ok(Math.abs(Number(await musicMeter.getAttribute('aria-valuenow')) - boostedDb + 6) <= 2);
+  await setRange(outputRange, 0);
+  await waitForListeners(owner, []);
+  await pause(150);
+  assert.equal(await musicMeter.getAttribute('aria-valuenow'), '-60');
+  assert.equal(await listener.getByRole('meter', { name: 'Call output level' }).getAttribute('aria-valuenow'), '-60');
+  await setRange(outputRange, 100);
+  await waitForListeners(owner, [listenerId]);
+  report('zero call output clears the listener avatar and restoring output restores it');
+  // Lose one presence message: the next refresh must repair the audience automatically.
+  await listener.evaluate(() => {
+    const local = window.__voice.room.localParticipant;
+    const original = local.publishData.bind(local);
+    local.publishData = async (...args) => {
+      if (args[1]?.topic === 'scryproof.music-listeners.v1') {
+        local.publishData = original;
+        throw Error('test presence send failure');
+      }
+      return original(...args);
+    };
+  });
   await listener.getByRole('button', { name: /^Reset .* music to 100%$/ }).click();
   await listener.getByRole('button', { name: /^Stop listening to .* music$/ }).click();
   await listener.waitForFunction((id) => !window.__voice.debugSubscriptions()[`${id}:screen_share_audio`], ownerId);
   assert.equal(await listener.evaluate(() => window.__voice.getSnapshot().phase), 'connected');
-  report('Stop listening unsubscribes without leaving the call');
+  await waitForListeners(owner, []);
+  report('Stop listening unsubscribes; heartbeat repairs a failed presence send without leaving the call');
   await listener.getByRole('button', { name: /^Listen to .* music$/ }).click();
   const sid = await listener.evaluate(() => window.__voice.getSnapshot().sharedAudio[0].sid);
   await owner.getByRole('button', { name: 'Stop sharing music', exact: true }).click();
@@ -166,7 +266,8 @@ try {
     sid,
   );
   assert.equal(await listener.evaluate(() => window.__voice.getSnapshot().sharedAudio[0].listening), false);
-  report('restarting music requires fresh listener consent');
+  await waitForListeners(owner, []);
+  report('restarting music requires fresh consent and never inherits the old audience');
   await listener.getByRole('button', { name: /^Listen to .* music$/ }).click();
   await listener.waitForFunction((key) => (window.__voice.mix?.energyOf(key) ?? 0) > 0.01, key);
   // Voices retain their independent settings while music is playing.
@@ -177,11 +278,15 @@ try {
   await listener.getByRole('button', { name: 'Close mixer' }).click();
   await listener.getByRole('button', { name: 'Deafen', exact: true }).first().click();
   await listener.waitForFunction(() => window.__voice.mix.master.gain.value === 0);
+  await waitForListeners(owner, []);
   await openMixer(listener);
+  await pause(150);
+  assert.equal(await listener.getByRole('meter', { name: / music level$/ }).getAttribute('aria-valuenow'), '-60');
   await listener.getByText('Undeafen in the call controls to hear your mix.').waitFor();
   await listener.getByRole('button', { name: 'Close mixer' }).click();
   await listener.getByRole('button', { name: 'Undeafen', exact: true }).first().click();
   await listener.waitForFunction(() => window.__voice.mix.master.gain.value > 0);
+  await waitForListeners(owner, [listenerId]);
   await openMixer(listener);
   assert.equal(await voiceRange.inputValue(), '250');
   report('voice settings are independent; deafen silences the entire output and preserves the mix');
@@ -213,15 +318,16 @@ try {
   await pause(1000);
   assert.ok((await energy(listener, key)) - corrupt < 0.00001);
   assert.ok((await musicPackets()) > packetsBefore, 'encrypted packets continue arriving with the wrong key');
-  report('wrong key stops decoded music');
+  assert.equal(await musicMeter.getAttribute('aria-valuenow'), '-60');
+  report('wrong key stops decoded music and its level meter');
   await mkdir('docs/shots', { recursive: true });
-  await listener.screenshot({ path: 'docs/shots/call-mixer-desktop.png' });
+
   await listener.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await listener.evaluate(() => document.querySelector('.call-mixer').scrollWidth <= window.innerWidth),
     true,
   );
-  await listener.screenshot({ path: 'docs/shots/call-mixer-mobile.png' });
+
   await listener.setViewportSize({ width: 1400, height: 940 });
   // Stop through the capture track's own ending event, like closing the source.
   await owner.evaluate(() => {
@@ -235,7 +341,7 @@ try {
   // A fresh join rotates back to valid keys after the deliberate corruption.
   await listener.getByRole('button', { name: 'Close mixer' }).click();
   await listener.getByRole('button', { name: 'Leave the call', exact: true }).click();
-  await listener.waitForFunction(() => window.__voice.getSnapshot().phase === 'idle');
+  await listener.waitForFunction(() => window.__voice.getSnapshot().phase === 'ended');
   await join(listener);
   await listener.waitForFunction(() =>
     window.__voice.getSnapshot().people.some((person) => person.state === 'secured'),
@@ -255,6 +361,9 @@ try {
     false,
   );
   await listener.waitForFunction((id) => (window.__voice.mix?.energyOf(`${id}:screen`) ?? 0) > 0.005, ownerId);
+  await listener.waitForFunction(
+    () => Number(document.querySelector('[aria-label$="stream level"]').getAttribute('aria-valuenow')) > -60,
+  );
   await setRange(listener.getByRole('slider', { name: / stream volume$/ }), 300);
   assert.equal(await voiceRange.inputValue(), '250');
   await owner
@@ -264,6 +373,31 @@ try {
   await owner.evaluate(() => window.__voice.setScreenShare(false));
   await listener.waitForFunction(() => window.__voice.getSnapshot().sharedAudio.length === 0);
   report('stream audio has its own mixer control without downloading video; sharing slots cannot overlap');
+  // Real soundboard audio, both remote and local, reaches the aggregate clip meter.
+  await owner.evaluate(() => window.__voice.debugPlayTone(2));
+  await listener.waitForFunction(
+    () => Number(document.querySelector('[aria-label="Soundboard level"]').getAttribute('aria-valuenow')) > -40,
+  );
+  await owner.evaluate(() => {
+    const local = window.__voice.board.local;
+    const context = local.context;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    gain.gain.value = 0.2;
+    oscillator.connect(gain).connect(local);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 2);
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    };
+  });
+  await owner.waitForFunction(
+    () => Number(document.querySelector('[aria-label="Soundboard level"]').getAttribute('aria-valuenow')) > -30,
+  );
+  await pause(2300);
+  assert.equal(await owner.getByRole('meter', { name: 'Soundboard level' }).getAttribute('aria-valuenow'), '-60');
+  report('screen audio and remote/local soundboard meters show actual audio and settle to silence');
 
   const third = await login('mara');
   await join(third);
@@ -340,7 +474,7 @@ try {
   await owner.getByRole('button', { name: 'Share music', exact: true }).click();
   await owner.getByRole('button', { name: 'Close mixer' }).click();
   await owner.getByRole('button', { name: 'Leave the call', exact: true }).click();
-  await owner.waitForFunction(() => window.__voice.getSnapshot().phase === 'idle');
+  await owner.waitForFunction(() => window.__voice.getSnapshot().phase === 'ended');
   const late = await owner.evaluate(async () => {
     const a = new AudioContext();
     const d = a.createMediaStreamDestination();

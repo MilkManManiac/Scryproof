@@ -9,18 +9,59 @@ import { isDesktop } from '../lib/desktop';
 import { musicSound } from '../lib/music-share';
 import { screenSound } from '../lib/voice-session';
 import { MAX_PERSON_VOLUME, voicePrefs } from '../lib/voice-prefs';
-import { Avatar } from './Avatar';
+import type { PublicUser } from '@scryproof/shared';
+import { Avatar, initials } from './Avatar';
 import { ConnectionPanel } from './VoicePanel';
 import { SpeakerGlyph, SlidersGlyph } from './glyphs';
 
+function MusicListeners({
+  ids,
+  people,
+}: {
+  ids: string[];
+  people: { userId: string; name: string; user?: PublicUser }[];
+}) {
+  const listeners = ids.flatMap((id) => {
+    const person = people.find((entry) => entry.userId === id);
+    return person ? [person] : [];
+  });
+  return (
+    <div className="mixer-listeners">
+      {listeners.length > 0 ? (
+        <ul aria-label="Listening to this music">
+          {listeners.map((person) => (
+            <li
+              key={person.userId}
+              data-user-id={person.userId}
+              title={`${person.name} is listening`}
+              aria-label={`${person.name} is listening`}
+            >
+              {person.user ? (
+                <Avatar user={person.user} name={person.name} small />
+              ) : (
+                <span className="avatar small" aria-hidden="true">
+                  {initials(person.name)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <span>{listeners.length > 0 ? `${listeners.length} listening` : 'No one listening yet'}</span>
+    </div>
+  );
+}
+
 function Fader({
   label,
+  source,
   value,
   onChange,
   max = MAX_PERSON_VOLUME,
   disabled = false,
 }: {
   label: string;
+  source: string;
   value: number;
   onChange: (value: number) => void;
   max?: number;
@@ -69,6 +110,24 @@ function Fader({
       >
         Reset
       </button>
+      <div
+        className="mixer-level"
+        data-mix-source={source}
+        role="meter"
+        aria-label={`${label} level`}
+        aria-valuemin={-60}
+        aria-valuemax={0}
+        aria-valuenow={-60}
+        aria-valuetext="Silent"
+        title="Output level · RMS dBFS · −60 to 0 dB"
+      >
+        <span className="mixer-level-track" aria-hidden="true">
+          <i />
+        </span>
+        <span className="mixer-level-number" aria-hidden="true">
+          −∞ dB
+        </span>
+      </div>
     </div>
   );
 }
@@ -113,6 +172,26 @@ function CallMixer({ onClose }: { onClose: () => void }) {
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get);
   useLocalNames();
   const panel = useRef<HTMLDivElement>(null);
+  // One local sampling loop for the open mixer; no call-wide React rerenders.
+  useEffect(() => {
+    const draw = () => {
+      if (document.hidden) return;
+      for (const meter of panel.current?.querySelectorAll<HTMLElement>('[data-mix-source]') ?? []) {
+        const db = session.mixerLevel(meter.dataset.mixSource!);
+        const clamped = Math.max(-60, Math.min(0, db));
+        const silent = db <= -60;
+        const label = silent ? '−∞ dB' : `${Math.round(db)} dB`;
+        meter.style.setProperty('--meter-level', `${((clamped + 60) / 60) * 100}%`);
+        meter.setAttribute('aria-valuenow', String(Math.round(clamped)));
+        meter.setAttribute('aria-valuetext', silent ? 'Below −60 dBFS' : `${Math.round(db)} dBFS`);
+        const number = meter.querySelector('.mixer-level-number');
+        if (number && number.textContent !== label) number.textContent = label;
+      }
+    };
+    draw();
+    const timer = window.setInterval(draw, 50);
+    return () => window.clearInterval(timer);
+  }, [session]);
   const close = useRef(onClose);
   close.current = onClose;
   useLayer(() => close.current());
@@ -158,14 +237,18 @@ function CallMixer({ onClose }: { onClose: () => void }) {
   const self = occupants.find((person) => person.userId === state.user?.id);
   const members = state.members[self?.serverId ?? ''] ?? [];
   const dm = call.dmId ? conversations.dms[call.dmId] : undefined;
-  const people = occupants
-    .filter((person) => person.userId !== state.user?.id)
+  const everyone = occupants
     .map((person) => {
       const member = members.find((entry) => entry.userId === person.userId);
-      const user = member?.user ?? dm?.members.find((entry) => entry.id === person.userId);
+      const user =
+        (person.userId === state.user?.id ? state.user : undefined) ??
+        member?.user ??
+        dm?.members.find((entry) => entry.id === person.userId);
       return { ...person, user, name: nameFor(person.userId, member?.nickname ?? user?.displayName ?? 'Someone') };
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
+  const people = everyone.filter((person) => person.userId !== state.user?.id);
+  const ownMusic = call.sharedAudio.find((share) => share.userId === state.user?.id && share.kind === 'music');
   const canCapture = Boolean(navigator.mediaDevices?.getDisplayMedia);
   const deafened = Boolean(self?.selfDeaf || self?.serverDeaf);
   const blocked = call.sharing || !call.can.screenShare || self?.serverMute || !canCapture;
@@ -194,6 +277,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
             </div>
             <Fader
               label="Call output"
+              source=":output"
               value={prefs.outputVolume}
               max={2}
               onChange={(outputVolume) => voicePrefs.set({ outputVolume })}
@@ -240,6 +324,8 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                 {call.musicError}
               </p>
             ) : null}
+            {ownMusic ? <MusicListeners ids={ownMusic.listeners} people={everyone} /> : null}
+            <p className="mixer-listener-note">When you listen, your picture appears for everyone in the call.</p>
           </section>
           <div className="mixer-section-label">
             People{' '}
@@ -265,6 +351,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
               </div>
               <Fader
                 label={`${person.name} voice`}
+                source={person.userId}
                 value={prefs.volumes[person.userId] ?? 1}
                 onChange={(value) => voicePrefs.setVolumeFor(person.userId, value)}
               />
@@ -297,10 +384,12 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                       </div>
                       <Fader
                         label={label}
+                        source={key}
                         value={prefs.volumes[key] ?? 1}
                         disabled={!share.listening}
                         onChange={(value) => voicePrefs.setVolumeFor(key, value)}
                       />
+                      {music ? <MusicListeners ids={share.listeners} people={everyone} /> : null}
                     </div>
                   );
                 })}
@@ -312,6 +401,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
             </div>
             <Fader
               label="Soundboard"
+              source=":soundboard"
               value={prefs.soundboardVolume}
               max={1}
               onChange={(soundboardVolume) => voicePrefs.set({ soundboardVolume })}

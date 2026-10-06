@@ -2,7 +2,11 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-04, ~03:25 ET)
+## Pick up here (2026-10-05)
+
+**Merged to main, not deployed:** Matt's music listener avatars and live level meters (PR #9, section below). Client-only: no installer, no migration. Deploy needs Wes's word.
+
+## Trey theme live (2026-10-04, ~03:25 ET)
 
 **LIVE 2026-10-04 03:23 ET (client 1791098537801, no new installer): the Trey theme** (Wes: "yea its good deploy it"). Proven live: health ok, the box serves client 1791098537801, `/backdrops/trey.jpg` matches the local file byte for byte (165917), and the served bundle carries the theme CSS and its What's new entry. Not proven: nobody has picked it signed in on the live site yet. Below is how it got here, over three passes. First pass (Wes: "call this the trey theme. Go nuts with the alive funtion. Fire effectts. maybe some snow, stars going nuts, cluonds"). His notes on it: "it kinda droppped the fire from the zoom in. I want to keep that. Then drop the snow and the like wild bursts from the stars. Twinkles are great. Shooting stars are great. Fire effects seemed great. Maybe add some clounds moving. Maybe some dark birds flying."
 
@@ -22,6 +26,21 @@ Living state. Update this at the end of every working session.
 
 ![Trey theme](shots/theme-trey.png)
 ![The scene alone](shots/theme-trey-scene.png)
+## Music listener avatars and live meters (2026-10-04, Matt, PR #9)
+
+Implemented in `bacb143`. Matt approved publication; pushed on `feat/music-listeners` and opened [PR #9](https://github.com/MilkManManiac/Scryproof/pull/9) for Milk to review and merge. Not deployed.
+
+Built on `63f48b3`, after the call mixer release. Each music source now shows a row of listener avatars and a count beneath its fader; the sharer sees the same row on their own Music together card. Uses the existing profile avatar, with initials as a fallback and names on hover. Rows wrap on narrow screens. Listening is opt-in and visible to everyone in that call, explained beside Share music.
+
+Presence means the current music publication is selected, subscribed, unmuted, and has nonzero music and master volume while undeafened. It cannot prove that someone's physical speakers are audible. Stop listening, zero volume, deafen, leaving, and ending/restarting a share remove the relevant indicators. Old clients do not report presence until they receive the client update. No new installer or server migration is needed.
+
+Transport: bounded, reliable LiveKit data messages carrying only publication IDs, authenticated to the room participant that sent them. This is ephemeral call metadata, **not end-to-end encrypted data**; media encryption is unchanged. No database or browser-history storage. Full snapshots, targeted replies for late arrivals, ten-second refreshes and a 35-second expiry repair missed updates; ended publications cannot transfer an audience to a new share. Leaving clears all presence and pending sends check their room before publishing.
+
+The mixer also has live RMS level bars with numeric dBFS for every voice, music/stream source, soundboard and overall call output. Green moves into amber/red near full scale; the visible range is −60 to 0 dBFS, with readings above 0 retained numerically. Individual source levels include source and master gain. Aggregate output and soundboard levels are measured from summed audio, including local clips. Analysis-only branches leave speaker routing and E2EE unchanged. One 50 ms loop runs only while the mixer is mounted, skips hidden pages, updates meter DOM without re-rendering the call, and clears on close; transitions respect reduced motion. These levels stay on the listener's device.
+
+Verified locally: typecheck, all 60 web test files, and the expanded `scripts/mixer-check.mjs` with real Chrome tab capture against the isolated development API and LiveKit. Three participants proved late-join snapshots, opt-in, multiple avatars, payload identity isolation, removal on departure/mute/zero-output/deafen, heartbeat repair after an injected send failure, and no inherited audience on restart. Real decoded signal proved 400% gain (15.8× energy and roughly +12 dB), half master output (−6 dB), mute/deafen/wrong-key silence, screen audio and remote/local soundboard meters. Capture failure, cancellation, leave-during-capture and SDK unpublish cleanup passed with no browser runtime errors. The original regression expected `idle` after leave; current main uses `ended`, so the test now checks that state. Review caught the lazily created mix missing the first joiner's local soundboard tap; mix initialization is now shared by local clips and inbound audio, and the regression proves both.
+
+Desktop and 390px layouts were visually inspected in Chrome. Seeded users have initials; actual photos use the existing Avatar component. Native desktop, Safari and physical phones/tablets were not tested for this addition. Production web build passed (existing large-chunk warning). Screenshots: `docs/shots/music-listeners-desktop.png`, `music-listeners-sharer.png`, `music-listeners-mobile.png`. Not deployed; Milk retains merge/release review.
 
 ## Before that (2026-10-04, ~01:30 ET)
 
