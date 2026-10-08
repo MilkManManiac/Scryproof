@@ -13,6 +13,12 @@ export const ACTIVITIES: readonly Activity[] = [
     description: 'Scoop, sell, upgrade. One swamp at a time.',
     path: '/drain-the-swamp/',
   },
+  {
+    id: 'hero-line',
+    name: 'Hero Line',
+    description: 'Maze your lane, send troops at everyone else. Last keep standing.',
+    path: '/hero-line/',
+  },
 ];
 
 const configured =
