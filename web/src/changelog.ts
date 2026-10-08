@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-08-hero-line',
+    date: '2026-10-08',
+    title: 'Hero Line, a new game in Activities',
+    notes: [
+      'Hero Line is in Activities next to Drain The Swamp. You own a lane: build towers to stop what the others send at you, and spend gold to send troops at them. Leaks cost lives. Last keep standing wins.',
+      'Play alone against one, two or three bots, or go Multiplayer: host a game with up to four seats and share the room code, or join an open game from the list. Empty seats are bots, and if someone drops out a bot takes their seat.',
+      'The game runs on its own page, so it never sees your account. Type a name in the game, and paste the invite link into chat yourself when you want friends to join.',
+    ],
+  },
+  {
     id: '2026-10-06-who-voted',
     date: '2026-10-06',
     title: 'See who voted, and turn yourself up',
