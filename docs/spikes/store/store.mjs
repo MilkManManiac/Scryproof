@@ -12,7 +12,8 @@ import http from 'node:http'; import fs from 'node:fs'; import path from 'node:p
 
 const arg = (k) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : null; };
 const DIR = arg('dir') || '/var/lib/pass-along-store', STATIC = arg('static') && path.resolve(arg('static'));
-const LAYERS = ['bass', 'kicks', 'hats', 'pads', 'melody'], MAX_BODY = 64 * 1024, MAX_LOOPS = 200, KEEP_DAYS = 14;
+const LAYERS = ['bass', 'kicks', 'hats', 'pads', 'melody', 'melody2', 'vocals'], MAX_BODY = 1800 * 1024, MAX_LOOPS = 200, KEEP_DAYS = 14;
+const MAX_CLIP = 1.2e6 * 4 / 3 + 8; // a vocals clip, base64; webm/opus at 64 kbit is well under this for one loop
 const CSP = "sandbox allow-scripts allow-same-origin; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'";
 fs.mkdirSync(DIR, { recursive: true });
 
@@ -38,7 +39,9 @@ function layerFrom(b) {
   const notes = (Array.isArray(b.notes) ? b.notes : []).slice(0, 512)
     .map((n) => ({ row: num(n.row, 0, 63, 0) | 0, start: num(n.start, 0, 63, 0) | 0, len: num(n.len, 1, 64, 2) | 0 }));
   const parts = (Array.isArray(b.parts) ? b.parts : []).slice(0, 4)
-    .map((p) => ({ sound: clean(p.sound, 40), level: num(p.level, 0, 1.5, 1), fx: Object.fromEntries(Object.entries(p.fx ?? {}).slice(0, 8).map(([k, v]) => [clean(k, 12), num(v, 0, 1, 0)])) }));
+    .map((p) => ({ sound: clean(p.sound, 40), level: num(p.level, 0, 1.5, 1), fx: Object.fromEntries(Object.entries(p.fx ?? {}).slice(0, 8).map(([k, v]) => [clean(k, 12), num(v, 0, 1, 0)])),
+      ...(p.clip && typeof p.clip.data === 'string' && p.clip.data.length <= MAX_CLIP && /^[A-Za-z0-9+/=]*$/.test(p.clip.data)
+        ? { clip: { mime: clean(p.clip.mime, 40) || 'audio/webm', data: p.clip.data }, start: num(p.start, 0, 63, 0) | 0 } : {}) }));
   return { by: clean(b.by, 24) || 'someone', bpm: num(b.bpm, 60, 200, 120) | 0, kit: clean(b.kit, 20), notes, parts, at: Date.now() };
 }
 

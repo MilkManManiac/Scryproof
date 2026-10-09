@@ -396,7 +396,7 @@ function ActivityPlayer({
             title={game.name}
             src={activityUrl(game)}
             sandbox="allow-scripts allow-same-origin allow-pointer-lock"
-            allow="autoplay; fullscreen"
+            allow="autoplay; fullscreen; microphone"
             referrerPolicy="no-referrer"
           />
           {status !== 'ready' ? (

@@ -536,8 +536,8 @@ function armGateway(ses) {
 /* ------------------------------- permissions ------------------------------- */
 
 function armPermissions(ses) {
-  ses.setPermissionRequestHandler((_contents, permission, done, details) => done(shellPermission(details.requestingUrl, permission, details.isMainFrame !== false)));
-  ses.setPermissionCheckHandler((_contents, permission, origin, details) => shellPermission(origin, permission, details.isMainFrame !== false));
+  ses.setPermissionRequestHandler((_contents, permission, done, details) => done(shellPermission(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null)));
+  ses.setPermissionCheckHandler((_contents, permission, origin, details) => shellPermission(origin, permission, details.isMainFrame !== false, details.mediaType ?? null));
 
   // Windows has no picker of its own to hand over to, so the page draws one.
   ses.setDisplayMediaRequestHandler((request, done) => {

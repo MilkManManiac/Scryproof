@@ -69,6 +69,8 @@ assert marker in s and block not in s
 open(p, 'w').write(s.replace(marker, block + marker))
 PY
 fi
+# vocals: the page may use the microphone (its own origin only); the front block takes a clip-sized body
+sed -i 's/microphone=()/microphone=(self)/' "$conf"
 nginx -t -c "$conf" -q
 systemctl reload scryproof-activities
 
@@ -92,7 +94,7 @@ block = '''    # Pass-along loops: small JSON to the store's unix socket (pass-a
         proxy_set_header Cookie "";
         proxy_set_header Authorization "";
         proxy_buffering off;
-        client_max_body_size 64k;
+        client_max_body_size 2m;
         proxy_read_timeout 15s;
     }
 '''
@@ -101,6 +103,7 @@ assert marker in s and block not in s
 open(p, 'w').write(s.replace(marker, block + marker))
 PY2
 fi
+sed -i '/location \^~ \/pass-along\/api\//,/}/ s/client_max_body_size 64k;/client_max_body_size 2m;/' "$front"
 nginx -t -q || { echo "front nginx config broken, NOT reloaded"; exit 1; }
 systemctl reload nginx
 echo "installed $rel"

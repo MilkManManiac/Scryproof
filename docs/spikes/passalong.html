@@ -57,6 +57,8 @@
   .tabs { display: flex; gap: 3px; margin: 6px 0 2px; flex-wrap: wrap; }
   .tabs button { font-size: 11px; padding: 2px 7px; margin: 0; border-radius: 5px; background: #242833; color: #9a978f; }
   .tabs button.on { background: var(--c); color: #15171c; font-weight: 600; }
+  .tabs .range { font-size: 11px; color: #9a978f; font-weight: 400; align-self: center; }
+  .tabs .file { font-size: 11px; color: #9a978f; font-weight: 400; align-self: center; cursor: pointer; text-decoration: underline dotted; }
   .knobs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
   .knob { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: #9a978f; }
   .knob.on { color: #e6e3dc; }
@@ -81,7 +83,7 @@
   <h1>Pass-along</h1>
   <p id="msg" class="sub" hidden style="color:#e0a05a"></p>
   <div id="start">
-    <p>One eight-count. Five layers: bass, kick and snare, hats and claps, pads, melody.</p>
+    <p>One eight-count. Seven layers: bass, kick and snare, hats and claps, pads, two melodies, vocals.</p>
     <p><label>Your name <input id="name" maxlength="24" placeholder="so friends see who did what"></label></p>
     <p><button class="big" data-mode="solo">Solo, I'll do them all</button>
     <input id="loopName" maxlength="40" placeholder="call it something"> <button class="big" id="new">Start a loop for friends</button></p>
@@ -99,7 +101,7 @@
       <label>BPM <input type="number" id="bpm" min="60" max="200" step="1" value="120"></label>
       <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
       <label><span class="peak" id="peak"></span> limiter</label>
-      <label>overall volume <input type="range" id="masterVol" min="0" max="1" step="0.05" value="0.5" style="width:90px"></label>
+      <label>overall volume <input type="range" id="masterVol" min="0" max="1" step="0.02" value="0.5" style="width:90px"></label>
     </div>
     <div class="chords"><div></div><div class="names" id="chordNames"></div></div>
     <div id="layers"></div>

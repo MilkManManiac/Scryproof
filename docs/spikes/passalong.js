@@ -91,19 +91,38 @@ const DRUM_SQUEEZE = [{ type: 'compressor', p: { threshold: -14, ratio: 3, attac
 const synthPart = (label, sounds) => ({ label, kind: 'synth', sounds, sound: sounds[0] });
 const drumPart = (label, cat) => ({ label, kind: 'drum', cat, sounds: samplesOf(cat), sound: samplesOf(cat)[0].name });
 const drumLayer = (id, who, hint, color, parts) => ({ id, who, hint, color, kits: KITS, kit: KITS[0], parts, rows: parts.map((p, i) => ({ label: p.label, part: i })) });
+const MELODY = ['PLUCK', 'BELLS', 'MUSIC BOX', 'MARIMBA', 'KALIMBA', 'HARP', 'STEEL DRUM', 'GLASS KEYS', 'FLUTE', 'WHISTLE', 'CHIP', 'SQUARE LEAD', 'POLIVOKS LEAD', 'HOLLOW PULSE'];
+// Scale rows run three to four octaves; the screen shows VIEW of them at a time and the higher/lower buttons move the window
+// (Wes: "sometimes i wanna go to a lower octave. maybe just let you zoom in / out"). `top` is the highest note shown at first.
+const VIEW = 15;
 const LAYERS = [
-  { id: 'bass', who: 'Bass', hint: 'the groove', color: '#d9a441', rows: scaleRows(33, 52),
+  { id: 'bass', who: 'Bass', hint: 'the groove', color: '#d9a441', top: 52, rows: scaleRows(24, 64),
     parts: [synthPart('bass', ['SUB BASS', 'ROUND BASS', 'PLUCK BASS', 'ACID BASS', 'DISCO BASS', '808 BASS', 'REESE', 'WOBBLE', 'DIRTY OCTAVES'])] },
   drumLayer('kicks', 'Kick & snare', 'the backbone', '#d95f5f', [drumPart('kick', 'kick'), drumPart('808', '808'), drumPart('snare', 'snare'), drumPart('tom', 'perc')]),
   drumLayer('hats', 'Hats & claps', 'the top end', '#e08a5a', [drumPart('closed', 'chat'), drumPart('open', 'ohat'), drumPart('clap', 'clap'), drumPart('perc', 'perc')]),
-  { id: 'pads', who: 'Pads', hint: "chord rows play the day's chord; the notes below are yours", color: '#a98fd9',
-    rows: [{ label: 'chord high', root: 69 }, { label: 'chord mid', root: 60 }, { label: 'chord low', root: 52, gap: true }, ...scaleRows(52, 76)],
+  { id: 'pads', who: 'Pads', hint: "chord rows play the day's chord; the notes below are yours", color: '#a98fd9', top: 76,
+    rows: [{ label: 'chord high', root: 69 }, { label: 'chord mid', root: 60 }, { label: 'chord low', root: 52, gap: true }, ...scaleRows(40, 88)],
     parts: [synthPart('pads', ['WARM PAD', 'STRINGS', 'DREAM PAD', 'CHOIR', 'E PIANO', 'ORGAN', 'SUPERSAW', 'PHASED KEYS', 'HALO LEAD', 'BRASS'])] },
-  { id: 'melody', who: 'Melody', hint: 'the last word', color: '#8fd18f', rows: scaleRows(57, 81),
-    parts: [synthPart('melody', ['PLUCK', 'BELLS', 'MUSIC BOX', 'MARIMBA', 'KALIMBA', 'HARP', 'STEEL DRUM', 'GLASS KEYS', 'FLUTE', 'WHISTLE', 'CHIP', 'SQUARE LEAD', 'POLIVOKS LEAD', 'HOLLOW PULSE'])] },
+  { id: 'melody', who: 'Melody', hint: 'the tune', color: '#8fd18f', top: 81, rows: scaleRows(45, 93), parts: [synthPart('melody', MELODY)] },
+  { id: 'melody2', who: 'Melody 2', hint: 'answer the first melody', color: '#6fc3c8', top: 81, rows: scaleRows(45, 93), parts: [synthPart('melody', MELODY)] },
+  { id: 'vocals', who: 'Vocals', hint: 'sing or talk over it: record one loop, or drop a sound file on the row', color: '#e3b7d6',
+    rows: [{ label: 'clip', clip: true, part: 0 }], parts: [{ label: 'vocals', kind: 'clip', sounds: [], sound: '', clip: null, start: 0 }] },
 ];
+// Which rows are on screen: fixed rows always, scale rows through the window.
+const scaleIdx = (l) => l.rows.map((r, i) => (r.midi ? i : -1)).filter((i) => i >= 0);
+function shownRows(l) {
+  const win = new Set(scaleIdx(l).slice(l.view, l.view + VIEW));
+  return l.rows.map((r, i) => ({ row: r, ri: i })).filter((x) => !x.row.midi || win.has(x.ri));
+}
+function outside(l) { // notes above and below the window, so a hidden note is never a mystery
+  const sc = scaleIdx(l), win = sc.slice(l.view, l.view + VIEW);
+  const above = l.notes.filter((n) => l.rows[n.row].midi && sc.indexOf(n.row) < l.view).length;
+  const below = l.notes.filter((n) => l.rows[n.row].midi && sc.indexOf(n.row) >= l.view + VIEW).length;
+  return { above, below, lo: l.rows[win[win.length - 1]]?.label, hi: l.rows[win[0]]?.label };
+}
 for (const l of LAYERS) {
   l.notes = []; l.hearAt = 1; l.editing = 0;
+  const sc = scaleIdx(l); l.view = sc.length ? Math.max(0, Math.min(sc.length - VIEW, sc.filter((i) => l.rows[i].midi[0] > l.top).length)) : 0;
   for (const p of l.parts) { p.level = p.kind === 'drum' ? 1 : 0.8; p.fx = Object.fromEntries(Object.keys(FX).map((k) => [k, 0])); }
 }
 const byId = (id) => LAYERS.find((l) => l.id === id);
@@ -116,6 +135,7 @@ const free = () => LAYERS.filter((l) => !done.has(l.id));
 
 // ---- sound: a chain a part, then a listen volume a layer, then one limiter over all ----
 let ctx, master, meter;
+const gainOf = (v) => v * v * 0.4; // slider half way -> 0.1, full -> 0.4 (Wes: "to put it at a reasonable volume you have to put it at like 10%")
 function limiter(threshold) {
   const lim = ctx.createDynamicsCompressor();
   lim.threshold.value = threshold; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
@@ -135,7 +155,7 @@ function boot() {
 }
 function build() {
   ctx = new AudioContext();
-  master = ctx.createGain(); master.gain.value = +document.getElementById('masterVol').value;
+  master = ctx.createGain(); master.gain.value = gainOf(+document.getElementById('masterVol').value);
   meter = limiter(-3);
   master.connect(meter).connect(ctx.destination);
   for (const l of LAYERS) {
@@ -148,6 +168,7 @@ function build() {
       p.fader.connect(limiter(-6)).connect(l.listen);
       p.rack = new K.Rack(ctx, p.input, p.fader); p.rack.setTempo(bpm);
       setSound(p, p.sound);
+      if (p.kind === 'clip' && p.clip) loadClip(p);
     }
   }
   setInterval(() => document.getElementById('peak').classList.toggle('hot', meter.reduction < -1), 80);
@@ -156,12 +177,12 @@ function setSound(p, s) {
   p.sound = s;
   if (!ctx) return;
   if (p.kind === 'synth') p.inst.load(preset(s).synth);
-  else buffer(p.sounds.find((x) => x.name === s));
+  else if (p.kind === 'drum') buffer(p.sounds.find((x) => x.name === s));
   applyFx(p);
 }
 function applyFx(p) {
   if (!ctx) return;
-  const base = p.kind === 'drum' ? DRUM_SQUEEZE : preset(p.sound).rack;
+  const base = p.kind === 'drum' ? DRUM_SQUEEZE : p.kind === 'clip' ? [] : preset(p.sound).rack;
   const own = Object.entries(p.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v));
   p.rack.load([...base, ...own]);
 }
@@ -183,7 +204,13 @@ let playing = false, tickAt = 0, nextAt = 0, timer;
 function tick() {
   while (nextAt < ctx.currentTime + 0.1) {
     const t = tickAt;
-    for (const l of LAYERS) { if (l.muted) continue; for (const n of l.notes) if (n.start === t) sound(l, n, nextAt); }
+    for (const l of LAYERS) {
+      if (l.muted) continue;
+      for (const n of l.notes) if (n.start === t) sound(l, n, nextAt);
+      const p = l.parts[0];
+      if (p.kind === 'clip' && p.buf && t === p.start) { const src = ctx.createBufferSource(); src.buffer = p.buf; src.connect(p.input); src.start(nextAt); src.stop(nextAt + TICKS * tickDur()); }
+      if (p.arm && t === 0) armed(p, nextAt);
+    }
     setTimeout(() => mark(t), Math.max(0, (nextAt - ctx.currentTime) * 1000));
     tickAt = (tickAt + 1) % TICKS; nextAt += tickDur();
   }
@@ -200,10 +227,35 @@ function setBpm(v) {
   if (ctx) LAYERS.forEach((l) => l.parts.forEach((p) => p.rack?.setTempo(bpm)));
 }
 
+// ---- vocals (Wes: "Let people add vocals"): record one loop with the mic, or a sound file. Travels in the loop as base64. ----
+const b64 = (buf) => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
+async function loadClip(p) { try { p.buf = await ctx.decodeAudioData(unb64(p.clip.data)); } catch (e) { say('That sound could not be read: ' + e.message); p.buf = null; } }
+async function setClip(p, blob) {
+  if (blob.size > 1.2e6) { say('That file is too big (1.2 MB at most). Record it here, or trim it.'); return; }
+  boot(); p.clip = { mime: blob.type || 'audio/webm', data: b64(await blob.arrayBuffer()) }; p.buf = null;
+  await loadClip(p); say(''); draw();
+}
+async function record(p) {
+  boot(); say('');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { say('No microphone here (' + e.name + '). Drop a sound file on the row instead.'); return; }
+  const rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 } : {});
+  const chunks = []; rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.onstop = () => { stream.getTracks().forEach((t) => t.stop()); p.arm = null; setClip(p, new Blob(chunks, { type: rec.mimeType })); };
+  p.arm = rec; if (!playing) play(); say('Recording starts at the top of the loop, for one loop. Get ready.'); draw();
+}
+function armed(p, at) { // the loop is about to hit tick 0: start the recorder there, stop it one loop later
+  const rec = p.arm; p.arm = null;
+  setTimeout(() => { rec.start(); say('Recording...'); setTimeout(() => rec.state === 'recording' && rec.stop(), TICKS * tickDur() * 1000); }, Math.max(0, (at - ctx.currentTime) * 1000));
+}
+
 // ---- screen ----
 const layersEl = document.getElementById('layers');
 document.getElementById('chordNames').innerHTML = CHORDS.map((c) => `<span>${c.name}</span>`).join('');
 const fits = (l, row, tick) => !!row.midi && chordAt(tick).tones.includes(row.midi[0] % 12);
+const rangeText = (l) => { const o = outside(l); return `${o.lo} to ${o.hi}` + (o.above ? `, ${o.above} above` : '') + (o.below ? `, ${o.below} below` : ''); };
 const noteWidth = (ticks) => { const n = ticks / per(); return `calc(${n * 100}% + ${(n - 1) * 2}px)`; };
 function draw() {
   layersEl.replaceChildren(...LAYERS.map((l) => {
@@ -214,9 +266,12 @@ function draw() {
     const dis = own ? '' : 'disabled';
     const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${dis}></label>`;
     el.innerHTML = `<div class="who">${l.who}<small>${state}</small>
+      ${l.top !== undefined ? `<div class="tabs"><button data-oct="-1" ${dis}>&#9650; higher</button><button data-oct="1" ${dis}>&#9660; lower</button><span class="range">${rangeText(l)}</span></div>` : ''}
+      ${p.kind === 'clip' ? `<div class="tabs"><button data-rec ${dis}>${p.arm ? 'Waiting for the top...' : 'Record one loop'}</button><label class="file"><input type="file" accept="audio/*" data-file ${dis} hidden>or pick a file</label></div>
+        <label class="knob on">start<input type="range" min="0" max="${TICKS - 1}" step="1" value="${p.start}" data-k="start" ${dis}></label>` : ''}
       ${l.kits ? `<select data-kit ${dis}>${l.kits.map((k) => `<option value="${k}" ${k === l.kit ? 'selected' : ''}>${k} kit</option>`).join('')}</select>` : ''}
       ${l.parts.length > 1 ? `<div class="tabs">${l.parts.map((q, i) => `<button data-tab="${i}" class="${i === l.editing ? 'on' : ''}">${q.label}</button>`).join('')}</div>` : ''}
-      <select data-sound ${dis}>${p.sounds.map((s) => `<option ${soundName(s) === p.sound ? 'selected' : ''}>${soundName(s)}</option>`).join('')}</select>
+      ${p.sounds.length ? `<select data-sound ${dis}>${p.sounds.map((s) => `<option ${soundName(s) === p.sound ? 'selected' : ''}>${soundName(s)}</option>`).join('')}</select>` : ''}
       <div class="knobs">${knob('volume', p.level, 1.5)}${Object.keys(FX).map((k) => knob(k, p.fx[k])).join('')}</div>
       ${own ? '' : `<label class="knob on" title="Only you hear this change">hear at<input type="range" min="0" max="1.5" step="0.05" value="${l.hearAt}" data-k="hearAt"></label>`}
       ${own ? '<button data-clear>Clear mine</button>' : ''}
@@ -225,12 +280,16 @@ function draw() {
     </div><div class="rows" style="--cols:${cols}"></div>`;
     el.querySelector('[data-kit]')?.addEventListener('change', (e) => { boot(); setKit(l, e.target.value); draw(); });
     el.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { l.editing = +b.dataset.tab; draw(); }; });
-    el.querySelector('[data-sound]').onchange = (e) => { boot(); setSound(p, e.target.value); };
+    el.querySelector('[data-sound]')?.addEventListener('change', (e) => { boot(); setSound(p, e.target.value); });
+    el.querySelectorAll('[data-oct]').forEach((b) => { b.onclick = () => { const n = scaleIdx(l).length - VIEW; l.view = Math.max(0, Math.min(n, l.view + 7 * +b.dataset.oct)); draw(); }; });
+    el.querySelector('[data-rec]')?.addEventListener('click', () => record(p));
+    el.querySelector('[data-file]')?.addEventListener('change', (e) => { if (e.target.files[0]) setClip(p, e.target.files[0]); });
     el.querySelectorAll('input[type=range]').forEach((r) => {
       r.oninput = (e) => {
         const v = +e.target.value, k = r.dataset.k; r.parentElement.classList.toggle('on', v > 0);
         if (k === 'volume') { p.level = v; if (p.fader) p.fader.gain.setTargetAtTime(v, ctx.currentTime, 0.02); }
         if (k === 'hearAt') { l.hearAt = v; if (l.listen) l.listen.gain.setTargetAtTime(v, ctx.currentTime, 0.02); }
+        if (k === 'start') { p.start = v; draw(); }
       };
       r.onchange = (e) => { if (r.dataset.k in FX) { boot(); p.fx[r.dataset.k] = +e.target.value; applyFx(p); } };
     });
@@ -238,25 +297,25 @@ function draw() {
     el.querySelector('[data-take]')?.addEventListener('click', () => { current = l.id; draw(); });
     el.querySelector('[data-mute]')?.addEventListener('click', () => { l.muted = !l.muted; draw(); });
     const rows = el.querySelector('.rows');
-    l.rows.forEach((row, ri) => {
+    for (const { row, ri } of shownRows(l)) {
       const r = document.createElement('div'); r.className = 'row' + (row.gap ? ' gap' : ''); r.dataset.r = ri;
       r.innerHTML = `<span class="label ${l.parts.length > 1 && row.part === l.editing ? 'part' : ''}">${row.label}</span>`;
       for (let c = 0; c < cols; c++) {
         const t = c * per(), cell = document.createElement('div');
         cell.className = 'cell' + (t % 8 === 0 ? ' beat' : '') + (fits(l, row, t) ? ' fits' : ''); cell.dataset.t = t; cell.title = row.label;
-        const n = l.notes.find((n) => n.row === ri && n.start === t);
+        const n = row.clip ? (p.buf && t === p.start ? { len: Math.min(TICKS - t, Math.ceil(p.buf.duration / tickDur())) } : null) : l.notes.find((n) => n.row === ri && n.start === t);
         if (n) { const d = document.createElement('div'); d.className = 'note'; d.style.width = noteWidth(n.len); cell.append(d); }
         r.append(cell);
       }
       if (own && row.part !== undefined) dropZone(l, row, r);
       rows.append(r);
-    });
+    }
     if (own) wire(l, rows);
     return el;
   }));
   const left = free().length;
   document.getElementById('turn').innerHTML =
-    mode === 'solo' ? 'All five are yours'
+    mode === 'solo' ? 'All seven are yours'
     : current ? `Your turn: <b>${byId(current).who}</b>`
     : left ? `Pick a layer, ${left} left` : `<span class="done">Done. That's the day's loop.</span>`;
   document.getElementById('pass').hidden = mode !== 'pass' || current === null;
@@ -270,7 +329,9 @@ function dropZone(l, row, r) {
     e.preventDefault(); r.classList.remove('drop');
     const file = e.dataTransfer.files[0]; if (!file) return;
     boot();
-    const p = partOf(l, row), sample = { name: 'my ' + file.name.replace(/\.[^.]+$/, ''), file: await file.arrayBuffer() };
+    const p = partOf(l, row);
+    if (p.kind === 'clip') return setClip(p, file);
+    const sample = { name: 'my ' + file.name.replace(/\.[^.]+$/, ''), file: await file.arrayBuffer() };
     p.sounds = [sample, ...p.sounds]; l.editing = row.part; setSound(p, sample.name); draw();
   };
 }
@@ -280,7 +341,7 @@ function wire(l, rows) {
   const at = (e) => { const c = e.target.closest('.cell'); return c && { row: +c.parentElement.dataset.r, t: +c.dataset.t }; };
   rows.onpointerdown = (e) => {
     const p = at(e); if (!p) return;
-    const row = l.rows[p.row];
+    const row = l.rows[p.row]; if (row.clip) return;
     if (row.part !== undefined && row.part !== l.editing) l.editing = row.part;
     const hit = l.notes.find((n) => n.row === p.row && p.t >= n.start && p.t < n.start + n.len);
     if (hit) { l.notes.splice(l.notes.indexOf(hit), 1); draw(); return; }
@@ -304,9 +365,9 @@ function mark(t) {
 }
 function begin(m) {
   mode = m; current = null; done.clear(); setBpm(120);
-  LAYERS.forEach((l) => { l.notes = []; l.by = null; l.muted = false; l.hearAt = 1; l.listen?.gain.setTargetAtTime(1, ctx.currentTime, 0.02); });
+  LAYERS.forEach((l) => { l.notes = []; l.by = null; l.muted = false; l.hearAt = 1; l.listen?.gain.setTargetAtTime(1, ctx.currentTime, 0.02); for (const p of l.parts) if (p.kind === 'clip') { p.clip = null; p.buf = null; p.start = 0; p.arm = null; } });
   document.getElementById('start').hidden = true; document.getElementById('game').hidden = false;
-  document.getElementById('sub').textContent = (m === 'solo' ? 'All five layers are yours. ' : 'Pick a layer, make it, pass it on, close the window; friends pick from what is left. Whoever has the turn can change the BPM. ')
+  document.getElementById('sub').textContent = (m === 'solo' ? 'All seven layers are yours. ' : 'Pick a layer, make it, pass it on, close the window; friends pick from what is left. Whoever has the turn can change the BPM. ')
     + 'Click a box to put a note down, drag right to make it longer, click a note to take it away. On a drum layer, the sliders work on the sound whose tab is lit; drop a .wav of your own onto a drum row to use it. Space plays and stops.';
   document.getElementById('link').hidden = m === 'solo';
   draw();
@@ -331,7 +392,7 @@ const api = async (path, method = 'GET', body) => {
 };
 const soundName = (s) => typeof s === 'string' ? s : s.name;
 const pack = (l) => ({ by: me(), bpm, kit: l.kit, notes: l.notes.map(({ row, start, len }) => ({ row, start, len })),
-  parts: l.parts.map((p) => ({ sound: soundName(p.sound), level: p.level, fx: p.fx })) });
+  parts: l.parts.map((p) => ({ sound: soundName(p.sound), level: p.level, fx: p.fx, ...(p.kind === 'clip' ? { clip: p.clip, start: p.start } : {}) })) });
 // Put a loop from the box onto the screen. A dropped .wav never travels, so a sound nobody else has falls back to the kit's first.
 function apply(data) {
   loop = data; setBpm(loop.bpm);
@@ -343,6 +404,7 @@ function apply(data) {
       const q = s.parts[i]; if (!q) return;
       p.level = q.level; p.fader?.gain.setTargetAtTime(q.level, ctx.currentTime, 0.02);
       for (const k in p.fx) p.fx[k] = q.fx[k] ?? 0;
+      if (p.kind === 'clip') { p.clip = q.clip || null; p.start = q.start || 0; p.buf = null; if (ctx && p.clip) loadClip(p).then(draw); return; }
       const known = p.sounds.some((x) => soundName(x) === q.sound);
       p.sound = known ? q.sound : p.kind === 'drum' ? kitFirst(l.kit, p.cat).name : p.sound;
       setSound(p, p.sound);
@@ -380,8 +442,8 @@ async function showLoops() {
   if (!r) { el.innerHTML = ''; return; } // opened from a plain file: solo still works
   const when = (t) => { const h = (Date.now() - t) / 36e5; return h < 1 ? 'just now' : h < 24 ? `${Math.floor(h)} h ago` : `${Math.floor(h / 24)} d ago`; };
   el.innerHTML = r.data.length ? '<h2>Loops</h2>' + r.data.map((x) => {
-    const n = Object.keys(x.done).length, who = LAYERS.filter((l) => x.done[l.id]).map((l) => `${l.who}: ${x.done[l.id]}`).join(', ');
-    return `<div class="loop ${n === 5 ? 'full' : ''}"><div>${x.name} <small>${x.bpm} bpm, started by ${x.by} ${when(x.updated)}. ${n ? who : 'nothing yet'}</small></div><button data-open="${x.id}">${n === 5 ? 'Listen' : n ? 'Jump in' : 'Start it'}</button></div>`;
+    const n = Object.keys(x.done).length, all = LAYERS.length, who = LAYERS.filter((l) => x.done[l.id]).map((l) => `${l.who}: ${x.done[l.id]}`).join(', ');
+    return `<div class="loop ${n === all ? 'full' : ''}"><div>${x.name} <small>${x.bpm} bpm, started by ${x.by} ${when(x.updated)}. ${n ? who : 'nothing yet'}</small></div><button data-open="${x.id}">${n === all ? 'Listen' : n ? 'Jump in' : 'Start it'}</button></div>`;
   }).join('') : '<h2>No loops yet</h2>';
   el.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => openLoop(b.dataset.open); });
 }
@@ -392,7 +454,7 @@ document.getElementById('new').onclick = async () => {
 };
 document.querySelectorAll('#start [data-mode]').forEach((b) => { b.onclick = () => { loop = null; begin(b.dataset.mode); }; });
 document.getElementById('play').onclick = play;
-document.getElementById('masterVol').oninput = (e) => { boot(); master.gain.setTargetAtTime(+e.target.value, ctx.currentTime, 0.02); };
+document.getElementById('masterVol').oninput = (e) => { boot(); master.gain.setTargetAtTime(gainOf(+e.target.value), ctx.currentTime, 0.02); };
 document.getElementById('bpm').onchange = (e) => setBpm(+e.target.value);
 document.getElementById('pass').onclick = passOn;
 document.getElementById('reset').onclick = () => { if (playing) play(); loop = null; clearInterval(watch); history.replaceState(null, '', location.pathname); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; showLoops(); };

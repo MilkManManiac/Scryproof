@@ -31,6 +31,17 @@ test('an embedded game may fill the screen, and only from the activities host', 
   assert.equal(shellPermission('app://scryproof/', 'fullscreen', false), false);
   assert.equal(shellPermission('null', 'fullscreen', false), false);
 });
+test('an embedded game may use the microphone, only from the activities host, never the camera', () => {
+  const game = 'https://activities.scryproof.com/pass-along/';
+  assert.equal(shellPermission(game, 'media', false, ['audio']), true);
+  assert.equal(shellPermission(game, 'media', false, 'audio'), true);
+  assert.equal(shellPermission(game, 'media', false, ['audio', 'video']), false);
+  assert.equal(shellPermission(game, 'media', false, ['video']), false);
+  assert.equal(shellPermission(game, 'media', false, []), false);
+  assert.equal(shellPermission(game, 'media', false), false);
+  assert.equal(shellPermission('https://scryproof.com/', 'media', false, ['audio']), false);
+  assert.equal(shellPermission(game, 'display-capture', false, ['audio']), false);
+});
 test('lookalikes, opaque origins and unknown permissions are refused', () => {
   for (const url of [
     'app://scryproof.evil/',

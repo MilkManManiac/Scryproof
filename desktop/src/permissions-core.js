@@ -6,11 +6,12 @@ const GRANTED = new Set([
   'clipboard-sanitized-write',
   'fullscreen',
 ]);
-/** The one thing a game frame may ask for: to fill the screen. Never a device. */
+/** A game frame may fill the screen, and use the microphone (Pass-along vocals). Never the camera or anything else. */
 const ACTIVITIES_ORIGIN = 'https://activities.scryproof.com';
-export function shellPermission(url, permission, mainFrame = true) {
+const micOnly = (media) => (Array.isArray(media) ? media.length > 0 && media.every((m) => m === 'audio') : media === 'audio');
+export function shellPermission(url, permission, mainFrame = true, media = null) {
   if (!mainFrame) {
-    if (permission !== 'fullscreen') return false;
+    if (permission !== 'fullscreen' && !(permission === 'media' && micOnly(media))) return false;
     try { return new URL(url).origin === ACTIVITIES_ORIGIN; } catch { return false; }
   }
   if (!GRANTED.has(permission)) return false;
