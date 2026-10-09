@@ -25,6 +25,13 @@ test('an embedded game cannot inherit its parent device permissions', () => {
     assert.equal(shellPermission('app://scryproof/', permission, false), false);
   }
 });
+test('a game frame on the activities origin may go fullscreen, and only that', () => {
+  const act = 'https://activities.scryproof.com';
+  assert.equal(shellPermission(act + '/hero-line/', 'fullscreen', false, act), true);
+  assert.equal(shellPermission(act + '/hero-line/', 'media', false, act), false);
+  assert.equal(shellPermission('https://activities.scryproof.com.evil/x/', 'fullscreen', false, act), false);
+  assert.equal(shellPermission(act + '/hero-line/', 'fullscreen', false), false);
+});
 test('lookalikes, opaque origins and unknown permissions are refused', () => {
   for (const url of [
     'app://scryproof.evil/',

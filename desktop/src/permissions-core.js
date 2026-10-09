@@ -6,8 +6,13 @@ const GRANTED = new Set([
   'clipboard-sanitized-write',
   'fullscreen',
 ]);
-export function shellPermission(url, permission, mainFrame = true) {
-  if (!mainFrame || !GRANTED.has(permission)) return false;
+/** A game frame gets exactly one thing: fullscreen, and only from the activities origin. Nothing else leaks down. */
+export function shellPermission(url, permission, mainFrame = true, activitiesOrigin = '') {
+  if (!mainFrame) {
+    if (permission !== 'fullscreen' || !activitiesOrigin) return false;
+    try { return new URL(url).origin === activitiesOrigin; } catch { return false; }
+  }
+  if (!GRANTED.has(permission)) return false;
   try {
     const parsed = new URL(url);
     return (
