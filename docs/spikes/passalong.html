@@ -1,22 +1,27 @@
 <!doctype html>
 <!--
-  Pass-along, second cut (Wes, 2026-10-09): "each one has a set chord or
-  whatever so generally things will sounds good together", "more options for
-  note length", "options for sounds types with each thing... a simple version
-  of that vst thing we made in a diff project", "ones at the top are higher
-  notes", "just one person does the drums", "more options for melodies.
-  bells. etc."
+  Pass-along, third cut (Wes, 2026-10-09): "a overall limiter so nothing
+  peaks", "some effects that we can add to each thing. Like delay reverb etc.
+  And they can goof with the easy stuff", "adjust the volume on their end of
+  each track", "allow for smaller notes if needed", "improve on the ease of
+  use a bit".
 
-  The sounds are Kombinat's (CodeProjects/Music), copied into ./kombinat/,
-  not rewritten. One eight-count, four people in order: Bass, Drums, Pads,
-  Melody. The day's chords are set; the grids tint the notes that fit them.
-  No server, no saving. Nothing is fetched.
+  Second cut: "each one has a set chord or whatever so generally things will
+  sounds good together", "more options for note length", "options for sounds
+  types with each thing... a simple version of that vst thing we made in a
+  diff project", "ones at the top are higher notes", "just one person does
+  the drums", "more options for melodies. bells. etc."
+
+  The sounds and effects are Kombinat's (CodeProjects/Music), copied into
+  ./kombinat/, not rewritten. One eight-count, four people in order: Bass,
+  Drums, Pads, Melody. The day's chords are set; the grids tint the notes
+  that fit them. No server, no saving. Nothing is fetched.
 -->
 <meta charset="utf-8">
 <title>Pass-along</title>
 <style>
   body { margin: 0; background: #15171c; color: #e6e3dc; font: 14px/1.4 system-ui, sans-serif; }
-  main { width: min(1180px, 97vw); margin: 18px auto; }
+  main { width: min(1240px, 97vw); margin: 18px auto; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: #9a978f; margin: 0 0 14px; }
   .bar { display: flex; gap: 10px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
@@ -24,35 +29,44 @@
   button.big.quiet { background: #2a2f3a; color: #e6e3dc; }
   .turn { font-size: 18px; }
   .done { color: #8fd18f; }
-  .chords { display: grid; grid-template-columns: 150px 1fr; margin-top: 8px; }
+  .bar label { color: #9a978f; display: flex; gap: 6px; align-items: center; }
+  .peak { width: 10px; height: 10px; border-radius: 50%; background: #2a2f3a; display: inline-block; }
+  .peak.hot { background: #d95f5f; }
+  .chords { display: grid; grid-template-columns: 250px 1fr; margin-top: 8px; }
   .chords .names { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; color: #9a978f; }
   .chords .names span { border-left: 1px solid #3a4150; }
-  .layer { display: grid; grid-template-columns: 150px 1fr; gap: 6px 0; padding: 10px 0; border-top: 1px solid #262a33; }
-  .layer.locked { opacity: .55; }
+  .layer { display: grid; grid-template-columns: 250px 1fr; padding: 10px 0; border-top: 1px solid #262a33; }
+  .layer.locked { opacity: .6; }
   .layer.todo { opacity: .22; }
-  .who { font-weight: 600; padding-right: 10px; }
+  .who { font-weight: 600; padding-right: 14px; font-size: 13px; }
   .who small { display: block; font-weight: 400; color: #9a978f; }
-  .who select { display: block; margin-top: 6px; font: inherit; background: #2a2f3a; color: #e6e3dc; border: 0; border-radius: 6px; padding: 4px 6px; max-width: 135px; }
+  .who select { display: block; margin: 6px 0; font: inherit; font-size: 13px; background: #2a2f3a; color: #e6e3dc; border: 0; border-radius: 6px; padding: 4px 6px; width: 100%; }
+  .knobs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .knob { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: #9a978f; }
+  .knob.on { color: #e6e3dc; }
+  .knob input { width: 100%; margin: 2px 0; accent-color: var(--c); }
+  .who button { font: inherit; font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 6px; border: 0; background: #2a2f3a; color: #9a978f; cursor: pointer; }
   .rows { display: grid; gap: 2px; user-select: none; }
-  .row { display: grid; grid-template-columns: 54px repeat(32, 1fr); gap: 2px; align-items: stretch; }
+  .row { display: grid; grid-template-columns: 54px repeat(var(--cols), 1fr); gap: 2px; align-items: stretch; }
   .row .label { font-size: 11px; color: #9a978f; text-align: right; padding-right: 6px; line-height: 15px; }
   .cell { height: 15px; border-radius: 3px; background: #242833; position: relative; }
-  .cell:nth-child(8n+2) { background: #2f3542; }
+  .cell.beat { background: #2f3542; }
   .cell.fits { background: #2a3a35; }
-  .cell.fits:nth-child(8n+2) { background: #33463f; }
+  .cell.fits.beat { background: #33463f; }
   .cell.now { outline: 2px solid #fff5; outline-offset: -2px; }
   .note { position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px; background: var(--c); z-index: 1; pointer-events: none; }
   .locked .cell, .todo .cell { cursor: default; }
-  .hint { color: #9a978f; font-size: 12px; margin: 4px 0 0; }
 </style>
 <main>
   <h1>Pass-along</h1>
-  <p class="sub">One eight-count at 120 BPM. Four people, one layer each, in order. Tonight you play all four. Click a box to put a note down, drag right to make it longer, click a note to take it away.</p>
+  <p class="sub">One eight-count at 120 BPM. Four people, one layer each, in order. Tonight you play all four. Click a box to put a note down, drag right to make it longer, click a note to take it away. Space plays and stops.</p>
   <div class="bar">
     <button class="big" id="play">Play</button>
     <span class="turn" id="turn"></span>
     <button class="big" id="pass">Pass it on</button>
     <button class="big quiet" id="reset">Start over</button>
+    <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
+    <label><span class="peak" id="peak"></span> limiter</label>
   </div>
   <div class="chords"><div></div><div class="names" id="chordNames"></div></div>
   <div id="layers"></div>
@@ -62,7 +76,9 @@
 <script src="kombinat/drums.js"></script>
 <script src="kombinat/presets.js"></script>
 <script>
-const BPM = 120, STEPS = 32, STEP = 60 / BPM / 4; // sixteenths over eight beats
+const BPM = 120, TICKS = 64, TICK = 60 / BPM / 8; // the loop in 32nd notes
+let cols = 32; // boxes shown across: 32 (16ths) or 64 (32nds)
+const per = () => TICKS / cols; // ticks a box
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const name = (m) => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 
@@ -71,24 +87,33 @@ const KEY = { name: 'A minor', scale: [9, 11, 0, 2, 4, 5, 7] };
 const CHORDS = [
   { name: 'Am', tones: [9, 0, 4] }, { name: 'F', tones: [5, 9, 0] }, { name: 'C', tones: [0, 4, 7] }, { name: 'G', tones: [7, 11, 2] },
 ];
-const chordAt = (step) => CHORDS[Math.floor(step / (STEPS / CHORDS.length))];
+const chordAt = (tick) => CHORDS[Math.floor(tick / (TICKS / CHORDS.length))];
 const scaleRows = (lo, hi) => { const out = []; for (let m = hi; m >= lo; m--) if (KEY.scale.includes(m % 12)) out.push({ label: name(m), midi: [m] }); return out; };
-// A chord voiced near a root note, lowest note first.
-const voice = (chord, root) => chord.tones.map((t) => { let m = root + ((t - root % 12) + 12) % 12; return m; }).sort((a, b) => a - b);
+const voice = (chord, root) => chord.tones.map((t) => root + ((t - root % 12) + 12) % 12).sort((a, b) => a - b);
 
 // Extra sounds for melodies, in Kombinat's preset shape.
 K.PRESETS.push(
-  { name: 'BELLS', tag: 'bell', synth: { osc1: { wave: 'sine', oct: 1, level: 0.6 }, osc2: { wave: 'sine', oct: 2, semi: 7, fine: 0, level: 0.25 },
+  { name: 'BELLS', synth: { osc1: { wave: 'sine', oct: 1, level: 0.6 }, osc2: { wave: 'sine', oct: 2, semi: 7, fine: 0, level: 0.25 },
     filter: { cutoff: 12000, res: 0.3, env: 0 }, aenv: { a: 0.002, d: 1.2, s: 0, r: 0.8 } },
     rack: [{ type: 'reverb', p: { size: 0.85, decay: 4, mix: 0.4 } }] },
-  { name: 'MUSIC BOX', tag: 'bell', synth: { osc1: { wave: 'triangle', oct: 1, level: 0.7 }, osc2: { wave: 'sine', oct: 2, level: 0.2 },
+  { name: 'MUSIC BOX', synth: { osc1: { wave: 'triangle', oct: 1, level: 0.7 }, osc2: { wave: 'sine', oct: 2, level: 0.2 },
     filter: { cutoff: 9000, res: 0.5, env: 0 }, aenv: { a: 0.001, d: 0.5, s: 0, r: 0.3 } },
     rack: [{ type: 'delay', p: { div: '1/8d', feedback: 0.3, mix: 0.2 } }, { type: 'reverb', p: { size: 0.6, decay: 2, mix: 0.3 } }] },
-  { name: 'FLUTE', tag: 'wind', synth: { osc1: { wave: 'sine', level: 0.7 }, osc2: { wave: 'triangle', oct: 0, fine: 5, level: 0.3 }, noise: { level: 0.03 },
+  { name: 'FLUTE', synth: { osc1: { wave: 'sine', level: 0.7 }, osc2: { wave: 'triangle', oct: 0, fine: 5, level: 0.3 }, noise: { level: 0.03 },
     filter: { cutoff: 4000, res: 0.5, env: 0.1 }, aenv: { a: 0.08, d: 0.2, s: 0.8, r: 0.25 }, lfo: { rate: 5, depth: 0.03, target: 'pitch' } },
     rack: [{ type: 'reverb', p: { size: 0.7, decay: 2.5, mix: 0.3 } }] },
 );
 const preset = (n) => K.PRESETS.find((p) => p.name === n);
+
+// The easy effects: one slider each, off at zero. What the slider turns, in Kombinat's words.
+const FX = {
+  reverb: (v) => ({ type: 'reverb', p: { size: 0.7, decay: 2.5, mix: v * 0.6 } }),
+  delay: (v) => ({ type: 'delay', p: { div: '1/8d', feedback: 0.3 + v * 0.3, mix: v * 0.5 } }),
+  chorus: (v) => ({ type: 'chorus', p: { rate: 0.5, depth: 0.4, mix: v * 0.7 } }),
+  phaser: (v) => ({ type: 'phaser', p: { rate: 0.35, mix: v * 0.8 } }),
+  drive: (v) => ({ type: 'distortion', p: { mode: 'soft', drive: v, tone: 5000, mix: 0.8, level: 0.7 } }),
+  muffle: (v) => ({ type: 'filter', p: { type: 'lowpass', cutoff: 12000 * 0.03 ** v, res: 1 } }),
+};
 
 const LAYERS = [
   { id: 'bass', who: 'Bass', hint: 'goes first, sets the groove', color: '#d9a441', rows: scaleRows(33, 52),
@@ -101,115 +126,138 @@ const LAYERS = [
   { id: 'melody', who: 'Melody', hint: 'the last word', color: '#8fd18f', rows: scaleRows(57, 81),
     sounds: ['PLUCK', 'BELLS', 'MUSIC BOX', 'GLASS KEYS', 'FLUTE', 'POLIVOKS LEAD', 'HOLLOW PULSE'] },
 ];
-for (const l of LAYERS) { l.notes = []; l.sound = l.sounds[0]; } // notes: { row, start, len }
+for (const l of LAYERS) { l.notes = []; l.sound = l.sounds[0]; l.level = 0.8; l.fx = Object.fromEntries(Object.keys(FX).map((k) => [k, 0])); }
 let turn = 0;
 
-// ---- sound: one Kombinat instrument and rack a layer ----
-let ctx, master;
+// ---- sound: one Kombinat instrument, rack and fader a layer, into one limiter ----
+let ctx, master, meter;
 function boot() {
   if (ctx) return;
   ctx = new AudioContext();
-  master = ctx.createGain(); master.gain.value = 0.7;
-  const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -6; limiter.ratio.value = 12;
-  master.connect(limiter).connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = 0.5;
+  // The overall limiter: nothing past -3 dB gets through loud, however many layers pile up.
+  const lim = ctx.createDynamicsCompressor();
+  lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
+  meter = lim;
+  master.connect(lim).connect(ctx.destination);
   for (const l of LAYERS) {
     l.inst = l.id === 'drums' ? new K.Drums(ctx) : new K.Synth(ctx);
-    l.rack = new K.Rack(ctx, l.inst.output, master); l.rack.setTempo(BPM);
+    l.fader = ctx.createGain(); l.fader.gain.value = l.level; l.fader.connect(master);
+    l.rack = new K.Rack(ctx, l.inst.output, l.fader); l.rack.setTempo(BPM);
     setSound(l, l.sound);
   }
+  setInterval(() => document.getElementById('peak').classList.toggle('hot', meter.reduction < -1), 80);
 }
 function setSound(l, s) {
   l.sound = s;
   if (!ctx) return;
-  if (l.id === 'drums') { l.inst.loadKit(s); return; }
-  const p = preset(s); l.inst.load(p.synth); l.rack.load(p.rack);
+  if (l.id === 'drums') l.inst.loadKit(s); else l.inst.load(preset(s).synth);
+  applyFx(l);
 }
-function midis(l, row, step) {
+function applyFx(l) {
+  if (!ctx) return;
+  const base = l.id === 'drums' ? [] : preset(l.sound).rack;
+  const mine = Object.entries(l.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v));
+  l.rack.load([...base, ...mine]);
+}
+function midis(l, row, tick) {
   if (l.id === 'drums') return [K.DRUM_BASE + row.pad];
-  if (l.id === 'pads') return voice(chordAt(step), row.root);
+  if (l.id === 'pads') return voice(chordAt(tick), row.root);
   return row.midi;
 }
 function sound(l, n, at) {
-  const r = l.rows[n.row];
-  for (const m of midis(l, r, n.start)) { l.inst.noteOn(m, 0.9, at); l.inst.noteOff(m, at + n.len * STEP * 0.9); }
+  for (const m of midis(l, l.rows[n.row], n.start)) { l.inst.noteOn(m, 0.9, at); l.inst.noteOff(m, at + n.len * TICK * 0.9); }
 }
-let playing = false, step = 0, nextAt = 0, timer;
+let playing = false, tickAt = 0, nextAt = 0, timer;
 function tick() {
   while (nextAt < ctx.currentTime + 0.1) {
-    LAYERS.forEach((l, li) => { if (li > turn) return; for (const n of l.notes) if (n.start === step) sound(l, n, nextAt); });
-    const s = step; setTimeout(() => mark(s), Math.max(0, (nextAt - ctx.currentTime) * 1000));
-    step = (step + 1) % STEPS; nextAt += STEP;
+    const t = tickAt;
+    LAYERS.forEach((l, li) => { if (li > turn || l.muted) return; for (const n of l.notes) if (n.start === t) sound(l, n, nextAt); });
+    setTimeout(() => mark(t), Math.max(0, (nextAt - ctx.currentTime) * 1000));
+    tickAt = (tickAt + 1) % TICKS; nextAt += TICK;
   }
 }
 function play() {
   boot();
   if (playing) { playing = false; clearInterval(timer); mark(-1); LAYERS.forEach((l) => l.inst.allOff?.()); }
-  else { playing = true; step = 0; nextAt = ctx.currentTime + 0.05; timer = setInterval(tick, 25); tick(); }
+  else { playing = true; tickAt = 0; nextAt = ctx.currentTime + 0.05; timer = setInterval(tick, 25); tick(); }
   document.getElementById('play').textContent = playing ? 'Stop' : 'Play';
 }
 
 // ---- screen ----
 const layersEl = document.getElementById('layers');
 document.getElementById('chordNames').innerHTML = CHORDS.map((c) => `<span>${c.name}</span>`).join('');
-function fits(l, row, step) {
-  if (l.id === 'drums' || l.id === 'pads') return false;
-  return chordAt(step).tones.includes(row.midi[0] % 12);
-}
+const fits = (l, row, tick) => (l.id === 'bass' || l.id === 'melody') && chordAt(tick).tones.includes(row.midi[0] % 12);
+const noteWidth = (ticks) => { const n = ticks / per(); return `calc(${n * 100}% + ${(n - 1) * 2}px)`; };
 function draw() {
   layersEl.replaceChildren(...LAYERS.map((l, li) => {
-    const el = document.createElement('div');
+    const mine = li === turn, el = document.createElement('div');
     el.className = 'layer ' + (li < turn ? 'locked' : li > turn ? 'todo' : '');
     el.style.setProperty('--c', l.color);
     const state = li < turn ? 'passed on' : li > turn ? 'waiting' : l.hint;
-    el.innerHTML = `<div class="who">${l.who}<small>${state}</small><select ${li === turn ? '' : 'disabled'}>${l.sounds.map((s) => `<option ${s === l.sound ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="rows"></div>`;
+    const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${mine ? '' : 'disabled'}></label>`;
+    el.innerHTML = `<div class="who">${l.who}<small>${state}</small>
+      <select ${mine ? '' : 'disabled'}>${l.sounds.map((s) => `<option ${s === l.sound ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <div class="knobs">${knob('volume', l.level, 1.2)}${Object.keys(FX).map((k) => knob(k, l.fx[k])).join('')}</div>
+      ${mine ? '<button data-clear>Clear mine</button>' : li < turn ? `<button data-mute>${l.muted ? 'Unmute' : 'Mute'}</button>` : ''}
+    </div><div class="rows" style="--cols:${cols}"></div>`;
     el.querySelector('select').onchange = (e) => { boot(); setSound(l, e.target.value); };
+    el.querySelectorAll('input[type=range]').forEach((r) => {
+      r.oninput = (e) => { const v = +e.target.value; r.parentElement.classList.toggle('on', v > 0); if (r.dataset.k === 'volume') { l.level = v; if (l.fader) l.fader.gain.setTargetAtTime(v, ctx.currentTime, 0.02); } };
+      r.onchange = (e) => { if (r.dataset.k !== 'volume') { boot(); l.fx[r.dataset.k] = +e.target.value; applyFx(l); } };
+    });
+    el.querySelector('[data-clear]')?.addEventListener('click', () => { l.notes = []; draw(); });
+    el.querySelector('[data-mute]')?.addEventListener('click', () => { l.muted = !l.muted; draw(); });
     const rows = el.querySelector('.rows');
     l.rows.forEach((row, ri) => {
       const r = document.createElement('div'); r.className = 'row'; r.dataset.r = ri;
       r.innerHTML = `<span class="label">${row.label}</span>`;
-      for (let s = 0; s < STEPS; s++) {
-        const c = document.createElement('div'); c.className = 'cell' + (fits(l, row, s) ? ' fits' : ''); c.dataset.s = s;
-        const n = l.notes.find((n) => n.row === ri && n.start === s);
-        if (n) { const d = document.createElement('div'); d.className = 'note'; d.style.width = noteWidth(n.len); c.append(d); }
-        r.append(c);
+      for (let c = 0; c < cols; c++) {
+        const t = c * per(), cell = document.createElement('div');
+        cell.className = 'cell' + (t % 8 === 0 ? ' beat' : '') + (fits(l, row, t) ? ' fits' : ''); cell.dataset.t = t; cell.title = row.label;
+        const n = l.notes.find((n) => n.row === ri && n.start === t);
+        if (n) { const d = document.createElement('div'); d.className = 'note'; d.style.width = noteWidth(n.len); cell.append(d); }
+        r.append(cell);
       }
       rows.append(r);
     });
-    if (li === turn) wire(l, rows);
+    if (mine) wire(l, rows);
     return el;
   }));
   document.getElementById('turn').innerHTML = turn < LAYERS.length ? `Your turn: <b>${LAYERS[turn].who}</b>` : `<span class="done">Done. That's the day's loop.</span>`;
   document.getElementById('pass').hidden = turn >= LAYERS.length;
 }
-const noteWidth = (len) => `calc(${len * 100}% + ${(len - 1) * 2}px)`;
 // Put a note down on press, stretch it while dragging right, take it away on a click.
 let drag = null; // outlives a redraw
 function wire(l, rows) {
-  const at = (e) => { const c = e.target.closest('.cell'); return c && { row: +c.parentElement.dataset.r, s: +c.dataset.s }; };
+  const at = (e) => { const c = e.target.closest('.cell'); return c && { row: +c.parentElement.dataset.r, t: +c.dataset.t }; };
   rows.onpointerdown = (e) => {
     const p = at(e); if (!p) return;
-    const hit = l.notes.find((n) => n.row === p.row && p.s >= n.start && p.s < n.start + n.len);
+    const hit = l.notes.find((n) => n.row === p.row && p.t >= n.start && p.t < n.start + n.len);
     if (hit) { l.notes.splice(l.notes.indexOf(hit), 1); draw(); return; }
     boot();
-    drag = { row: p.row, start: p.s, len: 1 }; l.notes.push(drag); sound(l, drag, ctx.currentTime); draw();
+    drag = { row: p.row, start: p.t, len: per() }; l.notes.push(drag); sound(l, drag, ctx.currentTime); draw();
   };
   rows.onpointermove = (e) => {
     if (!drag) return;
     const p = at(e); if (!p || p.row !== drag.row) return;
     const next = l.notes.filter((n) => n !== drag && n.row === drag.row && n.start > drag.start).map((n) => n.start);
-    const len = Math.max(1, Math.min(p.s - drag.start + 1, (next.length ? Math.min(...next) : STEPS) - drag.start));
+    const len = Math.max(per(), Math.min(p.t - drag.start + per(), (next.length ? Math.min(...next) : TICKS) - drag.start));
     if (len === drag.len) return;
     drag.len = len;
-    rows.querySelector(`.row[data-r="${drag.row}"] .cell[data-s="${drag.start}"] .note`).style.width = noteWidth(len);
+    rows.querySelector(`.row[data-r="${drag.row}"] .cell[data-t="${drag.start}"] .note`).style.width = noteWidth(len);
   };
   rows.onpointerup = () => { drag = null; };
 }
-function mark(s) {
+function mark(t) {
   document.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now'));
-  if (s >= 0) document.querySelectorAll(`.cell[data-s="${s}"]`).forEach((c) => c.classList.add('now'));
+  if (t >= 0 && t % per() === 0) document.querySelectorAll(`.cell[data-t="${t}"]`).forEach((c) => c.classList.add('now'));
 }
 document.getElementById('play').onclick = play;
 document.getElementById('pass').onclick = () => { turn = Math.min(turn + 1, LAYERS.length); draw(); };
-document.getElementById('reset').onclick = () => { turn = 0; LAYERS.forEach((l) => { l.notes = []; }); draw(); };
+document.getElementById('reset').onclick = () => { turn = 0; LAYERS.forEach((l) => { l.notes = []; l.muted = false; }); draw(); };
+// Finer boxes: notes already down stay where they are; a note on an off-box tick still plays, it just cannot be grabbed until the grid is fine again.
+document.getElementById('fine').onchange = (e) => { cols = e.target.checked ? 64 : 32; draw(); };
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') { e.preventDefault(); play(); } });
 draw();
 </script>
