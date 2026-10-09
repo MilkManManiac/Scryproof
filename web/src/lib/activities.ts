@@ -19,6 +19,12 @@ export const ACTIVITIES: readonly Activity[] = [
     description: 'Maze your lane, send troops at everyone else. Last keep standing.',
     path: '/hero-line/',
   },
+  {
+    id: 'pass-along',
+    name: 'Pass-along',
+    description: 'One eight-count, five layers. Do them all, or one each and pass it on.',
+    path: '/pass-along/',
+  },
 ];
 
 const configured =

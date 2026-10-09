@@ -317,3 +317,6 @@ document.getElementById('reset').onclick = () => { if (playing) play(); document
 // Finer boxes: notes already down stay where they are; a note on an off-box tick still plays, it just cannot be grabbed until the grid is fine again.
 document.getElementById('fine').onchange = (e) => { cols = e.target.checked ? 64 : 32; draw(); };
 document.addEventListener('keydown', (e) => { if (e.code === 'Space' && mode && !['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) { e.preventDefault(); play(); } });
+
+// inside Scryproof's Activities frame: tell the app we are up, or it shows "loading" forever
+if (window.parent !== window) window.parent.postMessage({ type: 'scryproof-activity', game: 'pass-along', status: 'ready' }, '*');
