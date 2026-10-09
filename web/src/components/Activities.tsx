@@ -444,14 +444,21 @@ function ActivityPlayer({
         ) : null}
       </section>
       {minimized ? (
-        <button
-          type="button"
-          className="activity-resume"
-          onClick={activities.open}
-        >
-          <ActivityGlyph />
-          Return to {game.name}
-        </button>
+        <div className="activity-resume">
+          <button type="button" onClick={activities.open}>
+            <ActivityGlyph />
+            Return to {game.name}
+          </button>
+          <button
+            type="button"
+            className="activity-resume-end"
+            aria-label="End activity"
+            title="End activity"
+            onClick={() => setEnding(true)}
+          >
+            ×
+          </button>
+        </div>
       ) : null}
       {ending ? (
         <Modal
