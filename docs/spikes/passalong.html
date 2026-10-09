@@ -1,0 +1,133 @@
+<!doctype html>
+<!--
+  Pass-along: a prototype of Wes's idea (2026-10-09). One eight-count loop,
+  five layers, one person a layer, in order. This page lets one person play
+  every role in turn to feel whether the loop is fun. No server, no saving.
+  Everything is made with the browser's own Web Audio; nothing is fetched.
+-->
+<meta charset="utf-8">
+<title>Pass-along</title>
+<style>
+  body { margin: 0; background: #15171c; color: #e6e3dc; font: 15px/1.4 system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; }
+  main { width: min(900px, 96vw); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #9a978f; margin: 0 0 18px; }
+  .layer { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; align-items: center; padding: 8px 0; border-top: 1px solid #262a33; }
+  .layer.locked { opacity: .5; }
+  .layer.todo { opacity: .22; }
+  .layer .who { font-weight: 600; }
+  .layer .who small { display: block; font-weight: 400; color: #9a978f; }
+  .rows { display: grid; gap: 3px; }
+  .row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
+  .cell { aspect-ratio: 1.8; border-radius: 4px; background: #2a2f3a; border: 0; padding: 0; cursor: pointer; }
+  .cell:nth-child(4n+1) { background: #333947; }
+  .cell.on { background: var(--c); }
+  .cell.now { outline: 2px solid #fff6; outline-offset: -2px; }
+  .locked .cell, .todo .cell { cursor: default; }
+  .bar { display: flex; gap: 10px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
+  button.big { font: inherit; padding: 8px 16px; border-radius: 8px; border: 0; background: #e6e3dc; color: #15171c; font-weight: 600; cursor: pointer; }
+  button.big.quiet { background: #2a2f3a; color: #e6e3dc; }
+  .turn { font-size: 18px; }
+  .done { color: #8fd18f; }
+</style>
+<main>
+  <h1>Pass-along</h1>
+  <p class="sub">One eight-count, 120 BPM. Five people, one layer each, in order. You are playing all five tonight.</p>
+  <div class="bar">
+    <button class="big" id="play">Play</button>
+    <span class="turn" id="turn"></span>
+    <button class="big" id="pass">Pass it on</button>
+    <button class="big quiet" id="reset">Start over</button>
+  </div>
+  <div id="layers"></div>
+</main>
+<script>
+const BPM = 120, STEPS = 16, STEP = 60 / BPM / 2; // eighth notes
+const note = (n) => 440 * 2 ** ((n - 69) / 12);
+// A minor pentatonic, bottom row lowest. Pads rows are chords.
+const LAYERS = [
+  { id: 'bass', who: 'Bass', hint: 'goes first, sets the groove', color: '#d9a441', rows: [45, 48, 50, 52, 55].reverse().map((m) => ({ label: m, midi: [m] })) },
+  { id: 'kick', who: 'Kick', hint: 'the thump', color: '#d95f5f', rows: [{ label: 'kick' }] },
+  { id: 'hats', who: 'Hats', hint: 'the tick', color: '#7fc8d9', rows: [{ label: 'open' , open: true }, { label: 'closed' }] },
+  { id: 'pads', who: 'Pads', hint: 'chords, they hold for a beat', color: '#a98fd9', rows: [
+    { label: 'G', midi: [55, 59, 62] }, { label: 'C', midi: [48, 52, 55] }, { label: 'F', midi: [53, 57, 60] }, { label: 'Am', midi: [57, 60, 64] },
+  ] },
+  { id: 'melody', who: 'Melody', hint: 'the last word', color: '#8fd18f', rows: [69, 72, 74, 76, 79].reverse().map((m) => ({ label: m, midi: [m] })) },
+];
+const grid = LAYERS.map((l) => l.rows.map(() => Array(STEPS).fill(false)));
+let turn = 0; // whose layer is being made; LAYERS.length when the loop is done
+
+// ---- sound ----
+let ctx, playing = false, step = 0, nextAt = 0, timer;
+function hit(layer, row, at) {
+  const out = ctx.destination;
+  if (layer.id === 'kick') {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(150, at); o.frequency.exponentialRampToValueAtTime(40, at + .12);
+    g.gain.setValueAtTime(.9, at); g.gain.exponentialRampToValueAtTime(.001, at + .3);
+    o.connect(g).connect(out); o.start(at); o.stop(at + .3);
+  } else if (layer.id === 'hats') {
+    const len = row.open ? .25 : .05, buf = ctx.createBuffer(1, ctx.sampleRate * len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = buf; f.type = 'highpass'; f.frequency.value = 7000;
+    g.gain.setValueAtTime(.35, at); g.gain.exponentialRampToValueAtTime(.001, at + len);
+    s.connect(f).connect(g).connect(out); s.start(at);
+  } else {
+    const pad = layer.id === 'pads', bass = layer.id === 'bass';
+    const len = pad ? STEP * 2 : bass ? STEP * .9 : STEP * .7;
+    for (const m of row.midi) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = bass ? 'sawtooth' : pad ? 'triangle' : 'square';
+      o.frequency.value = note(m);
+      if (pad) o.detune.value = (Math.random() - .5) * 12;
+      f.type = 'lowpass'; f.frequency.value = bass ? 500 : pad ? 1800 : 3500;
+      const v = bass ? .5 : pad ? .12 : .16, a = pad ? .08 : .005;
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(v, at + a); g.gain.exponentialRampToValueAtTime(.001, at + len);
+      o.connect(f).connect(g).connect(out); o.start(at); o.stop(at + len);
+    }
+  }
+}
+function tick() {
+  while (nextAt < ctx.currentTime + .1) {
+    LAYERS.forEach((layer, li) => { if (li > turn) return; layer.rows.forEach((row, ri) => { if (grid[li][ri][step]) hit(layer, row, nextAt); }); });
+    const s = step; setTimeout(() => mark(s), Math.max(0, (nextAt - ctx.currentTime) * 1000));
+    step = (step + 1) % STEPS; nextAt += STEP;
+  }
+}
+function play() {
+  ctx ??= new AudioContext();
+  if (playing) { playing = false; clearInterval(timer); mark(-1); }
+  else { playing = true; step = 0; nextAt = ctx.currentTime + .05; timer = setInterval(tick, 25); tick(); }
+  document.getElementById('play').textContent = playing ? 'Stop' : 'Play';
+}
+
+// ---- screen ----
+const layersEl = document.getElementById('layers');
+function draw() {
+  layersEl.replaceChildren(...LAYERS.map((layer, li) => {
+    const el = document.createElement('div');
+    el.className = 'layer ' + (li < turn ? 'locked' : li > turn ? 'todo' : '');
+    el.style.setProperty('--c', layer.color);
+    el.innerHTML = `<div class="who">${layer.who}<small>${li < turn ? 'passed on' : li > turn ? 'waiting' : layer.hint}</small></div><div class="rows"></div>`;
+    const rows = el.querySelector('.rows');
+    layer.rows.forEach((row, ri) => {
+      const r = document.createElement('div'); r.className = 'row';
+      for (let s = 0; s < STEPS; s++) {
+        const b = document.createElement('button'); b.className = 'cell' + (grid[li][ri][s] ? ' on' : ''); b.title = row.label; b.dataset.s = s;
+        if (li === turn) b.onclick = () => { grid[li][ri][s] = !grid[li][ri][s]; b.classList.toggle('on'); if (grid[li][ri][s]) { ctx ??= new AudioContext(); hit(layer, row, ctx.currentTime); } };
+        r.append(b);
+      }
+      rows.append(r);
+    });
+    return el;
+  }));
+  document.getElementById('turn').innerHTML = turn < LAYERS.length ? `Your turn: <b>${LAYERS[turn].who}</b>` : `<span class="done">Done. That's the day's loop.</span>`;
+  document.getElementById('pass').hidden = turn >= LAYERS.length;
+}
+function mark(s) { document.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now')); if (s >= 0) document.querySelectorAll(`.cell[data-s="${s}"]`).forEach((c) => c.classList.add('now')); }
+document.getElementById('play').onclick = play;
+document.getElementById('pass').onclick = () => { turn = Math.min(turn + 1, LAYERS.length); draw(); };
+document.getElementById('reset').onclick = () => { turn = 0; grid.forEach((l) => l.forEach((r) => r.fill(false))); draw(); };
+draw();
+</script>
