@@ -59,6 +59,7 @@ Numbers are kept from the first draft so his answers can be traced.
 27. "Playing X" game activity.
 28. Webhooks.
 29. Friends list. "Doesn't really matter I don't think", so a maybe rather than a no.
+30. 82-0, the viral NBA roster game, as a games-folder daily (Wes, 2026-10-08: "Sounds like a simple game we could put in the mini games section", then "Put it in the maybe pile"). Spin a team and decade five times, pick a player each spin, slot PG/SG/SF/PF/C, grade the five by peak-decade stats into an 82-game record. Small build; the one real job is bundling a cleaned NBA per-season stats table (rule 1, nothing fetched live). Proposed twist: same five spins for everyone each day. Same studio also shipped a football version, All Dubs.
 
 ### Skip
 
