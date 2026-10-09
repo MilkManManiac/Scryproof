@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-09-trundle-world',
+    date: '2026-10-09',
+    title: 'Trundle goes round the world',
+    notes: [
+      "Trundle's three routes a day now start in three different parts of the world: the Americas, Asia, Europe and Africa take turns, so a day is no longer mostly Africa and Europe. The far end can still be anywhere.",
+    ],
+  },
+  {
     id: '2026-10-08-hero-line',
     date: '2026-10-08',
     title: 'Hero Line, a new game in Activities',

@@ -31,9 +31,12 @@ import {
   travleDistances,
   travleJoined,
   travleMark,
+  travleRegion,
   travleRoute,
   travleShare,
   travleStats,
+  TRAVLE_REGIONS,
+  type TravleRegion,
 } from '@scryproof/shared';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-games-'));
@@ -129,6 +132,31 @@ describe('travhole rules', () => {
       assert.ok(between >= TRAVLE.fewest && between <= TRAVLE.most, `${from} to ${to}: ${between}`);
       assert.ok(travleAllowed(between) > between);
     }
+  });
+
+  it('puts every country with a border in one part of the world, and starts a route there', () => {
+    const all = Object.values(TRAVLE_REGIONS).flat();
+    assert.equal(new Set(all).size, all.length, 'a country in two parts');
+    for (const country of TRAVLE_COUNTRIES) {
+      if (country.borders.length > 0) assert.ok(all.includes(country.code), `${country.code} is in no part`);
+      else assert.ok(!all.includes(country.code), `${country.code} has no border`);
+    }
+    for (const region of Object.keys(TRAVLE_REGIONS) as TravleRegion[]) {
+      for (let at = 0; at < 10; at += 1) {
+        const { from, to } = choose(new Set(), region);
+        assert.ok(TRAVLE_REGIONS[region].includes(from), `${from} is not in ${region}`);
+        const between = travleDistances(from).get(to)! - 1;
+        assert.ok(between >= TRAVLE.fewest && between <= TRAVLE.most, `${from} to ${to}: ${between}`);
+      }
+    }
+    // A day's three routes start in three different parts; four days cover each part three times.
+    const starts: string[] = [];
+    for (let day = 1; day <= 4; day += 1) {
+      const today = [0, 1, 2].map((leg) => travleRegion(day, leg));
+      assert.equal(new Set(today).size, 3, `day ${day}: ${today.join(' ')}`);
+      starts.push(...today);
+    }
+    for (const region of Object.keys(TRAVLE_REGIONS)) assert.equal(starts.filter((at) => at === region).length, 3, region);
   });
 
   it('shares squares only', () => {

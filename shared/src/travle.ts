@@ -28,6 +28,30 @@ export const TRAVLE = {
   firstDay: '2026-09-29',
 } as const;
 
+/**
+ * Where a route starts. Africa and Europe are over half of the countries with
+ * a land border, so a start picked from all of them landed there most days
+ * (Wes, 2026-10-09: "most games are based in africa/parts of europe. Can we
+ * expand that a bit?"). Now each of a day's routes starts in a different part
+ * of the world, turning through these four; the other end can be anywhere.
+ * Islands are not here: a route cannot start on one.
+ */
+export type TravleRegion = 'americas' | 'europe' | 'asia' | 'africa';
+
+export const TRAVLE_REGIONS: Record<TravleRegion, readonly string[]> = {
+  americas: ['USA', 'CAN', 'MEX', 'GTM', 'BLZ', 'HND', 'SLV', 'NIC', 'CRI', 'PAN', 'COL', 'VEN', 'GUY', 'SUR', 'BRA', 'ECU', 'PER', 'BOL', 'PRY', 'URY', 'ARG', 'CHL', 'HTI', 'DOM'],
+  europe: ['ALB', 'AND', 'AUT', 'BLR', 'BEL', 'BIH', 'BGR', 'HRV', 'CZE', 'DNK', 'EST', 'FIN', 'FRA', 'DEU', 'GRC', 'HUN', 'IRL', 'ITA', 'KOS', 'LVA', 'LIE', 'LTU', 'LUX', 'MDA', 'MCO', 'MNE', 'NLD', 'MKD', 'NOR', 'POL', 'PRT', 'ROU', 'RUS', 'SMR', 'SRB', 'SVK', 'SVN', 'ESP', 'SWE', 'CHE', 'UKR', 'GBR', 'VAT'],
+  asia: ['AFG', 'ARM', 'AZE', 'BGD', 'BTN', 'BRN', 'KHM', 'CHN', 'GEO', 'IND', 'IDN', 'IRN', 'IRQ', 'ISR', 'JOR', 'KAZ', 'KWT', 'KGZ', 'LAO', 'LBN', 'MYS', 'MNG', 'MMR', 'NPL', 'PRK', 'OMN', 'PAK', 'PSE', 'PNG', 'QAT', 'SAU', 'KOR', 'SYR', 'TJK', 'THA', 'TLS', 'TUR', 'TKM', 'ARE', 'UZB', 'VNM', 'YEM'],
+  africa: ['DZA', 'AGO', 'BEN', 'BWA', 'BFA', 'BDI', 'CMR', 'CAF', 'TCD', 'COG', 'COD', 'CIV', 'DJI', 'EGY', 'GNQ', 'ERI', 'SWZ', 'ETH', 'GAB', 'GMB', 'GHA', 'GIN', 'GNB', 'KEN', 'LSO', 'LBR', 'LBY', 'MWI', 'MLI', 'MRT', 'MAR', 'MOZ', 'NAM', 'NER', 'NGA', 'RWA', 'SEN', 'SLE', 'SOM', 'ZAF', 'SSD', 'SDN', 'TZA', 'TGO', 'TUN', 'UGA', 'ESH', 'ZMB', 'ZWE'],
+};
+
+const REGION_TURN: readonly TravleRegion[] = ['americas', 'asia', 'europe', 'africa'];
+
+/** The part of the world a route starts in. Three routes a day over four parts, so no day repeats one and no part is skipped two days running. */
+export function travleRegion(day: number, leg: number): TravleRegion {
+  return REGION_TURN[(day * TRAVLE.legs + leg) % REGION_TURN.length]!;
+}
+
 export function travleDay(at: Date = new Date()): number {
   return dailyNumber(TRAVLE.firstDay, at);
 }

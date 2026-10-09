@@ -23,10 +23,12 @@ import {
   travleDistances,
   travleJoined,
   travleMark,
+  travleRegion,
   travleRoute,
   travleStats,
+  TRAVLE_REGIONS,
 } from '@scryproof/shared';
-import type { TravleFinish, TravleStanding, TravleToday } from '@scryproof/shared';
+import type { TravleFinish, TravleRegion, TravleStanding, TravleToday } from '@scryproof/shared';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
@@ -41,11 +43,13 @@ export interface Ends {
   to: string;
 }
 
-/** Two countries with a fair way between them, not the two any day in `used` had. */
-export function choose(used: ReadonlySet<string>): Ends {
-  const joined = TRAVLE_COUNTRIES.filter((country) => country.borders.length > 0);
+/** Two countries with a fair way between them, not the two any day in `used` had. Starts in `region`, if given. */
+export function choose(used: ReadonlySet<string>, region?: TravleRegion): Ends {
+  const joined = region
+    ? TRAVLE_REGIONS[region].filter((code) => (travleCountry(code)?.borders.length ?? 0) > 0)
+    : TRAVLE_COUNTRIES.filter((country) => country.borders.length > 0).map((country) => country.code);
   for (;;) {
-    const from = joined[randomInt(joined.length)]!.code;
+    const from = joined[randomInt(joined.length)]!;
     const far = [...travleDistances(from)].filter(
       ([code, borders]) => borders - 1 >= TRAVLE.fewest && borders - 1 <= TRAVLE.most && !used.has(`${from}-${code}`),
     );
@@ -63,7 +67,7 @@ export async function endsFor(day: number, leg: number): Promise<Ends> {
   // No pair any route has had, the day's other routes included.
   const used = new Set<string>();
   for (const row of await db.select().from(travleDays)) used.add(`${row.from}-${row.to}`).add(`${row.to}-${row.from}`);
-  const ends = choose(used);
+  const ends = choose(used, travleRegion(day, leg));
   if (kept) {
     await db.update(travleDays).set(ends).where(at);
     return ends;
