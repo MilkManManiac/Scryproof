@@ -207,10 +207,9 @@ function draw() {
     const own = mine(l), el = document.createElement('div'), p = l.parts[l.editing];
     el.className = 'layer ' + (done.has(l.id) ? 'locked' : own || (mode === 'pass' && current === null) ? '' : 'todo');
     el.style.setProperty('--c', l.color);
-    const state = done.has(l.id) ? 'passed on' : own ? l.hint : current === null ? 'free' : 'waiting';
+    const state = done.has(l.id) ? (l.by ? `${l.by} did this` : 'passed on') : own ? l.hint : current === null ? 'free' : 'waiting';
     const dis = own ? '' : 'disabled';
     const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${dis}></label>`;
-    const soundName = (s) => typeof s === 'string' ? s : s.name;
     el.innerHTML = `<div class="who">${l.who}<small>${state}</small>
       ${l.kits ? `<select data-kit ${dis}>${l.kits.map((k) => `<option value="${k}" ${k === l.kit ? 'selected' : ''}>${k} kit</option>`).join('')}</select>` : ''}
       ${l.parts.length > 1 ? `<div class="tabs">${l.parts.map((q, i) => `<button data-tab="${i}" class="${i === l.editing ? 'on' : ''}">${q.label}</button>`).join('')}</div>` : ''}
@@ -302,18 +301,98 @@ function mark(t) {
 }
 function begin(m) {
   mode = m; current = null; done.clear(); setBpm(120);
-  LAYERS.forEach((l) => { l.notes = []; l.muted = false; l.hearAt = 1; l.listen?.gain.setTargetAtTime(1, ctx.currentTime, 0.02); });
+  LAYERS.forEach((l) => { l.notes = []; l.by = null; l.muted = false; l.hearAt = 1; l.listen?.gain.setTargetAtTime(1, ctx.currentTime, 0.02); });
   document.getElementById('start').hidden = true; document.getElementById('game').hidden = false;
-  document.getElementById('sub').textContent = (m === 'solo' ? 'All five layers are yours. ' : 'Pick a layer, make it, pass it on; the next person picks from what is left. Whoever has the turn can change the BPM. ')
+  document.getElementById('sub').textContent = (m === 'solo' ? 'All five layers are yours. ' : 'Pick a layer, make it, pass it on, close the window; friends pick from what is left. Whoever has the turn can change the BPM. ')
     + 'Click a box to put a note down, drag right to make it longer, click a note to take it away. On a drum layer, the sliders work on the sound whose tab is lit; drop a .wav of your own onto a drum row to use it. Space plays and stops.';
+  document.getElementById('link').hidden = m === 'solo';
   draw();
 }
-document.querySelectorAll('#start [data-mode]').forEach((b) => { b.onclick = () => begin(b.dataset.mode); });
+
+// ---- loops for friends: saved on the box by store/store.mjs, under api/ next to this page ----
+// Wes: "an individual session that's like saved... I finish my part... someone else can jump in pick up that session
+// do the instrument they want... over the course of the day people can jump back in and see how it's progressing."
+let loop = null, watch = null; // the open loop as the box last sent it, and the timer that asks again
+const say = (t) => { const m = document.getElementById('msg'); m.textContent = t; m.hidden = !t; };
+const nameEl = document.getElementById('name');
+nameEl.value = localStorage.getItem('pa.name') || '';
+nameEl.onchange = () => localStorage.setItem('pa.name', nameEl.value.trim());
+const me = () => nameEl.value.trim() || 'someone';
+const api = async (path, method = 'GET', body) => {
+  const r = await fetch('api/' + path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body && JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok && r.status !== 409) throw new Error(data.error || r.status);
+  return { status: r.status, data };
+};
+const soundName = (s) => typeof s === 'string' ? s : s.name;
+const pack = (l) => ({ by: me(), bpm, kit: l.kit, notes: l.notes.map(({ row, start, len }) => ({ row, start, len })),
+  parts: l.parts.map((p) => ({ sound: soundName(p.sound), level: p.level, fx: p.fx })) });
+// Put a loop from the box onto the screen. A dropped .wav never travels, so a sound nobody else has falls back to the kit's first.
+function apply(data) {
+  loop = data; setBpm(loop.bpm);
+  for (const l of LAYERS) {
+    const s = loop.layers[l.id]; if (!s) continue;
+    done.add(l.id); l.by = s.by; l.notes = s.notes;
+    if (l.kits && l.kits.includes(s.kit)) l.kit = s.kit;
+    l.parts.forEach((p, i) => {
+      const q = s.parts[i]; if (!q) return;
+      p.level = q.level; p.fader?.gain.setTargetAtTime(q.level, ctx.currentTime, 0.02);
+      for (const k in p.fx) p.fx[k] = q.fx[k] ?? 0;
+      const known = p.sounds.some((x) => soundName(x) === q.sound);
+      p.sound = known ? q.sound : p.kind === 'drum' ? kitFirst(l.kit, p.cat).name : p.sound;
+      setSound(p, p.sound);
+    });
+  }
+  if (current && done.has(current)) current = null;
+  draw();
+}
+async function openLoop(id) {
+  const { status, data } = await api('loops/' + id);
+  if (status !== 200) { say('That loop is gone.'); return showLoops(); }
+  say(''); begin('pass'); apply(data);
+  history.replaceState(null, '', '?s=' + id);
+  document.getElementById('link').value = location.href;
+  document.getElementById('sub').textContent = `"${loop.name}", started by ${loop.by}. ` + document.getElementById('sub').textContent;
+  clearInterval(watch);
+  watch = setInterval(async () => { // nothing of yours in hand: see how it is going
+    if (current || document.getElementById('game').hidden) return;
+    const r = await api('loops/' + loop.id).catch(() => null);
+    if (r?.status === 200 && r.data.updated !== loop.updated) apply(r.data);
+  }, 15000);
+}
+async function passOn() {
+  if (!loop) { done.add(current); current = null; draw(); return; } // solo-style pass with no box: the old one-screen game
+  const l = byId(current), b = document.getElementById('pass'); b.disabled = true;
+  try {
+    const { status, data } = await api(`loops/${loop.id}/${l.id}`, 'PUT', pack(l));
+    if (status === 409) { say(`${data.loop.layers[l.id].by} already passed ${l.who} on. Pick another.`); l.notes = []; }
+    current = null; apply(status === 409 ? data.loop : data);
+  } catch (e) { say('Could not save: ' + e.message); b.disabled = false; }
+}
+async function showLoops() {
+  const el = document.getElementById('loops');
+  const r = await api('loops').catch(() => null);
+  if (!r) { el.innerHTML = ''; return; } // opened from a plain file: solo still works
+  const when = (t) => { const h = (Date.now() - t) / 36e5; return h < 1 ? 'just now' : h < 24 ? `${Math.floor(h)} h ago` : `${Math.floor(h / 24)} d ago`; };
+  el.innerHTML = r.data.length ? '<h2>Loops</h2>' + r.data.map((x) => {
+    const n = Object.keys(x.done).length, who = LAYERS.filter((l) => x.done[l.id]).map((l) => `${l.who}: ${x.done[l.id]}`).join(', ');
+    return `<div class="loop ${n === 5 ? 'full' : ''}"><div>${x.name} <small>${x.bpm} bpm, started by ${x.by} ${when(x.updated)}. ${n ? who : 'nothing yet'}</small></div><button data-open="${x.id}">${n === 5 ? 'Listen' : n ? 'Jump in' : 'Start it'}</button></div>`;
+  }).join('') : '<h2>No loops yet</h2>';
+  el.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => openLoop(b.dataset.open); });
+}
+document.getElementById('new').onclick = async () => {
+  const name = document.getElementById('loopName').value.trim() || `${me()}'s ${new Date().toLocaleDateString(undefined, { weekday: 'long' })} loop`;
+  const { data } = await api('loops', 'POST', { name, by: me(), bpm: 120 });
+  openLoop(data.id);
+};
+document.querySelectorAll('#start [data-mode]').forEach((b) => { b.onclick = () => { loop = null; begin(b.dataset.mode); }; });
 document.getElementById('play').onclick = play;
 document.getElementById('masterVol').oninput = (e) => { boot(); master.gain.setTargetAtTime(+e.target.value, ctx.currentTime, 0.02); };
 document.getElementById('bpm').onchange = (e) => setBpm(+e.target.value);
-document.getElementById('pass').onclick = () => { done.add(current); current = null; draw(); };
-document.getElementById('reset').onclick = () => { if (playing) play(); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; };
+document.getElementById('pass').onclick = passOn;
+document.getElementById('reset').onclick = () => { if (playing) play(); loop = null; clearInterval(watch); history.replaceState(null, '', location.pathname); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; showLoops(); };
+const wanted = new URLSearchParams(location.search).get('s');
+if (wanted && /^[a-z0-9]{10}$/.test(wanted)) openLoop(wanted); else showLoops();
 // Finer boxes: notes already down stay where they are; a note on an off-box tick still plays, it just cannot be grabbed until the grid is fine again.
 document.getElementById('fine').onchange = (e) => { cols = e.target.checked ? 64 : 32; draw(); };
 document.addEventListener('keydown', (e) => { if (e.code === 'Space' && mode && !['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) { e.preventDefault(); play(); } });

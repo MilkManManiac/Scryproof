@@ -1,0 +1,36 @@
+[Unit]
+Description=Pass-along loop store (activities.scryproof.com/pass-along/api)
+After=network.target
+
+[Service]
+Type=simple
+User=pass-along-store
+Group=pass-along-store
+RuntimeDirectory=pass-along-store
+RuntimeDirectoryMode=0755
+StateDirectory=pass-along-store
+ExecStart=/opt/bonesdeploy/node/v24.19.0/bin/node /srv/pass-along-store/store.mjs --sock /run/pass-along-store/store.sock --dir /var/lib/pass-along-store
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/pass-along-store /var/lib/pass-along-store
+InaccessiblePaths=/srv/sites /srv/conf /etc/scryproof /home/git
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+UMask=0022
+MemoryMax=128M
+CPUQuota=25%
+TasksMax=32
+LimitNOFILE=512
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

@@ -37,6 +37,14 @@
   #start { padding: 40px 0; text-align: center; }
   #start p { color: #9a978f; }
   #start .big { margin: 6px; font-size: 16px; }
+  #start input { font: inherit; background: #2a2f3a; color: #e6e3dc; border: 0; border-radius: 6px; padding: 6px 8px; width: 220px; }
+  #start .hint { max-width: 520px; margin: 4px auto 18px; }
+  #loops { width: min(640px, 100%); margin: 0 auto; text-align: left; }
+  #loops h2 { font-size: 15px; color: #9a978f; margin: 0 0 6px; }
+  .loop { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-top: 1px solid #262a33; }
+  .loop small { color: #9a978f; display: block; }
+  .loop button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 0; background: #2a2f3a; color: #e6e3dc; cursor: pointer; }
+  .loop.full button { background: #1f2a22; color: #8fd18f; }
   .chords { display: grid; grid-template-columns: 250px 1fr; margin-top: 8px; }
   .chords .names { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; color: #9a978f; }
   .chords .names span { border-left: 1px solid #3a4150; }
@@ -71,10 +79,14 @@
 </style>
 <main>
   <h1>Pass-along</h1>
+  <p id="msg" class="sub" hidden style="color:#e0a05a"></p>
   <div id="start">
     <p>One eight-count. Five layers: bass, kick and snare, hats and claps, pads, melody.</p>
-    <button class="big" data-mode="solo">Solo, I'll do them all</button>
-    <button class="big" data-mode="pass">Pass it along, one layer each</button>
+    <p><label>Your name <input id="name" maxlength="24" placeholder="so friends see who did what"></label></p>
+    <p><button class="big" data-mode="solo">Solo, I'll do them all</button>
+    <input id="loopName" maxlength="40" placeholder="call it something"> <button class="big" id="new">Start a loop for friends</button></p>
+    <p class="hint">A loop for friends is saved here. Take a layer, pass it on, close the window. Friends open the loop, take what is left, and anyone can come back to hear how it is going.</p>
+    <div id="loops"></div>
   </div>
   <div id="game" hidden>
     <p class="sub" id="sub"></p>
@@ -82,7 +94,8 @@
       <button class="big" id="play">Play</button>
       <span class="turn" id="turn"></span>
       <button class="big" id="pass">Pass it on</button>
-      <button class="big quiet" id="reset">Start over</button>
+      <button class="big quiet" id="reset">Leave</button>
+      <input id="link" readonly hidden title="Paste this in chat" style="width:260px;font:inherit;font-size:12px;background:#2a2f3a;color:#9a978f;border:0;border-radius:6px;padding:4px 6px">
       <label>BPM <input type="number" id="bpm" min="60" max="200" step="1" value="120"></label>
       <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
       <label><span class="peak" id="peak"></span> limiter</label>

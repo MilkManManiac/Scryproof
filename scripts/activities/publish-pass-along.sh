@@ -21,6 +21,7 @@ mkdir "$build/pass-along"
 cp "$root/docs/spikes/passalong.html" "$build/pass-along/index.html"
 cp "$root/docs/spikes/passalong.js" "$build/pass-along/"
 cp -r "$root/docs/spikes/kombinat" "$build/pass-along/"
+cp -r "$root/docs/spikes/store" "$build/pass-along/"
 tar -czf "$build/pass-along.tar.gz" -C "$build/pass-along" .
 rel="$(git -C "$root" rev-parse --short=12 HEAD)-$(date +%s | sha256sum | cut -c1-12)"
 
@@ -38,6 +39,13 @@ chown -R root:scryproof-activities "$dst.tmp"
 find "$dst.tmp" -type d -exec chmod 750 {} +
 find "$dst.tmp" -type f -exec chmod 640 {} +
 chown root:scryproof-activities "$base" "$base/releases"; chmod 750 "$base" "$base/releases"
+# the store is a service, not a static file: it leaves the release folder before anything is served
+id pass-along-store >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin pass-along-store
+/opt/bonesdeploy/node/v24.19.0/bin/node --check "$dst.tmp/store/store.mjs"   # a broken store never replaces a working one
+mkdir -p /srv/pass-along-store
+install -o root -g pass-along-store -m 0640 "$dst.tmp/store/store.mjs" /srv/pass-along-store/store.mjs
+install -o root -g root -m 0644 "$dst.tmp/store/pass-along-store.service" /etc/systemd/system/pass-along-store.service
+rm -rf "$dst.tmp/store"
 rm -rf "$dst"; mv -T "$dst.tmp" "$dst"
 ln -sfn "$dst" "$base/current.tmp"; mv -Tf "$base/current.tmp" "$base/current"
 # keep the last three releases
@@ -63,6 +71,39 @@ PY
 fi
 nginx -t -c "$conf" -q
 systemctl reload scryproof-activities
+
+# the loop store: front nginx proxies /pass-along/api/ to its unix socket (same shape as Hero Line's relay)
+systemctl daemon-reload
+systemctl enable --now pass-along-store >/dev/null
+systemctl restart pass-along-store
+sleep 1
+systemctl is-active pass-along-store
+[ -S /run/pass-along-store/store.sock ] || { echo "no store socket"; exit 1; }
+front=/etc/nginx/sites-enabled/scryproof-activities.conf
+if ! grep -q 'location ^~ /pass-along/api/' "$front"; then
+  mkdir -p /root/nginx-backups; cp "$front" "/root/nginx-backups/scryproof-activities.conf.$(date +%s)"
+  python3 - "$front" <<'PY2'
+import sys
+p = sys.argv[1]; s = open(p).read()
+block = '''    # Pass-along loops: small JSON to the store's unix socket (pass-along-store.service). A loop is a few KB.
+    location ^~ /pass-along/api/ {
+        proxy_pass http://unix:/run/pass-along-store/store.sock;
+        proxy_set_header Host activities.scryproof.com;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_buffering off;
+        client_max_body_size 64k;
+        proxy_read_timeout 15s;
+    }
+'''
+marker = '    location / {
+        proxy_pass http://unix:/run/scryproof-activities/nginx.sock;'
+assert marker in s and block not in s
+open(p, 'w').write(s.replace(marker, block + marker))
+PY2
+fi
+nginx -t -q || { echo "front nginx config broken, NOT reloaded"; exit 1; }
+systemctl reload nginx
 echo "installed $rel"
 REMOTE
 
