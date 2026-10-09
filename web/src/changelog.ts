@@ -24,7 +24,7 @@ export const CHANGELOG: readonly Release[] = [
     date: '2026-10-09',
     title: 'Pass-along, and Trundle goes round the world',
     notes: [
-      'Pass-along is in Activities: an eight-count in five layers (bass, kick and snare, hats and claps, pads, melody). Do them all yourself, or take one layer, set the tempo, and pass it on. Real drum kits, sounds to pick from, easy effects, and a limiter so nothing clips. An experiment: nothing is saved yet, and passing on only works on one screen for now.',
+      'Pass-along is in Activities: an eight-count in five layers (bass, kick and snare, hats and claps, pads, melody). Do them all yourself, or take one layer, set the tempo, and pass it on. Real drum kits, sounds to pick from, easy effects, and a limiter so nothing clips. Start a loop for friends and it is saved: do your part, close it, and friends open the same loop later, take what is left, and hear how it is coming along.',
       "Trundle's three routes a day now start in three different parts of the world: the Americas, Asia, Europe and Africa take turns, so a day is no longer mostly Africa and Europe. The far end can still be anywhere.",
     ],
   },

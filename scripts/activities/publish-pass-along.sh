@@ -96,8 +96,7 @@ block = '''    # Pass-along loops: small JSON to the store's unix socket (pass-a
         proxy_read_timeout 15s;
     }
 '''
-marker = '    location / {
-        proxy_pass http://unix:/run/scryproof-activities/nginx.sock;'
+marker = '    location / {\n        proxy_pass http://unix:/run/scryproof-activities/nginx.sock;'
 assert marker in s and block not in s
 open(p, 'w').write(s.replace(marker, block + marker))
 PY2
@@ -111,3 +110,5 @@ echo "check:"
 curl -s -o /dev/null -w '  index %{http_code}\n' https://activities.scryproof.com/pass-along/
 curl -s -o /dev/null -w '  script %{http_code}\n' https://activities.scryproof.com/pass-along/passalong.js
 curl -s -o /dev/null -w '  samples %{http_code} %{size_download} bytes\n' https://activities.scryproof.com/pass-along/kombinat/samples.js
+curl -s -o /dev/null -w '  loops %{http_code}
+' https://activities.scryproof.com/pass-along/api/loops
