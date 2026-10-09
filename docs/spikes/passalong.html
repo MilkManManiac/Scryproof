@@ -1,21 +1,24 @@
 <!doctype html>
 <!--
-  Pass-along, third cut (Wes, 2026-10-09): "a overall limiter so nothing
-  peaks", "some effects that we can add to each thing. Like delay reverb etc.
-  And they can goof with the easy stuff", "adjust the volume on their end of
-  each track", "allow for smaller notes if needed", "improve on the ease of
-  use a bit".
+  Pass-along, fourth cut (Wes, 2026-10-09): "limiters on each track as
+  well", "significantly reduce how high they can put the drive", "more sound
+  presets", "answer at the start if you want to do it solo or have others
+  join", "let the first person pick what they want to do first like what
+  track", "the pad is limited and shouldn't be if the rest isn't", "the drums
+  are so weak. there has to be better kits out there".
 
-  Second cut: "each one has a set chord or whatever so generally things will
-  sounds good together", "more options for note length", "options for sounds
-  types with each thing... a simple version of that vst thing we made in a
-  diff project", "ones at the top are higher notes", "just one person does
-  the drums", "more options for melodies. bells. etc."
+  Third cut: "a overall limiter so nothing peaks", "some effects that we can
+  add to each thing. Like delay reverb etc.", "adjust the volume on their end
+  of each track", "allow for smaller notes if needed", "improve on the ease
+  of use a bit". Second cut: "each one has a set chord or whatever so
+  generally things will sounds good together", "more options for note
+  length", "options for sounds types with each thing", "ones at the top are
+  higher notes", "just one person does the drums", "bells. etc."
 
   The sounds and effects are Kombinat's (CodeProjects/Music), copied into
-  ./kombinat/, not rewritten. One eight-count, four people in order: Bass,
-  Drums, Pads, Melody. The day's chords are set; the grids tint the notes
-  that fit them. No server, no saving. Nothing is fetched.
+  ./kombinat/, not rewritten. One eight-count. Solo, or pass it along: each
+  person picks a layer that is still free. The day's chords are set; the
+  grids tint the notes that fit them. No server, no saving. Nothing is fetched.
 -->
 <meta charset="utf-8">
 <title>Pass-along</title>
@@ -32,6 +35,9 @@
   .bar label { color: #9a978f; display: flex; gap: 6px; align-items: center; }
   .peak { width: 10px; height: 10px; border-radius: 50%; background: #2a2f3a; display: inline-block; }
   .peak.hot { background: #d95f5f; }
+  #start { padding: 40px 0; text-align: center; }
+  #start p { color: #9a978f; }
+  #start .big { margin: 6px; font-size: 16px; }
   .chords { display: grid; grid-template-columns: 250px 1fr; margin-top: 8px; }
   .chords .names { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; color: #9a978f; }
   .chords .names span { border-left: 1px solid #3a4150; }
@@ -45,10 +51,12 @@
   .knob { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: #9a978f; }
   .knob.on { color: #e6e3dc; }
   .knob input { width: 100%; margin: 2px 0; accent-color: var(--c); }
-  .who button { font: inherit; font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 6px; border: 0; background: #2a2f3a; color: #9a978f; cursor: pointer; }
+  .who button { font: inherit; font-size: 12px; margin: 4px 4px 0 0; padding: 2px 8px; border-radius: 6px; border: 0; background: #2a2f3a; color: #9a978f; cursor: pointer; }
+  .who button.take { background: var(--c); color: #15171c; font-weight: 600; }
   .rows { display: grid; gap: 2px; user-select: none; }
   .row { display: grid; grid-template-columns: 54px repeat(var(--cols), 1fr); gap: 2px; align-items: stretch; }
-  .row .label { font-size: 11px; color: #9a978f; text-align: right; padding-right: 6px; line-height: 15px; }
+  .row.gap { margin-bottom: 6px; }
+  .row .label { font-size: 11px; color: #9a978f; text-align: right; padding-right: 6px; line-height: 15px; white-space: nowrap; }
   .cell { height: 15px; border-radius: 3px; background: #242833; position: relative; }
   .cell.beat { background: #2f3542; }
   .cell.fits { background: #2a3a35; }
@@ -59,17 +67,25 @@
 </style>
 <main>
   <h1>Pass-along</h1>
-  <p class="sub">One eight-count at 120 BPM. Four people, one layer each, in order. Tonight you play all four. Click a box to put a note down, drag right to make it longer, click a note to take it away. Space plays and stops.</p>
-  <div class="bar">
-    <button class="big" id="play">Play</button>
-    <span class="turn" id="turn"></span>
-    <button class="big" id="pass">Pass it on</button>
-    <button class="big quiet" id="reset">Start over</button>
-    <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
-    <label><span class="peak" id="peak"></span> limiter</label>
+  <div id="start">
+    <p>One eight-count at 120 BPM. Four layers: bass, drums, pads, melody.</p>
+    <button class="big" data-mode="solo">Solo, I'll do all four</button>
+    <button class="big" data-mode="pass">Pass it along, one layer each</button>
   </div>
-  <div class="chords"><div></div><div class="names" id="chordNames"></div></div>
-  <div id="layers"></div>
+  <div id="game" hidden>
+    <p class="sub" id="sub"></p>
+    <div class="bar">
+      <button class="big" id="play">Play</button>
+      <span class="turn" id="turn"></span>
+      <button class="big" id="pass">Pass it on</button>
+      <button class="big quiet" id="reset">Start over</button>
+      <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
+      <label><span class="peak" id="peak"></span> limiter</label>
+      <label>overall volume <input type="range" id="masterVol" min="0" max="1" step="0.05" value="0.5" style="width:90px"></label>
+    </div>
+    <div class="chords"><div></div><div class="names" id="chordNames"></div></div>
+    <div id="layers"></div>
+  </div>
 </main>
 <script src="kombinat/synth.js"></script>
 <script src="kombinat/effects.js"></script>
@@ -91,8 +107,32 @@ const chordAt = (tick) => CHORDS[Math.floor(tick / (TICKS / CHORDS.length))];
 const scaleRows = (lo, hi) => { const out = []; for (let m = hi; m >= lo; m--) if (KEY.scale.includes(m % 12)) out.push({ label: name(m), midi: [m] }); return out; };
 const voice = (chord, root) => chord.tones.map((t) => root + ((t - root % 12) + 12) % 12).sort((a, b) => a - b);
 
-// Extra sounds for melodies, in Kombinat's preset shape.
+// More sounds, in Kombinat's preset shape.
 K.PRESETS.push(
+  // bass
+  { name: 'ROUND BASS', synth: { osc1: { wave: 'triangle', oct: -1, level: 0.8 }, osc2: { wave: 'sine', oct: -2, level: 0.4 }, sub: { level: 0.3 },
+    filter: { cutoff: 600, res: 1, env: 0.3 }, fenv: { a: 0.005, d: 0.2, s: 0.2, r: 0.2 }, aenv: { a: 0.004, d: 0.3, s: 0.7, r: 0.15 } }, rack: [] },
+  { name: 'PLUCK BASS', synth: { osc1: { wave: 'sawtooth', oct: -1, level: 0.8 }, osc2: { wave: 'square', oct: -1, fine: 5, level: 0.3 },
+    filter: { cutoff: 250, res: 4, env: 0.8, keytrack: 0.5 }, fenv: { a: 0.001, d: 0.14, s: 0, r: 0.14 }, aenv: { a: 0.001, d: 0.3, s: 0.3, r: 0.2 }, play: { mode: 'mono', glide: 0.02 } }, rack: [] },
+  { name: 'REESE', synth: { osc1: { wave: 'sawtooth', oct: -1, unison: 3, spread: 30, level: 0.6 }, osc2: { wave: 'sawtooth', oct: -1, fine: -12, unison: 3, spread: 30, level: 0.6 },
+    filter: { cutoff: 700, res: 2, env: 0.2 }, aenv: { a: 0.01, d: 0.2, s: 0.9, r: 0.2 } }, rack: [{ type: 'chorus', p: { rate: 0.2, depth: 0.5, mix: 0.3 } }] },
+  { name: '808 BASS', synth: { osc1: { wave: 'sine', oct: -2, level: 1 }, osc2: { level: 0 }, filter: { cutoff: 300, res: 0.5, env: 0.5 },
+    fenv: { a: 0.001, d: 0.08, s: 0, r: 0.1 }, aenv: { a: 0.001, d: 0.9, s: 0.5, r: 0.3 }, play: { mode: 'mono', glide: 0.08 } },
+    rack: [{ type: 'distortion', p: { mode: 'soft', drive: 0.25, tone: 3000, mix: 0.6, level: 0.8 } }] },
+  // pads and keys
+  { name: 'STRINGS', synth: { osc1: { wave: 'sawtooth', unison: 5, spread: 20, level: 0.5 }, osc2: { wave: 'sawtooth', oct: 1, unison: 3, spread: 15, level: 0.25 },
+    filter: { cutoff: 2200, res: 0.7, env: 0.2 }, fenv: { a: 0.6, d: 1, s: 0.6, r: 1 }, aenv: { a: 0.5, d: 0.5, s: 0.9, r: 1.2 }, lfo: { rate: 4.5, depth: 0.02, target: 'pitch' } },
+    rack: [{ type: 'reverb', p: { size: 0.9, decay: 4, mix: 0.4 } }] },
+  { name: 'CHOIR', synth: { osc1: { wave: 'pulse', unison: 4, spread: 12, level: 0.5 }, osc2: { wave: 'triangle', oct: 1, fine: 6, unison: 2, level: 0.35 },
+    filter: { type: 'bandpass', cutoff: 1100, res: 2, env: 0.15 }, fenv: { a: 0.8, d: 1, s: 0.7, r: 1 }, aenv: { a: 0.7, d: 0.6, s: 0.9, r: 1.5 }, lfo: { rate: 0.25, depth: 0.2, target: 'cutoff' } },
+    rack: [{ type: 'chorus', p: { rate: 0.3, depth: 0.6, mix: 0.5 } }, { type: 'reverb', p: { size: 0.95, decay: 6, mix: 0.45 } }] },
+  { name: 'DREAM PAD', synth: { osc1: { wave: 'triangle', unison: 4, spread: 18, level: 0.6 }, osc2: { wave: 'sine', oct: 1, semi: 7, level: 0.3 },
+    filter: { cutoff: 1500, res: 0.5, env: 0.3 }, fenv: { a: 2, d: 2, s: 0.5, r: 2 }, aenv: { a: 1.5, d: 1, s: 0.8, r: 2.5 } },
+    rack: [{ type: 'delay', p: { div: '1/4', feedback: 0.5, pingpong: 'on', mix: 0.3 } }, { type: 'reverb', p: { size: 1, decay: 7, mix: 0.5 } }] },
+  { name: 'E PIANO', synth: { osc1: { wave: 'sine', level: 0.8 }, osc2: { wave: 'sine', oct: 2, semi: 0, level: 0.15 },
+    filter: { cutoff: 5000, res: 0.5, env: 0.3 }, fenv: { a: 0.001, d: 0.4, s: 0, r: 0.3 }, aenv: { a: 0.002, d: 1.2, s: 0.2, r: 0.4 }, lfo: { rate: 4, depth: 0.08, target: 'amp' } },
+    rack: [{ type: 'chorus', p: { rate: 0.6, depth: 0.3, mix: 0.3 } }] },
+  // melody
   { name: 'BELLS', synth: { osc1: { wave: 'sine', oct: 1, level: 0.6 }, osc2: { wave: 'sine', oct: 2, semi: 7, fine: 0, level: 0.25 },
     filter: { cutoff: 12000, res: 0.3, env: 0 }, aenv: { a: 0.002, d: 1.2, s: 0, r: 0.8 } },
     rack: [{ type: 'reverb', p: { size: 0.85, decay: 4, mix: 0.4 } }] },
@@ -102,47 +142,93 @@ K.PRESETS.push(
   { name: 'FLUTE', synth: { osc1: { wave: 'sine', level: 0.7 }, osc2: { wave: 'triangle', oct: 0, fine: 5, level: 0.3 }, noise: { level: 0.03 },
     filter: { cutoff: 4000, res: 0.5, env: 0.1 }, aenv: { a: 0.08, d: 0.2, s: 0.8, r: 0.25 }, lfo: { rate: 5, depth: 0.03, target: 'pitch' } },
     rack: [{ type: 'reverb', p: { size: 0.7, decay: 2.5, mix: 0.3 } }] },
+  { name: 'MARIMBA', synth: { osc1: { wave: 'sine', level: 0.8 }, osc2: { wave: 'sine', oct: 2, semi: 0, level: 0.2 },
+    filter: { cutoff: 6000, res: 0.5, env: 0.4 }, fenv: { a: 0.001, d: 0.08, s: 0, r: 0.08 }, aenv: { a: 0.001, d: 0.35, s: 0, r: 0.2 } },
+    rack: [{ type: 'reverb', p: { size: 0.5, decay: 1.5, mix: 0.25 } }] },
+  { name: 'KALIMBA', synth: { osc1: { wave: 'triangle', oct: 1, level: 0.7 }, osc2: { wave: 'sine', oct: 1, semi: 12, level: 0.15 }, noise: { level: 0.02 },
+    filter: { cutoff: 7000, res: 0.5, env: 0.5 }, fenv: { a: 0.001, d: 0.05, s: 0, r: 0.05 }, aenv: { a: 0.001, d: 0.8, s: 0, r: 0.3 } },
+    rack: [{ type: 'delay', p: { div: '1/8', feedback: 0.25, pingpong: 'on', mix: 0.2 } }, { type: 'reverb', p: { size: 0.6, decay: 2, mix: 0.3 } }] },
+  { name: 'HARP', synth: { osc1: { wave: 'sawtooth', level: 0.5 }, osc2: { wave: 'triangle', oct: 1, level: 0.4 },
+    filter: { cutoff: 1200, res: 1, env: 0.7, keytrack: 0.8 }, fenv: { a: 0.001, d: 0.3, s: 0, r: 0.3 }, aenv: { a: 0.001, d: 1.4, s: 0, r: 0.5 } },
+    rack: [{ type: 'reverb', p: { size: 0.8, decay: 3, mix: 0.35 } }] },
+  { name: 'CHIP', synth: { osc1: { wave: 'square', level: 0.6 }, osc2: { level: 0 }, filter: { cutoff: 9000, res: 0.3, env: 0 },
+    aenv: { a: 0.001, d: 0.1, s: 0.6, r: 0.05 }, lfo: { rate: 6, depth: 0.04, target: 'pitch' } }, rack: [] },
+  { name: 'SQUARE LEAD', synth: { osc1: { wave: 'square', level: 0.6 }, osc2: { wave: 'square', oct: 0, fine: 8, level: 0.4 },
+    filter: { cutoff: 2000, res: 2, env: 0.4 }, fenv: { a: 0.01, d: 0.3, s: 0.4, r: 0.3 }, aenv: { a: 0.01, d: 0.2, s: 0.8, r: 0.2 }, play: { mode: 'mono', glide: 0.05 } },
+    rack: [{ type: 'delay', p: { div: '1/8d', feedback: 0.3, mix: 0.2 } }] },
+  { name: 'STEEL DRUM', synth: { osc1: { wave: 'sine', oct: 1, level: 0.7 }, osc2: { wave: 'triangle', oct: 2, semi: 4, level: 0.3 },
+    filter: { cutoff: 8000, res: 1.5, env: 0.5 }, fenv: { a: 0.001, d: 0.1, s: 0, r: 0.1 }, aenv: { a: 0.001, d: 0.6, s: 0, r: 0.3 }, lfo: { rate: 7, depth: 0.02, target: 'pitch' } },
+    rack: [{ type: 'reverb', p: { size: 0.6, decay: 2, mix: 0.3 } }] },
+  { name: 'WHISTLE', synth: { osc1: { wave: 'sine', oct: 1, level: 0.7 }, osc2: { level: 0 }, filter: { cutoff: 8000, res: 0.5, env: 0 },
+    aenv: { a: 0.05, d: 0.1, s: 0.9, r: 0.2 }, play: { mode: 'mono', glide: 0.06 }, lfo: { rate: 5.5, depth: 0.05, target: 'pitch' } },
+    rack: [{ type: 'reverb', p: { size: 0.7, decay: 2.5, mix: 0.3 } }] },
 );
 const preset = (n) => K.PRESETS.find((p) => p.name === n);
 
-// The easy effects: one slider each, off at zero. What the slider turns, in Kombinat's words.
+// Harder-hitting kits. Kombinat's drums are made from oscillators and noise;
+// real sampled kits would hit harder still (see the handoff).
+Object.assign(K.KITS, {
+  punch: { name: 'PUNCH', pads: {
+    kick: { tune: -1, decay: 0.55, tone: 0.55, level: 1 }, snare: { tune: 1, decay: 0.4, tone: 0.6, level: 0.9 }, clap: { decay: 0.45, tone: 0.5, level: 0.8 },
+    chat: { decay: 0.2, tone: 0.6, level: 0.6 }, ohat: { decay: 0.5, tone: 0.6, level: 0.55 }, ltom: { decay: 0.45, tone: 0.5, level: 0.85, pan: -0.3 }, htom: { decay: 0.4, tone: 0.5, level: 0.85, pan: 0.3 }, rim: { decay: 0.3, tone: 0.6, level: 0.7 } } },
+  trap: { name: 'TRAP', pads: {
+    kick: { tune: -5, decay: 0.9, tone: 0.3, level: 1 }, snare: { tune: 3, decay: 0.3, tone: 0.8, level: 0.9 }, clap: { decay: 0.35, tone: 0.7, level: 0.85 },
+    chat: { decay: 0.08, tone: 0.8, level: 0.6 }, ohat: { decay: 0.4, tone: 0.8, level: 0.5 }, ltom: { tune: -3, decay: 0.5, tone: 0.4, level: 0.8, pan: -0.3 }, htom: { tune: -1, decay: 0.45, tone: 0.4, level: 0.8, pan: 0.3 }, rim: { decay: 0.25, tone: 0.7, level: 0.7 } } },
+  rock: { name: 'ROCK', pads: {
+    kick: { tune: 0, decay: 0.4, tone: 0.75, level: 1 }, snare: { tune: -1, decay: 0.5, tone: 0.5, level: 1 }, clap: { decay: 0.5, tone: 0.4, level: 0.6 },
+    chat: { decay: 0.25, tone: 0.45, level: 0.65 }, ohat: { decay: 0.7, tone: 0.45, level: 0.6 }, ltom: { tune: -2, decay: 0.6, tone: 0.5, level: 0.9, pan: -0.4 }, htom: { tune: 2, decay: 0.5, tone: 0.5, level: 0.9, pan: 0.4 }, rim: { decay: 0.3, tone: 0.5, level: 0.7 } } },
+});
+// Drums get a squeeze and a little grit before anything the drummer adds, so they hit.
+const DRUM_RACK = [{ type: 'compressor', p: { threshold: -16, ratio: 4, attack: 0.003, release: 0.12, makeup: 8 } }, { type: 'distortion', p: { mode: 'soft', drive: 0.12, tone: 6000, mix: 0.5, level: 0.9 } }];
+
+// The easy effects: one slider each, off at zero. Drive is kept small on purpose.
 const FX = {
   reverb: (v) => ({ type: 'reverb', p: { size: 0.7, decay: 2.5, mix: v * 0.6 } }),
   delay: (v) => ({ type: 'delay', p: { div: '1/8d', feedback: 0.3 + v * 0.3, mix: v * 0.5 } }),
   chorus: (v) => ({ type: 'chorus', p: { rate: 0.5, depth: 0.4, mix: v * 0.7 } }),
   phaser: (v) => ({ type: 'phaser', p: { rate: 0.35, mix: v * 0.8 } }),
-  drive: (v) => ({ type: 'distortion', p: { mode: 'soft', drive: v, tone: 5000, mix: 0.8, level: 0.7 } }),
+  drive: (v) => ({ type: 'distortion', p: { mode: 'soft', drive: v * 0.25, tone: 5000, mix: 0.5, level: 0.8 } }),
   muffle: (v) => ({ type: 'filter', p: { type: 'lowpass', cutoff: 12000 * 0.03 ** v, res: 1 } }),
 };
 
 const LAYERS = [
-  { id: 'bass', who: 'Bass', hint: 'goes first, sets the groove', color: '#d9a441', rows: scaleRows(33, 52),
-    sounds: ['SUB BASS', 'ACID BASS', 'DISCO BASS', 'WOBBLE', 'DIRTY OCTAVES'] },
+  { id: 'bass', who: 'Bass', hint: 'the groove', color: '#d9a441', rows: scaleRows(33, 52),
+    sounds: ['SUB BASS', 'ROUND BASS', 'PLUCK BASS', 'ACID BASS', 'DISCO BASS', '808 BASS', 'REESE', 'WOBBLE', 'DIRTY OCTAVES'] },
   { id: 'drums', who: 'Drums', hint: 'the whole kit is yours', color: '#d95f5f', rows: K.DRUM_PADS.map((p, i) => ({ label: p.name, pad: i })),
-    sounds: Object.keys(K.KITS) },
-  { id: 'pads', who: 'Pads', hint: "the day's chords; you pick when, how long, how high", color: '#a98fd9',
-    rows: [{ label: 'high', root: 69 }, { label: 'mid', root: 60 }, { label: 'low', root: 52 }],
-    sounds: ['WARM PAD', 'SUPERSAW', 'ORGAN', 'PHASED KEYS', 'HALO LEAD', 'BRASS'] },
+    sounds: ['punch', 'trap', 'rock', '808', '909', 'electro', 'lofi', 'boom'], level: 1.2 },
+  { id: 'pads', who: 'Pads', hint: "chord rows play the day's chord; the notes below are yours", color: '#a98fd9',
+    rows: [{ label: 'chord high', root: 69 }, { label: 'chord mid', root: 60 }, { label: 'chord low', root: 52, gap: true }, ...scaleRows(52, 76)],
+    sounds: ['WARM PAD', 'STRINGS', 'DREAM PAD', 'CHOIR', 'E PIANO', 'ORGAN', 'SUPERSAW', 'PHASED KEYS', 'HALO LEAD', 'BRASS'] },
   { id: 'melody', who: 'Melody', hint: 'the last word', color: '#8fd18f', rows: scaleRows(57, 81),
-    sounds: ['PLUCK', 'BELLS', 'MUSIC BOX', 'GLASS KEYS', 'FLUTE', 'POLIVOKS LEAD', 'HOLLOW PULSE'] },
+    sounds: ['PLUCK', 'BELLS', 'MUSIC BOX', 'MARIMBA', 'KALIMBA', 'HARP', 'STEEL DRUM', 'GLASS KEYS', 'FLUTE', 'WHISTLE', 'CHIP', 'SQUARE LEAD', 'POLIVOKS LEAD', 'HOLLOW PULSE'] },
 ];
-for (const l of LAYERS) { l.notes = []; l.sound = l.sounds[0]; l.level = 0.8; l.fx = Object.fromEntries(Object.keys(FX).map((k) => [k, 0])); }
-let turn = 0;
+for (const l of LAYERS) { l.notes = []; l.sound = l.sounds[0]; l.level ??= 0.8; l.hearAt = 1; l.fx = Object.fromEntries(Object.keys(FX).map((k) => [k, 0])); }
+const byId = (id) => LAYERS.find((l) => l.id === id);
 
-// ---- sound: one Kombinat instrument, rack and fader a layer, into one limiter ----
+// Solo: every layer is yours. Pass: pick a free layer, do it, pass it on; the next person picks from what is left.
+let mode = null, current = null; const done = new Set();
+const mine = (l) => mode === 'solo' || current === l.id;
+const free = () => LAYERS.filter((l) => !done.has(l.id));
+
+// ---- sound: one Kombinat instrument, rack, fader and limiter a layer, then one limiter over all ----
 let ctx, master, meter;
+function limiter(threshold) {
+  const lim = ctx.createDynamicsCompressor();
+  lim.threshold.value = threshold; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
+  return lim;
+}
 function boot() {
   if (ctx) return;
   ctx = new AudioContext();
   master = ctx.createGain(); master.gain.value = 0.5;
-  // The overall limiter: nothing past -3 dB gets through loud, however many layers pile up.
-  const lim = ctx.createDynamicsCompressor();
-  lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
-  meter = lim;
-  master.connect(lim).connect(ctx.destination);
+  meter = limiter(-3);
+  master.connect(meter).connect(ctx.destination);
   for (const l of LAYERS) {
     l.inst = l.id === 'drums' ? new K.Drums(ctx) : new K.Synth(ctx);
-    l.fader = ctx.createGain(); l.fader.gain.value = l.level; l.fader.connect(master);
+    l.fader = ctx.createGain(); l.fader.gain.value = l.level;
+    // Two volumes: the maker's (fader, part of the layer) and the listener's (listen, only on this screen).
+    l.listen = ctx.createGain(); l.listen.gain.value = l.hearAt;
+    l.fader.connect(limiter(-6)).connect(l.listen).connect(master);
     l.rack = new K.Rack(ctx, l.inst.output, l.fader); l.rack.setTempo(BPM);
     setSound(l, l.sound);
   }
@@ -156,23 +242,23 @@ function setSound(l, s) {
 }
 function applyFx(l) {
   if (!ctx) return;
-  const base = l.id === 'drums' ? [] : preset(l.sound).rack;
-  const mine = Object.entries(l.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v));
-  l.rack.load([...base, ...mine]);
+  const base = l.id === 'drums' ? DRUM_RACK : preset(l.sound).rack;
+  const own = Object.entries(l.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v));
+  l.rack.load([...base, ...own]);
 }
 function midis(l, row, tick) {
   if (l.id === 'drums') return [K.DRUM_BASE + row.pad];
-  if (l.id === 'pads') return voice(chordAt(tick), row.root);
+  if (row.root) return voice(chordAt(tick), row.root);
   return row.midi;
 }
 function sound(l, n, at) {
-  for (const m of midis(l, l.rows[n.row], n.start)) { l.inst.noteOn(m, 0.9, at); l.inst.noteOff(m, at + n.len * TICK * 0.9); }
+  for (const m of midis(l, l.rows[n.row], n.start)) { l.inst.noteOn(m, 1, at); l.inst.noteOff(m, at + n.len * TICK * 0.9); }
 }
 let playing = false, tickAt = 0, nextAt = 0, timer;
 function tick() {
   while (nextAt < ctx.currentTime + 0.1) {
     const t = tickAt;
-    LAYERS.forEach((l, li) => { if (li > turn || l.muted) return; for (const n of l.notes) if (n.start === t) sound(l, n, nextAt); });
+    for (const l of LAYERS) { if (l.muted) continue; for (const n of l.notes) if (n.start === t) sound(l, n, nextAt); }
     setTimeout(() => mark(t), Math.max(0, (nextAt - ctx.currentTime) * 1000));
     tickAt = (tickAt + 1) % TICKS; nextAt += TICK;
   }
@@ -187,30 +273,38 @@ function play() {
 // ---- screen ----
 const layersEl = document.getElementById('layers');
 document.getElementById('chordNames').innerHTML = CHORDS.map((c) => `<span>${c.name}</span>`).join('');
-const fits = (l, row, tick) => (l.id === 'bass' || l.id === 'melody') && chordAt(tick).tones.includes(row.midi[0] % 12);
+const fits = (l, row, tick) => !!row.midi && chordAt(tick).tones.includes(row.midi[0] % 12);
 const noteWidth = (ticks) => { const n = ticks / per(); return `calc(${n * 100}% + ${(n - 1) * 2}px)`; };
 function draw() {
-  layersEl.replaceChildren(...LAYERS.map((l, li) => {
-    const mine = li === turn, el = document.createElement('div');
-    el.className = 'layer ' + (li < turn ? 'locked' : li > turn ? 'todo' : '');
+  layersEl.replaceChildren(...LAYERS.map((l) => {
+    const own = mine(l), el = document.createElement('div');
+    el.className = 'layer ' + (done.has(l.id) ? 'locked' : own || (mode === 'pass' && current === null) ? '' : 'todo');
     el.style.setProperty('--c', l.color);
-    const state = li < turn ? 'passed on' : li > turn ? 'waiting' : l.hint;
-    const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${mine ? '' : 'disabled'}></label>`;
+    const state = done.has(l.id) ? 'passed on' : own ? l.hint : current === null ? 'free' : 'waiting';
+    const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${own ? '' : 'disabled'}></label>`;
     el.innerHTML = `<div class="who">${l.who}<small>${state}</small>
-      <select ${mine ? '' : 'disabled'}>${l.sounds.map((s) => `<option ${s === l.sound ? 'selected' : ''}>${s}</option>`).join('')}</select>
-      <div class="knobs">${knob('volume', l.level, 1.2)}${Object.keys(FX).map((k) => knob(k, l.fx[k])).join('')}</div>
-      ${mine ? '<button data-clear>Clear mine</button>' : li < turn ? `<button data-mute>${l.muted ? 'Unmute' : 'Mute'}</button>` : ''}
+      <select ${own ? '' : 'disabled'}>${l.sounds.map((s) => `<option ${s === l.sound ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <div class="knobs">${knob('volume', l.level, 1.5)}${Object.keys(FX).map((k) => knob(k, l.fx[k])).join('')}</div>
+      ${own ? '' : `<label class="knob on" title="Only you hear this change">hear at<input type="range" min="0" max="1.5" step="0.05" value="${l.hearAt}" data-k="hearAt"></label>`}
+      ${own ? '<button data-clear>Clear mine</button>' : ''}
+      ${mode === 'pass' && current === null && !done.has(l.id) ? '<button class="take" data-take>I\'ll do this one</button>' : ''}
+      ${!own && (done.has(l.id) || mode === 'solo') ? `<button data-mute>${l.muted ? 'Unmute' : 'Mute'}</button>` : ''}
     </div><div class="rows" style="--cols:${cols}"></div>`;
     el.querySelector('select').onchange = (e) => { boot(); setSound(l, e.target.value); };
     el.querySelectorAll('input[type=range]').forEach((r) => {
-      r.oninput = (e) => { const v = +e.target.value; r.parentElement.classList.toggle('on', v > 0); if (r.dataset.k === 'volume') { l.level = v; if (l.fader) l.fader.gain.setTargetAtTime(v, ctx.currentTime, 0.02); } };
-      r.onchange = (e) => { if (r.dataset.k !== 'volume') { boot(); l.fx[r.dataset.k] = +e.target.value; applyFx(l); } };
+      r.oninput = (e) => {
+        const v = +e.target.value, k = r.dataset.k; r.parentElement.classList.toggle('on', v > 0);
+        if (k === 'volume') { l.level = v; if (l.fader) l.fader.gain.setTargetAtTime(v, ctx.currentTime, 0.02); }
+        if (k === 'hearAt') { l.hearAt = v; if (l.listen) l.listen.gain.setTargetAtTime(v, ctx.currentTime, 0.02); }
+      };
+      r.onchange = (e) => { if (r.dataset.k in FX) { boot(); l.fx[r.dataset.k] = +e.target.value; applyFx(l); } };
     });
     el.querySelector('[data-clear]')?.addEventListener('click', () => { l.notes = []; draw(); });
+    el.querySelector('[data-take]')?.addEventListener('click', () => { current = l.id; draw(); });
     el.querySelector('[data-mute]')?.addEventListener('click', () => { l.muted = !l.muted; draw(); });
     const rows = el.querySelector('.rows');
     l.rows.forEach((row, ri) => {
-      const r = document.createElement('div'); r.className = 'row'; r.dataset.r = ri;
+      const r = document.createElement('div'); r.className = 'row' + (row.gap ? ' gap' : ''); r.dataset.r = ri;
       r.innerHTML = `<span class="label">${row.label}</span>`;
       for (let c = 0; c < cols; c++) {
         const t = c * per(), cell = document.createElement('div');
@@ -221,11 +315,15 @@ function draw() {
       }
       rows.append(r);
     });
-    if (mine) wire(l, rows);
+    if (own) wire(l, rows);
     return el;
   }));
-  document.getElementById('turn').innerHTML = turn < LAYERS.length ? `Your turn: <b>${LAYERS[turn].who}</b>` : `<span class="done">Done. That's the day's loop.</span>`;
-  document.getElementById('pass').hidden = turn >= LAYERS.length;
+  const left = free().length;
+  document.getElementById('turn').innerHTML =
+    mode === 'solo' ? 'All four are yours'
+    : current ? `Your turn: <b>${byId(current).who}</b>`
+    : left ? `Pick a layer, ${left} left` : `<span class="done">Done. That's the day's loop.</span>`;
+  document.getElementById('pass').hidden = mode !== 'pass' || current === null;
 }
 // Put a note down on press, stretch it while dragging right, take it away on a click.
 let drag = null; // outlives a redraw
@@ -253,11 +351,20 @@ function mark(t) {
   document.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now'));
   if (t >= 0 && t % per() === 0) document.querySelectorAll(`.cell[data-t="${t}"]`).forEach((c) => c.classList.add('now'));
 }
+function begin(m) {
+  mode = m; current = null; done.clear();
+  LAYERS.forEach((l) => { l.notes = []; l.muted = false; l.hearAt = 1; l.listen?.gain.setTargetAtTime(1, ctx.currentTime, 0.02); });
+  document.getElementById('start').hidden = true; document.getElementById('game').hidden = false;
+  document.getElementById('sub').textContent = (m === 'solo' ? 'All four layers are yours. ' : 'Pick a layer, make it, pass it on; the next person picks from what is left. ')
+    + 'Click a box to put a note down, drag right to make it longer, click a note to take it away. Space plays and stops.';
+  draw();
+}
+document.querySelectorAll('#start [data-mode]').forEach((b) => { b.onclick = () => begin(b.dataset.mode); });
 document.getElementById('play').onclick = play;
-document.getElementById('pass').onclick = () => { turn = Math.min(turn + 1, LAYERS.length); draw(); };
-document.getElementById('reset').onclick = () => { turn = 0; LAYERS.forEach((l) => { l.notes = []; l.muted = false; }); draw(); };
+document.getElementById('masterVol').oninput = (e) => { boot(); master.gain.setTargetAtTime(+e.target.value, ctx.currentTime, 0.02); };
+document.getElementById('pass').onclick = () => { done.add(current); current = null; draw(); };
+document.getElementById('reset').onclick = () => { if (playing) play(); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; };
 // Finer boxes: notes already down stay where they are; a note on an off-box tick still plays, it just cannot be grabbed until the grid is fine again.
 document.getElementById('fine').onchange = (e) => { cols = e.target.checked ? 64 : 32; draw(); };
-document.addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') { e.preventDefault(); play(); } });
-draw();
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && mode && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') { e.preventDefault(); play(); } });
 </script>
