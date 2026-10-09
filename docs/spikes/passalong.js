@@ -131,6 +131,9 @@ async function buffer(sample) {
 }
 function boot() {
   if (ctx) return;
+  try { build(); } catch (e) { ctx = null; say('Sound could not start: ' + (e.stack || e)); throw e; }
+}
+function build() {
   ctx = new AudioContext();
   master = ctx.createGain(); master.gain.value = +document.getElementById('masterVol').value;
   meter = limiter(-3);
@@ -194,7 +197,7 @@ function play() {
 function setBpm(v) {
   bpm = Math.min(200, Math.max(60, Math.round(v) || 120));
   document.getElementById('bpm').value = bpm;
-  if (ctx) LAYERS.forEach((l) => l.parts.forEach((p) => p.rack.setTempo(bpm)));
+  if (ctx) LAYERS.forEach((l) => l.parts.forEach((p) => p.rack?.setTempo(bpm)));
 }
 
 // ---- screen ----
@@ -313,10 +316,12 @@ function begin(m) {
 // Wes: "an individual session that's like saved... I finish my part... someone else can jump in pick up that session
 // do the instrument they want... over the course of the day people can jump back in and see how it's progressing."
 let loop = null, watch = null; // the open loop as the box last sent it, and the timer that asks again
+window.onerror = (m, src, line) => say(`${m} (${(src || '').split('/').pop()}:${line})`);
+window.onunhandledrejection = (e) => say('' + (e.reason?.stack || e.reason));
 const say = (t) => { const m = document.getElementById('msg'); m.textContent = t; m.hidden = !t; };
 const nameEl = document.getElementById('name');
-nameEl.value = localStorage.getItem('pa.name') || '';
-nameEl.onchange = () => localStorage.setItem('pa.name', nameEl.value.trim());
+try { nameEl.value = localStorage.getItem('pa.name') || ''; } catch {} // a frame may have no storage
+nameEl.onchange = () => { try { localStorage.setItem('pa.name', nameEl.value.trim()); } catch {} };
 const me = () => nameEl.value.trim() || 'someone';
 const api = async (path, method = 'GET', body) => {
   const r = await fetch('api/' + path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body && JSON.stringify(body) });
@@ -363,11 +368,11 @@ async function openLoop(id) {
 async function passOn() {
   if (!loop) { done.add(current); current = null; draw(); return; } // solo-style pass with no box: the old one-screen game
   const l = byId(current), b = document.getElementById('pass'); b.disabled = true;
-  try {
-    const { status, data } = await api(`loops/${loop.id}/${l.id}`, 'PUT', pack(l));
-    if (status === 409) { say(`${data.loop.layers[l.id].by} already passed ${l.who} on. Pick another.`); l.notes = []; }
-    current = null; apply(status === 409 ? data.loop : data);
-  } catch (e) { say('Could not save: ' + e.message); b.disabled = false; }
+  let r;
+  try { r = await api(`loops/${loop.id}/${l.id}`, 'PUT', pack(l)); }
+  catch (e) { say('Could not save: ' + e.message); b.disabled = false; return; }
+  if (r.status === 409) { say(`${r.data.loop.layers[l.id].by} already passed ${l.who} on. Pick another.`); l.notes = []; }
+  current = null; apply(r.status === 409 ? r.data.loop : r.data); // saved; anything that breaks from here shows as its own error
 }
 async function showLoops() {
   const el = document.getElementById('loops');
