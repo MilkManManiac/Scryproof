@@ -7,13 +7,13 @@
 - The **Mac desktop app**: build, signing (Trey's Developer ID, team LRU27MC63Q, notary keychain profile `codex-pet-sidecar-notary`), notarization, the Mac shell update keys (everyday private key `~/.scryproof/mac-update-key.pem` on Trey's Mac; recovery private key in Trey's 1Password only; public halves in `desktop/src/update-key-mac.pub.pem` and `desktop/src/update-key-mac-recovery.pub.pem`). Wes owns Windows and the client signing key; Matt owns Linux.
 - Reviews on request (`docs/reviews/`).
 
-## Where things stand (branch `mac-0.5.8`, level with Forgejo origin, 5 commits past Wes's `main`)
+## Where things stand (branch `mac-0.5.8`, level with Forgejo origin, 9 commits past Wes's `main`; updated 2026-10-10 16:15 ET)
 
 - **0.5.8 is built, notarized, stapled, installed on Trey's Mac and running** (rebuilt 15:38 ET with the permission-notice wording: zip sha256 0b1efa82…, DMG bd5a81b3…, manifest `desktop/release/installer-mac-arm64.json`; every signing check and `scripts/publish-mac.sh --dry-run` pass; tightened entitlements shipped). Not published, not merged to main.
 - **Voice-join bug found and fixed here (commit 0ef5c0f, shared client code):** a saved microphone whose device id the browser no longer knows made every join hang itself up with a blank reason. Calls now fall back to the default mic, clear the stale choice and say so; mic errors carry words. Trey confirmed a join holds on the rebuilt app. Detail: `docs/HANDOFF.md` under "Mac app 0.5.8".
-- **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in, push-to-talk (Slash) with Scryproof in front and with another app in front.
+- **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in, push-to-talk (Slash) with Scryproof in front and with another app in front, camera. The rebuilt app (0b1efa82…) is the one installed and running since 16:15 ET.
 - **Second finding, fixed 2026-10-10 15:15 ET:** push-to-talk was dead because macOS held a stale Accessibility grant from an earlier build (switch showed on, app refused). Cleared with `tccutil reset`, relaunched, granted fresh. Commit e7c5f8f makes both permission notices say what to do when the switch is already on. Detail in `docs/HANDOFF.md`.
-- **Not yet checked, needs Trey at the Mac:** camera; Activities → Pass-along → Record shows the consent dialog once; a real call with Wes or Matt.
+- **Not yet checked, needs Trey at the Mac (he said "later"):** Activities → Pass-along → Solo → add a vocals layer → Record shows the consent dialog once; a real call with Wes or Matt.
 
 ## What needs Trey
 
