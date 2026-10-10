@@ -11,8 +11,9 @@
 
 - **0.5.8 is built, notarized, stapled, installed on Trey's Mac and running** (zip sha256 feee1763…, DMG 82ae9d5e…, manifest `desktop/release/installer-mac-arm64.json`; every signing check and `scripts/publish-mac.sh --dry-run` pass; tightened entitlements shipped). Not published, not merged to main.
 - **Voice-join bug found and fixed here (commit 0ef5c0f, shared client code):** a saved microphone whose device id the browser no longer knows made every join hang itself up with a blank reason. Calls now fall back to the default mic, clear the stale choice and say so; mic errors carry words. Trey confirmed a join holds on the rebuilt app. Detail: `docs/HANDOFF.md` under "Mac app 0.5.8".
-- **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in.
-- **Not yet checked, needs Trey at the Mac:** mic meter, camera, push-to-talk with another app in front; Activities → Pass-along → Record shows the consent dialog once; a real call with Wes or Matt. Trey said "next bug" is up next (not yet named).
+- **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in, push-to-talk (Slash) with Scryproof in front and with another app in front.
+- **Second finding, fixed 2026-10-10 15:15 ET:** push-to-talk was dead because macOS held a stale Accessibility grant from an earlier build (switch showed on, app refused). Cleared with `tccutil reset`, relaunched, granted fresh. Commit e7c5f8f makes both permission notices say what to do when the switch is already on. Detail in `docs/HANDOFF.md`.
+- **Not yet checked, needs Trey at the Mac:** camera; Activities → Pass-along → Record shows the consent dialog once; a real call with Wes or Matt.
 
 ## What needs Trey
 
