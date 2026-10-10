@@ -15,3 +15,6 @@ Both `store.mjs` and `passalong.js` keep `if (...) { a; b; return c; }` on one l
 
 ## 2026-10-10 Bash heredoc with apostrophes, again
 A `cat > file <<EOF` with apostrophes in the body died with "unexpected EOF while looking for matching quote" (the tool wraps the command in single quotes). Rule: any file body with an apostrophe goes through the Write tool, not a heredoc. Second time this session.
+
+## 2026-10-10 Phantom module-not-found while another agent commits
+The server suite failed once with ERR_MODULE_NOT_FOUND for a file that exists, at the moment a parallel agent committed a .gitattributes change that rewrote checkout line endings. Rerun passed. Rule: when agents share one checkout, rerun a load-time failure once before believing it, and run the full suite only after all agents have committed.
