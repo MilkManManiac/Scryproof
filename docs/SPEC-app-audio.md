@@ -92,7 +92,7 @@ The page picks the label from the selected source kind; `soundLabel` from main b
 
 **A new Windows installer is required.** The helper is a new file in the shell; a client-only update cannot deliver it. Old shells keep loopback; the new web client must detect the bridge and fall back.
 - `desktop/package.json`: `"helper": "node scripts/build-audio-helper.mjs"`; `dist` runs `npm run helper` first; a `win.extraResources` entry copies `native/process-audio/scryproof-audio.exe` to `scryproof-audio.exe` (Windows only, Mac build untouched). It cannot live inside the asar.
-- Bump `version` to `0.5.6` (HANDOFF: the Mac shell is also 0.5.5; bump before the next Windows installer).
+- Bump `version` to `0.5.8` (the shell is 0.5.7 as of 2026-10-09; re-read `share-menu.js` and `permissions-core.js` for what changed since this spec was written).
 - The installer is not Authenticode-signed today and the helper will not be either; `installer.json`'s sha256 (signed by `sign-installer.mjs`) covers it. Note in the summary that Defender/SmartScreen may look at a new unsigned exe.
 
 ## Phases (each ends runnable, with one check and a push)
