@@ -214,7 +214,10 @@ export function usesModel(prefs: VoicePrefs): boolean {
 /** What to ask the browser for when opening the microphone. */
 export function captureOptions(prefs: VoicePrefs): MediaTrackConstraints {
   return {
-    deviceId: prefs.inputDeviceId ? { exact: prefs.inputDeviceId } : undefined,
+    // Explicit, never unset: LiveKit fills an unset field from the room's
+    // capture defaults, which would put a stale saved device back after the
+    // fallback below had dropped it. `ideal` is a preference, so it cannot fail.
+    deviceId: prefs.inputDeviceId ? { exact: prefs.inputDeviceId } : { ideal: 'default' },
     // Not both: the browser's pass first leaves the model a voice with holes
     // already cut in it, and two suppressors in a row is what makes a voice
     // sound underwater.
@@ -222,6 +225,40 @@ export function captureOptions(prefs: VoicePrefs): MediaTrackConstraints {
     echoCancellation: prefs.echoCancellation,
     autoGainControl: prefs.autoGain,
   };
+}
+
+/** The browser could not find the device a constraint named: unplugged, or an id from before its device ids changed. */
+export function isMissingDevice(problem: unknown): boolean {
+  const name = problem instanceof Error ? problem.name : '';
+  return name === 'OverconstrainedError' || name === 'NotFoundError';
+}
+
+/** What the call says when the chosen microphone is gone and the default is used instead. */
+export const MICROPHONE_FALLBACK_MESSAGE =
+  'Your chosen microphone was not found, so the system default is in use. Pick one again in voice settings.';
+
+/**
+ * Opens the microphone with the saved choice. When that device is gone, the
+ * system default is opened instead, the saved choice is cleared so settings
+ * say what is really in use, and `fellBack` is told so the person can be. A
+ * call with the wrong microphone beats no call (Trey's Mac, 2026-10-10: a
+ * stale device id refused every join, with no word why). Any other failure,
+ * the microphone being blocked say, is thrown as it was.
+ */
+export async function openMicrophoneOrDefault<T>(
+  prefs: VoicePrefs,
+  open: (options: MediaTrackConstraints) => Promise<T>,
+  fellBack: () => void = () => undefined,
+): Promise<T> {
+  try {
+    return await open(captureOptions(prefs));
+  } catch (problem) {
+    if (!prefs.inputDeviceId || !isMissingDevice(problem)) throw problem;
+    const opened = await open(captureOptions({ ...prefs, inputDeviceId: '' }));
+    voicePrefs.set({ inputDeviceId: '' });
+    fellBack();
+    return opened;
+  }
 }
 
 /** Megabits a second for a camera of this height at 30 frames. Faces move less than games. */
