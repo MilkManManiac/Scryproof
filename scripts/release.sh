@@ -2,12 +2,25 @@
 # One deploy, for the website and for every installed desktop app.
 #
 #   bash scripts/release.sh
+#   bash scripts/release.sh --check-only     run the gate below and stop; signs, commits, pushes nothing
 #
 # Signs the client as built from this commit (the key is on this PC only),
 # commits the signed update, pushes, deploys, and checks that the box is
 # handing out the same update that was signed here. Commit your work first.
+#
+# Nothing is signed until `npm run typecheck && npm test` pass (audit
+# 2026-10-10, finding 9). About a minute. There is no flag to skip it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+gate() {
+  echo "Gate: typecheck and tests before anything is signed."
+  if ! npm run typecheck; then echo "Typecheck failed. Nothing was signed, committed or pushed." >&2; exit 1; fi
+  if ! npm test; then echo "Tests failed. Nothing was signed, committed or pushed." >&2; exit 1; fi
+  echo "Gate passed."
+}
+
+if [ "${1:-}" = "--check-only" ]; then gate; exit 0; fi
 
 signed='web/public/desktop-update/|desktop/src/client-version.json|desktop/src/update-key.pub.pem'
 if [ -n "$(git status --porcelain | grep -Ev "$signed" || true)" ]; then
@@ -23,6 +36,8 @@ if [ "${SKIP_NOTES:-}" != "1" ] && [ "$newest" != "$today" ]; then
   echo "The newest entry in web/src/changelog.ts is from $newest, not today. Add one, or SKIP_NOTES=1 if nothing anyone would notice changed." >&2
   exit 1
 fi
+
+gate
 
 # Building an installer signs a client too. Straight after one, release that client, so the two match.
 if [ -n "$(git status --porcelain | grep -E "$signed" || true)" ]; then
