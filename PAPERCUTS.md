@@ -7,5 +7,11 @@ Friction hit while building (tools, shell, process), newest first. Not feature b
 - **2026-10-04 · junctioned node_modules + git worktree remove wiped the working copy** — To test Matt's PRs without reinstalling, I junctioned main's `node_modules` (and `web/`, `server/`, `desktop/` ones) into throwaway worktrees. Cleanup unlinked the workspace junctions but missed the root one, then `git worktree remove --force` recursed through it: root `node_modules/@scryproof/{web,server,shared}` are npm junctions back to the real `web/`, `server/`, `shared/` folders, so it emptied all three in the main checkout (498 tracked files, both node_modules, and ignored files like `server/.data/`). Caught by `git status` right after. Tracked files came back with `git restore .`, deps with `npm ci`; the ignored local files are gone for good. The signing key lives in `~/.scryproof/`, outside the repo, and was safe.
   Rule (Wes): no temp copies. Test friends' branches in the one real checkout (`git checkout --detach origin/<branch>`, test, switch back). If dependencies changed, delete `node_modules` and `npm ci`.
 
+## 2026-10-10 A trailing `//` comment on a one-line block ate the rest of the line, twice
+Both `store.mjs` and `passalong.js` keep `if (...) { a; b; return c; }` on one line. Adding `// why` after the opening brace commented out the close, and `node --check` only caught it when run again. Rule: comments on these files go on their own line above; run `node --check` after every edit, not once per phase.
+
+## 2026-10-10 A store from the night before was still on 8766
+`node store.mjs --port 8766 &` with output to /dev/null failed on address-in-use and the page checks ran against yesterday's store (old code, old dir) without anyone noticing until a header was missing. Rule: before a local store run, `netstat -ano | grep :8766`, and never discard the store's stdout.
+
 ## 2026-10-10 Bash heredoc with apostrophes, again
 A `cat > file <<EOF` with apostrophes in the body died with "unexpected EOF while looking for matching quote" (the tool wraps the command in single quotes). Rule: any file body with an apostrophe goes through the Write tool, not a heredoc. Second time this session.

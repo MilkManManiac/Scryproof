@@ -66,6 +66,12 @@ Wes, 2026-10-10: "lets do a great audit on this system. see what we can improve 
 
 **Round one close:** full suite (server, web, desktop on Windows), HANDOFF top block updated, changelog entry dated the day it ships ("Signing out now signs out everywhere" is the user-facing line). Then wait for his word to: publish Pass-along (round eight plus phases 1 and 2), run the box scripts (phases 3 and 4), release the client (phases 5 to 7).
 
+## Round one status (2026-10-10, late)
+
+Phases 1 to 7 and 11 are built and committed (97f964f to 317d4f6), nothing deployed. Full suite green: server 394, web 568, desktop 88. Waiting on Wes: publish Pass-along (phases 1, 2 plus round eight), the box commands for phases 3 and 4 (listed in `infra/box/README.md` steps 15 and 16 and in HANDOFF), the client release (phases 5, 6, 7, 9, 11). The changelog entry still needs writing on the day it ships.
+
+**Phase 7b. From the follow-up audit (`docs/AUDIT-2026-10-10-followup.md`), small, no design decisions:** server `ws.ping()` every 30 s and `proxy_read_timeout 120s; proxy_send_timeout 120s;` in the router patch (finding 1); push topic hashed with the subscription id (2); drop `name` from the LiveKit token (4); limiter on `/api/auth/password` and `/api/invites/:code/accept` (6); the upload `fetch()` calls in `web/src/lib/api.ts` go through the 401 sign-out path (7). One test each. Also a `.gitattributes` line so web files stop flipping CRLF.
+
 ## Round two: operations and robustness
 
 **Phase 8. Monitoring** (11). `OnFailure=` on `scryproof-backup.service` writing a flag the app's `/api/health` reports; `backup-pull.sh` plus `backup-check.mjs` as a weekly scheduled task on this PC (ask Wes before creating the task); a disk-space line in `/api/health` when the vault is under 1 GB. Check: health shows the flag when the backup unit is failed on purpose (his word for the box).
