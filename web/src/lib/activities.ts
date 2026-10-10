@@ -22,7 +22,7 @@ export const ACTIVITIES: readonly Activity[] = [
   {
     id: 'pass-along',
     name: 'Pass-along',
-    description: 'One eight-count, five layers. Do them all, or one each and pass it on.',
+    description: 'One eight-count, built a layer at a time. Add as many as you like, or save one and pass it on.',
     path: '/pass-along/',
   },
 ];

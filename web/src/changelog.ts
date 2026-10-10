@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-10-pass-along-layers',
+    date: '2026-10-10',
+    title: 'Pass-along: add as much as you want',
+    notes: [
+      'A loop is no longer seven fixed layers. Add any number of bass, drum, pad, melody or vocals layers, in any order. Each one has its own Save it, so you can save one and keep working on another, or Save all mine at once. Saved layers lock and shrink; Knobs shows their settings.',
+      'Whoever started a loop can delete it, from the list or inside the loop. Two clicks, and it is gone for everyone.',
+      'When friends are on the same loop, the top of the page says who is working on what right now, and their saved layers slide in under yours while you work.',
+    ],
+  },
+  {
     id: '2026-10-09-trundle-world',
     date: '2026-10-09',
     title: 'Pass-along, and Trundle goes round the world',
