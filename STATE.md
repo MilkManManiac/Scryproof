@@ -9,7 +9,7 @@
 
 ## Where things stand (branch `mac-0.5.8`, level with Forgejo origin, 5 commits past Wes's `main`)
 
-- **0.5.8 is built, notarized, stapled, installed on Trey's Mac and running** (zip sha256 feee1763…, DMG 82ae9d5e…, manifest `desktop/release/installer-mac-arm64.json`; every signing check and `scripts/publish-mac.sh --dry-run` pass; tightened entitlements shipped). Not published, not merged to main.
+- **0.5.8 is built, notarized, stapled, installed on Trey's Mac and running** (rebuilt 15:38 ET with the permission-notice wording: zip sha256 0b1efa82…, DMG bd5a81b3…, manifest `desktop/release/installer-mac-arm64.json`; every signing check and `scripts/publish-mac.sh --dry-run` pass; tightened entitlements shipped). Not published, not merged to main.
 - **Voice-join bug found and fixed here (commit 0ef5c0f, shared client code):** a saved microphone whose device id the browser no longer knows made every join hang itself up with a blank reason. Calls now fall back to the default mic, clear the stale choice and say so; mic errors carry words. Trey confirmed a join holds on the rebuilt app. Detail: `docs/HANDOFF.md` under "Mac app 0.5.8".
 - **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in, push-to-talk (Slash) with Scryproof in front and with another app in front.
 - **Second finding, fixed 2026-10-10 15:15 ET:** push-to-talk was dead because macOS held a stale Accessibility grant from an earlier build (switch showed on, app refused). Cleared with `tccutil reset`, relaunched, granted fresh. Commit e7c5f8f makes both permission notices say what to do when the switch is already on. Detail in `docs/HANDOFF.md`.
