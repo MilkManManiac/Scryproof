@@ -2,7 +2,11 @@
 Description=Isolated Scryproof static activities
 After=network.target apparmor.service
 Requires=apparmor.service
-RequiresMountsFor=/srv/sites/scryproof-activities
+# The box boots dumb. /srv/sites is a bind mount onto the vault with no mount
+# unit, so "RequiresMountsFor=/srv/sites/..." gated nothing (audit 2026-10-10,
+# finding 2). These are the two lines 30-gate-services.sh gives the main app.
+RequiresMountsFor=/mnt/vault
+AssertPathExists=/run/scryproof/unlocked
 
 [Service]
 Type=simple

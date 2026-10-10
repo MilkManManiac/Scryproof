@@ -31,6 +31,10 @@ for path in "$@"; do
   fi
 
   mkdir -p "$path"
+  # A running service would keep writing to the root-disk copy after the move.
+  if [ -n "$(ls -A "$path")" ] && find "$path" -type f -exec fuser -s {} + 2>/dev/null; then
+    die "$path has files open. Stop the service that uses it first (fuser -v $path/*)."
+  fi
   if [ ! -d "$slot" ]; then
     # First adoption: mirror the directory itself (owner, mode), then contents.
     mkdir -p "$slot"

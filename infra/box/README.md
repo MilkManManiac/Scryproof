@@ -185,6 +185,41 @@ unlocked flag and starts the units in order. Open the site in a browser.
   trying to reach a third party, and each line needs an explanation.
 - URL and screenshot into `docs/HANDOFF.md`. M0 is not done until they are.
 
+## 15. Root logs in with a key only
+
+    bash scripts/box.sh 45-sshd.sh
+
+Writes `PermitRootLogin prohibit-password` as a drop-in and reloads sshd.
+The session stays up; open a second terminal and ssh in before closing the
+first. `00-facts.sh` shows the effective setting and the fail2ban sshd jail.
+
+## 16. The activities services (added 2026-10-10)
+
+The activities nginx, the Pass-along store and the Hero Line relay were
+installed enabled at boot, and the store kept recorded voices at
+`/var/lib/pass-along-store` on the root disk. One at a time, in this order:
+
+    ssh -i ~/.ssh/scryproof root@<droplet IPv4> systemctl stop pass-along-store
+    bash scripts/box.sh 20-vault-adopt.sh /var/lib/pass-along-store
+    bash scripts/box.sh 30-gate-services.sh scryproof-activities.service pass-along-store.service hero-line-relay.service
+    bash scripts/box.sh scryproof-unlock
+    bash scripts/box.sh 00-facts.sh
+
+The adopt moves the loops onto the vault and leaves a bind mount where they
+were, so the store needs no change. The gate adds the drop-in and takes the
+three off the boot list; `scryproof-unlock` on an already unlocked box starts
+whatever is in `units.list` and not running, so it brings the store back.
+Expected in the facts: `bound /var/lib/pass-along-store`, the three units
+`active` under "Gated services". The unit files in the repo
+(`infra/activities/scryproof-activities.service`,
+`docs/spikes/store/pass-along-store.service`) carry the same two gate lines,
+so the next publish keeps the gate; `hero-line-relay.service` is installed by
+the Hero Line repo, which still says `enable --now`, so a Hero Line publish
+re-enables it until that repo is fixed (the drop-in still stops it starting
+while locked).
+
+Then the reboot test (step 12) again: the three must stay down until unlock.
+
 ## After any reboot, forever
 
     bash scripts/unlock.sh

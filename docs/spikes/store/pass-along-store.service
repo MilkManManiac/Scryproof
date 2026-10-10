@@ -1,6 +1,12 @@
 [Unit]
 Description=Pass-along loop store (activities.scryproof.com/pass-along/api)
 After=network.target
+# The box boots dumb. /var/lib/pass-along-store is a bind mount onto the
+# vault (20-vault-adopt.sh); recorded voices never sit on the root disk. The
+# same two lines 30-gate-services.sh gives the main app: the unit refuses to
+# start until scryproof-unlock has every bind in place and sets the flag.
+RequiresMountsFor=/mnt/vault
+AssertPathExists=/run/scryproof/unlocked
 
 [Service]
 Type=simple
@@ -8,7 +14,8 @@ User=pass-along-store
 Group=pass-along-store
 RuntimeDirectory=pass-along-store
 RuntimeDirectoryMode=0755
-StateDirectory=pass-along-store
+# No StateDirectory=: systemd would make /var/lib/pass-along-store on the
+# root disk. publish-pass-along.sh refuses to install until it is adopted.
 ExecStart=/opt/bonesdeploy/node/v24.19.0/bin/node /srv/pass-along-store/store.mjs --sock /run/pass-along-store/store.sock --dir /var/lib/pass-along-store
 Restart=on-failure
 RestartSec=3
@@ -32,5 +39,7 @@ TasksMax=32
 LimitNOFILE=512
 LimitCORE=0
 
+# Kept so systemctl disable has something to remove; it is never enabled.
+# scryproof-unlock starts it from /etc/scryproof/units.list.
 [Install]
 WantedBy=multi-user.target

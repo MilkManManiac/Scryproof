@@ -37,7 +37,9 @@ install -m 0644 apparmor.profile /etc/apparmor.d/scryproof-activities-nginx
 apparmor_parser -r /etc/apparmor.d/scryproof-activities-nginx
 install -m 0644 scryproof-activities.service /etc/systemd/system/scryproof-activities.service
 systemctl daemon-reload
-systemctl enable --now scryproof-activities.service
+# Not enabled: the box boots dumb. scryproof-unlock starts it once it is in
+# /etc/scryproof/units.list (bash scripts/box.sh 30-gate-services.sh scryproof-activities.service).
+systemctl start scryproof-activities.service
 install -m 0644 router.conf /etc/nginx/sites-available/scryproof-activities.conf
 ln -sfn /etc/nginx/sites-available/scryproof-activities.conf /etc/nginx/sites-enabled/scryproof-activities.conf
 nginx -t

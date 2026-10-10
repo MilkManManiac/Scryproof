@@ -41,6 +41,10 @@ find "$dst.tmp" -type f -exec chmod 640 {} +
 chown root:scryproof-activities "$base" "$base/releases"; chmod 750 "$base" "$base/releases"
 # the store is a service, not a static file: it leaves the release folder before anything is served
 id pass-along-store >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin pass-along-store
+# recorded voices live on the vault: /var/lib/pass-along-store must already be a bind mount
+# (bash scripts/box.sh 20-vault-adopt.sh /var/lib/pass-along-store), never a root-disk folder
+mountpoint -q /var/lib/pass-along-store || { echo "/var/lib/pass-along-store is not on the vault; adopt it first"; exit 1; }
+install -d -o pass-along-store -g pass-along-store -m 0755 /var/lib/pass-along-store
 /opt/bonesdeploy/node/v24.19.0/bin/node --check "$dst.tmp/store/store.mjs"   # a broken store never replaces a working one
 mkdir -p /srv/pass-along-store
 install -o root -g pass-along-store -m 0640 "$dst.tmp/store/store.mjs" /srv/pass-along-store/store.mjs
@@ -76,7 +80,8 @@ systemctl reload scryproof-activities
 
 # the loop store: front nginx proxies /pass-along/api/ to its unix socket (same shape as Hero Line's relay)
 systemctl daemon-reload
-systemctl enable --now pass-along-store >/dev/null
+# not enabled: the box boots dumb; scryproof-unlock starts it from /etc/scryproof/units.list
+# (bash scripts/box.sh 30-gate-services.sh pass-along-store.service, once)
 systemctl restart pass-along-store
 sleep 1
 systemctl is-active pass-along-store

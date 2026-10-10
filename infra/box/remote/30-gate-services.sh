@@ -24,6 +24,15 @@
 #
 # nginx is gated as well, which means a locked box does not even answer on 443.
 # That is deliberate: the TLS private key lives on the vault.
+#
+# Each named unit is also taken off the boot list (systemctl disable). The
+# gate already stops it from running while locked; disabling it means it is
+# not even tried, so a reboot shows no failed units and nothing is relying on
+# an assert to hold. scryproof-unlock starts every unit in units.list, so a
+# disabled unit still comes up on unlock. Audit 2026-10-10, finding 2: the
+# activities nginx, the Pass-along store and the Hero Line relay were all
+# enabled at boot, and "RequiresMountsFor=/srv/sites" was no gate at all
+# because /srv/sites is a bind mount with no mount unit.
 
 source "$(dirname "$0")/lib.sh"
 need_root
@@ -62,6 +71,10 @@ AssertPathExists=$UNLOCKED_FLAG
 CONF
   grep -qxF "$unit" "$UNITS_FILE" || printf '%s\n' "$unit" >> "$UNITS_FILE"
   note "gated"
+  if [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" = "enabled" ]; then
+    systemctl disable --quiet "$unit"
+    note "taken off the boot list; scryproof-unlock starts it"
+  fi
 done
 
 systemctl daemon-reload

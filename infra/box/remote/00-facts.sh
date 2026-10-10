@@ -55,5 +55,13 @@ ss -Htulpn | awk '$5 !~ /^(127\.|\[::1\]|\[::ffff:127\.)/' | sed 's/^/    /'
 say "SSH"
 sshd -T 2>/dev/null | grep -E '^(port|permitrootlogin|passwordauthentication|pubkeyauthentication) ' | sed 's/^/    /' || true
 
+say "fail2ban (sshd jail)"
+if command -v fail2ban-client >/dev/null; then
+  fail2ban-client status sshd 2>/dev/null | grep -E 'Currently (failed|banned)|Total (failed|banned)' | sed 's/^[| `-]*/    /' \
+    || note "installed but the sshd jail did not answer (systemctl status fail2ban)"
+else
+  note "not installed"
+fi
+
 say "Swap (swap on the root disk would leak memory onto it)"
 if [ -n "$(swapon --show)" ]; then swapon --show | sed 's/^/    /'; else note "none"; fi
