@@ -63,6 +63,9 @@
   .tabs button.on { background: var(--c); color: #15171c; font-weight: 600; }
   .tabs .range { font-size: 11px; color: #9a978f; font-weight: 400; align-self: center; }
   .tabs .file { font-size: 11px; color: #9a978f; font-weight: 400; align-self: center; cursor: pointer; text-decoration: underline dotted; }
+  .mic { font-size: 11px; color: #9a978f; margin: 4px 0 6px; line-height: 1.35; }
+  .meter { height: 6px; background: #242833; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--c); border-radius: 3px; transition: width .08s; }
   .knobs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
   .knob { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: #9a978f; }
   .knob.on { color: #e6e3dc; }
@@ -106,6 +109,7 @@
       <label>BPM <input type="number" id="bpm" min="60" max="200" step="1" value="120"></label>
       <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
       <label><span class="peak" id="peak"></span> limiter</label>
+      <span id="load" style="color:#9a978f;font-size:12px"></span>
       <label>overall volume <input type="range" id="masterVol" min="0" max="1" step="0.02" value="0.5" style="width:90px"></label>
     </div>
     <div class="bar" id="add"></div>

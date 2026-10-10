@@ -107,7 +107,7 @@ const KINDS = [
     rows: [{ label: 'chord high', root: 69 }, { label: 'chord mid', root: 60 }, { label: 'chord low', root: 52, gap: true }, ...scaleRows(40, 88)],
     parts: () => [synthPart('pads', ['WARM PAD', 'STRINGS', 'DREAM PAD', 'CHOIR', 'E PIANO', 'ORGAN', 'SUPERSAW', 'PHASED KEYS', 'HALO LEAD', 'BRASS'])] },
   synthKind('melody', 'Melody', 'a tune, or an answer to one', '#8fd18f', 81, 45, 93, MELODY),
-  { kind: 'vocals', who: 'Vocals', hint: 'sing or talk over it: record one loop, or drop a sound file on the row', color: '#e3b7d6',
+  { kind: 'vocals', who: 'Vocals', hint: 'sing or talk over the loop', color: '#e3b7d6',
     rows: [{ label: 'clip', clip: true, part: 0 }], parts: () => [{ label: 'vocals', kind: 'clip', sounds: [], sound: '', clip: null, start: 0 }] },
 ];
 const kindOf = (k) => KINDS.find((x) => x.kind === k);
@@ -144,7 +144,11 @@ const unsaved = () => live.filter((l) => !l.saved);
 let mode = null;
 
 // ---- sound: a chain a part, then a listen volume a layer, then one limiter over all ----
-let ctx, master, meter;
+let ctx, master, meter, verb;
+// Wes (2026-10-10): "when you have a lot going on it starts to get taxing... goes super staticky like when something is overloaded".
+// That is the audio thread missing its deadline. The expensive parts were one convolution reverb a part (pads and melodies
+// carry up to seven seconds of impulse each) and one limiter a part. Now: one reverb for the whole page that every part sends
+// to, and one limiter a layer. ponytail: a 'load' readout would be next if it still crackles on his PC.
 const gainOf = (v) => v * v * 0.4; // slider half way -> 0.1, full -> 0.4 (Wes: "to put it at a reasonable volume you have to put it at like 10%")
 function limiter(threshold) {
   const lim = ctx.createDynamicsCompressor();
@@ -168,22 +172,30 @@ function build() {
   master = ctx.createGain(); master.gain.value = gainOf(+document.getElementById('masterVol').value);
   meter = limiter(-3);
   master.connect(meter).connect(ctx.destination);
+  verb = new K.Reverb(ctx); for (const [k, v] of Object.entries({ size: 0.7, decay: 2.5, mix: 1 })) verb.set(k, v); verb.flush();
+  verb.output.connect(master);
+  if (ctx.renderCapacity) { // Chrome can say how hard the sound thread is working; "staticky" means it missed its deadline
+    const el = document.getElementById('load');
+    ctx.renderCapacity.onupdate = (e) => { el.textContent = `sound load ${Math.round(e.averageLoad * 100)}%` + (e.underrunRatio ? `, dropouts ${Math.round(e.underrunRatio * 100)}%` : ''); };
+    ctx.renderCapacity.start({ updateInterval: 1 });
+  }
   for (const l of live) plumb(l);
   setInterval(() => document.getElementById('peak').classList.toggle('hot', meter.reduction < -1), 80);
 }
 function plumb(l) { // the audio chain of one layer. Two volumes: the maker's (a part's fader) and the listener's (listen, only on this screen).
-  l.listen = ctx.createGain(); l.listen.gain.value = l.hearAt; l.listen.connect(master);
+  l.listen = ctx.createGain(); l.listen.gain.value = l.hearAt; l.listen.connect(limiter(-6)).connect(master);
   for (const p of l.parts) {
     p.input = ctx.createGain();
     if (p.kind === 'synth') { p.inst = new K.Synth(ctx); p.inst.output.connect(p.input); }
     p.fader = ctx.createGain(); p.fader.gain.value = p.level;
-    p.fader.connect(limiter(-6)).connect(l.listen);
+    p.fader.connect(l.listen);
+    p.send = ctx.createGain(); p.send.gain.value = 0; p.fader.connect(p.send); p.send.connect(verb.input); // to the shared reverb
     p.rack = new K.Rack(ctx, p.input, p.fader); p.rack.setTempo(bpm);
     setSound(p, p.sound);
     if (p.kind === 'clip' && p.clip) loadClip(p).then(draw);
   }
 }
-function unplumb(l) { l.listen?.disconnect(); for (const p of l.parts) { p.inst?.allOff(); p.fader?.disconnect(); } }
+function unplumb(l) { l.listen?.disconnect(); for (const p of l.parts) { p.inst?.allOff(); p.fader?.disconnect(); p.send?.disconnect(); } }
 function setSound(p, s) {
   p.sound = s;
   if (!ctx) return;
@@ -193,9 +205,10 @@ function setSound(p, s) {
 }
 function applyFx(p) {
   if (!ctx) return;
-  const base = p.kind === 'drum' ? DRUM_SQUEEZE : p.kind === 'clip' ? [] : preset(p.sound).rack;
-  const own = Object.entries(p.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v));
-  p.rack.load([...base, ...own]);
+  const all = [...(p.kind === 'drum' ? DRUM_SQUEEZE : p.kind === 'clip' ? [] : preset(p.sound).rack), ...Object.entries(p.fx).filter(([, v]) => v > 0).map(([k, v]) => FX[k](v))];
+  const mix = Math.max(0, ...all.filter((f) => f.type === 'reverb').map((f) => f.p.mix)); // the preset's reverb and the slider: the bigger one wins
+  p.send.gain.setTargetAtTime(Math.sin(mix * Math.PI / 2), ctx.currentTime, 0.02);
+  p.rack.load(all.filter((f) => f.type !== 'reverb'));
 }
 function setKit(l, kit) {
   l.kit = kit;
@@ -220,7 +233,7 @@ function tick() {
       for (const n of l.notes) if (n.start === t) sound(l, n, nextAt);
       const p = l.parts[0];
       if (p.kind === 'clip' && p.buf && t === p.start) { const src = ctx.createBufferSource(); src.buffer = p.buf; src.connect(p.input); src.start(nextAt); src.stop(nextAt + TICKS * tickDur()); }
-      if (p.arm && t === 0) armed(p, nextAt);
+      if (p.arm && p.status === 'waiting' && t === 0) { p.status = 'armed'; armed(p, nextAt); }
     }
     setTimeout(() => mark(t), Math.max(0, (nextAt - ctx.currentTime) * 1000));
     tickAt = (tickAt + 1) % TICKS; nextAt += tickDur();
@@ -247,19 +260,47 @@ async function setClip(p, blob) {
   boot(); p.clip = { mime: blob.type || 'audio/webm', data: b64(await blob.arrayBuffer()) }; p.buf = null;
   await loadClip(p); say(''); draw();
 }
-async function record(p) {
+// Wes (2026-10-10): "the vocals don't seem to work or maybe i just don't understand. make it make more sense". So the row
+// says what is happening at every step, a meter shows the mic is alive, and a failure names its cause.
+const loopSecs = () => (TICKS * tickDur()).toFixed(1);
+function micTrouble(e) {
+  if (e.name === 'NotAllowedError') return window.parent !== window
+    ? 'The app said no to the microphone. Update the Scryproof desktop app to 0.5.7 or newer (menu under your name, About), or open this page in a browser.'
+    : 'The browser blocked the microphone. Click the lock icon by the address and allow it, then try again.';
+  if (e.name === 'NotFoundError') return 'No microphone found. Plug one in, or pick a sound file instead.';
+  return 'The microphone could not start (' + e.name + '). You can pick a sound file instead.';
+}
+function vocalStatus(p) {
+  if (p.arm && p.status === 'recording') return `Recording... sing now. One loop is ${loopSecs()} s.`;
+  if (p.arm) return `Waiting for the top of the loop (${Math.ceil((TICKS - tickAt) / 8)} beats). Then it records once through, ${loopSecs()} s.`;
+  if (p.clip) return `Got ${p.got ? p.got.toFixed(1) + ' s' : 'a sound'}. It plays every loop from the start box. Play it to hear it alone; Save it when it is good.`;
+  return `Press Record. It starts at the top of the loop, records once through (${loopSecs()} s), then plays on the loop. Headphones help.`;
+}
+function playClip(p) { boot(); if (!p.buf) return; const src = ctx.createBufferSource(); src.buffer = p.buf; src.connect(p.input); src.start(); }
+async function record(l, p) {
   boot(); say('');
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch (e) { say('No microphone here (' + e.name + '). In the desktop app the mic needs version 0.5.7 or newer. Or drop a sound file on the row.'); return; }
+  catch (e) { say(micTrouble(e)); return; }
   const rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 } : {});
   const chunks = []; rec.ondataavailable = (e) => chunks.push(e.data);
-  rec.onstop = () => { stream.getTracks().forEach((t) => t.stop()); p.arm = null; setClip(p, new Blob(chunks, { type: rec.mimeType })); };
-  p.arm = rec; if (!playing) play(); say('Recording starts at the top of the loop, for one loop. Get ready.'); draw();
+  const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser(); an.fftSize = 512; src.connect(an);
+  const wave = new Float32Array(an.fftSize);
+  const meter = setInterval(() => { // the mic bar and the status line, without a redraw
+    an.getFloatTimeDomainData(wave); let m = 0; for (const x of wave) m = Math.max(m, Math.abs(x));
+    const bar = l.el?.querySelector('[data-meter]'); if (bar) bar.style.width = Math.min(100, m * 160) + '%';
+    const st = l.el?.querySelector('[data-status]'); if (st) st.textContent = vocalStatus(p);
+  }, 80);
+  rec.onstop = () => {
+    clearInterval(meter); src.disconnect(); stream.getTracks().forEach((t) => t.stop());
+    p.got = (performance.now() - p.startedAt) / 1000; p.arm = null; p.status = null;
+    setClip(p, new Blob(chunks, { type: rec.mimeType }));
+  };
+  p.arm = rec; p.status = 'waiting'; if (!playing) play(); draw();
 }
 function armed(p, at) { // the loop is about to hit tick 0: start the recorder there, stop it one loop later
-  const rec = p.arm; p.arm = null;
-  setTimeout(() => { rec.start(); say('Recording...'); setTimeout(() => rec.state === 'recording' && rec.stop(), TICKS * tickDur() * 1000); }, Math.max(0, (at - ctx.currentTime) * 1000));
+  const rec = p.arm;
+  setTimeout(() => { if (p.arm !== rec) return; rec.start(); p.status = 'recording'; p.startedAt = performance.now(); setTimeout(() => rec.state === 'recording' && rec.stop(), TICKS * tickDur() * 1000); }, Math.max(0, (at - ctx.currentTime) * 1000));
 }
 
 // ---- screen ----
@@ -271,6 +312,7 @@ const fits = (l, row, tick) => !!row.midi && chordAt(tick).tones.includes(row.mi
 const rangeText = (l) => { const o = outside(l); return `${o.lo} to ${o.hi}` + (o.above ? `, ${o.above} above` : '') + (o.below ? `, ${o.below} below` : ''); };
 const noteWidth = (ticks) => { const n = ticks / per(); return `calc(${n * 100}% + ${(n - 1) * 2}px)`; };
 function draw() {
+  cellsAt = null; lit = [];
   layersEl.replaceChildren(...live.map((l) => {
     const own = mine(l), el = document.createElement('div'), p = l.parts[l.editing];
     l.el = el;
@@ -282,7 +324,8 @@ function draw() {
     el.innerHTML = `<div class="who">${label(l)}<small>${state}</small>
       <div class="ctl">
       ${l.top !== undefined ? `<div class="tabs"><button data-oct="-1" ${dis}>&#9650; higher</button><button data-oct="1" ${dis}>&#9660; lower</button><span class="range">${rangeText(l)}</span></div>` : ''}
-      ${p.kind === 'clip' ? `<div class="tabs"><button data-rec ${dis}>${p.arm ? 'Waiting for the top...' : 'Record one loop'}</button><label class="file"><input type="file" accept="audio/*" data-file ${dis} hidden>or pick a file</label></div>
+      ${p.kind === 'clip' ? `<div class="tabs"><button data-rec ${dis || (p.arm ? 'disabled' : '')}>${p.arm ? 'Recording' : p.clip ? 'Record again' : 'Record'}</button>${p.clip && !p.arm ? '<button data-playclip>Play it</button>' : ''}<label class="file"><input type="file" accept="audio/*" data-file ${dis} hidden>or pick a file</label></div>
+        <div class="mic"><span data-status>${own ? vocalStatus(p) : ''}</span><div class="meter"><i data-meter></i></div></div>
         <label class="knob on">start<input type="range" min="0" max="${TICKS - 1}" step="1" value="${p.start}" data-k="start" ${dis}></label>` : ''}
       ${l.kits ? `<select data-kit ${dis}>${l.kits.map((k) => `<option value="${k}" ${k === l.kit ? 'selected' : ''}>${k} kit</option>`).join('')}</select>` : ''}
       ${l.parts.length > 1 ? `<div class="tabs">${l.parts.map((q, i) => `<button data-tab="${i}" class="${i === l.editing ? 'on' : ''}">${q.label}</button>`).join('')}</div>` : ''}
@@ -298,7 +341,8 @@ function draw() {
     el.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { l.editing = +b.dataset.tab; draw(); }; });
     el.querySelector('[data-sound]')?.addEventListener('change', (e) => { boot(); setSound(p, e.target.value); });
     el.querySelectorAll('[data-oct]').forEach((b) => { b.onclick = () => { const n = scaleIdx(l).length - VIEW; l.view = Math.max(0, Math.min(n, l.view + 7 * +b.dataset.oct)); draw(); }; });
-    el.querySelector('[data-rec]')?.addEventListener('click', () => record(p));
+    el.querySelector('[data-rec]')?.addEventListener('click', () => record(l, p));
+    el.querySelector('[data-playclip]')?.addEventListener('click', () => playClip(p));
     el.querySelector('[data-file]')?.addEventListener('change', (e) => { if (e.target.files[0]) setClip(p, e.target.files[0]); });
     el.querySelectorAll('input[type=range]').forEach((r) => {
       r.oninput = (e) => {
@@ -378,9 +422,12 @@ function wire(l, rows) {
   };
   rows.onpointerup = () => { drag = null; };
 }
+let cellsAt = null, lit = []; // the play head: cells by tick, gathered once a draw instead of two page-wide searches a tick
 function mark(t) {
-  document.querySelectorAll('.cell.now').forEach((c) => c.classList.remove('now'));
-  if (t >= 0 && t % per() === 0) document.querySelectorAll(`.cell[data-t="${t}"]`).forEach((c) => c.classList.add('now'));
+  if (!cellsAt) { cellsAt = new Map(); layersEl.querySelectorAll('.cell[data-t]').forEach((c) => { const k = +c.dataset.t; if (!cellsAt.has(k)) cellsAt.set(k, []); cellsAt.get(k).push(c); }); }
+  for (const c of lit) c.classList.remove('now');
+  lit = t >= 0 && t % per() === 0 ? cellsAt.get(t) ?? [] : [];
+  for (const c of lit) c.classList.add('now');
 }
 function begin(m) {
   mode = m; setBpm(120);
