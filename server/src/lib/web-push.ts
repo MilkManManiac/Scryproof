@@ -80,10 +80,13 @@ export function vapidAuthorization(endpoint: string, keys: VapidKeys, now = Date
  * The relay keeps only the newest undelivered ping per topic, so a phone that
  * was off while one conversation got ten messages wakes once for it. Hashed,
  * because a topic may only be 32 URL-safe characters, and because the relay
- * has no business seeing our ids.
+ * has no business seeing our ids. The subscription id goes into the hash so
+ * two of one person's phones never share a topic: coalescing is per device
+ * anyway, and a shared topic would let the relay pair the devices up.
  */
-export function topicFor(conversationId: string): string {
-  return createHash('sha256').update(conversationId).digest('base64url').slice(0, 32);
+export function topicFor(conversationId: string, subscriptionId: string): string {
+  return createHash('sha256').update(`${conversationId}
+${subscriptionId}`).digest('base64url').slice(0, 32);
 }
 
 export type PingResult = 'sent' | 'gone' | 'failed';

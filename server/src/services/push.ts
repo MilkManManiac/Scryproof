@@ -152,13 +152,13 @@ export async function pushTo(userIds: readonly string[], notice: PingNotice): Pr
       recent.set(userId, list);
     }
 
-    const topic = topicFor(notice.dmId ?? notice.channelId ?? notice.messageId);
+    const conversation = notice.dmId ?? notice.channelId ?? notice.messageId;
     const gone: string[] = [];
     await Promise.all(
       rows
         .filter((row) => !quiet(row, notice))
         .map(async (row) => {
-          const result = await sender(row.endpoint, topic);
+          const result = await sender(row.endpoint, topicFor(conversation, row.id));
           if (result === 'gone') gone.push(row.id);
           if (result === 'failed') logger.warn({ reason: lastPingFailure() }, 'push ping failed');
         }),

@@ -115,9 +115,11 @@ http {
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-Proto https;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            # The client heartbeats every 25 s. Anything silent for 75 s is gone.
-            proxy_read_timeout 75s;
-            proxy_send_timeout 75s;
+            # The server pings every 30 s and the client heartbeats every 25 s,
+            # but a hidden tab gets throttled to about once a minute. 120 s
+            # leaves room for both and matches the router in front of us.
+            proxy_read_timeout 120s;
+            proxy_send_timeout 120s;
             proxy_buffering off;
         }
 

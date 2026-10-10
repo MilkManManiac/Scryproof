@@ -186,6 +186,10 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
 
   app.post('/api/invites/:code/accept', async (request) => {
     const user = requireUser(request);
+    // Signed in, so per person rather than per address: a member guessing
+    // codes is cut off the same as a stranger on the preview.
+    const limit = consume(`invite-accept:${user.id}`, 30, 60_000);
+    if (!limit.allowed) throw tooManyRequests('Too many invite attempts. Wait a moment.', limit.retryAfterSeconds);
     const { code } = z.object({ code: z.string() }).parse(request.params);
 
     const row = await consumeInvitePreflight(code);

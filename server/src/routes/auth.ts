@@ -202,9 +202,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(request.body);
 
+    // The current-password check is a password check: without this a signed-in
+    // session could guess at it as fast as it likes.
+    const key = `password:${user.id}`;
+    const limit = consume(key, 10, 60_000);
+    if (!limit.allowed) throw tooManyRequests('Too many attempts. Wait a moment.', limit.retryAfterSeconds);
+
     // Every other session is revoked and its socket closed; this one stays,
     // so the tab doing the changing is not signed out of itself.
     await changePassword(user, body.currentPassword, body.newPassword, request.sessionId ?? undefined);
+    reset(key);
 
     logger.info({ userId: user.id }, 'password changed');
     return { ok: true };

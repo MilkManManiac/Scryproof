@@ -59,13 +59,16 @@
      location / {
          proxy_pass http://unix:{{ paths.runtime_nginx_socket }};
          proxy_buffer_size 16k;
-@@ -22,7 +41,13 @@
+@@ -22,7 +41,16 @@
          proxy_set_header X-Real-IP $remote_addr;
          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
          proxy_set_header X-Forwarded-Proto $scheme;
 +        proxy_http_version 1.1;
 +        proxy_set_header Upgrade $http_upgrade;
 +        proxy_set_header Connection ${{ ws_connection }};
++        # Scryproof: websockets. The server pings every 30 s; 120 s outlasts a throttled tab.
++        proxy_read_timeout 120s;
++        proxy_send_timeout 120s;
 +        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
 +        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
      }
@@ -73,7 +76,7 @@
  
      location ^~ /.well-known/acme-challenge/ {
          root {{ paths.acme_webroot }};
-@@ -35,6 +60,8 @@
+@@ -35,6 +63,8 @@
      listen 443 ssl;
      listen [::]:443 ssl;
      server_name {{ nginx_server_name }};
@@ -82,13 +85,16 @@
  
      ssl_certificate {{ nginx_ssl_certificate_path }};
      ssl_certificate_key {{ nginx_ssl_certificate_key_path }};
-@@ -48,6 +75,11 @@
+@@ -48,6 +78,14 @@
          proxy_set_header X-Real-IP $remote_addr;
          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
          proxy_set_header X-Forwarded-Proto $scheme;
 +        proxy_http_version 1.1;
 +        proxy_set_header Upgrade $http_upgrade;
 +        proxy_set_header Connection ${{ ws_connection }};
++        # Scryproof: websockets. The server pings every 30 s; 120 s outlasts a throttled tab.
++        proxy_read_timeout 120s;
++        proxy_send_timeout 120s;
 +        # Scryproof: uploads go to 100 MB. Upstream would want this defaulting to 1m.
 +        client_max_body_size {{ nginx_client_max_body_size | default("110m") }};
      }

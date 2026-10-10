@@ -13,6 +13,7 @@ import { createPublicKey, randomBytes, verify } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-push-'));
 process.env.DATA_DIR = dataDir;
@@ -38,6 +39,14 @@ interface Person {
 }
 
 const pings: { endpoint: string; topic: string }[] = [];
+const subscriptionIdOf = async (who: Person) => {
+  const [row] = await getDb()
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.endpoint, who.endpoint))
+    .limit(1);
+  return row!.id;
+};
 const settle = () => new Promise((done) => setTimeout(done, 50));
 
 describe('phone notifications', () => {
@@ -196,7 +205,7 @@ describe('phone notifications', () => {
 
     assert.equal(pings.length, 1);
     assert.equal(pings[0]!.endpoint, wes.endpoint);
-    assert.equal(pings[0]!.topic, topicFor(channelId));
+    assert.equal(pings[0]!.topic, topicFor(channelId, await subscriptionIdOf(wes)));
 
     const pending = await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint });
     const body = pending.json();
@@ -238,7 +247,7 @@ describe('phone notifications', () => {
     const dmId = uuidv7();
     await push.pushTo([wes.id], { kind: 'dm', serverId: null, channelId: null, dmId, messageId: uuidv7() });
     assert.equal(pings.length, 1);
-    assert.equal(pings[0]!.topic, topicFor(dmId));
+    assert.equal(pings[0]!.topic, topicFor(dmId, await subscriptionIdOf(wes)));
     const body = (await call(wes, 'POST', '/api/push/pending', { endpoint: wes.endpoint })).json();
     assert.deepEqual(Object.keys(body.show[0]).sort(), ['channelId', 'dmId', 'kind', 'messageId', 'serverId', 'title']);
     assert.equal(body.show[0].title, 'Someone messaged you');

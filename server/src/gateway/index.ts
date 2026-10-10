@@ -70,7 +70,10 @@ function originAllowed(request: IncomingMessage): boolean {
   return false;
 }
 
-export function attachGateway(httpServer: HttpServer): () => void {
+/** How often the server pings every open socket. Overridable for tests. */
+export const SERVER_PING_INTERVAL_MS = 30_000;
+
+export function attachGateway(httpServer: HttpServer, options: { pingIntervalMs?: number } = {}): () => void {
   const wss = new WebSocketServer({ noServer: true });
 
   httpServer.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -120,8 +123,20 @@ export function attachGateway(httpServer: HttpServer): () => void {
     }
   }, HEARTBEAT_INTERVAL_MS);
 
+  // A ping frame from this side, every 30 s, for every open socket. Browsers
+  // answer pongs without a timer, so a hidden tab whose own heartbeat Chrome
+  // has throttled still shows traffic to the proxies in front of us, and the
+  // router's read timeout never fires on a healthy connection.
+  const ping = setInterval(() => {
+    for (const connection of hub.allConnections()) {
+      if (connection.ws.readyState !== connection.ws.OPEN) continue;
+      connection.ws.ping();
+    }
+  }, options.pingIntervalMs ?? SERVER_PING_INTERVAL_MS);
+
   return () => {
     clearInterval(sweep);
+    clearInterval(ping);
     wss.close();
   };
 }

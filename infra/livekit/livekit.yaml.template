@@ -65,7 +65,8 @@ logging:
   # The WebRTC library underneath is chatty; errors only.
   pion_level: error
   # There is no option I know of that keeps participant identities out of the
-  # log. Our identities are opaque user ids rather than names, and the journal
-  # is RAM-only until the vault is open, then archived there for 14 days.
+  # log. Our identities are opaque user ids, the token carries no display
+  # name (services/livekit.ts), and the journal is RAM-only until the vault is
+  # open, then archived there for 14 days.
 
 # No webhooks, no Redis (single node), no egress/ingress, no telemetry endpoints.

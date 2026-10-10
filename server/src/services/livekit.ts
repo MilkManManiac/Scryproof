@@ -32,7 +32,6 @@ function base64url(input: Buffer | string): string {
 export interface TokenOptions {
   room: string;
   identity: string;
-  name: string;
   canPublish: boolean;
   canSubscribe: boolean;
   /** 'camera' | 'microphone' | 'screen_share' | 'screen_share_audio' | 'unknown' */
@@ -67,7 +66,8 @@ export function createAccessToken(options: TokenOptions): string {
     // between this box and the media server.
     nbf: now - 10,
     exp: now + config.livekit.tokenTtlSeconds,
-    name: options.name,
+    // No `name` claim: LiveKit sees the opaque user id and nothing else. The
+    // client already knows everyone's name from the gateway.
     video: grant,
   };
 
