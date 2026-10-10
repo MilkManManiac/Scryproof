@@ -89,9 +89,9 @@ async function api(req, res, url) {
   const writes = parts.length === 3 && (req.method === 'POST' || req.method === 'PUT');
   const b = writes ? await body(req) : null;
   const loop = read(id); if (!loop) return json(res, 404, { error: 'gone' });
-  if (parts.length === 2 && req.method === 'GET') {
+  if (parts.length === 2 && req.method === 'GET') { // nginx may weaken the tag (W/) on the way out, so that prefix is ignored
     const tag = etag(loop);
-    if (req.headers['if-none-match'] === tag) { res.writeHead(304, { etag: tag, 'cache-control': 'no-store' }); return res.end(); }
+    if ((req.headers['if-none-match'] ?? '').replace(/^W\//, '') === tag) { res.writeHead(304, { etag: tag, 'cache-control': 'no-store' }); return res.end(); }
     return json(res, 200, shown(loop), { etag: tag });
   }
   if (parts.length === 2 && req.method === 'DELETE') {

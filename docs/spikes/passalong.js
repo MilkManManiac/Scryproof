@@ -183,7 +183,7 @@ function build() {
   setInterval(() => document.getElementById('peak').classList.toggle('hot', meter.reduction < -1), 80);
 }
 function plumb(l) { // the audio chain of one layer. Two volumes: the maker's (a part's fader) and the listener's (listen, only on this screen).
-  l.listen = ctx.createGain(); l.listen.gain.value = l.hearAt; l.listen.connect(limiter(-6)).connect(master);
+  l.listen = ctx.createGain(); l.listen.gain.value = l.hearAt; l.lim = limiter(-6); l.listen.connect(l.lim).connect(master);
   for (const p of l.parts) {
     p.input = ctx.createGain();
     if (p.kind === 'synth') { p.inst = new K.Synth(ctx); p.inst.output.connect(p.input); }
@@ -195,7 +195,13 @@ function plumb(l) { // the audio chain of one layer. Two volumes: the maker's (a
     if (p.kind === 'clip' && p.clip) loadClip(p).then(draw);
   }
 }
-function unplumb(l) { l.listen?.disconnect(); for (const p of l.parts) { p.inst?.allOff(); p.fader?.disconnect(); p.send?.disconnect(); } }
+// Audit 2026-10-10 (finding 19): a dropped layer used to leave its synth voices, LFO, rack effects and limiter running on
+// master, which adds up over an evening. Everything the layer made is torn down here. Kombinat's Rack has no destroy();
+// clear() destroys each effect, then the ends are disconnected.
+function unplumb(l) {
+  l.listen?.disconnect(); l.lim?.disconnect();
+  for (const p of l.parts) { disarm(p); p.inst?.destroy(); p.rack?.clear(); p.input?.disconnect(); p.fader?.disconnect(); p.send?.disconnect(); }
+}
 function setSound(p, s) {
   p.sound = s;
   if (!ctx) return;
@@ -292,11 +298,20 @@ async function record(l, p) {
     const st = l.el?.querySelector('[data-status]'); if (st) st.textContent = vocalStatus(p);
   }, 80);
   rec.onstop = () => {
-    clearInterval(meter); src.disconnect(); stream.getTracks().forEach((t) => t.stop());
-    p.got = (performance.now() - p.startedAt) / 1000; p.arm = null; p.status = null;
+    if (p.arm !== rec) return; // disarmed by Leave or Drop: nothing to keep
+    p.got = (performance.now() - p.startedAt) / 1000; disarm(p);
     setClip(p, new Blob(chunks, { type: rec.mimeType }));
   };
-  p.arm = rec; p.status = 'waiting'; if (!playing) play(); draw();
+  p.arm = rec; p.mic = { stream, src, meter }; p.status = 'waiting'; if (!playing) play(); draw();
+}
+// Let the mic go, whether or not the recorder ever started. Audit 2026-10-10 (finding 18): Leave or Drop while
+// "waiting for the top" used to keep the mic light on until the tab closed, since only onstop released it.
+function disarm(p) {
+  const rec = p.arm, m = p.mic; if (!rec) return;
+  p.arm = null; p.status = null; p.mic = null;
+  clearInterval(m.meter); m.src.disconnect();
+  if (rec.state !== 'inactive') rec.stop();
+  m.stream.getTracks().forEach((t) => t.stop());
 }
 function armed(p, at) { // the loop is about to hit tick 0: start the recorder there, stop it one loop later
   const rec = p.arm;
@@ -311,6 +326,8 @@ document.querySelectorAll('[data-add]').forEach((b) => { b.onclick = () => { con
 const fits = (l, row, tick) => !!row.midi && chordAt(tick).tones.includes(row.midi[0] % 12);
 const rangeText = (l) => { const o = outside(l); return `${o.lo} to ${o.hi}` + (o.above ? `, ${o.above} above` : '') + (o.below ? `, ${o.below} below` : ''); };
 const noteWidth = (ticks) => { const n = ticks / per(); return `calc(${n * 100}% + ${(n - 1) * 2}px)`; };
+// Every name that came from someone else goes through this before innerHTML (audit 2026-10-10, finding 16).
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function draw() {
   cellsAt = null; lit = [];
   layersEl.replaceChildren(...live.map((l) => {
@@ -318,7 +335,7 @@ function draw() {
     l.el = el;
     el.className = 'layer' + (l.saved ? ' locked' : '') + (l.open ? '' : ' shut');
     el.style.setProperty('--c', l.color);
-    const state = l.saved ? `${l.by} did this` : own ? l.hint : '';
+    const state = l.saved ? `${esc(l.by)} did this` : own ? l.hint : '';
     const dis = own ? '' : 'disabled';
     const knob = (k, v, max = 1) => `<label class="knob ${v > 0 ? 'on' : ''}">${k}<input type="range" min="0" max="${max}" step="0.05" value="${v}" data-k="${k}" ${dis}></label>`;
     el.innerHTML = `<div class="who">${label(l)}<small>${state}</small>
@@ -329,7 +346,7 @@ function draw() {
         <label class="knob on">start<input type="range" min="0" max="${TICKS - 1}" step="1" value="${p.start}" data-k="start" ${dis}></label>` : ''}
       ${l.kits ? `<select data-kit ${dis}>${l.kits.map((k) => `<option value="${k}" ${k === l.kit ? 'selected' : ''}>${k} kit</option>`).join('')}</select>` : ''}
       ${l.parts.length > 1 ? `<div class="tabs">${l.parts.map((q, i) => `<button data-tab="${i}" class="${i === l.editing ? 'on' : ''}">${q.label}</button>`).join('')}</div>` : ''}
-      ${p.sounds.length ? `<select data-sound ${dis}>${p.sounds.map((s) => `<option ${soundName(s) === p.sound ? 'selected' : ''}>${soundName(s)}</option>`).join('')}</select>` : ''}
+      ${p.sounds.length ? `<select data-sound ${dis}>${p.sounds.map((s) => `<option ${soundName(s) === p.sound ? 'selected' : ''}>${esc(soundName(s))}</option>`).join('')}</select>` : ''}
       <div class="knobs">${knob('volume', p.level, 1.5)}${Object.keys(FX).map((k) => knob(k, p.fx[k])).join('')}</div>
       </div>
       ${own ? '' : `<label class="knob on" title="Only you hear this change">hear at<input type="range" min="0" max="1.5" step="0.05" value="${l.hearAt}" data-k="hearAt"></label>`}
@@ -379,7 +396,7 @@ function draw() {
   document.getElementById('turn').innerHTML =
     (mode === 'solo' ? (live.length ? `${live.length} layer${live.length === 1 ? '' : 's'}, all yours` : 'Add a layer')
     : n ? `${n} of yours not saved yet` : live.length ? `${live.length} layer${live.length === 1 ? '' : 's'}. Add one, or listen.` : 'Nothing yet. Add a layer.')
-    + (others.length ? ` <small>${others.map(([who, w]) => `${who} is on ${w.kinds}`).join(', ')} right now</small>` : '');
+    + (others.length ? ` <small>${others.map(([who, w]) => `${esc(who)} is on ${esc(w.kinds)}`).join(', ')} right now</small>` : '');
   document.getElementById('pass').hidden = !(loop && n > 1);
   document.getElementById('bpm').disabled = !(mode === 'solo' || n > 0);
   document.getElementById('del').hidden = !(loop && keyOf(loop.id));
@@ -453,11 +470,15 @@ nameEl.value = stored('pa.name') || '';
 nameEl.onchange = () => stored('pa.name', nameEl.value.trim());
 const me = () => nameEl.value.trim() || 'someone';
 const keyOf = (id) => stored('pa.key.' + id); // the creator's key for a loop: whoever started it on this screen can delete it
-const api = async (path, method = 'GET', body, key) => {
-  const headers = { ...(body ? { 'content-type': 'application/json' } : {}), ...(key ? { 'x-key': key } : {}) };
+// The box tags the open loop (ETag over updated + who is working). Asking again with the tag gets a 304 and no body,
+// so the vocals only travel when something changed (audit 2026-10-10, finding 17).
+let tag = null;
+const api = async (path, method = 'GET', body, key, ifNone) => {
+  const headers = { ...(body ? { 'content-type': 'application/json' } : {}), ...(key ? { 'x-key': key } : {}), ...(ifNone ? { 'if-none-match': ifNone } : {}) };
   const r = await fetch('api/' + path, { method, headers, body: body && JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok && r.status !== 409) throw new Error(data.error || r.status);
+  if (!r.ok && r.status !== 409 && r.status !== 304) throw new Error(data.error || r.status);
+  if (r.headers.get('etag')) tag = r.headers.get('etag');
   return { status: r.status, data };
 };
 const soundName = (s) => typeof s === 'string' ? s : s.name;
@@ -495,7 +516,7 @@ async function openLoop(id) {
   clearInterval(watch);
   watch = setInterval(async () => { // see how it is going: new saved layers come in under yours; who is working shows at the top
     if (document.getElementById('game').hidden) return;
-    const r = await api('loops/' + loop.id).catch(() => null);
+    const r = await api('loops/' + loop.id, 'GET', null, null, tag).catch(() => null); // 304 when nothing changed
     if (r?.status === 200 && (r.data.updated !== loop.updated || JSON.stringify(r.data.working) !== JSON.stringify(loop.working))) apply(r.data);
     if (r?.status === 404) say('This loop was deleted.');
     working();
@@ -505,7 +526,7 @@ async function openLoop(id) {
 let toldAt = 0;
 function working() {
   if (!loop) return;
-  const kinds = [...new Set(unsaved().map((l) => l.who.toLowerCase()))].join(' and ');
+  const kinds = [...new Set(unsaved().map((l) => l.who.toLowerCase().replace(' & ', ' and ')))].join(' and '); // the store drops &
   if (!kinds && !toldAt) return;
   api(`loops/${loop.id}/working`, 'POST', { by: me(), kinds }).catch(() => {});
   toldAt = kinds ? Date.now() : 0;
@@ -528,11 +549,11 @@ async function showLoops() {
   if (!r) { el.innerHTML = ''; return; } // opened from a plain file: solo still works
   const when = (t) => { const h = (Date.now() - t) / 36e5; return h < 1 ? 'just now' : h < 24 ? `${Math.floor(h)} h ago` : `${Math.floor(h / 24)} d ago`; };
   el.innerHTML = r.data.length ? '<h2>Loops</h2>' + r.data.map((x) => {
-    const byWho = {}; for (const v of Object.values(x.done)) (byWho[v.by] ??= []).push(kindOf(v.kind)?.who.toLowerCase() ?? v.kind);
-    const who = Object.entries(byWho).map(([w, ks]) => `${w}: ${ks.join(', ')}`).join('; ');
-    const n = Object.keys(x.done).length, now = Object.entries(x.working ?? {}).map(([w, v]) => `${w} is on ${v.kinds} right now`).join(', ');
-    return `<div class="loop"><div>${x.name} <small>${x.bpm} bpm, started by ${x.by} ${when(x.updated)}. ${n ? `${n} layer${n === 1 ? '' : 's'}: ${who}` : 'nothing yet'}${now ? '. ' + now : ''}</small></div>
-      <span>${keyOf(x.id) ? `<button data-del="${x.id}">Delete</button> ` : ''}<button data-open="${x.id}">${n ? 'Jump in' : 'Start it'}</button></span></div>`;
+    const byWho = {}; for (const v of Object.values(x.done)) (byWho[v.by] ??= []).push(kindOf(v.kind)?.who.toLowerCase() ?? esc(v.kind));
+    const who = Object.entries(byWho).map(([w, ks]) => `${esc(w)}: ${ks.join(', ')}`).join('; ');
+    const n = Object.keys(x.done).length, now = Object.entries(x.working ?? {}).map(([w, v]) => `${esc(w)} is on ${esc(v.kinds)} right now`).join(', ');
+    return `<div class="loop"><div>${esc(x.name)} <small>${+x.bpm || 120} bpm, started by ${esc(x.by)} ${when(x.updated)}. ${n ? `${n} layer${n === 1 ? '' : 's'}: ${who}` : 'nothing yet'}${now ? '. ' + now : ''}</small></div>
+      <span>${keyOf(x.id) ? `<button data-del="${esc(x.id)}">Delete</button> ` : ''}<button data-open="${esc(x.id)}">${n ? 'Jump in' : 'Start it'}</button></span></div>`;
   }).join('') : '<h2>No loops yet</h2>';
   el.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => openLoop(b.dataset.open); });
   el.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => del(b.dataset.del, b); });
@@ -555,7 +576,8 @@ document.getElementById('masterVol').oninput = (e) => { boot(); master.gain.setT
 document.getElementById('bpm').onchange = (e) => setBpm(+e.target.value);
 document.getElementById('pass').onclick = () => save(unsaved());
 document.getElementById('del').onclick = (e) => del(loop.id, e.target);
-document.getElementById('reset').onclick = () => { if (playing) play(); loop = null; clearInterval(watch); toldAt = 0; history.replaceState(null, '', location.pathname); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; showLoops(); };
+// Leave lets the mic and every sound node go (unplumb), then shows the list again.
+document.getElementById('reset').onclick = () => { if (playing) play(); live.forEach(unplumb); live = []; loop = null; tag = null; clearInterval(watch); toldAt = 0; history.replaceState(null, '', location.pathname); document.getElementById('game').hidden = true; document.getElementById('start').hidden = false; showLoops(); };
 setInterval(working, 20000);
 const wanted = new URLSearchParams(location.search).get('s');
 if (wanted && /^[a-z0-9]{10}$/.test(wanted)) openLoop(wanted); else showLoops();
