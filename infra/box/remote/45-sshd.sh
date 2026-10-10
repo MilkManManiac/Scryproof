@@ -37,6 +37,6 @@ note "reloaded"
 
 say "Effective settings"
 sshd -T 2>/dev/null | grep -E '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|pubkeyauthentication) ' | sed 's/^/    /'
-sshd -T 2>/dev/null | grep -qx 'permitrootlogin prohibit-password' || die "sshd still reports something other than prohibit-password."
+sshd -T 2>/dev/null | grep -qxE 'permitrootlogin (prohibit-password|without-password)' || die "sshd still reports something other than prohibit-password."
 
 say "Done. Open a second terminal and ssh in before closing this one."
