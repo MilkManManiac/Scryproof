@@ -619,6 +619,34 @@ export function connectionsForUser(userId: string): Connection[] {
   return [...(byUser.get(userId) ?? [])];
 }
 
+/**
+ * Close the sockets of sessions that were just revoked. 4001 is the code the
+ * client reads as "this session is over": it signs out instead of reconnecting.
+ * Without this, a revoked session kept hearing every message until the socket
+ * happened to drop on its own.
+ */
+export function closeSessions(userId: string, keep: (sessionId: string) => boolean = () => false): void {
+  for (const connection of connectionsForUser(userId)) {
+    if (keep(connection.sessionId)) continue;
+    try {
+      connection.ws.close(4001, 'session revoked');
+    } catch {
+      // Already gone; the close handler cleans up.
+    }
+  }
+}
+
+export function closeSession(sessionId: string): void {
+  for (const connection of connections.values()) {
+    if (connection.sessionId !== sessionId) continue;
+    try {
+      connection.ws.close(4001, 'session revoked');
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 export function allConnections(): Connection[] {
   return [...connections.values()];
 }

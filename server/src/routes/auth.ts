@@ -99,7 +99,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     // Two buckets. The per-IP one stops a broad guessing run; the per-account
     // one stops someone hammering a single known username from many addresses.
     const ipKey = `login:ip:${hashIp(ip)}`;
-    const userKey = `login:user:${body.username.toLowerCase()}`;
+    // Trimmed the way login() trims, or padding a name buys a fresh bucket.
+    const userKey = `login:user:${body.username.trim().toLowerCase()}`;
 
     for (const key of [ipKey, userKey]) {
       const limit = consume(key, config.rateLimits.loginPerMinute, 60_000);
@@ -178,7 +179,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.post('/api/auth/password', async (request, reply) => {
+  app.post('/api/auth/password', async (request) => {
     const user = requireUser(request);
     const body = z
       .object({
@@ -187,13 +188,9 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(request.body);
 
-    await changePassword(user, body.currentPassword, body.newPassword);
-
-    // changePassword revoked every session including this one, so issue a
-    // fresh cookie rather than silently signing the user out of the tab they
-    // are looking at.
-    const session = await createSession(user, request.headers['user-agent'] ?? null);
-    void reply.setCookie(config.cookieName, session.token, cookieOptions(session.expiresAt));
+    // Every other session is revoked and its socket closed; this one stays,
+    // so the tab doing the changing is not signed out of itself.
+    await changePassword(user, body.currentPassword, body.newPassword, request.sessionId ?? undefined);
 
     logger.info({ userId: user.id }, 'password changed');
     return { ok: true };

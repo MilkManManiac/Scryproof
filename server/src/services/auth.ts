@@ -9,7 +9,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 
 import { LIMITS, validatePassword, validateUsername, validateDisplayName } from '@scryproof/shared';
 
@@ -26,6 +26,7 @@ import {
 import { uuidv7 } from '../lib/ids.js';
 import { HttpError, badRequest, conflict, unauthorized } from '../lib/http-error.js';
 import type { User } from '../db/schema.js';
+import { closeSession, closeSessions } from '../gateway/hub.js';
 
 export interface SessionResult {
   user: User;
@@ -105,13 +106,19 @@ export async function revokeSession(sessionId: string): Promise<void> {
     .update(sessions)
     .set({ revokedAt: new Date() })
     .where(eq(sessions.id, sessionId));
+  // The row is dead; the socket on it must not outlive it.
+  closeSession(sessionId);
 }
 
-export async function revokeAllSessions(userId: string): Promise<void> {
+/** Revoke every session of a user, except `keepSessionId` when given (the tab doing the revoking). */
+export async function revokeAllSessions(userId: string, keepSessionId?: string): Promise<void> {
+  const conditions = [eq(sessions.userId, userId), isNull(sessions.revokedAt)];
+  if (keepSessionId) conditions.push(ne(sessions.id, keepSessionId));
   await getDb()
     .update(sessions)
     .set({ revokedAt: new Date() })
-    .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+    .where(and(...conditions));
+  closeSessions(userId, (sessionId) => sessionId === keepSessionId);
 }
 
 export async function findUserByUsername(username: string): Promise<User | null> {
@@ -262,6 +269,7 @@ export async function changePassword(
   user: User,
   currentPassword: string,
   newPassword: string,
+  keepSessionId?: string,
 ): Promise<void> {
   const ok = await verifyPassword(user.passwordHash, currentPassword);
   if (!ok) throw unauthorized('Your current password is not right.');
@@ -275,8 +283,8 @@ export async function changePassword(
     .where(eq(users.id, user.id));
 
   // Changing a password is the thing you do when you think someone else has
-  // it, so every other session dies with it.
-  await revokeAllSessions(user.id);
+  // it, so every other session dies with it. The one doing the changing stays.
+  await revokeAllSessions(user.id, keepSessionId);
 }
 
 /**

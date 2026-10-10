@@ -8,7 +8,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sum } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { LIMITS, Permission } from '@scryproof/shared';
@@ -17,7 +17,8 @@ import { requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { attachments, channels, messages } from '../db/schema.js';
-import { badRequest, forbidden, notFound } from '../lib/http-error.js';
+import { HttpError, badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
+import { consume } from '../lib/rate-limit.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as serialize from '../services/serialize.js';
 import { requireChannelPermission } from '../services/permissions.js';
@@ -50,6 +51,24 @@ const INLINE_TYPES = new Set([
   'application/pdf',
 ]);
 
+/** Uploads a person may start in a minute, channel files and avatars together. */
+export const UPLOADS_PER_MINUTE = 10;
+/** Bytes one person may have parked and not yet sent. The sweep clears them after a day. */
+export const PENDING_UPLOAD_BYTES = 500 * 1024 * 1024;
+
+/** Refuse before the body is read, so a flood costs nothing but the request line. */
+export async function guardUpload(userId: string): Promise<void> {
+  const limit = consume(`uploads:${userId}`, UPLOADS_PER_MINUTE, 60_000);
+  if (!limit.allowed) throw tooManyRequests('You are uploading too quickly.', limit.retryAfterSeconds);
+  const [row] = await getDb()
+    .select({ bytes: sum(attachments.size) })
+    .from(attachments)
+    .where(and(eq(attachments.uploaderId, userId), isNull(attachments.messageId)));
+  if (Number(row?.bytes ?? 0) >= PENDING_UPLOAD_BYTES) {
+    throw new HttpError(413, 'too_much_pending', 'Send or discard the files you have already uploaded first.');
+  }
+}
+
 export async function registerAttachmentRoutes(app: FastifyInstance): Promise<void> {
   /**
    * Upload happens before the message is sent. The file is parked with no
@@ -81,6 +100,8 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
     if (!channel.encrypted && sealed) {
       throw badRequest('A locked file can only be sent in an encrypted channel.', 'encryption_not_enabled');
     }
+
+    await guardUpload(user.id);
 
     const file = await request.file();
     if (!file) throw badRequest('No file was uploaded.', 'no_file');

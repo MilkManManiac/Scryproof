@@ -30,6 +30,7 @@ import { canCreateServers } from '../services/servers.js';
 import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
+import { consume } from '../lib/rate-limit.js';
 import * as hub from './hub.js';
 import { handleVoiceSignal, handleVoiceStateIntent } from './voice.js';
 
@@ -266,10 +267,19 @@ async function announceDeparture(connection: hub.Connection): Promise<void> {
   }
 }
 
+/** Control frames a socket may send in ten seconds. Typing and presence each cost queries and a fan-out. */
+const FRAMES_PER_WINDOW = 60;
+
 async function handleClientEvent(
   connection: hub.Connection,
   event: ClientEvent,
 ): Promise<void> {
+  // One bucket per socket. Heartbeats are exempt so a throttled client is not
+  // also swept as dead; voice signals have their own, larger limit in voice.ts.
+  if (event.t !== 'heartbeat' && event.t !== 'voice_signal') {
+    if (!consume(`gateway:${connection.id}`, FRAMES_PER_WINDOW, 10_000).allowed) return;
+  }
+
   switch (event.t) {
     case 'heartbeat': {
       connection.ws.send(encodeEvent({ t: 'heartbeat_ack', d: { at: Date.now() } }));

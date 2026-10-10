@@ -24,6 +24,7 @@ import { uuidv7 } from '../lib/ids.js';
 import * as serialize from '../services/serialize.js';
 import { buildStorageKey, deleteObject, readFromS3, readStream, saveStream } from '../services/storage.js';
 import { visibleProfileUserIds } from '../services/servers.js';
+import { guardUpload } from './attachments.js';
 import { config } from '../config.js';
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -68,6 +69,7 @@ export async function registerProfileRoutes(app: FastifyInstance): Promise<void>
 
   app.post('/api/auth/avatar', async (request) => {
     const user = requireUser(request);
+    await guardUpload(user.id);
     const file = await request.file({ limits: { fileSize: MAX_AVATAR_BYTES } });
     if (!file) throw badRequest('No picture was uploaded.', 'no_file');
     if (!IMAGE_TYPES.has(file.mimetype)) throw badRequest('That is not a picture this app can show.', 'not_an_image');
