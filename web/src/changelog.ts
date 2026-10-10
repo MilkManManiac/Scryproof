@@ -20,6 +20,17 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-10-signed-out-everywhere',
+    date: '2026-10-10',
+    title: 'Signing out now signs out everywhere',
+    notes: [
+      'Sign out on one device, or change your password, and every other device you were signed in on is signed out at the same moment. Before, they stayed in until they expired on their own.',
+      'If the app ever hits something it cannot handle, it says "Something broke. Reload." with a button, instead of going blank. And if your session ends while you are away, the sign-in screen tells you so.',
+      'Coming back to a laptop that was asleep, or to a tab you had hidden for a while, reconnects right away instead of waiting out a timer.',
+      'Pass-along: vocals walk you through it (press Record, wait for the top, sing, hear it back), and loops with lots going on are easier on the speakers.',
+    ],
+  },
+  {
     id: '2026-10-10-pass-along-layers',
     date: '2026-10-10',
     title: 'Pass-along: add as much as you want',
