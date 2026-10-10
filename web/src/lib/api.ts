@@ -131,33 +131,50 @@ function checkSessionGone(path: string): void {
     .catch(() => undefined);
 }
 
+/**
+ * Every call to the app API comes through here, JSON, FormData upload or raw
+ * download alike, so a 401 anywhere reaches the sign-out check and every
+ * ApiError is built in one place. Resolves only with a 2xx response.
+ */
+async function send(path: string, init: RequestInit, fallback?: { code: string; message: string }): Promise<Response> {
+  const response = await fetch(path, { credentials: 'same-origin', ...init });
+  if (response.ok) return response;
+  const payload: any = await response.json().catch(() => null);
+  if (response.status === 401) checkSessionGone(path);
+  throw new ApiError(
+    response.status,
+    payload?.code ?? fallback?.code ?? 'error',
+    payload?.message ?? fallback?.message ?? `Request failed (${response.status}).`,
+    payload?.details?.retryAfterSeconds,
+  );
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const response = await send(path, {
     method,
-    credentials: 'same-origin',
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-
   const text = await response.text();
-  let payload: any = null;
   try {
-    payload = text ? JSON.parse(text) : null;
+    return (text ? JSON.parse(text) : null) as T;
   } catch {
-    payload = null;
+    return null as T;
   }
+}
 
-  if (!response.ok) {
-    if (response.status === 401) checkSessionGone(path);
-    throw new ApiError(
-      response.status,
-      payload?.code ?? 'error',
-      payload?.message ?? `Request failed (${response.status}).`,
-      payload?.details?.retryAfterSeconds,
-    );
-  }
+const UPLOAD_FAILED = { code: 'upload_failed', message: 'Upload failed.' };
+const DOWNLOAD_FAILED = { code: 'download_failed', message: 'That file could not be fetched.' };
 
-  return payload as T;
+/** A multipart POST. The browser sets the content type and boundary itself. */
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const response = await send(path, { method: 'POST', body: form }, UPLOAD_FAILED);
+  return (await response.json().catch(() => null)) as T;
+}
+
+async function download(path: string): Promise<Uint8Array> {
+  const response = await send(path, {}, DOWNLOAD_FAILED);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 const get = <T,>(path: string) => request<T>('GET', path);
@@ -179,10 +196,7 @@ export const api = {
     async uploadAvatar(file: File): Promise<SelfUser> {
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch('/api/auth/avatar', { method: 'POST', credentials: 'same-origin', body: form });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
-      return payload.user as SelfUser;
+      return (await upload<{ user: SelfUser }>('/api/auth/avatar', form)).user;
     },
     removeAvatar: () => del<{ user: SelfUser }>('/api/auth/avatar'),
     register: (input: {
@@ -407,16 +421,7 @@ export const api = {
       const form = new FormData();
       form.append('name', name);
       form.append('file', file);
-      const response = await fetch(`/api/servers/${serverId}/emojis`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: form,
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
-      }
-      return payload.emoji as Emoji;
+      return (await upload<{ emoji: Emoji }>(`/api/servers/${serverId}/emojis`, form)).emoji;
     },
     remove: (serverId: string, emojiId: string) =>
       del<{ ok: true }>(`/api/servers/${serverId}/emojis/${emojiId}`),
@@ -430,16 +435,7 @@ export const api = {
       form.append('name', name);
       form.append('volume', String(volume));
       form.append('file', file);
-      const response = await fetch(`/api/servers/${serverId}/sounds`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: form,
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
-      }
-      return payload.sound as Sound;
+      return (await upload<{ sound: Sound }>(`/api/servers/${serverId}/sounds`, form)).sound;
     },
     rename: (serverId: string, soundId: string, name: string) =>
       patch<{ sound: Sound }>(`/api/servers/${serverId}/sounds/${soundId}`, { name }),
@@ -568,18 +564,9 @@ export const api = {
     async uploadFile(dmId: string, sealed: Uint8Array): Promise<{ id: string; size: number }> {
       const form = new FormData();
       form.append('file', new Blob([sealed as BlobPart], { type: 'application/octet-stream' }), 'sealed.bin');
-      const response = await fetch(`/api/dms/${dmId}/files`, { method: 'POST', credentials: 'same-origin', body: form });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
-      }
-      return payload.file as { id: string; size: number };
+      return (await upload<{ file: { id: string; size: number } }>(`/api/dms/${dmId}/files`, form)).file;
     },
-    async downloadFile(dmId: string, fileId: string): Promise<Uint8Array> {
-      const response = await fetch(`/api/dms/${dmId}/files/${fileId}`, { credentials: 'same-origin' });
-      if (!response.ok) throw new ApiError(response.status, 'download_failed', 'That file could not be fetched.');
-      return new Uint8Array(await response.arrayBuffer());
-    },
+    downloadFile: (dmId: string, fileId: string) => download(`/api/dms/${dmId}/files/${fileId}`),
     discardFile: (dmId: string, fileId: string) => del<{ ok: true }>(`/api/dms/${dmId}/files/${fileId}`),
   },
 
@@ -618,42 +605,17 @@ export const api = {
     list: () => get<{ messages: BookmarkedMessage[] }>('/api/bookmarks'),
   },
 
-  /** Uploads go through FormData, so they bypass the JSON helper above. */
   async upload(channelId: string, file: File): Promise<Attachment> {
     const form = new FormData();
     form.append('file', file);
-
-    const response = await fetch(`/api/channels/${channelId}/attachments`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: form,
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        payload?.code ?? 'upload_failed',
-        payload?.message ?? 'Upload failed.',
-      );
-    }
-    return payload.attachment as Attachment;
+    return (await upload<{ attachment: Attachment }>(`/api/channels/${channelId}/attachments`, form)).attachment;
   },
 
   /** A file for an encrypted channel, locked here first. The server is told neither its name nor its type. */
   async uploadSealed(channelId: string, sealed: Uint8Array): Promise<Attachment> {
     const form = new FormData();
     form.append('file', new Blob([sealed as BlobPart], { type: 'application/octet-stream' }), 'sealed.bin');
-    const response = await fetch(`/api/channels/${channelId}/attachments?sealed=1`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: form,
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new ApiError(response.status, payload?.code ?? 'upload_failed', payload?.message ?? 'Upload failed.');
-    }
-    return payload.attachment as Attachment;
+    return (await upload<{ attachment: Attachment }>(`/api/channels/${channelId}/attachments?sealed=1`, form)).attachment;
   },
 
   purdle: {
@@ -713,9 +675,5 @@ export const api = {
   },
 
   /** The locked bytes of a sealed attachment, to be opened with the key in its message. */
-  async downloadSealed(url: string): Promise<Uint8Array> {
-    const response = await fetch(url, { credentials: 'same-origin' });
-    if (!response.ok) throw new ApiError(response.status, 'download_failed', 'That file could not be fetched.');
-    return new Uint8Array(await response.arrayBuffer());
-  },
+  downloadSealed: (url: string) => download(url),
 };

@@ -1,3 +1,6 @@
+# Checkouts keep LF everywhere, so the web files stop flipping to CRLF on
+# this Windows machine. The rules below pin the ones that must never vary.
+* text=auto eol=lf
 # Everything that runs on the Linux box keeps Unix line endings, even in a
 # Windows checkout. Several of these are piped straight over SSH from this
 # machine, and bash reads a carriage return as part of the command.
