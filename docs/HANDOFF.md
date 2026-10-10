@@ -2,7 +2,9 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-08, late)
+## Pick up here (2026-10-10)
+
+**NEXT: build from `docs/SPEC-audit-fixes.md`** (Wes: "put it a build order. im gonna clear context and continue"). It is the build order for the 37 findings in `docs/AUDIT-2026-10-10.md`: round one (store hardening, page leaks, vault and gating on the box, backups carrying the env, revoke closes sockets, error boundary, release gate) then rounds two and three. Start at phase 1. Nothing is published, deployed or released without his word for that step.
 
 **BUILT, NOT DEPLOYED 2026-10-10 ~03:00 ET: lighter sound and vocals that explain themselves.** Wes: "when you have a lot going on its starts to get taxing... Its just goes super staticky like when something is overloaded" and "the vocals don't seem to work or maybe i just don't understand. make it make more sense". Sound: one shared convolution reverb that every part sends to (was one convolver a part, pads and melodies carrying up to 7 s of impulse each), one limiter a layer (was one a part), play-head cells gathered once a draw instead of two page-wide searches a tick; a "sound load" readout appears next to the limiter dot when the browser reports render capacity (Edge/Chrome do not yet; harmless). Not proven: the headless run cannot see the audio thread (browser CPU stays under 6% at 15 layers), so whether the static is gone is his ears. Vocals: the row now carries a status line at every step (press Record; waiting for the top, N beats; recording, sing now, loop is N s; got N s), a live mic bar, Record again and Play it buttons, and failures name their cause (app too old, browser blocked, no mic). Proven locally with the fake mic (`loops7.py`, `vocals.py`; shots `docs/shots/passalong-proto-8-vocals*.png`). Publish with `scripts/activities/publish-pass-along.sh` on his word.
 
