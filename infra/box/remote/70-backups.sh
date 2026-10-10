@@ -27,7 +27,7 @@ install -m 0750 "$here/scryproof-backup" /usr/local/sbin/scryproof-backup
 
 cat > /etc/systemd/system/scryproof-backup.service <<CONF
 [Unit]
-Description=Encrypted backup of the database and uploads
+Description=Encrypted backup of the database, uploads, .env and livekit.yaml
 ConditionPathExists=$UNLOCKED_FLAG
 After=postgresql.service
 

@@ -7,6 +7,11 @@
 #               owners or grants, so it loads into any Postgres (or PGlite,
 #               which is how the PC checks it)
 #   uploads/    every attachment, avatar, emoji and sound
+#   .env        the app's settings from the vault: SESSION_SECRET (without
+#               it every stored 2FA seed is unreadable), the VAPID push keys
+#               (without them every phone has to subscribe again), the
+#               LiveKit keys. Audit 2026-10-10, finding 3.
+#   livekit.yaml  the LiveKit config, same keys plus the TURN and port setup.
 #
 # Encrypted to the public key in /etc/scryproof/backup-key.asc. The private
 # half is only on Wes's PC, so nothing on this box can open a backup
@@ -24,10 +29,14 @@ trap 'echo "FAILED: line $LINENO: $BASH_COMMAND" >&2' ERR
 
 key=/etc/scryproof/backup-key.asc
 data=/srv/sites/scryproof/shared/data
+env_file=/srv/sites/scryproof/shared/.env
+livekit_yaml=/mnt/vault/livekit/livekit.yaml
 out=/mnt/vault/backups
 keep=7
 
 [ -s "$key" ] || { echo "No public key at $key. Run 70-backups.sh." >&2; exit 1; }
+[ -s "$env_file" ] || { echo "No $env_file; a backup without it cannot restore 2FA or push." >&2; exit 1; }
+[ -s "$livekit_yaml" ] || { echo "No $livekit_yaml." >&2; exit 1; }
 
 install -d -m 0700 "$out"
 stamp="$(date -u +%Y%m%d-%H%M%S)"
@@ -38,9 +47,13 @@ trap cleanup EXIT
 
 runuser -u postgres -- pg_dump --no-owner --no-acl --rows-per-insert=200 scryproof > "$work/db.sql"
 [ -s "$work/db.sql" ] || { echo "pg_dump wrote nothing." >&2; exit 1; }
+# Copied, not read in place: the tar runs as root either way, and the work
+# folder is 0700 on the vault and deleted on exit.
+cp -p "$env_file" "$work/.env"
+cp -p "$livekit_yaml" "$work/livekit.yaml"
 
 target="$out/scryproof-$stamp.tar.gpg"
-tar -C "$work" -cf - db.sql -C "$data" uploads \
+tar -C "$work" -cf - db.sql .env livekit.yaml -C "$data" uploads \
   | gpg --homedir "$gpghome" --batch --quiet --trust-model always \
         --recipient-file "$key" --encrypt --output "$target.part"
 mv "$target.part" "$target"

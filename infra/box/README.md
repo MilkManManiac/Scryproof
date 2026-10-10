@@ -230,7 +230,8 @@ That is the whole procedure. The box cannot come back by itself, by design.
 
 Set up 2026-09-23. Every night at 08:00 UTC (4 AM Eastern) the box writes
 `/mnt/vault/backups/scryproof-<time>.tar.gpg`: the whole database as SQL plus
-every uploaded file, encrypted to a key whose private half is only on Wes's PC
+every uploaded file, plus (since 2026-10-10) the app's `.env` and
+`livekit.yaml`, encrypted to a key whose private half is only on Wes's PC
 (`~/.scryproof-backup/`, with a copy in the password manager). The box keeps
 seven. Nothing on the box can open them. The installer file under
 `data/downloads` is left out; `scripts/publish-installer.sh` makes it again.
@@ -259,6 +260,12 @@ A backup by hand, before anything risky on the box:
        mkdir restore && cd restore
        gpg --homedir ~/.scryproof-backup/gnupg --decrypt <backup>.tar.gpg | tar -x
 
+   The folder also holds `.env` and `livekit.yaml`. Put `.env` at
+   `/srv/sites/scryproof/shared/.env` (root:scryproof 0640) instead of
+   writing a new one in step 8, so SESSION_SECRET and the push keys match
+   the database; `livekit.yaml` goes to `/mnt/vault/livekit/livekit.yaml`
+   (root:livekit 0640). Which private files this PC needs for all of that:
+   `docs/box/if-the-pc-dies.md`.
 3. Copy it up: `scp -r db.sql uploads root@<box>:/mnt/vault/restore/`
 4. On the box, into the empty database, as the app's own database user so the
    tables belong to it (the address is `DATABASE_URL` in the app's `.env`):

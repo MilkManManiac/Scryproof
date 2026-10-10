@@ -65,6 +65,24 @@ try {
   console.log(`Backup:   ${file} (${(statSync(file).size / 1e6).toFixed(1)} MB)`);
   await unpack(file, work);
 
+  // The settings a restore cannot do without (audit 2026-10-10, finding 3):
+  // SESSION_SECRET unlocks the stored 2FA seeds, the VAPID pair keeps every
+  // phone subscription valid, livekit.yaml is the voice server's config.
+  // Names only are checked; no value is ever printed.
+  for (const name of ['.env', 'livekit.yaml']) {
+    if (!existsSync(join(work, name))) throw new Error(`Backup has no ${name}. The box needs the scryproof-backup from 2026-10-10 or later (bash scripts/box.sh 70-backups.sh).`);
+  }
+  const envKeys = new Set(
+    readFileSync(join(work, '.env'), 'utf8')
+      .split('\n')
+      .map((line) => line.match(/^([A-Z_]+)=/)?.[1])
+      .filter(Boolean),
+  );
+  for (const key of ['SESSION_SECRET', 'VAPID_PRIVATE_KEY', 'VAPID_PUBLIC_KEY', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET']) {
+    if (!envKeys.has(key)) throw new Error(`.env in the backup has no ${key} line.`);
+  }
+  console.log(`Settings: .env (${envKeys.size} keys, SESSION_SECRET and VAPID present), livekit.yaml`);
+
   // psql meta-commands (\restrict and friends) are for psql, not SQL.
   const sql = readFileSync(join(work, 'db.sql'), 'utf8')
     .split('\n')

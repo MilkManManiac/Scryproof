@@ -35,7 +35,9 @@ version=$(node -p "require('./desktop/src/client-version.json').version")
 git commit -q -m "Signed desktop client $version"
 git push -q
 
-MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu -- bash -lc 'bash ~/ship.sh 6'
+# The deploy itself runs in WSL (scripts/ship.sh: pull, push to the box, bonesdeploy).
+repo_win="$(pwd -W)"
+MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu -- bash -lc "bash \"\$(wslpath '$repo_win')/scripts/ship.sh\" 6"
 # The service is restarting when the deploy returns; health is a 502 for a few seconds.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fsS https://scryproof.com/api/health 2>/dev/null; then echo; break; fi
