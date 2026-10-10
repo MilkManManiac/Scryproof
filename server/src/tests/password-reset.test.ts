@@ -75,13 +75,13 @@ describe('password reset', () => {
         payload: { currentPassword: temporaryPassword, newPassword: 'a brand new sentence' },
       });
       assert.equal(changed.statusCode, 200);
-      const fresh = new RegExp(`${config.cookieName}=([^;]+)`).exec(String(changed.headers['set-cookie']))?.[1];
-      assert.ok(fresh, 'no new cookie after changing the password');
 
+      // The session that chose the new password is the one kept; every other
+      // one was revoked and its socket closed (audit 2026-10-10, finding 5).
       const after = await app.inject({
         method: 'GET',
         url: '/api/servers',
-        headers: { cookie: `${config.cookieName}=${fresh}` },
+        headers: { cookie },
       });
       assert.equal(after.statusCode, 200);
     } finally {

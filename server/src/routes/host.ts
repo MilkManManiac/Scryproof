@@ -78,13 +78,10 @@ export async function registerHostRoutes(app: FastifyInstance): Promise<void> {
       hub.removeUserFromServer(userId, serverId);
     }
 
-    // Out of any DM call too, and every window they have open is cut off.
-    // 4001 is "this session is gone": their app goes to sign-in, where the
+    // Out of any DM call too. Their windows were already cut off with 4001
+    // by revokeAllSessions above: their app goes to sign-in, where the
     // account is refused as disabled.
     await hub.announceCleared(hub.clearVoiceStatesForUser(userId));
-    for (const connection of hub.connectionsForUser(userId)) {
-      connection.ws.close(4001, 'removed');
-    }
 
     return { ok: true, servers: memberships.length };
   });
