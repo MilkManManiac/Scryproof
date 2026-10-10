@@ -105,6 +105,32 @@ export class ApiError extends Error {
   }
 }
 
+let onSessionGone: (() => void) | null = null;
+
+/**
+ * Who to tell when the server no longer knows this session. Set by the
+ * signed-in shell, cleared when it unmounts, so a wrong password on the
+ * sign-in screen (also a 401) tells nobody.
+ */
+export function whenSessionGone(listener: (() => void) | null): void {
+  onSessionGone = listener;
+}
+
+/**
+ * A 401 while signed in is usually the session being gone (expired, revoked,
+ * signed out elsewhere), but a wrong current password on the change-password
+ * form is a 401 too. `/api/auth/me` tells them apart: it only fails when the
+ * session is gone. Then the app signs out the same way a 4001 close does.
+ */
+function checkSessionGone(path: string): void {
+  if (!onSessionGone || path === '/api/auth/me') return;
+  fetch('/api/auth/me', { credentials: 'same-origin' })
+    .then((probe) => {
+      if (probe.status === 401) onSessionGone?.();
+    })
+    .catch(() => undefined);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method,
@@ -122,6 +148,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!response.ok) {
+    if (response.status === 401) checkSessionGone(path);
     throw new ApiError(
       response.status,
       payload?.code ?? 'error',

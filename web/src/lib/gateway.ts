@@ -34,6 +34,17 @@ function withParam(url: string, name: string, value: string): string {
   return parsed.toString();
 }
 
+/**
+ * Runs jobs one at a time, in order. A job that throws is dropped and the
+ * next one still runs: one bad frame must not stop every frame after it.
+ */
+export function serialQueue(): (job: () => void | Promise<void>) => void {
+  let tail: Promise<void> = Promise.resolve();
+  return (job) => {
+    tail = tail.then(job).catch(() => undefined);
+  };
+}
+
 export class Gateway {
   private socket: WebSocket | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;

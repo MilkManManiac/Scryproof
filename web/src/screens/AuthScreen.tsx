@@ -21,7 +21,14 @@ import { peekPendingInviteCode } from '../lib/invite-link';
 
 type Mode = 'signin' | 'register';
 
-export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUser) => void }) {
+export function AuthScreen({
+  notice,
+  onAuthenticated,
+}: {
+  /** Why they are looking at this screen, when it was not their choice. */
+  notice?: string;
+  onAuthenticated: (user: SelfUser) => void;
+}) {
   const [context, setContext] = useState<{ firstRun: boolean; inviteRequired: boolean } | null>(
     null,
   );
@@ -142,6 +149,8 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SelfUs
               ? 'Private instance. Sign in to continue.'
               : 'Create an account on this instance.'}
         </p>
+
+        {notice ? <div className="notice">{notice}</div> : null}
 
         {firstRun ? (
           <div className="notice">

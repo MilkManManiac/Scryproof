@@ -43,14 +43,14 @@ import { purdle } from '../lib/purdle';
 import { cuntections } from '../lib/cuntections';
 import { bee } from '../lib/bee';
 import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
-import { api } from '../lib/api';
+import { api, whenSessionGone } from '../lib/api';
 import { noticeFor, notices, previewOf } from '../lib/notices';
 import type { Notice } from '../lib/notices';
 import { isMuted, momentSounds, notifyPrefs, placeMode, play, popupFor, soundFor } from '../lib/notify';
 import type { Moment } from '../lib/notify';
 import { popups, present } from '../lib/popups';
 import { pingsHeldRole, toPlainLine } from '../lib/mentions';
-import { Gateway, type ConnectionStatus } from '../lib/gateway';
+import { Gateway, serialQueue, type ConnectionStatus } from '../lib/gateway';
 import { fullWhen, withAnswer, withEvent } from '../lib/events';
 import { jumpToSoon } from '../lib/jump';
 import { channelKeysFor, channelMemory } from '../lib/channel-keys';
@@ -480,7 +480,15 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'gateway':
-      return applyGatewayEvent(state, action.event);
+      // A frame this code cannot digest (a shape the server grew that this
+      // build does not know, or a plain bug) leaves the world as it was
+      // rather than blanking the page. The frames after it still apply.
+      try {
+        return applyGatewayEvent(state, action.event);
+      } catch (error) {
+        console.error('gateway frame dropped', action.event.t, error);
+        return state;
+      }
 
     default:
       return state;
@@ -994,12 +1002,16 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
+/** What the sign-in screen says when the server, not the person, ended the session. */
+const SIGNED_OUT_NOTICE = 'You were signed out. Sign in again.';
+
 export function StoreProvider({
   children,
   onSignedOut,
 }: {
   children: ReactNode;
-  onSignedOut: () => void;
+  /** With a line for the sign-in screen when the server ended the session, nothing when they chose to leave. */
+  onSignedOut: (notice?: string) => void;
 }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const gatewayRef = useRef<Gateway | null>(null);
@@ -1678,14 +1690,14 @@ export function StoreProvider({
     // Events are handled one at a time, in order. Most pass straight through;
     // a sealed message is opened first, which is asynchronous, and nothing
     // behind it may overtake it (a delete arriving before its create).
-    let queue: Promise<void> = Promise.resolve();
+    const enqueue = serialQueue();
     // Bumped on every connection status change, so a frame can be told apart
     // from one that belongs to a socket that has since been replaced.
     let connectionSeq = 0;
     const gateway = new Gateway({
       onEvent: (raw) => {
         const received = connectionSeq;
-        queue = queue.then(async () => {
+        enqueue(async () => {
           const event = await prepareEvent(raw).catch(() => raw);
           handleEvent(event, received === connectionSeq);
         });
@@ -1696,11 +1708,20 @@ export function StoreProvider({
         gatewayConfirmsOwnership.current = undefined;
         if (status === 'reconnecting' && currentCall.current) voice.gatewayLost();
         dispatch({ type: 'connection', status });
-        if (status === 'closed') onSignedOut();
+        if (status === 'closed') sessionGone();
         // A fresh connection starts out as nobody looking; say otherwise.
         if (status === 'open' && attending) gateway.send({ t: 'attention', d: { active: true } });
       },
     });
+
+    // The server no longer knows this session, whether the socket said so
+    // (close 4001) or a request did (401). One way out for both.
+    const sessionGone = () => {
+      gateway.close();
+      dispatch({ type: 'connection', status: 'closed' });
+      onSignedOut(SIGNED_OUT_NOTICE);
+    };
+    whenSessionGone(sessionGone);
 
     // Whether somebody is at this window decides whether their phone is
     // woken for a message (`lib/push.ts`).
@@ -1716,6 +1737,7 @@ export function StoreProvider({
     gateway.connect();
 
     return () => {
+      whenSessionGone(null);
       stopAttention();
       stopPushSync();
       stopClearing();

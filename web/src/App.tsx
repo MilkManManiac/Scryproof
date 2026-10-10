@@ -63,7 +63,11 @@ import { PopupStack } from './components/PopupStack';
 import { TourGate } from './components/Tours';
 import { StoreProvider, unreadForServer, useSelectedChannel, useSelectedServer, useStore } from './state/store';
 
-type Gate = { status: 'checking' } | { status: 'out' } | { status: 'in'; user: SelfUser };
+type Gate =
+  | { status: 'checking' }
+  /** `notice` is the one line the sign-in screen shows when the server ended the session. */
+  | { status: 'out'; notice?: string }
+  | { status: 'in'; user: SelfUser };
 
 export function App() {
   const [gate, setGate] = useState<Gate>({ status: 'checking' });
@@ -75,7 +79,7 @@ export function App() {
       .catch(() => setGate({ status: 'out' }));
   }, []);
 
-  const onSignedOut = useCallback(() => setGate({ status: 'out' }), []);
+  const onSignedOut = useCallback((notice?: string) => setGate({ status: 'out', notice }), []);
 
   if (gate.status === 'checking') {
     return (
@@ -86,7 +90,7 @@ export function App() {
   }
 
   if (gate.status === 'out') {
-    return <AuthScreen onAuthenticated={(user) => setGate({ status: 'in', user })} />;
+    return <AuthScreen notice={gate.notice} onAuthenticated={(user) => setGate({ status: 'in', user })} />;
   }
 
   if (gate.user.mustChangePassword) {
