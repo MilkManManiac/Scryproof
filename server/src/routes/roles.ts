@@ -77,7 +77,7 @@ export async function registerRoleRoutes(app: FastifyInstance): Promise<void> {
       .object({
         name: z.string().min(1).max(48),
         color: z.string().regex(HEX_COLOR).nullable().optional(),
-        permissions: z.string().regex(/^\d+$/).optional(),
+        permissions: z.string().max(32).regex(/^\d+$/).optional(),
         hoist: z.boolean().optional(),
         mentionable: z.boolean().optional(),
       })
@@ -145,7 +145,7 @@ export async function registerRoleRoutes(app: FastifyInstance): Promise<void> {
       .object({
         name: z.string().min(1).max(48).optional(),
         color: z.string().regex(HEX_COLOR).nullable().optional(),
-        permissions: z.string().regex(/^\d+$/).optional(),
+        permissions: z.string().max(32).regex(/^\d+$/).optional(),
         hoist: z.boolean().optional(),
         mentionable: z.boolean().optional(),
         position: z.number().int().min(1).max(10_000).optional(),

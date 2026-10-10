@@ -57,6 +57,18 @@ function cookieOptions(expiresAt: Date) {
   };
 }
 
+/**
+ * Registrations run one at a time. Two arriving together on a fresh instance
+ * would both see "nobody here yet" and both skip the invite; the second has
+ * to see the first. One process, so a promise chain is the whole lock.
+ */
+let registering: Promise<unknown> = Promise.resolve();
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const next = registering.then(work, work);
+  registering = next.catch(() => undefined);
+  return next;
+}
+
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   /** Lets the sign-in screen know whether to offer first-run setup. */
   app.get('/api/auth/context', async () => ({
@@ -73,16 +85,18 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
     const body = registerBody.parse(request.body);
 
-    // The very first account on a fresh instance does not need an invite,
-    // because there is nobody to issue one. Every account after it does.
-    const firstRun = await isFirstRun();
-
-    const user = await registerUser({
-      username: body.username,
-      displayName: body.displayName ?? body.username,
-      password: body.password,
-      inviteCode: body.inviteCode ?? null,
-      skipInvite: firstRun,
+    const { user, firstRun } = await serialized(async () => {
+      // The very first account on a fresh instance does not need an invite,
+      // because there is nobody to issue one. Every account after it does.
+      const firstRun = await isFirstRun();
+      const user = await registerUser({
+        username: body.username,
+        displayName: body.displayName ?? body.username,
+        password: body.password,
+        inviteCode: body.inviteCode ?? null,
+        skipInvite: firstRun,
+      });
+      return { user, firstRun };
     });
 
     const session = await createSession(user, request.headers['user-agent'] ?? null);

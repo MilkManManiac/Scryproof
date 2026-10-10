@@ -397,6 +397,22 @@ describe('phone notifications', () => {
     assert.deepEqual(snoop, { show: [], unread: 0 });
   });
 
+  it('refuses to point somebody else\'s live device at a second account', async () => {
+    await subscribe(wes);
+    const hijack = await call(alex, 'PUT', '/api/push/subscription', {
+      endpoint: wes.endpoint,
+      mutedServers: [],
+      mutedChannels: [],
+      mentions: true,
+      messages: false,
+      evenWhileAttending: true,
+    });
+    assert.equal(hijack.statusCode, 409, hijack.body);
+    assert.equal(hijack.json().code, 'push_endpoint_taken');
+    const rows = await getDb().select().from(pushSubscriptions);
+    assert.equal(rows.find((row) => row.endpoint === wes.endpoint)?.userId, wes.id, 'the row still belongs to Wes');
+  });
+
   it('stops when the session that turned it on is signed out', async () => {
     await subscribe(wes);
     await revokeSession(wes.sessionId);

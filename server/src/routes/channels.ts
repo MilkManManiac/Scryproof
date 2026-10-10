@@ -346,8 +346,8 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     const body = z
       .object({
         targetType: z.enum(['role', 'member']),
-        allow: z.string().regex(/^\d+$/),
-        deny: z.string().regex(/^\d+$/),
+        allow: z.string().max(32).regex(/^\d+$/),
+        deny: z.string().max(32).regex(/^\d+$/),
       })
       .parse(request.body);
 
@@ -747,8 +747,8 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
     const body = z
       .object({
         targetType: z.enum(['role', 'member']),
-        allow: z.string().regex(/^\d+$/),
-        deny: z.string().regex(/^\d+$/),
+        allow: z.string().max(32).regex(/^\d+$/),
+        deny: z.string().max(32).regex(/^\d+$/),
       })
       .parse(request.body);
 

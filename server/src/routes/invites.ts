@@ -12,11 +12,13 @@ import { z } from 'zod';
 
 import { LIMITS, Permission } from '@scryproof/shared';
 
-import { requireUser } from '../app.js';
+import { clientIp, requireUser } from '../app.js';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { invites, kicks, members, servers } from '../db/schema.js';
-import { HttpError, badRequest, forbidden, notFound } from '../lib/http-error.js';
+import { HttpError, badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
+import { consume } from '../lib/rate-limit.js';
+import { hashIp } from '../lib/crypto.js';
 import { inviteCode } from '../lib/ids.js';
 import * as hub from '../gateway/hub.js';
 import * as audit from '../services/audit.js';
@@ -142,7 +144,10 @@ export async function registerInviteRoutes(app: FastifyInstance): Promise<void> 
    * server instead of showing a Join button that would just fail.
    */
   app.get('/api/invites/:code', async (request) => {
-    const { code } = z.object({ code: z.string() }).parse(request.params);
+    // Reachable signed out, so it is the one place a stranger can guess codes.
+    const limit = consume(`invite-preview:${hashIp(clientIp(request))}`, 30, 60_000);
+    if (!limit.allowed) throw tooManyRequests('Too many invite lookups. Wait a moment.', limit.retryAfterSeconds);
+    const { code } = z.object({ code: z.string().max(64) }).parse(request.params);
 
     const row = await consumeInvitePreflight(code);
 

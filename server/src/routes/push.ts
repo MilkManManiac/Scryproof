@@ -9,8 +9,8 @@ import { z } from 'zod';
 
 import { requireUser } from '../app.js';
 import { getDb } from '../db/index.js';
-import { pushSubscriptions } from '../db/schema.js';
-import { badRequest, unauthorized } from '../lib/http-error.js';
+import { pushSubscriptions, sessions } from '../db/schema.js';
+import { badRequest, conflict, unauthorized } from '../lib/http-error.js';
 import { uuidv7 } from '../lib/ids.js';
 import { isRelayEndpoint } from '../lib/web-push.js';
 import { markSeen, pendingFor, pushPublicKey } from '../services/push.js';
@@ -54,6 +54,17 @@ export async function registerPushRoutes(app: FastifyInstance): Promise<void> {
 
     // One row per device. The same phone signed in as somebody else becomes
     // theirs: the browser has one subscription, and it follows the session.
+    // But only once the previous person is signed out there. While their
+    // session is live, nobody else gets to point their pings at this device.
+    const [owner] = await getDb()
+      .select({ userId: pushSubscriptions.userId, revokedAt: sessions.revokedAt, expiresAt: sessions.expiresAt })
+      .from(pushSubscriptions)
+      .innerJoin(sessions, eq(sessions.id, pushSubscriptions.sessionId))
+      .where(eq(pushSubscriptions.endpoint, body.endpoint))
+      .limit(1);
+    if (owner && owner.userId !== user.id && owner.revokedAt === null && owner.expiresAt > new Date()) {
+      throw conflict('That device is already receiving notifications for somebody else.', 'push_endpoint_taken');
+    }
     await getDb()
       .insert(pushSubscriptions)
       .values({
