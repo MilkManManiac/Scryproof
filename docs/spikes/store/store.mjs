@@ -6,13 +6,17 @@
 //   GET  /pass-along/api/loops                 the loops, newest first
 //   POST /pass-along/api/loops {name,by,bpm}   make one -> {id}
 //   GET  /pass-along/api/loops/:id             the whole loop
-//   PUT  /pass-along/api/loops/:id/:layer      {by,bpm,kit,notes,parts}: pass that layer on; 409 if already passed
-// ponytail: no claims, first save wins and a 409 tells the loser. Loops untouched for KEEP_DAYS go on the next list.
+//   PUT  /pass-along/api/loops/:id/:layer      {kind,by,bpm,kit,notes,parts}: save that layer; 409 if that id is taken
+//   POST /pass-along/api/loops/:id/working     {by,kinds}: "I am on a melody" for a minute, shown to the others
+//   DELETE /pass-along/api/loops/:id            with the creator's key in x-key
+// Layer ids are <kind>-<6 chars>, made by the page, so any number of layers of a kind can live in one loop
+// (Wes: "let people add as much as they want to the song"). Loops untouched for KEEP_DAYS go on the next list.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto';
 
 const arg = (k) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : null; };
 const DIR = arg('dir') || '/var/lib/pass-along-store', STATIC = arg('static') && path.resolve(arg('static'));
-const LAYERS = ['bass', 'kicks', 'hats', 'pads', 'melody', 'melody2', 'vocals'], MAX_BODY = 1800 * 1024, MAX_LOOPS = 200, KEEP_DAYS = 14;
+const KINDS = ['bass', 'kicks', 'hats', 'pads', 'melody', 'vocals'], MAX_BODY = 1800 * 1024, MAX_LOOPS = 200, MAX_LAYERS = 24, KEEP_DAYS = 14, WORKING_MS = 60e3;
+const okLayer = (id) => /^[a-z]+-[a-z0-9]{6}$/.test(id) && KINDS.includes(id.split('-')[0]);
 const MAX_CLIP = 1.2e6 * 4 / 3 + 8; // a vocals clip, base64; webm/opus at 64 kbit is well under this for one loop
 const CSP = "sandbox allow-scripts allow-same-origin; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'";
 fs.mkdirSync(DIR, { recursive: true });
@@ -30,19 +34,21 @@ function list() {
     if (!f.endsWith('.json')) continue;
     const l = read(f.slice(0, -5)); if (!l) continue;
     if (l.updated < cutoff) { fs.rmSync(file(l.id), { force: true }); continue; }
-    out.push({ id: l.id, name: l.name, by: l.by, bpm: l.bpm, updated: l.updated, done: Object.fromEntries(Object.entries(l.layers).map(([k, v]) => [k, v.by])) });
+    out.push({ id: l.id, name: l.name, by: l.by, bpm: l.bpm, updated: l.updated, working: busy(l), done: Object.fromEntries(Object.entries(l.layers).map(([k, v]) => [k, { by: v.by, kind: v.kind ?? k.split('-')[0] }])) });
   }
   return out.sort((a, b) => b.updated - a.updated).slice(0, 50);
 }
+const busy = (l) => Object.fromEntries(Object.entries(l.working ?? {}).filter(([, w]) => w.at > Date.now() - WORKING_MS));
+const shown = (l) => { const { key, ...rest } = l; return { ...rest, working: busy(l) }; }; // the creator's key never leaves the box
 // Only what the page needs comes through; anything else in the body is dropped.
-function layerFrom(b) {
+function layerFrom(b, id) {
   const notes = (Array.isArray(b.notes) ? b.notes : []).slice(0, 512)
     .map((n) => ({ row: num(n.row, 0, 63, 0) | 0, start: num(n.start, 0, 63, 0) | 0, len: num(n.len, 1, 64, 2) | 0 }));
   const parts = (Array.isArray(b.parts) ? b.parts : []).slice(0, 4)
     .map((p) => ({ sound: clean(p.sound, 40), level: num(p.level, 0, 1.5, 1), fx: Object.fromEntries(Object.entries(p.fx ?? {}).slice(0, 8).map(([k, v]) => [clean(k, 12), num(v, 0, 1, 0)])),
       ...(p.clip && typeof p.clip.data === 'string' && p.clip.data.length <= MAX_CLIP && /^[A-Za-z0-9+/=]*$/.test(p.clip.data)
         ? { clip: { mime: clean(p.clip.mime, 40) || 'audio/webm', data: p.clip.data }, start: num(p.start, 0, 63, 0) | 0 } : {}) }));
-  return { by: clean(b.by, 24) || 'someone', bpm: num(b.bpm, 60, 200, 120) | 0, kit: clean(b.kit, 20), notes, parts, at: Date.now() };
+  return { kind: id.split('-')[0], by: clean(b.by, 24) || 'someone', bpm: num(b.bpm, 60, 200, 120) | 0, kit: clean(b.kit, 20), notes, parts, at: Date.now() };
 }
 
 const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -62,17 +68,28 @@ async function api(req, res, url) {
     if (list().length >= MAX_LOOPS) return json(res, 429, { error: 'full' });
     const b = await body(req);
     let id; do { id = crypto.randomBytes(10).toString('hex').replace(/[^a-z0-9]/g, '').slice(0, 10); } while (id.length < 10 || fs.existsSync(file(id)));
-    const loop = { id, name: clean(b.name, 40) || 'a loop', by: clean(b.by, 24) || 'someone', bpm: num(b.bpm, 60, 200, 120) | 0, made: Date.now(), updated: Date.now(), layers: {} };
-    write(loop); return json(res, 200, { id });
+    const key = crypto.randomBytes(16).toString('hex');
+    const loop = { id, key, name: clean(b.name, 40) || 'a loop', by: clean(b.by, 24) || 'someone', bpm: num(b.bpm, 60, 200, 120) | 0, made: Date.now(), updated: Date.now(), layers: {}, working: {} };
+    write(loop); return json(res, 200, { id, key });
   }
   const id = parts[1]; if (!okId(id)) return json(res, 404, { error: 'no' });
   const loop = read(id); if (!loop) return json(res, 404, { error: 'gone' });
-  if (parts.length === 2 && req.method === 'GET') return json(res, 200, loop);
-  if (parts.length === 3 && req.method === 'PUT' && LAYERS.includes(parts[2])) {
-    if (loop.layers[parts[2]]) return json(res, 409, { error: 'taken', loop });
-    const b = await body(req), layer = layerFrom(b);
+  if (parts.length === 2 && req.method === 'GET') return json(res, 200, shown(loop));
+  if (parts.length === 2 && req.method === 'DELETE') {
+    if (!loop.key || req.headers['x-key'] !== loop.key) return json(res, 403, { error: 'not yours' });
+    fs.rmSync(file(id), { force: true }); return json(res, 200, { ok: true });
+  }
+  if (parts.length === 3 && parts[2] === 'working' && req.method === 'POST') {
+    const b = await body(req), by = clean(b.by, 24) || 'someone', kinds = clean(b.kinds, 60);
+    loop.working = busy(loop); if (kinds) loop.working[by] = { kinds, at: Date.now() }; else delete loop.working[by];
+    write(loop); return json(res, 200, { ok: true });
+  }
+  if (parts.length === 3 && req.method === 'PUT' && okLayer(parts[2])) {
+    if (loop.layers[parts[2]]) return json(res, 409, { error: 'taken', loop: shown(loop) });
+    if (Object.keys(loop.layers).length >= MAX_LAYERS) return json(res, 429, { error: 'that loop is full' });
+    const b = await body(req), layer = layerFrom(b, parts[2]);
     loop.layers[parts[2]] = layer; loop.bpm = layer.bpm; loop.updated = Date.now();
-    write(loop); return json(res, 200, loop);
+    write(loop); return json(res, 200, shown(loop));
   }
   return json(res, 405, { error: 'no' });
 }

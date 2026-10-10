@@ -50,7 +50,11 @@
   .chords .names span { border-left: 1px solid #3a4150; }
   .layer { display: grid; grid-template-columns: 250px 1fr; padding: 10px 0; border-top: 1px solid #262a33; }
   .layer.locked { opacity: .6; }
-  .layer.todo { opacity: .22; }
+  #add button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--c); background: transparent; color: var(--c); cursor: pointer; }
+  #add button:hover { background: var(--c); color: #15171c; }
+  .layer.shut .ctl { display: none; }
+  .turn small { color: #9a978f; font-size: 13px; margin-left: 8px; }
+  .loop > span { white-space: nowrap; }
   .who { font-weight: 600; padding-right: 14px; font-size: 13px; }
   .who small { display: block; font-weight: 400; color: #9a978f; }
   .who select { display: block; margin: 6px 0; font: inherit; font-size: 13px; background: #2a2f3a; color: #e6e3dc; border: 0; border-radius: 6px; padding: 4px 6px; width: 100%; }
@@ -83,11 +87,11 @@
   <h1>Pass-along</h1>
   <p id="msg" class="sub" hidden style="color:#e0a05a"></p>
   <div id="start">
-    <p>One eight-count. Seven layers: bass, kick and snare, hats and claps, pads, two melodies, vocals.</p>
+    <p>One eight-count, built a layer at a time: bass, kick and snare, hats and claps, pads, melodies, vocals. As many as you like.</p>
     <p><label>Your name <input id="name" maxlength="24" placeholder="so friends see who did what"></label></p>
     <p><button class="big" data-mode="solo">Solo, I'll do them all</button>
     <input id="loopName" maxlength="40" placeholder="call it something"> <button class="big" id="new">Start a loop for friends</button></p>
-    <p class="hint">A loop for friends is saved here. Take a layer, pass it on, close the window. Friends open the loop, take what is left, and anyone can come back to hear how it is going.</p>
+    <p class="hint">A loop for friends is saved here. Add a layer, make it, save it, close the window. Friends open the loop, add theirs, and anyone can come back to hear how it is going. Whoever started a loop can delete it.</p>
     <div id="loops"></div>
   </div>
   <div id="game" hidden>
@@ -95,14 +99,16 @@
     <div class="bar">
       <button class="big" id="play">Play</button>
       <span class="turn" id="turn"></span>
-      <button class="big" id="pass">Pass it on</button>
+      <button class="big" id="pass">Save all mine</button>
       <button class="big quiet" id="reset">Leave</button>
+      <button class="big quiet" id="del" hidden>Delete this loop</button>
       <input id="link" readonly hidden title="Paste this in chat" style="width:260px;font:inherit;font-size:12px;background:#2a2f3a;color:#9a978f;border:0;border-radius:6px;padding:4px 6px">
       <label>BPM <input type="number" id="bpm" min="60" max="200" step="1" value="120"></label>
       <label><input type="checkbox" id="fine"> Finer notes (1/32)</label>
       <label><span class="peak" id="peak"></span> limiter</label>
       <label>overall volume <input type="range" id="masterVol" min="0" max="1" step="0.02" value="0.5" style="width:90px"></label>
     </div>
+    <div class="bar" id="add"></div>
     <div class="chords"><div></div><div class="names" id="chordNames"></div></div>
     <div id="layers"></div>
   </div>
