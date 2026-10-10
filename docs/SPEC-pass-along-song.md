@@ -24,6 +24,7 @@ _Empty until the build is done. Then: what you can do now, how to try it, the sc
 - "Also i don't think the vocals work"
 - "also, when i stream spotify and include sound...it shows other games volumes"
 - "plan the build for all these. don't deploy but get ready to"
+- 2026-10-10: "Hold off on the longer song thing. Not just delete a section but also delete a song if its shit. Then deploy" (round seven published 2026-10-10 03:30 ET; part B is ON HOLD; deleting a whole song is already in: the creator's Delete on the list and in the loop)
 
 Earlier, still binding: "make the volume significantly quieter in general", "Let people add vocals", "let people add more than one melody", "sometimes i wanna go to a lower octave", "an individual session that's like saved... over the course of the day people can jump back in and see how it's progressing."
 
@@ -57,7 +58,7 @@ Nothing is known about what he saw. The headless fake-mic run records and plays 
 - **Device choice:** if `enumerateDevices` lists more than one audioinput, a select on the vocals layer (labels only show after permission; that is fine).
 - Check on this PC with the real mic (Edge, local dev page): say something, the bar moves, `got N s`, `Play it` plays it, Save it stores it, reload plays it on the loop. Then the same against the live site in Edge (vocals are already live there) to prove the published path. Record the result: if the live site fails here too, that is his bug and it is fixed before anything else in this spec.
 
-### B. A longer song: sections (his "longer thing/song")
+### B. ON HOLD (Wes, 2026-10-10: "Hold off on the longer song thing"). A longer song: sections
 
 Thinking was done on 2026-10-10 (reply to Wes): sections beat a longer loop. A song is a list of 8-count sections, each built exactly like a loop today, and an order like `A A B A`.
 
@@ -109,13 +110,13 @@ That is `docs/SPEC-app-audio.md`, written 2026-10-06, unbuilt: a C# helper compi
 
 **Phase 0: baseline.** Local store up on 8766 (`node docs/spikes/store/store.mjs --port 8766 --dir "$TEMP/pa-loops" --static docs/spikes`), `loops7.py` passes, note the time. Then part A with a real mic on this PC, local and against the live site. Shot `docs/shots/passalong-proto-8-vocals.png` (the mic bar moving, `got N s`). Push.
 
-**Phase 1: store sections** with migration and the compatibility PUT. Check: copy a round-seven loop JSON into the dev dir, GET it, see one section `a` with its layers; `loops7.py` still passes against the new store with the old page. Push.
+**Phase 1 (ON HOLD with part B): store sections** with migration and the compatibility PUT. Check: copy a round-seven loop JSON into the dev dir, GET it, see one section `a` with its layers; `loops7.py` still passes against the new store with the old page. Push.
 
-**Phase 2: page sections and the song.** Strip, song line, per-section chords, Play the song. Check: `loops8.py` (new, from loops7): A makes section A with bass, adds B "chorus" with a different progression and a melody, sets order `A A B A`, Play the song runs and the lit tab changes at the boundary (poll the `.sec.playing` selector); B jumps in, sees two sections, adds kicks to B, saves; A's poll shows it with the toast. Shot `passalong-proto-8.png`. Push.
+**Phase 2 (ON HOLD with part B): page sections and the song.** Strip, song line, per-section chords, Play the song. Check: `loops8.py` (new, from loops7): A makes section A with bass, adds B "chorus" with a different progression and a melody, sets order `A A B A`, Play the song runs and the lit tab changes at the boundary (poll the `.sec.playing` selector); B jumps in, sees two sections, adds kicks to B, saves; A's poll shows it with the toast. Shot `passalong-proto-8.png`. Push.
 
 **Phase 3: UI batch** (C1 to C6). Check: headless at 1300 and at 390 wide, shots `passalong-proto-8-phone.png`; `loops8.py` still passes; zero page errors. Push.
 
-**Phase 4: delete a section, presence per section.** Check: in `loops8.py`, A deletes section B, the order drops its chips, B's next poll says so. Push.
+**Phase 4 (ON HOLD with part B): delete a section, presence per section.** Check: in `loops8.py`, A deletes section B, the order drops its chips, B's next poll says so. Push.
 
 **Phase 5 (own run, own spec): app audio**, `docs/SPEC-app-audio.md`, version 0.5.8, branch `app-audio`, Phase 0 first.
 
@@ -126,6 +127,8 @@ Full checks once at the end: `loops7.py` and `loops8.py` locally; `node --check`
 **Stop rule:** stop after Phase 4, or at three hours of building, or if Phase 0 shows vocals failing on the live site (fix that, write the summary, stop).
 
 ## Ready to publish (run only after Wes says go, each time)
+
+Round seven went out 2026-10-10 03:30 ET on his "Then deploy" (release `e155a299e35b`). Lesson from that publish: the headless two-person run is flaky against the live site because `showLoops()` leaves the old list on screen while it fetches, so a test that reads the list right after Leave reads the stale one; wait for the new loop's name in the list text before asserting. The page is fine (a moment of stale list), the test was wrong.
 
 The box as of 2026-10-10 01:00 ET, checked read-only: `pass-along-store` active, 4 loops in `/var/lib/pass-along-store`, live release `9191a93bb812` (round six), installer.json says 0.5.7.
 
