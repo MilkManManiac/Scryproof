@@ -130,6 +130,9 @@ const DIR = '/u/shell-update';
 const STAGING = `${DIR}/staging`;
 const ZIP_BYTES = 'the signed zip';
 const ZIP = `${DIR}/Scryproof-0.6.1-mac-arm64.zip`;
+const DMG_BYTES = 'the signed dmg';
+const DMG = `${DIR}/Scryproof-0.6.1-mac-arm64.dmg`;
+const DMG_URL = 'https://s/download/Scryproof.dmg';
 
 /** An in-memory disk, `ditto`, `codesign`, `plutil`, network and Electron, with a knob for each thing that can go wrong. */
 function world(over = {}) {
@@ -138,12 +141,15 @@ function world(over = {}) {
     log: [],
     ready: [],
     opened: [],
+    openedPaths: [],
     relaunched: [],
     fetched: [],
     commands: [],
     writable: true,
-    manifest: { version: '0.6.1', arch: 'arm64', sha256: sha(ZIP_BYTES), size: ZIP_BYTES.length, signature: 'x' },
+    manifest: { version: '0.6.1', arch: 'arm64', sha256: sha(ZIP_BYTES), size: ZIP_BYTES.length, signature: 'x',
+      dmg: { sha256: sha(DMG_BYTES), size: DMG_BYTES.length, signature: 'x' } },
     served: ZIP_BYTES,
+    servedDmg: DMG_BYTES,
     verifyOk: true,
     stagedTeam: MAC_TEAM_ID,
     runningTeam: MAC_TEAM_ID,
@@ -211,8 +217,9 @@ function world(over = {}) {
     fetchText: async (url) => { w.fetched.push(url); return JSON.stringify(w.manifest); },
     download: async (url, path, size) => {
       w.fetched.push(url);
-      if (w.served.length > size) throw new Error('bigger than it was signed at');
-      w.files.set(path, w.served);
+      const served = url.endsWith('.dmg') ? w.servedDmg : w.served;
+      if (served.length > size) throw new Error('bigger than it was signed at');
+      w.files.set(path, served);
       if (w.downloadGate) await w.downloadGate;
     },
     // The signature is the Mac manifest reader's business (installer.test.mjs); here a manifest is a signed one if it has a signature.
@@ -235,6 +242,7 @@ function world(over = {}) {
     fs: w.fs,
     onReady: (version) => w.ready.push(version),
     openExternal: (url) => w.opened.push(url),
+    openPath: (path) => w.openedPaths.push(path),
     relaunchAndQuit: (path) => w.relaunched.push(path),
   });
   return { w, updater };
@@ -468,27 +476,72 @@ test('a bundle already waiting survives a later check that finds nothing new', a
 
 /* --------------------------- when it cannot replace itself --------------------------- */
 
-test('where the folder is not writable the page is told, nothing is downloaded, and Restart opens the DMG', async () => {
+test('where the folder is not writable the checked DMG is fetched instead of the zip, the page is told, and Restart opens it', async () => {
   const { w, updater } = world({ writable: false });
   await updater.check();
   assert.deepEqual(w.ready, ['0.6.1']);
   assert.deepEqual(w.fetched.filter((u) => u.endsWith('.zip')), []);
+  assert.deepEqual(w.fetched.filter((u) => u.endsWith('.dmg')), [DMG_URL]);
+  assert.equal(has(w, DMG), true);
+  assert.equal(has(w, `${DMG}.part`), false);
   assert.equal(await updater.how(), 'download');
   assert.equal(await updater.apply(), true);
-  assert.deepEqual(w.opened, ['https://s/download/Scryproof.dmg']);
+  assert.deepEqual(w.openedPaths, [DMG]);
+  assert.deepEqual(w.opened, [], 'the browser link is not opened when a checked DMG is on disk');
   assert.deepEqual(w.relaunched, []);
   assert.equal(has(w, `${APP}.old`), false);
+  assert.equal(updater.state(), '0.6.1', 'the update still waits: the person has yet to drag it over');
 });
 
-test('a translocated app is told to download the DMG too', async () => {
+test('a translocated app gets the checked DMG too', async () => {
   const { w, updater } = world({ appPath: '/private/var/folders/xy/T/AppTranslocation/ABC/d/Scryproof.app' });
   await updater.check();
   assert.deepEqual(w.ready, ['0.6.1']);
   assert.deepEqual(w.fetched.filter((u) => u.endsWith('.zip')), []);
   assert.equal(await updater.how(), 'download');
   assert.equal(await updater.apply(), true);
-  assert.deepEqual(w.opened, ['https://s/download/Scryproof.dmg']);
+  assert.deepEqual(w.openedPaths, [DMG]);
   assert.deepEqual(w.relaunched, []);
+});
+
+test('a manifest with no signed DMG (from before they were signed) still only opens the link', async () => {
+  const { w, updater } = world({ writable: false });
+  delete w.manifest.dmg;
+  await updater.check();
+  assert.deepEqual(w.ready, ['0.6.1']);
+  assert.deepEqual(w.fetched.filter((u) => u.endsWith('.dmg')), [], 'nothing fetched that cannot be checked');
+  assert.equal(await updater.apply(), true);
+  assert.deepEqual(w.opened, [DMG_URL]);
+  assert.deepEqual(w.openedPaths, []);
+});
+
+test('a DMG that is not the file that was signed is not kept, not opened, and the page is not told', async () => {
+  // The same length as the signed one: a size lie is caught earlier, by the download itself.
+  const { w, updater } = world({ writable: false, servedDmg: 'the forged dmg' });
+  await updater.check();
+  assert.deepEqual(w.ready, []);
+  assert.equal(has(w, DMG), false);
+  assert.equal(has(w, `${DMG}.part`), false);
+  assert.match(w.log.join('\n'), /the DMG is not the file that was signed/);
+  assert.equal(await updater.apply(), false);
+  assert.deepEqual(w.opened, []);
+  assert.deepEqual(w.openedPaths, []);
+});
+
+test('a kept DMG is checked again at Restart: one changed since is deleted and nothing opens', async () => {
+  const { w, updater } = world({ writable: false });
+  await updater.check();
+  w.files.set(DMG, 'edited while it sat there');
+  assert.equal(await updater.apply(), false);
+  assert.equal(has(w, DMG), false);
+  assert.deepEqual(w.openedPaths, []);
+  assert.deepEqual(w.opened, []);
+  assert.equal(updater.state(), null);
+  // The next check fetches it afresh.
+  await updater.check();
+  assert.equal(has(w, DMG), true);
+  assert.equal(await updater.apply(), true);
+  assert.deepEqual(w.openedPaths, [DMG]);
 });
 
 /* ----------------------------------- launch tidy ----------------------------------- */
@@ -502,7 +555,13 @@ test('at launch the set-aside bundle, staging, half downloads and stale zips go;
   w.files.set(`${DIR}/Scryproof-0.6.0-mac-arm64.zip`, 'the one that is running');
   w.files.set(`${DIR}/Scryproof-0.6.1-mac-arm64.zip`, 'newer');
   w.files.set(`${DIR}/Scryproof-Setup-0.5.5.exe`, 'a Windows leftover');
+  w.files.set(`${DIR}/Scryproof-0.6.0-mac-arm64.dmg`, 'the DMG of the one that is running');
+  w.files.set(`${DIR}/Scryproof-0.6.1-mac-arm64.dmg.part`, 'half a DMG');
+  w.files.set(DMG, 'a newer DMG');
   await updater.tidy();
+  assert.equal(has(w, `${DIR}/Scryproof-0.6.0-mac-arm64.dmg`), false);
+  assert.equal(has(w, `${DIR}/Scryproof-0.6.1-mac-arm64.dmg.part`), false);
+  assert.equal(has(w, DMG), true);
   assert.equal(has(w, `${APP}.old`), false);
   assert.equal(has(w, `${APP}.old/Contents`), false);
   assert.equal(has(w, STAGING), false);

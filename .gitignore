@@ -34,3 +34,10 @@ desktop/release/
 
 # Phone tour pictures (scripts/phone-tour.mjs). Regenerated, never committed.
 .shots/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

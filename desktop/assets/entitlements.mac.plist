@@ -2,12 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Electron's own needs under the hardened runtime. -->
+  <!-- Electron's one need under the hardened runtime: V8 compiles to memory
+       it then runs, through MAP_JIT. The two wider keys electron-builder's old
+       template also set are gone (audit 2026-10-10, finding 25):
+       allow-unsigned-executable-memory (legacy JIT without MAP_JIT) and
+       disable-library-validation (frameworks signed by another team; every
+       binary in this bundle, uiohook-napi's included, is signed by ours). If a
+       Mac build will not launch or push-to-talk is dead, put back
+       disable-library-validation first, then the other, and say so in
+       HANDOFF. -->
   <key>com.apple.security.cs.allow-jit</key>
-  <true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-  <true/>
-  <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
   <!-- Without these two, macOS silently refuses the microphone and camera to a
        hardened-runtime app: no prompt, no audio. Found in Mac spike 1. -->

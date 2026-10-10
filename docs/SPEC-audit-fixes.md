@@ -92,6 +92,8 @@ Phases 1 to 7 and 11 are built and committed (97f964f to 317d4f6), nothing deplo
 
 **Phase 15. Desktop** (15, 24, 25, 26, plus the low items 5 and 8 of the desktop review): visible one-time mic consent for the activities frame per session; DMG hash in the signed Mac manifest and checked in-app; drop the two Mac entitlements (Trey rebuilds and checks mic, camera, push-to-talk); second recovery signing keypair generated offline and baked in; streamed client download with a byte cap; `win.reload()` once on renderer crash. This is an installer (0.5.8), to be combined with `docs/SPEC-app-audio.md` if that is ready. Needs his word to build, sign and publish.
 
+Status 2026-10-10: everything in phase 15 but the installer is built and unit-tested on branch `mac-0.5.8` (Trey's side; HANDOFF "Mac app 0.5.8"). The build, the entitlement check and the real-Mac checks are on Trey's Mac; publishing is Wes's word.
+
 **Phase 16. Restore rehearsal** (27). On a throwaway droplet (costs money for an hour: ask first), restore from the latest backup, time it, write the steps and the time into `infra/box/README.md`, destroy the droplet.
 
 **Phase 17. Tests for untested security paths** (29). One hostile-input test each for server `totp`, `channel-keys`, `audit`, `livekit`, `serialize`; web `permissionMeta`, `gateway`, `push`, `usePermissions`; desktop `main.js` protocol path check and navigation guards (extract to a `-core.js` to test).

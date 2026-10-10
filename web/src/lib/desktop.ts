@@ -227,7 +227,9 @@ export function onShellUpdate(listener: () => void): void {
  * How a waiting installer gets installed. 'restart' is the usual way: the app
  * closes, swaps itself and opens again. 'download' is a Mac app that cannot
  * replace itself (it was dragged somewhere it may not write): the shell then
- * opens the download link. A shell that does not say always meant 'restart'.
+ * opens the DMG it fetched and checked against the signed manifest (older
+ * shells open the download link). A shell that does not say always meant
+ * 'restart'.
  */
 export async function shellUpdateHow(): Promise<'restart' | 'download'> {
   try {

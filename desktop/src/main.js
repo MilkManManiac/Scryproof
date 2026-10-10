@@ -29,7 +29,7 @@
  * code as before.
  */
 
-import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -51,7 +51,7 @@ import {
   versionFromFileName,
 } from './installer-core.js';
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
-import { shellPermission } from './permissions-core.js';
+import { frameMicPrompt, permissionDecision, REFUSAL_HOLD_MS, shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
@@ -73,6 +73,10 @@ const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}
 const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (process.env.SCRYPROOF_UPDATE_URL ?? '');
 const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
 const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
+/** A baked public key beside the everyday one, or '' (`update-core.js`, `trustedKeys`). */
+const bakedKey = (name) => (existsSync(join(here, name)) ? readFileSync(join(here, name), 'utf8') : '');
+/** What a client manifest may be signed by: Wes's key, and his recovery key once he bakes one in. */
+const UPDATE_KEYS = [UPDATE_KEY, bakedKey('update-key-recovery.pub.pem')];
 const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
 const MAC = process.platform === 'darwin';
 /**
@@ -89,8 +93,13 @@ const INSTALLER_URL = app.isPackaged && process.platform === 'win32' ? `${SERVER
  */
 const MAC_KEY_FILE = join(here, 'update-key-mac.pub.pem');
 const MAC_KEY = MAC && existsSync(MAC_KEY_FILE) ? readFileSync(MAC_KEY_FILE, 'utf8') : '';
+/** Trey's everyday key and, once baked in, his recovery key (`mac-update-key.mjs --recovery`). */
+const MAC_KEYS = [MAC_KEY, MAC ? bakedKey('update-key-mac-recovery.pub.pem') : ''];
 const INSTALLER_EVERY_MS = 60 * 60_000;
 const TIDY_AGAIN_MS = 60_000;
+/** A page that died is reloaded once; another death within this gap is not. */
+const PAGE_DEATH_GAP_MS = 60_000;
+let lastPageDeath = 0;
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -253,7 +262,7 @@ const updateDir = () => join(app.getPath('userData'), 'client-update');
 async function loadStoredUpdate() {
   if (!UPDATE_KEY) return;
   try {
-    const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEY);
+    const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEYS);
     if (!manifest || manifest.version <= client.version) return;
     const files = openBundle(await readFile(join(updateDir(), 'client.bin')), manifest);
     if (files) client = { version: manifest.version, files };
@@ -266,13 +275,14 @@ async function checkForUpdate() {
     const get = (name) => net.fetch(new URL(name, UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
     const reply = await get('client.json');
     if (!reply.ok) return;
-    const manifest = readManifest(await reply.text(), UPDATE_KEY);
+    const manifest = readManifest(await reply.text(), UPDATE_KEYS);
     // Forward only. An older client, however genuinely signed, is not an update.
     if (!manifest || manifest.version <= Math.max(client.version, pending?.version ?? 0)) return;
 
     const download = await get('client.bin');
-    if (!download.ok || Number(download.headers.get('content-length') ?? 0) > MAX_BUNDLE_BYTES) return;
-    const bundle = Buffer.from(await download.arrayBuffer());
+    if (!download.ok) return;
+    const bundle = await readCapped(download, MAX_BUNDLE_BYTES);
+    if (!bundle) return;
     const files = openBundle(bundle, manifest);
     if (!files) return;
 
@@ -284,6 +294,23 @@ async function checkForUpdate() {
     pending = { version: manifest.version, files };
     win?.webContents.send('scryproof:update-ready', manifest.version);
   } catch { /* offline, or the server is down. Ask again later. */ }
+}
+
+/**
+ * The body of `reply`, or null once it passes `max` bytes. The server's own
+ * content-length is not taken at its word: the count is kept while the bytes
+ * arrive, and a body that grows past the cap is dropped there, not held.
+ */
+async function readCapped(reply, max) {
+  if (Number(reply.headers.get('content-length') ?? 0) > max || !reply.body) return null;
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of Readable.fromWeb(reply.body)) {
+    total += chunk.length;
+    if (total > max) return null;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** Whether a request over the bridge came from our own page. */
@@ -461,7 +488,7 @@ function armMacShellUpdates() {
       return reply.ok ? reply.text() : null;
     },
     download,
-    readManifest: (raw) => readMacInstallerManifest(raw, MAC_KEY),
+    readManifest: (raw) => readMacInstallerManifest(raw, MAC_KEYS),
     isNewer: isNewerVersion,
     hashFile,
     stat,
@@ -476,6 +503,8 @@ function armMacShellUpdates() {
     },
     onReady: (version) => win?.webContents.send('scryproof:shell-ready', version),
     openExternal: (url) => void shell.openExternal(url),
+    // The checked DMG, opened the way a double-click would: Finder mounts it and shows the app to drag.
+    openPath: (path) => void shell.openPath(path),
     // `quitting` first: the window's close handler would otherwise hide instead of closing. The new bundle is
     // now at the old path, so the relaunch runs from there, without the login start's `--hidden`.
     relaunchAndQuit: (bundle) => {
@@ -535,9 +564,66 @@ function armGateway(ses) {
 
 /* ------------------------------- permissions ------------------------------- */
 
+/**
+ * An Activities frame asking for the microphone is answered by the person
+ * (`permissions-core.js`, 'ask'): a dialog, once a session an origin. One
+ * dialog at a time: a frame that asks again while it is up gets the same
+ * answer. A refusal holds for REFUSAL_HOLD_MS, so a game asking in a loop
+ * cannot keep the dialog coming back.
+ */
+const frameMic = { allowed: new Set(), refusedAt: new Map(), asking: new Map() };
+
+async function frameMicConsent(url) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return false;
+  }
+  if (frameMic.allowed.has(origin)) return true;
+  if (Date.now() - (frameMic.refusedAt.get(origin) ?? 0) < REFUSAL_HOLD_MS) return false;
+  const open = frameMic.asking.get(origin);
+  if (open) return open;
+  const asked = (async () => {
+    try {
+      if (!win || win.isDestroyed()) return false;
+      const { message, detail, buttons } = frameMicPrompt(url);
+      const { response } = await dialog.showMessageBox(win, { type: 'question', message, detail, buttons, defaultId: 1, cancelId: 1, noLink: true });
+      const allowed = response === 0;
+      if (allowed) frameMic.allowed.add(origin);
+      else frameMic.refusedAt.set(origin, Date.now());
+      return allowed;
+    } catch {
+      return false;
+    } finally {
+      frameMic.asking.delete(origin);
+    }
+  })();
+  frameMic.asking.set(origin, asked);
+  return asked;
+}
+
 function armPermissions(ses) {
-  ses.setPermissionRequestHandler((_contents, permission, done, details) => done(shellPermission(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null)));
-  ses.setPermissionCheckHandler((_contents, permission, origin, details) => shellPermission(origin, permission, details.isMainFrame !== false, details.mediaType ?? null));
+  ses.setPermissionRequestHandler((_contents, permission, done, details) => {
+    const decision = permissionDecision(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null);
+    if (decision !== 'ask') return done(decision === 'grant');
+    void frameMicConsent(details.requestingUrl).then(done);
+  });
+  // A check is "does this origin have it", with nobody to ask (it is
+  // synchronous: the Permissions API, device names in enumerateDevices). The
+  // frame microphone has it once the person said yes. A request is what puts
+  // the dialog up, and Chromium asks the request handler first and the check
+  // only after (seen under xvfb with a fake device, 2026-10-10), so a 'no'
+  // here never stops the dialog.
+  ses.setPermissionCheckHandler((_contents, permission, origin, details) => {
+    const decision = permissionDecision(origin, permission, details.isMainFrame !== false, details.mediaType ?? null);
+    if (decision !== 'ask') return decision === 'grant';
+    try {
+      return frameMic.allowed.has(new URL(origin).origin);
+    } catch {
+      return false;
+    }
+  });
 
   // Windows has no picker of its own to hand over to, so the page draws one.
   ses.setDisplayMediaRequestHandler((request, done) => {
@@ -815,7 +901,22 @@ function createWindow(visible = true) {
   win.webContents.on('did-start-navigation', (details) => {
     if (details.isMainFrame && !details.isSameDocument) pageGone();
   });
-  win.webContents.on('render-process-gone', pageGone);
+  // A page that dies (out of memory, a renderer bug) left a dead window
+  // before: no page, no gateway, no calls, nothing to click. It is reloaded
+  // once; a second death within a minute is left where it is, so a page that
+  // dies on load does not reload itself without end.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    pageGone();
+    if (details.reason === 'clean-exit' || !win || win.isDestroyed()) return;
+    const now = Date.now();
+    if (now - lastPageDeath < PAGE_DEATH_GAP_MS) {
+      console.warn(`Scryproof: the page died again (${details.reason}); leaving it`);
+      return;
+    }
+    lastPageDeath = now;
+    console.warn(`Scryproof: the page died (${details.reason}); reloading once`);
+    win.webContents.reload();
+  });
   win.on('closed', () => {
     pageGone();
     win = null;

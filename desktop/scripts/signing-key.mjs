@@ -17,8 +17,19 @@ export const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const keyPath = process.env.SCRYPROOF_UPDATE_KEY ?? join(homedir(), '.scryproof', 'update-key.pem');
 export const macKeyPath = process.env.SCRYPROOF_MAC_UPDATE_KEY ?? join(homedir(), '.scryproof', 'mac-update-key.pem');
 export const macPublicKeyPath = join(root, 'desktop', 'src', 'update-key-mac.pub.pem');
+/** The Mac recovery key (`mac-update-key.mjs --recovery`): made once, private half kept offline, public half baked in beside the everyday one. */
+export const macRecoveryKeyPath = process.env.SCRYPROOF_MAC_RECOVERY_KEY ?? join(homedir(), '.scryproof', 'mac-update-recovery-key.pem');
+export const macRecoveryPublicKeyPath = join(root, 'desktop', 'src', 'update-key-mac-recovery.pub.pem');
 /** The public half, baked into every installer. What installed apps trust. */
 export const publicKeyPath = join(root, 'desktop', 'src', 'update-key.pub.pem');
+/** A recovery key for Wes's everyday key, the same way, when he makes one. */
+export const recoveryPublicKeyPath = join(root, 'desktop', 'src', 'update-key-recovery.pub.pem');
+
+/** The public keys installed apps trust for `kind` ('client' or 'mac'): the baked one, and the recovery one when it is baked in too. */
+export function trustedPublicKeyPems(kind) {
+  const paths = kind === 'mac' ? [macPublicKeyPath, macRecoveryPublicKeyPath] : [publicKeyPath, recoveryPublicKeyPath];
+  return paths.filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8'));
+}
 
 /**
  * The private key and its public half. With `create`, a key is made if there

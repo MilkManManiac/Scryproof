@@ -13,6 +13,13 @@
  *      signed by team LRU27MC63Q, by the same team as the running app, and
  *      says it is the version the manifest said.
  *
+ * An app that cannot swap itself (it runs from a folder it may not write, or
+ * from where macOS moved a quarantined app to) is offered the DMG instead:
+ * fetched here, checked against the hash the same manifest signed for it
+ * (audit 2026-10-10, finding 24), and opened for the person to drag over the
+ * old app. A manifest from before DMGs were signed has no such hash; for that
+ * one Restart opens the download link in the browser, as it used to.
+ *
  * Everything the outside world supplies (the network, the disk, `ditto` and
  * `codesign`, Electron's relaunch) is passed in as `deps`, so the tests drive
  * the whole flow with stand-ins and none of it needs a Mac. What only a Mac
@@ -27,6 +34,7 @@ import {
   bundlePathFor,
   isTranslocated,
   MAC_TEAM_ID,
+  macDmgFileName,
   macRequirement,
   MAX_MAC_ZIP_BYTES,
   parseTeamId,
@@ -34,6 +42,7 @@ import {
   stagedAppName,
   teamAllowed,
   undoSteps,
+  versionFromDmgName,
   versionFromZipName,
 } from './shell-update-mac-core.js';
 
@@ -121,7 +130,8 @@ export async function restoreAside(execPath, io) {
  *   run(cmd, args)              { code, stdout, stderr }
  *   fs                          { mkdir, rm, readdir, rename, writable(folder) }
  *   onReady(version)            tell the page
- *   openExternal(url)           open the DMG link
+ *   openExternal(url)           open the DMG link in the browser
+ *   openPath(path)              open a checked DMG on disk (Finder mounts it)
  *   relaunchAndQuit(appPath)    app.relaunch() and app.quit()
  */
 export function createMacShellUpdater(deps) {
@@ -190,11 +200,11 @@ export function createMacShellUpdater(deps) {
       : 'download';
   }
 
-  /** Is the zip at `path` exactly what the manifest was signed for? */
-  async function zipOk(path, manifest) {
+  /** Is the file at `path` exactly what `signed` (`{ size, sha256 }`: the manifest, or its DMG block) was signed for? */
+  async function fileOk(path, signed) {
     try {
-      if ((await deps.stat(path)).size !== manifest.size) return false;
-      return (await deps.hashFile(path)) === manifest.sha256;
+      if ((await deps.stat(path)).size !== signed.size) return false;
+      return (await deps.hashFile(path)) === signed.sha256;
     } catch {
       return false;
     }
@@ -244,6 +254,41 @@ export function createMacShellUpdater(deps) {
     return false;
   }
 
+  /**
+   * For an app that cannot replace itself: the DMG, fetched and checked against
+   * the hash the manifest signed for it, kept beside the zips for Restart to
+   * open. A manifest with no signed DMG only tells the page: Restart then opens
+   * the download link. Under the lock, so a click on Restart meets a whole
+   * checked file or none.
+   */
+  async function keepDmg(manifest) {
+    if (applying) return;
+    if (!manifest.dmg) {
+      pending = { version: manifest.version, staged: null, dmg: null, manifest };
+      deps.onReady(manifest.version);
+      return;
+    }
+    await fs.mkdir(deps.dir);
+    const dmg = join(deps.dir, macDmgFileName(manifest.version, deps.arch));
+    const part = `${dmg}.part`;
+    try {
+      // Fetched on an earlier run: kept only if it is still exactly what was signed.
+      if (!(await fileOk(dmg, manifest.dmg))) {
+        await fs.rm(dmg);
+        await deps.download(deps.urls.dmg, part, manifest.dmg.size);
+        if (!(await fileOk(part, manifest.dmg))) {
+          fail('the DMG is not the file that was signed');
+          return;
+        }
+        await fs.rename(part, dmg);
+      }
+      pending = { version: manifest.version, staged: null, dmg, manifest };
+      deps.onReady(manifest.version);
+    } finally {
+      await fs.rm(part).catch(() => {});
+    }
+  }
+
   async function check() {
     if (!deps.enabled || !deps.appPath || checking || applying) return;
     checking = true;
@@ -257,21 +302,19 @@ export function createMacShellUpdater(deps) {
       if (pending && !deps.isNewer(manifest.version, pending.version)) return;
       if (!Number.isSafeInteger(manifest.size) || manifest.size <= 0 || manifest.size > MAX_MAC_ZIP_BYTES) return;
 
-      // An app that cannot replace itself is only told a newer one exists; the
-      // banner then offers the DMG. Nothing is downloaded that nothing could use.
+      // An app that cannot replace itself gets the DMG instead of the zip.
       if ((await how()) === 'download') {
-        pending = { version: manifest.version, staged: null };
-        deps.onReady(manifest.version);
+        await locked(() => keepDmg(manifest));
         return;
       }
 
       await fs.mkdir(deps.dir);
       const zip = zipPathFor(manifest.version);
       // Fetched on an earlier run: kept only if it is still exactly what was signed.
-      if (!(await zipOk(zip, manifest))) {
+      if (!(await fileOk(zip, manifest))) {
         await fs.rm(zip);
         await deps.download(deps.urls.zip, part, manifest.size);
-        if (!(await zipOk(part, manifest))) {
+        if (!(await fileOk(part, manifest))) {
           fail('the download is not the file that was signed');
           // Nothing that failed stays in staging; a bundle already waiting is not touched.
           await locked(async () => { if (!pending?.staged) await emptyStaging(); });
@@ -296,7 +339,19 @@ export function createMacShellUpdater(deps) {
       const waiting = pending;
       if (!waiting) return false;
       if ((await how()) === 'download') {
-        deps.openExternal(deps.urls.dmg);
+        // No signed DMG (a manifest from before they were): the link, as before.
+        if (!waiting.dmg) {
+          deps.openExternal(deps.urls.dmg);
+          return true;
+        }
+        // Checked again: the file sat on disk since it was fetched.
+        if (!(await fileOk(waiting.dmg, waiting.manifest.dmg))) {
+          pending = null;
+          await fs.rm(waiting.dmg).catch(() => {});
+          log('the kept DMG is no longer what was signed; deleted, and the next check fetches it again');
+          return false;
+        }
+        deps.openPath(waiting.dmg);
         return true;
       }
       if (!waiting.staged) return false;
@@ -325,8 +380,8 @@ export function createMacShellUpdater(deps) {
   /**
    * At launch, before the first check: the bundle that was set aside by the last
    * update goes, and so do half downloads, an unpacked bundle nobody has
-   * verified in this run, a leftover `.incoming`, and a zip for a version that
-   * is not newer than the running one. Does nothing while a check runs or an
+   * verified in this run, a leftover `.incoming`, and a zip or DMG for a
+   * version that is not newer than the running one. Does nothing while a check runs or an
    * update waits: it would delete what they are using.
    */
   function tidy() {
@@ -337,7 +392,7 @@ export function createMacShellUpdater(deps) {
       await emptyStaging();
       try {
         for (const name of await fs.readdir(deps.dir)) {
-          const version = versionFromZipName(name, deps.arch);
+          const version = versionFromZipName(name, deps.arch) ?? versionFromDmgName(name, deps.arch);
           if (name === 'staging') continue;
           if (!version || !deps.isNewer(version, deps.version)) await fs.rm(join(deps.dir, name)).catch(() => {});
         }

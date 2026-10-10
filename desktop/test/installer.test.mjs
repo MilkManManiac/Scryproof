@@ -16,6 +16,7 @@ import { after, describe, test } from 'node:test';
 
 import {
   MAC_CONTEXT,
+  MAC_DMG_CONTEXT,
   MAX_INSTALLER_BYTES,
   macInstallerFileName,
   macManifestName,
@@ -182,10 +183,49 @@ describe('Mac shell release trust', () => {
     assert.equal(MAC_CONTEXT, 'scryproof/desktop-installer-mac/v1');
     const bytes = Buffer.from(`scryproof/desktop-installer-mac/v1\narm64\n0.6.0\n${input.sha256}`);
     assert.equal(verify(null, bytes, trey.publicKeyPem, Buffer.from(manifest.signature, 'base64')), true);
-    assert.deepEqual(readMacInstallerManifest(JSON.stringify(manifest), trey.publicKeyPem), manifest);
+    assert.deepEqual(readMacInstallerManifest(JSON.stringify(manifest), trey.publicKeyPem), { ...manifest, dmg: null });
     assert.equal(await verifyInstallerFile(onDisk(EXE), manifest), true);
     assert.equal(macInstallerFileName('0.6.0'), 'Scryproof-0.6.0-mac-arm64.zip');
     assert.equal(macManifestName(), 'installer-mac-arm64.json');
+  });
+
+  test('the DMG is signed beside the zip under its own words, and a DMG block someone changed refuses the manifest', async () => {
+    const trey = pair();
+    const DMG = Buffer.concat([Buffer.from('koly'), Buffer.alloc(50_000, 3)]);
+    const manifest = signMacInstaller({ ...input, dmg: { sha256: sha256(DMG), size: DMG.length } }, trey.privateKey);
+    const bytes = Buffer.from(`${MAC_DMG_CONTEXT}\narm64\n0.6.0\n${sha256(DMG)}`);
+    assert.equal(verify(null, bytes, trey.publicKeyPem, Buffer.from(manifest.dmg.signature, 'base64')), true);
+    const read = readMacInstallerManifest(JSON.stringify(manifest), trey.publicKeyPem);
+    assert.deepEqual(read.dmg, manifest.dmg);
+    assert.equal(await verifyInstallerFile(onDisk(DMG), read.dmg), true);
+    assert.equal(await verifyInstallerFile(onDisk(EXE), read.dmg), false);
+    // The zip's hash signed as a DMG, a swapped hash, a missing signature: the whole manifest is refused.
+    for (const dmg of [
+      { ...manifest.dmg, sha256: input.sha256 },
+      { ...manifest.dmg, sha256: sha256(Buffer.from('other')) },
+      { ...manifest.dmg, signature: manifest.signature },
+      { sha256: manifest.dmg.sha256, size: manifest.dmg.size },
+      'x',
+    ]) {
+      assert.equal(readMacInstallerManifest(JSON.stringify({ ...manifest, dmg }), trey.publicKeyPem), null);
+    }
+  });
+
+  test('a recovery key baked in beside the everyday one is accepted; a stranger with the same shape is not', () => {
+    const trey = pair();
+    const recovery = pair();
+    const stranger = pair();
+    const everyday = signMacInstaller(input, trey.privateKey);
+    const fallback = signMacInstaller(input, recovery.privateKey);
+    const keys = [trey.publicKeyPem, recovery.publicKeyPem];
+    assert.ok(readMacInstallerManifest(JSON.stringify(everyday), keys));
+    assert.ok(readMacInstallerManifest(JSON.stringify(fallback), keys));
+    assert.equal(readMacInstallerManifest(JSON.stringify(fallback), trey.publicKeyPem), null, 'an app built before the recovery key does not know it');
+    assert.equal(readMacInstallerManifest(JSON.stringify(signMacInstaller(input, stranger.privateKey)), keys), null);
+    assert.equal(readMacInstallerManifest(JSON.stringify(everyday), []), null, 'no keys, no update');
+    assert.ok(readMacInstallerManifest(JSON.stringify(everyday), [trey.publicKeyPem, '']), 'an empty entry (no recovery file baked) is skipped');
+    assert.ok(readInstallerManifest(published(recovery.privateKey), [trey.publicKeyPem, recovery.publicKeyPem]));
+    assert.ok(readManifest(JSON.stringify(signBundle(packBundle({ 'index.html': Buffer.from('x') }), 100, recovery.privateKey)), keys));
   });
 
   test('rejects substitution between Windows and Mac even with the same key', () => {

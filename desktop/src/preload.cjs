@@ -47,7 +47,8 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
     /**
      * Runs the installer and closes the app; the installer opens it again. On
      * the Mac, swaps in the new app and relaunches, or, when `shellUpdateHow`
-     * says 'download', opens the DMG link in the browser instead.
+     * says 'download', opens the DMG it fetched and checked (or, for a
+     * release signed before DMGs were, the download link in the browser).
      */
     applyShellUpdate: () => ipcRenderer.invoke('scryproof:shell-apply'),
     /** 'restart' if applying an update replaces the app itself, 'download' if the person has to fetch it (a Mac app that cannot write its own folder). */

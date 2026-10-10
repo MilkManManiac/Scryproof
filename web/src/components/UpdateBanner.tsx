@@ -11,8 +11,9 @@ import { useShellUpdate } from '../lib/desktop-hooks';
 /**
  * `how` is how the shell can install it. 'restart' closes the app and swaps
  * it, which would hang up a call, so the person picks the moment. 'download'
- * is a Mac app that cannot replace itself: the button opens the download link
- * in the browser, which does not touch the call, so it is offered at any time.
+ * is a Mac app that cannot replace itself: the button opens the DMG the shell
+ * fetched and checked (or the download link, from an older shell), which does
+ * not touch the call, so it is offered at any time.
  */
 export function ShellUpdateBanner({
   how,

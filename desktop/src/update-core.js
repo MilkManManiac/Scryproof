@@ -30,6 +30,28 @@ export const MAX_BUNDLE_BYTES = 40 * 1024 * 1024;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const signedBytes = (version, hash) => Buffer.from(`${CONTEXT}\n${version}\n${hash}`, 'utf8');
 
+/**
+ * The keys a manifest may be signed by: one PEM, or a list (the key baked in
+ * and, when one is baked in beside it, a recovery key kept offline, so losing
+ * the everyday key does not mean every install is replaced by hand; audit
+ * 2026-10-10, finding 26). Every entry must be an Ed25519 public key: a baked
+ * file that is not one is a broken build, and throws, which the readers turn
+ * into a refusal.
+ */
+export function trustedKeys(publicKeyPems) {
+  const keys = [];
+  for (const pem of Array.isArray(publicKeyPems) ? publicKeyPems : [publicKeyPems]) {
+    if (typeof pem !== 'string' || pem === '') continue;
+    const key = createPublicKey(pem);
+    if (key.asymmetricKeyType !== 'ed25519') throw new Error('an update key that is not Ed25519');
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** Whether any of `keys` made `signature` over `bytes`. No keys, no. */
+export const signedByAny = (keys, bytes, signature) => keys.some((key) => verify(null, bytes, key, signature));
+
 /** `files` is { 'index.html': Buffer, 'assets/index-abc.js': Buffer, ... }. */
 export function packBundle(files) {
   const entries = Object.keys(files)
@@ -52,7 +74,7 @@ export function signBundle(bundle, version, privateKey) {
  * The manifest, if it is one and the key signed it. Null otherwise. Never
  * throws: what arrives here came off the network.
  */
-export function readManifest(raw, publicKeyPem) {
+export function readManifest(raw, publicKeyPems) {
   try {
     const manifest = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const { version, sha256: hash, size, signature } = manifest;
@@ -60,9 +82,7 @@ export function readManifest(raw, publicKeyPem) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_BUNDLE_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    const key = createPublicKey(publicKeyPem);
-    if (key.asymmetricKeyType !== 'ed25519') return null;
-    if (!verify(null, signedBytes(version, hash), key, Buffer.from(signature, 'base64'))) return null;
+    if (!signedByAny(trustedKeys(publicKeyPems), signedBytes(version, hash), Buffer.from(signature, 'base64'))) return null;
     return { version, sha256: hash, size, signature };
   } catch {
     return null;
