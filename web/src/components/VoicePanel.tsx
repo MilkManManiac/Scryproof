@@ -26,6 +26,8 @@ import { MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
+import { canPopOut, popOut } from './PopOut';
+import { usePhone } from '../lib/usePhone';
 import { screenSound, type CallPlace, type ShareSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 import { useStreamZoom, ZOOM_STEP } from '../lib/useStreamZoom';
@@ -244,6 +246,7 @@ export function VoiceStage(
   const [settingsOpen, setSettingsOpen] = useState(false);
   const focusFrame = useRef<HTMLDivElement>(null);
   const [gridBox, grid] = useBoxSize();
+  const phone = usePhone();
 
   const inPlace = (entry: { channelId: string | null; dmId: string | null }): boolean =>
     place.kind === 'dm' ? entry.dmId === place.id : entry.channelId === place.id;
@@ -371,6 +374,21 @@ export function VoiceStage(
       <SpeakerGlyph size={16} off={!video.soundOn} />
     </button>
   );
+  /** Its own window, to drag onto another screen. Not on a phone, where a window is a tab. */
+  const popOutButton = (video: VoiceVideo, className: string) =>
+    canPopOut && !phone ? (
+      <button
+        type="button"
+        className={className}
+        title="Open in its own window, to put on another screen"
+        onClick={(event) => {
+          event.stopPropagation();
+          popOut(video, labelOf(video));
+        }}
+      >
+        Pop out
+      </button>
+    ) : null;
   const stopButton = (video: VoiceVideo, className: string) => (
     <button
       type="button"
@@ -441,6 +459,7 @@ export function VoiceStage(
           {theirs ? (
             <span className="call-tile-actions">
               {video.sound ? soundButton(video, 'call-tile-action') : null}
+              {popOutButton(video, 'call-tile-action')}
               {stopButton(video, 'call-tile-action')}
             </span>
           ) : null}
@@ -590,6 +609,7 @@ export function VoiceStage(
                 {Math.round(screenVolume(bigVideo.userId) * 100)}%
               </label>
             ) : null}
+            {bigVideo.userId !== selfId ? popOutButton(bigVideo, 'link-button') : null}
             {bigVideo.userId !== selfId ? stopButton(bigVideo, 'link-button') : null}
             {bigVideo.source === 'camera' && bigVideo.userId !== selfId ? (
               <button type="button" className="link-button" onClick={() => session.setCameraHidden(bigVideo.userId, true)}>

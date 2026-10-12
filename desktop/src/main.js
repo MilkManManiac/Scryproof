@@ -33,6 +33,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, p
 import { execFile, spawn } from 'node:child_process';
 import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { release } from 'node:os';
 import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -53,7 +54,7 @@ import {
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
 import { shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
-import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
+import { APP_SOUND_LABEL, pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
@@ -538,8 +539,8 @@ function armGateway(ses) {
 /* ------------------------------- permissions ------------------------------- */
 
 function armPermissions(ses) {
-  ses.setPermissionRequestHandler((_contents, permission, done, details) => done(shellPermission(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null)));
-  ses.setPermissionCheckHandler((_contents, permission, origin, details) => shellPermission(origin, permission, details.isMainFrame !== false, details.mediaType ?? null));
+  ses.setPermissionRequestHandler((contents, permission, done, details) => done((permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null)));
+  ses.setPermissionCheckHandler((contents, permission, origin, details) => (permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(origin, permission, details.isMainFrame !== false, details.mediaType ?? null));
 
   // Windows has no picker of its own to hand over to, so the page draws one.
   ses.setDisplayMediaRequestHandler((request, done) => {
@@ -613,6 +614,7 @@ async function openSharePicker(request, done) {
     sources: offer(pick, sources),
     sound: soundOffer({ audioRequested: pick.audioRequested, platform: process.platform, withSound: shareWithSound() }),
     soundLabel: SOUND_LABEL,
+    soundLabels: { screen: SOUND_LABEL, window: appSoundWorks() ? APP_SOUND_LABEL : SOUND_LABEL },
   });
 }
 
@@ -626,7 +628,12 @@ function armSharePicker() {
     const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform });
     if (chosen && chosen.remember !== null) void setShareWithSound(chosen.remember);
     // A window with sound: that program's sound alone, from the helper. If it
-    // cannot run, the whole machine's sound as before.
+    // cannot run, the whole machine's sound as before. One of this app's own
+    // windows (a popped-out stream) gets no sound: its program is the call.
+    if (chosen?.appWindow && BrowserWindow.getAllWindows().some((each) => each.getMediaSourceId() === answer.id)) {
+      finishPick(pick, { video: chosen.streams.video });
+      return true;
+    }
     if (chosen?.appWindow && (await startAppSound(chosen.appWindow))) {
       if (pick.answered) stopAppSound();
       finishPick(pick, { video: chosen.streams.video });
@@ -680,10 +687,14 @@ function stopAppSound() {
   child.kill();
 }
 
+/** Process loopback arrived in Windows 10 2004 (build 19041). Older Windows shares the whole machine. */
+const appSoundWorks = () =>
+  process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 19041 && existsSync(APP_SOUND_EXE);
+
 /** Resolves true once the helper is recording the window's program, false when it cannot. */
 function startAppSound(hwnd) {
   stopAppSound();
-  if (process.platform !== 'win32' || !existsSync(APP_SOUND_EXE)) return Promise.resolve(false);
+  if (!appSoundWorks()) return Promise.resolve(false);
   return new Promise((resolve) => {
     const child = spawn(APP_SOUND_EXE, [hwnd], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     appSound = child;
@@ -744,6 +755,11 @@ async function setShareWithSound(on) {
 /* ---------------------------------- window --------------------------------- */
 
 /** Opens a web address in the real browser. Used for links out of the page, and "Open link" on the right-click menu. */
+/** A popped-out stream's window: an empty page with the name the page gives it. Nothing else opens here. */
+const streamWindow = (url, frameName) => url === 'about:blank' && /^scryproof-stream-[\w-]+$/.test(frameName);
+/** Their pages, for the one thing they may ask: full screen. */
+const streamWindows = new Set();
+
 const outside = (target) => {
   try {
     const url = new URL(target);
@@ -863,9 +879,21 @@ function createWindow(visible = true) {
   // and a document there would be the server's code in the origin that holds
   // the keys. A redirect onto it is an ordinary navigation, so it is checked
   // the same way.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (streamWindow(url, frameName)) {
+      return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, backgroundColor: '#000000' } };
+    }
     outside(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child) => {
+    // A popped-out stream (web/src/components/PopOut.tsx): an empty page the
+    // app draws a <video> into. It goes nowhere and opens nothing.
+    child.removeMenu();
+    streamWindows.add(child.webContents);
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    child.webContents.on('will-navigate', (event) => event.preventDefault());
+    child.on('closed', () => streamWindows.delete(child.webContents));
   });
   win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
   win.webContents.on('will-redirect', (event, url) => allowGo(event, url));

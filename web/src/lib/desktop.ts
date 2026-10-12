@@ -35,6 +35,8 @@ interface DesktopBridge {
   /** Absent in shells built before a shared window could send its own sound alone (0.5.7 and older). */
   onAppSound?: (start: () => void, data: (chunk: Uint8Array) => void, end: () => void) => () => void;
   stopAppSound?: () => void;
+  /** Absent in shells that refuse every new window (0.5.7 and older). */
+  canPopOut?: boolean;
   /** Absent in shells built before the Mac app (0.5.x). */
   platform?: 'darwin' | 'win32' | 'linux';
   permissionState?: () => Promise<PermissionState>;
@@ -68,11 +70,15 @@ export interface ShareRequest {
   /** Where the switch starts, or null when sound cannot go with this share. */
   sound: boolean | null;
   soundLabel: string;
+  /** Per kind of source, from shells that can send one window's sound alone (0.5.8). */
+  soundLabels?: { screen: string; window: string };
 }
 
 const bridge = typeof window === 'undefined' ? null : (window as { scryproofDesktop?: DesktopBridge }).scryproofDesktop ?? null;
 
 export const isDesktop = bridge !== null;
+/** Whether a stream can open in a window of its own (components/PopOut.tsx). A browser can; a desktop app from 0.5.8. */
+export const canPopOut = !bridge || bridge.canPopOut === true;
 export const canEmbedActivities = !bridge || bridge.activities === true;
 export const canInstallShellUpdate = typeof bridge?.applyShellUpdate === 'function';
 

@@ -16,6 +16,8 @@
  */
 
 export const SOUND_LABEL = 'Include sound';
+/** For a window, where the helper can run: what goes out is that program's sound and nothing else. */
+export const APP_SOUND_LABEL = "Include this app's sound";
 
 /** Whether this machine can send its sound with a share at all. Loopback is Windows only. */
 export const canShareSound = (platform) => platform === 'win32';

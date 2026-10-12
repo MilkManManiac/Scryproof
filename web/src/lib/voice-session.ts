@@ -339,6 +339,24 @@ function inboundVideo(report: RTCStatsReport): { frames: number; width: number; 
   return found;
 }
 
+/** LiveKit's ElementInfo, which its types keep internal (livekit-client 2.22, RemoteVideoTrack). */
+interface PoppedElement {
+  element: HTMLVideoElement;
+  visible: boolean;
+  pictureInPicture: boolean;
+  visibilityChangedAt: number;
+  width(): number;
+  height(): number;
+  observe(): void;
+  stopObserving(): void;
+  handleResize?: () => void;
+  handleVisibilityChanged?: () => void;
+}
+interface AdaptiveTrack {
+  observeElementInfo?: (info: PoppedElement) => void;
+  stopObservingElementInfo?: (info: PoppedElement) => void;
+}
+
 export type ShareSound = 'window' | 'tab' | 'machine' | 'machine-and-call';
 
 /**
@@ -403,6 +421,12 @@ export class VoiceSession {
   private readonly hiddenCameras = new Set<string>();
   /** Pictures this device pressed Watch on, as "<userId>:camera" or "<userId>:screen". Nothing else is fetched. */
   private readonly watching = new Set<string>();
+  /**
+   * Whose screen to watch the moment it is here: "Join and watch" on a
+   * profile card, pressed from outside their call. Not cleared by leaving,
+   * because joining is what brings it.
+   */
+  private watchOnArrival: string | null = null;
   /** Screens whose sound this device turned on, by user id. Off again when the share ends. */
   private readonly screenSoundOn = new Set<string>();
   /** True while our own Stop is taking the share down, so that is not reported as the share dying. */
@@ -1141,6 +1165,13 @@ export class VoiceSession {
     this.refreshVideos();
   }
 
+  /** Watch someone's screen as soon as this device is in their call, or now if it already is. */
+  watchWhenHere(userId: string): void {
+    this.watchOnArrival = userId;
+    this.syncSubscriptions();
+    this.refreshVideos();
+  }
+
   /** Back to the card: the picture and the screen's sound stop arriving. */
   stopStream(userId: string, source: VoiceVideo['source']): void {
     this.watching.delete(`${userId}:${source}`);
@@ -1173,6 +1204,10 @@ export class VoiceSession {
 
   private syncSubscription(publication: RemoteTrackPublication, userId: string): void {
     const source = publication.source;
+    if (source === Track.Source.ScreenShare && userId === this.watchOnArrival) {
+      this.watchOnArrival = null;
+      this.watching.add(`${userId}:screen`);
+    }
     const facts: PublicationFacts = {
       source:
         source === Track.Source.Microphone
@@ -1208,6 +1243,41 @@ export class VoiceSession {
     if (!track) return () => undefined;
     track.attach(element);
     return () => void track.detach(element);
+  }
+
+  /**
+   * Show someone's camera or screen in a <video> in a popped-out window. Not
+   * `attach`: LiveKit decides whether a picture is worth sending from whether
+   * its element is on screen, measured against this window, so an element in
+   * another window would read as hidden and the picture would stop. Reported
+   * the way LiveKit reports picture-in-picture instead: always seen, sized by
+   * that window. Returns the undo.
+   */
+  popOutVideo(userId: string, source: VoiceVideo['source'], element: HTMLVideoElement): () => void {
+    const track = this.room?.remoteParticipants
+      .get(userId)
+      ?.getTrackPublication(source === 'screen' ? Track.Source.ScreenShare : Track.Source.Camera)?.track;
+    if (!track) return () => undefined;
+    element.srcObject = new MediaStream([track.mediaStreamTrack]);
+    void element.play().catch(() => undefined);
+    const view = element.ownerDocument.defaultView;
+    const resized = (): void => info.handleResize?.();
+    const info: PoppedElement = {
+      element,
+      visible: true,
+      pictureInPicture: true,
+      visibilityChangedAt: Date.now(),
+      width: () => element.clientWidth,
+      height: () => element.clientHeight,
+      observe: () => view?.addEventListener('resize', resized),
+      stopObserving: () => view?.removeEventListener('resize', resized),
+    };
+    const adaptive = track as unknown as AdaptiveTrack;
+    adaptive.observeElementInfo?.(info);
+    return () => {
+      adaptive.stopObservingElementInfo?.(info);
+      element.srcObject = null;
+    };
   }
 
   /**

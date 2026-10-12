@@ -57,6 +57,7 @@ import { ThriceGate } from './components/Thrice';
 import { LowballGate, WhereaboutsGate } from './components/Rounds';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
+import { PopOuts } from './components/PopOut';
 import { DmProvider, unreadDmCount, useDms } from './state/dms';
 import { ActivitiesGate } from './components/Activities';
 import { PopupStack } from './components/PopupStack';
@@ -113,6 +114,7 @@ export function App() {
           <IncomingCall />
           <InviteJoinModal />
           <SharePicker />
+          <PopOuts />
         </ProfileCardProvider>
       </DmProvider>
     </StoreProvider>

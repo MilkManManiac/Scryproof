@@ -130,6 +130,8 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
     },
     /** Stop recording the shared window's sound. */
     stopAppSound: () => ipcRenderer.send('scryproof:app-sound-stop'),
+    /** A stream may open in a window of its own (main.js streamWindow). */
+    canPopOut: true,
     /** Fresh pictures while the picker is open, or null once it is not. */
     refreshShare: () => ipcRenderer.invoke('scryproof:share-refresh'),
   }),
