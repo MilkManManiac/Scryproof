@@ -130,4 +130,13 @@ Full checks once at the end: `npm run typecheck`, `npm test`, `cd desktop && npm
 
 ## Decisions I made
 
+Built 2026-10-12 on `main` by the lead session (not a helper on `app-audio`), after Wes raised it again: "this weekend I was trying to share music... they could hear a game in the background... I could hear myself talking... that is a very important function of this app sharing screen". Commits 55c0e51, b0edeb7. Where it differs from the design above:
+
+- **Names:** `desktop/app-sound/AppSound.cs` → `app-sound.exe`, `desktop/scripts/build-app-sound.mjs`, `web/src/lib/app-sound.ts`. One helper mode only, `app-sound.exe <hwnd>` (include tree). No `probe`, no `exclude`.
+- **Screens use Chromium, not the helper.** Probed on Electron 44.4.3 (`docs/spikes/app-sound/`): the page's `restrictOwnAudio: true` already turns `audio: 'loopback'` into `loopbackWithoutChrome`; this app's sound measured -185 dB, other programs untouched. So the echo was already handled for screens on this PC; the old comment in `voice-session.ts` saying it "does not reach" the desktop was wrong.
+- **No worklet, no MessagePort.** PCM goes over plain IPC (`scryproof:app-sound-data`) and becomes a track through `MediaStreamTrackGenerator` + `AudioData` (s16, 48 kHz stereo). No ring buffer and no clock drift to manage on the sending side; the receiver's jitter buffer does that.
+- **Labels:** window "Include this app's sound" (only when Windows is 19041+ and the exe is there), screen "Include sound". The connection panel says what actually went out ("Share sound: this window only / this tab / whole PC, call left out / whole PC, call included") and warns the sharer in the last case. That readout is the instrument for the next "I heard myself" report.
+- **Own windows** (a popped-out stream) get no sound at all, checked in main by `getMediaSourceId`.
+- **Screen share and music share both take it** (`addWindowSound` in `voice-session.ts`, `captureMusic` in `music-share.ts`). Phase 5 done.
+
 ## Open problems

@@ -1357,7 +1357,9 @@ export class VoiceSession {
         videos.push({
           userId: participant.identity,
           source,
-          sid: publication.trackSid,
+          // Watch, Stop, Watch again can hand back a new track under the same
+          // publication; a <video> left on the old one stays black.
+          sid: publication.track ? `${publication.trackSid}:${publication.track.mediaStreamTrack.id}` : publication.trackSid,
           sound,
           state,
           soundOn: sound && this.screenSoundOn.has(participant.identity),
