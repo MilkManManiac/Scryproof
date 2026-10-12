@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { pickerList, shareAnswer, shareStreams, soundOffer, sourceKind } from '../src/share-menu.js';
+import { pickerList, shareAnswer, shareStreams, soundOffer, sourceKind, windowHandle } from '../src/share-menu.js';
 
 /** A stand-in for Electron's NativeImage: enough of it for the list. */
 const image = (url) => ({ toDataURL: () => url, isEmpty: () => url === '' });
@@ -51,7 +51,7 @@ test('the sound switch is offered only where sound was asked for and can be sent
 test('only an id that was offered is shared; anything else is a cancel', () => {
   const offered = [screen, game];
   const where = { audioRequested: true, platform: 'win32' };
-  assert.deepEqual(shareAnswer(offered, { id: 'window:42:0', withSound: false }, where), { streams: { video: game }, remember: false });
+  assert.deepEqual(shareAnswer(offered, { id: 'window:42:0', withSound: false }, where), { streams: { video: game }, remember: false, appWindow: null });
   for (const answer of [null, undefined, 'window:42:0', {}, { id: 42 }, { id: 'window:99:0' }, { id: 'screen:0:0 ' }]) {
     assert.equal(shareAnswer(offered, answer, where), null);
   }
@@ -64,19 +64,37 @@ test('the sound choice is taken, and remembered, only where there was one to mak
   assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: true, platform: 'win32' }), {
     streams: { video: screen, audio: 'loopback' },
     remember: true,
+    appWindow: null,
   });
   // Not a real true: off.
   assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: 'yes' }, { audioRequested: true, platform: 'win32' }), {
     streams: { video: screen },
     remember: false,
+    appWindow: null,
   });
   // No switch was shown, so nothing is remembered and no sound goes.
   assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: false, platform: 'win32' }), {
     streams: { video: screen },
     remember: null,
+    appWindow: null,
   });
   assert.deepEqual(shareAnswer(offered, { id: screen.id, withSound: true }, { audioRequested: true, platform: 'darwin' }), {
     streams: { video: screen },
     remember: null,
+    appWindow: null,
   });
+});
+
+test('a window shared with sound records that program alone, when the page can take it', () => {
+  const where = { audioRequested: true, platform: 'win32' };
+  const answer = (extra) => shareAnswer([screen, game], { id: game.id, withSound: true, ...extra }, where);
+  assert.equal(answer({ appSound: true }).appWindow, '42');
+  // An older page cannot take it: the whole machine, as before.
+  assert.equal(answer({}).appWindow, null);
+  assert.deepEqual(answer({}).streams, { video: game, audio: 'loopback' });
+  // A screen, or no sound: nothing to record.
+  assert.equal(shareAnswer([screen], { id: screen.id, withSound: true, appSound: true }, where).appWindow, null);
+  assert.equal(answer({ appSound: true, withSound: false }).appWindow, null);
+  assert.equal(windowHandle('window:330652:0'), '330652');
+  assert.equal(windowHandle('window:12;calc:0'), null);
 });

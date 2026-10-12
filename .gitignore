@@ -28,6 +28,7 @@ __pycache__/
 
 # The desktop app: installers and unpacked builds.
 desktop/release/
+desktop/app-sound/app-sound.exe
 
 # Agent worktrees, never part of the repo.
 .claude/worktrees/

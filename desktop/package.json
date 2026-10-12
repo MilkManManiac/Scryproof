@@ -11,7 +11,7 @@
     "start": "electron .",
     "release": "node scripts/make-update.mjs",
     "test": "node --test test/*.test.mjs",
-    "dist": "npm run release && electron-builder --win nsis --publish never && npm run sign-installer",
+    "dist": "npm run release && node scripts/build-app-sound.mjs && electron-builder --win nsis --publish never && npm run sign-installer",
     "sign-installer": "node scripts/sign-installer.mjs",
     "mac-update-key": "node scripts/mac-update-key.mjs",
     "dist:mac": "node scripts/mac-preflight.mjs && npm run client && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=scryproof-notary APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && npm run notarize:mac:dmg && npm run sign-installer -- --mac",
@@ -49,7 +49,13 @@
     ],
     "win": {
       "icon": "assets/icon.png",
-      "target": "nsis"
+      "target": "nsis",
+      "extraResources": [
+        {
+          "from": "app-sound/app-sound.exe",
+          "to": "app-sound.exe"
+        }
+      ]
     },
     "nsis": {
       "oneClick": true,

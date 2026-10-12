@@ -30,8 +30,11 @@ interface DesktopBridge {
   setZoom?: (factor: number) => void;
   /** Absent in shells built before the in-app share picker (0.5.1 and older), which show a menu of their own. */
   onShareRequest?: (open: (request: ShareRequest) => void, close: () => void) => () => void;
-  answerShare?: (answer: { id: string; withSound: boolean } | null) => Promise<boolean>;
+  answerShare?: (answer: { id: string; withSound: boolean; appSound?: boolean } | null) => Promise<boolean>;
   refreshShare?: () => Promise<ShareSource[] | null>;
+  /** Absent in shells built before a shared window could send its own sound alone (0.5.7 and older). */
+  onAppSound?: (start: () => void, data: (chunk: Uint8Array) => void, end: () => void) => () => void;
+  stopAppSound?: () => void;
   /** Absent in shells built before the Mac app (0.5.x). */
   platform?: 'darwin' | 'win32' | 'linux';
   permissionState?: () => Promise<PermissionState>;
@@ -298,8 +301,17 @@ export function onShareRequest(open: (request: ShareRequest) => void, close: () 
 
 /** The choice: a source id and whether to send sound, or null to cancel. */
 export const answerShare = (answer: { id: string; withSound: boolean } | null): void => {
-  void bridge?.answerShare?.(answer).catch(() => false);
+  // Saying the page can take a window's own sound (lib/app-sound.ts) is what
+  // makes the shell record that program instead of the whole machine.
+  void bridge?.answerShare?.(answer && { ...answer, appSound: Boolean(bridge.onAppSound) }).catch(() => false);
 };
+
+/** A shared window's own sound from the shell (`app-sound.ts`). Null in a browser or an older shell. */
+export function onAppSound(start: () => void, data: (chunk: Uint8Array) => void, end: () => void): (() => void) | null {
+  return bridge?.onAppSound ? bridge.onAppSound(start, data, end) : null;
+}
+
+export const stopAppSound = (): void => bridge?.stopAppSound?.();
 
 /** Fresh pictures for the open picker, or null once the shell has closed it. */
 export const refreshShare = async (): Promise<ShareSource[] | null> => {

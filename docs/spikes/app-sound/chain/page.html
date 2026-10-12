@@ -1,0 +1,18 @@
+<title>chain</title><script src="page.js"></script>
+<script>window.chainLog = (m) => console.log("LOG " + m); window.chainDone = () => console.log("DONE");
+async function run() {
+  window.chainLog('page ready, bridge=' + typeof window.scryproofDesktop?.onAppSound);
+  const track = await AS.takeAppSound(4000);
+  if (!track) return window.chainLog('no track');
+  const c = new AudioContext(); const src = c.createMediaStreamSource(new MediaStream([track]));
+  const an = c.createAnalyser(); an.fftSize = 8192; src.connect(an);
+  await new Promise((r) => setTimeout(r, 2500));
+  const bins = new Float32Array(an.frequencyBinCount); an.getFloatFrequencyData(bins);
+  const at = (f) => { const i = Math.round(f / (c.sampleRate / an.fftSize)); return Math.max(bins[i-1], bins[i], bins[i+1]).toFixed(0); };
+  window.chainLog('track ' + track.readyState + ' spotify1000=' + at(1000) + 'dB game1500=' + at(1500) + 'dB own440=' + at(440) + 'dB');
+  AS.drop(track);
+  window.chainLog('dropped ' + track.readyState);
+  window.chainDone();
+}
+run();
+</script>

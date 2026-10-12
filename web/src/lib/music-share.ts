@@ -1,3 +1,5 @@
+import { takeAppSound } from './app-sound';
+
 /** Audio-only publication through the existing encrypted screen-audio grant.
  * Keeping it off Unknown also keeps older clients from auto-playing it as a soundboard.
  */
@@ -19,7 +21,9 @@ export async function captureMusic(): Promise<MediaStreamTrack> {
     systemAudio: 'include',
     selfBrowserSurface: 'exclude',
   } as DisplayMediaStreamOptions);
-  const [audio] = stream.getAudioTracks();
+  // A window chosen in the desktop app comes without sound: the shell records
+  // that program alone and hands it over separately (app-sound.ts).
+  const audio = stream.getAudioTracks()[0] ?? (await takeAppSound());
   for (const track of stream.getTracks()) if (track !== audio) track.stop();
   if (!audio)
     throw new Error(

@@ -26,7 +26,7 @@ import { MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
-import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
+import { screenSound, type CallPlace, type ShareSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 import { useStreamZoom, ZOOM_STEP } from '../lib/useStreamZoom';
 import { MAX_SCALE } from '../lib/zoom';
@@ -155,6 +155,13 @@ function VideoView({
   const mirrored = video.source === 'camera' && video.userId === state.user?.id;
   return <video ref={element} className={`${className}${mirrored ? ' mirrored' : ''}`} autoPlay playsInline muted />;
 }
+
+const SHARE_SOUND: Record<ShareSound, string> = {
+  window: 'this window only',
+  tab: 'this tab',
+  machine: 'whole PC, call left out',
+  'machine-and-call': 'whole PC, call included',
+};
 
 const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}`;
 
@@ -669,6 +676,12 @@ export function VoiceStage(
       ) : null}
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
       {live && voice.shareNotice && !voice.sharing ? <p className="voice-stage-error">{voice.shareNotice}</p> : null}
+      {live && voice.sharing && voice.shareSound === 'machine-and-call' ? (
+        <p className="voice-stage-error">
+          This PC can't keep the call out of your shared sound, so people will hear themselves. Share a window
+          instead to send only its sound.
+        </p>
+      ) : null}
 
       {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
@@ -927,6 +940,11 @@ export function ConnectionPanel() {
         {stats.receiving ? (
           <span className="connection-stat" title="The largest picture arriving right now">
             Video {stats.receiving}
+          </span>
+        ) : null}
+        {voice.sharing && voice.shareSound ? (
+          <span className="connection-stat" title="What sound your share is sending">
+            Share sound {SHARE_SOUND[voice.shareSound]}
           </span>
         ) : null}
         {voice.lastShareStop ? (

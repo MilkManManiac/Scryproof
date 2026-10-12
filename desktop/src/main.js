@@ -67,6 +67,8 @@ const DEV_MEDIA = app.isPackaged ? '' : (process.env.SCRYPROOF_DEV_MEDIA ?? '');
 const ACTIVITIES_ORIGIN = new URL(app.isPackaged ? 'https://activities.scryproof.com' : (process.env.SCRYPROOF_ACTIVITIES_ORIGIN ?? 'https://activities.scryproof.com')).origin;
 
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
+/** The one-program sound recorder (`app-sound/AppSound.cs`), Windows only. */
+const APP_SOUND_EXE = app.isPackaged ? join(process.resourcesPath, 'app-sound.exe') : join(here, '..', 'app-sound', 'app-sound.exe');
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
 
 /** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
@@ -618,13 +620,23 @@ function armSharePicker() {
   ipcMain.on('scryproof:share-listen', (event, on) => {
     if (ours(event)) pickerListening = on === true;
   });
-  ipcMain.handle('scryproof:share-answer', (event, answer) => {
+  ipcMain.handle('scryproof:share-answer', async (event, answer) => {
     const pick = picking;
     if (!ours(event) || !pick) return false;
     const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform });
     if (chosen && chosen.remember !== null) void setShareWithSound(chosen.remember);
+    // A window with sound: that program's sound alone, from the helper. If it
+    // cannot run, the whole machine's sound as before.
+    if (chosen?.appWindow && (await startAppSound(chosen.appWindow))) {
+      if (pick.answered) stopAppSound();
+      finishPick(pick, { video: chosen.streams.video });
+      return true;
+    }
     finishPick(pick, chosen ? chosen.streams : {});
     return chosen !== null;
+  });
+  ipcMain.on('scryproof:app-sound-stop', (event) => {
+    if (ours(event)) stopAppSound();
   });
   ipcMain.handle('scryproof:share-refresh', async (event) => {
     const pick = picking;
@@ -642,6 +654,71 @@ function armSharePicker() {
 function pageGone() {
   pickerListening = false;
   cancelPick();
+  stopAppSound();
+}
+
+/* -------------------------------- app sound -------------------------------- */
+
+/**
+ * One program's sound for a shared window. The helper prints "ok <pid>" or
+ * "error <why>" on stderr and then streams raw PCM on stdout, which goes to
+ * the page as it comes (`scryproof:app-sound-*`, preload `onAppSound`). It
+ * exits when its stdin closes, so it cannot outlive this process. One at a
+ * time: a new share, Stop on the page, or the page going away ends it.
+ */
+let appSound = null;
+
+function sendAppSound(channel, chunk) {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(channel, chunk);
+}
+
+function stopAppSound() {
+  const child = appSound;
+  appSound = null;
+  if (!child) return;
+  child.stdin.end();
+  child.kill();
+}
+
+/** Resolves true once the helper is recording the window's program, false when it cannot. */
+function startAppSound(hwnd) {
+  stopAppSound();
+  if (process.platform !== 'win32' || !existsSync(APP_SOUND_EXE)) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const child = spawn(APP_SOUND_EXE, [hwnd], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    appSound = child;
+    // Writing to or closing a pipe whose reader has gone must not take the app down.
+    child.stdin.on('error', () => undefined);
+    let started = false;
+    let said = '';
+    const timer = setTimeout(() => settle(false), 3000);
+    const settle = (ok) => {
+      clearTimeout(timer);
+      if (ok && !started && appSound === child) {
+        started = true;
+        sendAppSound('scryproof:app-sound-start');
+      }
+      if (!ok && appSound === child) stopAppSound();
+      resolve(ok);
+    };
+    child.stderr.on('data', (text) => {
+      said += text;
+      if (said.startsWith('ok ')) settle(true);
+      else if (said.includes('\n')) {
+        console.warn(`app sound: ${said.trim()}`);
+        settle(false);
+      }
+    });
+    child.stdout.on('data', (chunk) => {
+      if (started && appSound === child) sendAppSound('scryproof:app-sound-data', chunk);
+    });
+    child.on('error', () => settle(false));
+    child.on('exit', () => {
+      if (started) sendAppSound('scryproof:app-sound-end');
+      if (appSound === child) appSound = null;
+      settle(false);
+    });
+  });
 }
 
 /** Whether the last share was sent with sound. Remembered on this machine; off until ticked once. */
@@ -829,6 +906,7 @@ app.on('second-instance', show);
 app.on('before-quit', () => {
   quitting = true;
   stopPushToTalk();
+  stopAppSound();
 });
 // The window hides rather than closes, so this fires only while quitting. On the
 // Mac an app with no window is still running (the Dock icon stays), and Cmd-Q

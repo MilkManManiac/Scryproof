@@ -44,6 +44,7 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { MusicAudience, MUSIC_AUDIENCE_TOPIC, MUSIC_AUDIENCE_REFRESH_MS, readMusicAudience } from './music-audience';
 import { captureMusic, MUSIC_TRACK, musicSound } from './music-share';
+import { drop as dropAppSound, takeAppSound } from './app-sound';
 import { api, ApiError } from './api';
 import { holdPushKey, onAccessibilityGranted } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
@@ -197,6 +198,12 @@ export interface VoiceSnapshot {
   mediaError: string | null;
   /** One line for the voice panel when our share stopped on its own. Cleared by the next share. */
   shareNotice: string | null;
+  /**
+   * What sound our share is sending, read off the track: one window's program
+   * alone, the whole machine without the call, or the whole machine with the
+   * call in it (everyone hears themselves). Null with no share sound.
+   */
+  shareSound: ShareSound | null;
   /** The last time our share stopped on its own, kept for the connection panel for the rest of the call. */
   lastShareStop: ShareStop | null;
   /**
@@ -244,6 +251,7 @@ const IDLE: VoiceSnapshot = {
   musicError: null,
   mediaError: null,
   shareNotice: null,
+  shareSound: null,
   lastShareStop: null,
   stalled: {},
   hiddenCameras: [],
@@ -329,6 +337,20 @@ function inboundVideo(report: RTCStatsReport): { frames: number; width: number; 
     };
   });
   return found;
+}
+
+export type ShareSound = 'window' | 'tab' | 'machine' | 'machine-and-call';
+
+/**
+ * The sound the browser captured with a share: a tab's, or the whole
+ * machine's. Asking for restrictOwnAudio turns the machine's loopback into
+ * Chromium's `loopbackWithoutChrome` where Windows allows it; plain
+ * `loopback` means the call's own voices are in it too.
+ */
+export function capturedSound(picture: MediaStreamTrack | undefined, sound: MediaStreamTrack): ShareSound {
+  const surface = (picture?.getSettings() as { displaySurface?: string } | undefined)?.displaySurface;
+  if (surface === 'browser') return 'tab';
+  return sound.getSettings().deviceId === 'loopback' ? 'machine-and-call' : 'machine';
 }
 
 export class VoiceSession {
@@ -1037,6 +1059,7 @@ export class VoiceSession {
           simulcast: true,
         },
       );
+      if (on && this.room === room) await this.addWindowSound(room);
     } catch (problem) {
       if (this.room !== room) return;
       // Closing the picker without choosing is not an error worth a message.
@@ -1052,6 +1075,33 @@ export class VoiceSession {
       }
     }
     if (this.room === room) this.refreshVideos();
+  }
+
+  /**
+   * A window shared with sound from the desktop app comes without a sound
+   * track: the shell records that program alone and hands it over here
+   * (lib/app-sound.ts). Either way, note what sound is going out.
+   */
+  private async addWindowSound(room: Room): Promise<void> {
+    const local = room.localParticipant;
+    const sharing = (): boolean => this.room === room && Boolean(local.getTrackPublication(Track.Source.ScreenShare));
+    const picture = local.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack;
+    const machine = local.getTrackPublication(Track.Source.ScreenShareAudio)?.track?.mediaStreamTrack;
+    if (machine) return this.update({ shareSound: capturedSound(picture, machine) });
+    const track = await takeAppSound();
+    if (!track) return;
+    if (!sharing()) return dropAppSound(track);
+    await local.publishTrack(track, {
+      source: Track.Source.ScreenShareAudio,
+      audioPreset: AudioPresets.musicHighQualityStereo,
+      forceStereo: true,
+      dtx: false,
+    });
+    if (!sharing()) {
+      await local.unpublishTrack(track).catch(() => undefined);
+      return dropAppSound(track);
+    }
+    this.update({ shareSound: 'window' });
   }
 
   /** Our share ended without Stop being pressed: say so now, and keep it for the connection panel. */
@@ -1921,6 +1971,10 @@ export class VoiceSession {
     room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
       if (this.room !== room) return;
       this.musicAudience.end(publication.trackSid);
+      if (publication.source === Track.Source.ScreenShareAudio) {
+        dropAppSound(publication.track?.mediaStreamTrack);
+        if (publication.trackName !== MUSIC_TRACK) this.update({ shareSound: null });
+      }
       if (publication.trackName === MUSIC_TRACK && publication.track?.mediaStreamTrack === this.musicTrack) {
         // The SDK or server can remove a track without our Stop button.
         // Its capture must end too, and the next attempt must be allowed.
