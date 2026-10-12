@@ -18,3 +18,6 @@ A `cat > file <<EOF` with apostrophes in the body died with "unexpected EOF whil
 
 ## 2026-10-10 Phantom module-not-found while another agent commits
 The server suite failed once with ERR_MODULE_NOT_FOUND for a file that exists, at the moment a parallel agent committed a .gitattributes change that rewrote checkout line endings. Rerun passed. Rule: when agents share one checkout, rerun a load-time failure once before believing it, and run the full suite only after all agents have committed.
+
+## 2026-10-12 Electron probe scripts print nothing and data: pages have no mediaDevices
+electron.exe is a GUI program on Windows, so console.log from a scratch probe goes nowhere under the shell; and a `data:` URL is not a secure context, so `navigator.mediaDevices` is undefined. Rule: probes write their log to a file and load their page with `loadFile`; each probe folder needs a package.json with `main`. Also: test tones are loud to Wes; keep probes silent (route to a muted device) or warn first.

@@ -2,7 +2,15 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-10, late)
+## Pick up here (2026-10-12, ~midnight, PAUSED mid-investigation)
+
+Wes's asks (his words): "click on their name in the voice channel... option to watch their stream from that pop up"; "Only 24 soundboard options. Rookie numbers!!!"; "streams can be popped out, so i can watch on separate screens"; "watch more than one stream at a time"; and the serious one: sharing Spotify with sound, friends "could hear a game in the background"; watching a friend's movie share "if I said something I could hear it in the stream". Nothing changed in the repo yet.
+
+- **Probe (scratchpad, Electron 44.4.3, three separate apps playing 440/1000/1500 Hz):** handler `audio: 'loopback'` plus page constraint `audio: { restrictOwnAudio: true }` turns the device into `loopbackWithoutChrome`: our own app's sound drops to silence (-185 dB), every other program still captured. So the echo IS fixable in the desktop app, and the comment in `web/src/lib/voice-session.ts` ~1015 ("this restriction does not reach it") is wrong. Next: check whether LiveKit's `setScreenShareEnabled` passes `restrictOwnAudio` through to getDisplayMedia (likely dropped, which would explain the echo), and whether the friend was on the desktop app or a browser.
+- **Probe also showed:** `windowAudio: 'window'` does nothing in Electron (Electron only accepts 'loopback'/'loopbackWithMute'), so "Spotify only, not the game" needs our own Windows process-loopback helper (include-target-process-tree on the shared window's PID). dotnet and .NET Framework csc are on this PC; no C++ toolchain.
+- Soundboard cap is `LIMITS.soundsPerServer: 24` in `shared/src/validation.ts`.
+
+## Previous pick-up (2026-10-10, late)
 
 **BUILT, NOT DEPLOYED: round one of the audit fixes, plus a live-box check and a follow-up audit.** Wes: "do a massive audit on all systems and make sure all is in order and if things could be improved." Five agents in parallel, about 15 minutes wall clock. Commits 97f964f to 317d4f6 on main, pushed, nothing published, deployed or released.
 
