@@ -12,6 +12,12 @@
  * for a game in the background: tone-1000 is shared, tone-1500 must not be
  * heard. Their gain is 0.0003, which nobody in the room can hear; keep it so.
  *
+ * Then the whole screen with sound (H): both programs go out, the call must
+ * not. For that the app is not muted, so it really plays alex (a steady 700 Hz
+ * voice) to the PC, at volume 0.001 and with its chimes off: silent in the
+ * room, plain to a recorder. app-sound.exe on the app's own window proves the
+ * 700 Hz is playing, so "not in the share" cannot mean "never played".
+ *
  * Needs, running and seeded:
  *   npm run dev:livekit
  *   npm run dev            (API on 8787, web on 5173)
@@ -187,9 +193,60 @@ const FAKE_MIC = `
       void context.resume();
       return out.stream;
     };
-    try { localStorage.setItem('scryproof.walkthrough.v1', 'done'); } catch {}
+    try {
+      localStorage.setItem('scryproof.walkthrough.v1', 'done');
+      localStorage.setItem('scryproof.voice-prefs.v1', JSON.stringify({ sounds: false, outputVolume: 0.001 }));
+    } catch {}
   })();
 `;
+
+/** Alex's microphone: a steady 700 Hz voice, untouched by noise removal, so it can be looked for. */
+const ALEX_MIC = `
+  (() => {
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      if (constraints && constraints.video) return real(constraints);
+      const context = new AudioContext({ sampleRate: 48000 });
+      const tone = context.createOscillator();
+      const gain = context.createGain();
+      tone.frequency.value = 700;
+      gain.gain.value = 0.3;
+      const out = context.createMediaStreamDestination();
+      tone.connect(gain).connect(out);
+      tone.start();
+      void context.resume();
+      return out.stream;
+    };
+    try {
+      localStorage.setItem('scryproof.walkthrough.v1', 'done');
+      localStorage.setItem('scryproof.voice-prefs.v1', JSON.stringify({ noiseMode: 'off', autoGain: false, echoCancellation: false }));
+    } catch {}
+  })();
+`;
+
+/** One tone's level in s16 stereo PCM (left channel), dB below full scale. */
+const pcmLevel = (pcm, hz) => {
+  const n = Math.floor(pcm.length / 4);
+  const w = (2 * Math.PI * hz) / 48000;
+  let re = 0;
+  let im = 0;
+  for (let i = 0; i < n; i += 1) {
+    const x = pcm.readInt16LE(i * 4) / 32768;
+    re += x * Math.cos(w * i);
+    im -= x * Math.sin(w * i);
+  }
+  return 20 * Math.log10((2 * Math.hypot(re, im)) / n + 1e-12);
+};
+
+/** What app-sound.exe hears from one window's program over `ms`. */
+const recordWindow = (hwnd, ms) =>
+  new Promise((done) => {
+    const chunks = [];
+    const child = spawn(join(desktop, 'app-sound', 'app-sound.exe'), [hwnd], { stdio: ['pipe', 'pipe', 'ignore'] });
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.on('exit', () => done(Buffer.concat(chunks)));
+    setTimeout(() => child.stdin.end(), ms);
+  });
 
 /** Average spectrum of an analyser over `ms`, as dB per bin, read in the page. */
 const SPECTRUM = (analyserExpr, ms) => `(async () => {
@@ -220,6 +277,17 @@ const floorOf = (spectrum, skip) => {
   return values[Math.floor(values.length / 2)];
 };
 
+/** The pitches within 500 Hz of one, for "nothing stands out here": a whole-PC share carries codec hiss around its sounds. */
+const around = (spectrum, hz) => {
+  const values = spectrum.db
+    .filter((_, bin) => {
+      const away = Math.abs(bin * spectrum.binHz - hz);
+      return away > 3 * spectrum.binHz && away <= 500;
+    })
+    .sort((x, y) => x - y);
+  return values[Math.floor(values.length / 2)];
+};
+
 const scratch = mkdtempSync(join(tmpdir(), 'scryproof-share-sound-'));
 const tones = [];
 let app = null;
@@ -243,7 +311,7 @@ try {
   }
 
   // ---- A. wes in the desktop app, alex in a browser, same channel, encrypted ----
-  app = spawn(electron, [desktop, '--remote-debugging-port=9361', `--user-data-dir=${join(scratch, 'app')}`, '--mute-audio'], {
+  app = spawn(electron, [desktop, '--remote-debugging-port=9361', `--user-data-dir=${join(scratch, 'app')}`], {
     env: { ...process.env, SCRYPROOF_SERVER: SERVER, SCRYPROOF_DEV_MEDIA: 'ws://127.0.0.1:7880' },
     stdio: 'ignore',
   });
@@ -267,7 +335,7 @@ try {
 
   const alexTarget = await firstTarget(9362, (t) => t.type === 'page');
   alex = await new Page('alex', alexTarget.webSocketDebuggerUrl).connect();
-  await alex.send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('scryproof.walkthrough.v1', 'done'); } catch {}" });
+  await alex.send('Page.addScriptToEvaluateOnNewDocument', { source: ALEX_MIC });
   await alex.send('Page.navigate', { url: WEB });
   await alex.until(`document.readyState === 'complete'`);
   const alexIn = await alex.evaluate(`fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'alex', password: '${PASSWORD}' }) }).then((r) => r.status)`);
@@ -413,6 +481,57 @@ try {
   const stoppedAt = Date.now();
   while (appSoundRunning() && Date.now() - stoppedAt < 3000) await sleep(200);
   check('G. within 3 s there is no app-sound.exe', !appSoundRunning(), `${Date.now() - stoppedAt} ms`);
+
+  // ---- H. wes shares his whole screen with sound: both programs, not the call ----
+  await sleep(1000);
+  check('H. wes presses Share your screen again', await wes.clickButton('Share your screen'));
+  await wes.until(`document.querySelector('.share-picker') !== null`, 15_000);
+  await wes.evaluate(`Array.from(document.querySelectorAll('.share-picker [role=tab]')).find((t) => t.textContent.includes('Screens'))?.click()`);
+  await sleep(300);
+  check('H. a whole screen is selected', await wes.evaluate(`(() => { const t = document.querySelector('.share-tile'); if (!t) return false; t.click(); return true; })()`));
+  await sleep(300);
+  await wes.evaluate(`(() => { const box = document.querySelector('.share-picker-sound input'); if (box && !box.checked) box.click(); })()`);
+  await sleep(300);
+  const screenLabel = await wes.evaluate(`document.querySelector('.share-picker-sound span')?.textContent ?? null`);
+  check('H. the sound switch is on and reads "Include sound"', screenLabel === 'Include sound' && (await wes.evaluate(`document.querySelector('.share-picker-sound input')?.checked === true`)), `label: ${screenLabel}`);
+  check('H. wes presses Share', await wes.evaluate(`(() => {
+    const button = Array.from(document.querySelectorAll('.share-picker button')).find((b) => b.textContent.trim() === 'Share');
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`));
+  const machine = await wes.until(`(document.querySelector('.connection-panel')?.textContent ?? '').includes('Share sound whole PC')`, 15_000);
+  const machineSays = await wes.evaluate(`(document.querySelector('.connection-panel')?.textContent ?? '').match(/Share sound (whole PC, call [a-z]+( out)?)/)?.[1] ?? 'none'`);
+  check('H. wes\'s panel shows "Share sound whole PC, call left out"', Boolean(machine) && machineSays === 'whole PC, call left out', machineSays);
+  check('H. alex presses Watch', Boolean(await alex.until(`(() => {
+    const button = Array.from(document.querySelectorAll('.call-tile button')).find((b) => b.textContent.trim() === 'Watch');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`, 15_000)) && Boolean(await alex.until(playing(), 15_000)));
+  if (!(await alex.evaluate(`${soundOf}?.soundOn === true`))) await alex.clickButton('Unmute screen sound');
+  check('H. the screen sound is on at alex', Boolean(await alex.until(`${soundOf}?.soundOn === true`, 5000)));
+  await sleep(2000);
+  const appHwnd = execSync(`powershell -NoProfile -Command "(Get-Process -Id ${app.pid}).MainWindowHandle"`).toString().trim();
+  const [whole, appPcm] = await Promise.all([
+    alex.evaluate(SPECTRUM(`window.__voice.mix?.voices?.get('${wesId}:screen')?.analyser`, 4000)),
+    recordWindow(appHwnd, 3000),
+  ]);
+  const playedAlex = appPcm.length ? pcmLevel(appPcm, 700) : -200;
+  console.log(`      wes's app is playing alex's 700 Hz at ${playedAlex.toFixed(1)} dBFS (app-sound.exe on its window, ${appPcm.length} bytes)`);
+  check('H. control: wes\'s app really is playing alex to the PC (700 Hz above -100 dBFS)', playedAlex > -100);
+  if (!whole) {
+    check('H. the received whole-screen sound can be measured', false);
+  } else {
+    const floor = floorOf(whole, [1000, 1500, 700, 440]);
+    const above = (hz) => at(whole, hz) - floor;
+    const standsOut = (hz) => at(whole, hz) - around(whole, hz);
+    console.log(`      received whole-screen sound at alex: 1000 Hz +${above(1000).toFixed(1)}, 1500 Hz +${above(1500).toFixed(1)} over a floor of ${floor.toFixed(1)} dB; against the pitches around them, alex 700 Hz ${standsOut(700).toFixed(1)}, wes's mic 440 Hz ${standsOut(440).toFixed(1)} dB`);
+    check('H. both programs are in it (1000 and 1500 Hz >= 20 dB above the floor)', above(1000) >= 20 && above(1500) >= 20);
+    check("H. the call is not: alex's 700 Hz voice does not stand out from the pitches around it (< 6 dB)", standsOut(700) < 6);
+    check("H. and wes's own mic is not: 440 Hz does not stand out (< 6 dB)", standsOut(440) < 6);
+  }
+  check('H. wes presses Stop sharing', await wes.clickButton('Stop sharing'));
 
   check('no uncaught errors in either page', wes.complaints.length + alex.complaints.length === 0, [...wes.complaints, ...alex.complaints].join('\n      '));
 } catch (problem) {
