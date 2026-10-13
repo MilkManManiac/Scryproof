@@ -316,7 +316,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                     : !canCapture
                       ? 'This browser can listen, but cannot share audio.'
                       : isDesktop
-                        ? 'Turn on Include sound in the picker. Windows shares all computer sound, including the call. For music without call echo, share a music tab from Chrome or Edge.'
+                        ? "Turn on Include sound in the picker and pick the music program's window: only that program's sound goes out. A whole screen sends everything the PC plays except this call."
                         : 'Choose a music tab and enable Share audio. Only audio is sent. Screen and music sharing use the same slot.'}
             </p>
             {call.musicError ? (
