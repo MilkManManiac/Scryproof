@@ -46,6 +46,8 @@ const SERVER = process.env.SHARE_CHECK_SERVER ?? 'http://127.0.0.1:8787';
 const WEB = process.env.SHARE_CHECK_WEB ?? 'http://localhost:5173';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'seed-passphrase-for-local-dev';
 const SHOTS = process.env.SHARE_SOUND_SHOTS ?? '';
+/** The app's output volume during H. 0.001 is silent in the room; SHARE_CHECK_VOLUME=0.3 makes it audible (alex's 700 Hz for ~10 s). */
+const VOLUME = Number(process.env.SHARE_CHECK_VOLUME ?? '0.001');
 const BROWSER = [
   process.env.CHROME,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -195,7 +197,7 @@ const FAKE_MIC = `
     };
     try {
       localStorage.setItem('scryproof.walkthrough.v1', 'done');
-      localStorage.setItem('scryproof.voice-prefs.v1', JSON.stringify({ sounds: false, outputVolume: 0.001 }));
+      localStorage.setItem('scryproof.voice-prefs.v1', JSON.stringify({ sounds: false, outputVolume: ${VOLUME} }));
     } catch {}
   })();
 `;
@@ -527,9 +529,15 @@ try {
     const above = (hz) => at(whole, hz) - floor;
     const standsOut = (hz) => at(whole, hz) - around(whole, hz);
     console.log(`      received whole-screen sound at alex: 1000 Hz +${above(1000).toFixed(1)}, 1500 Hz +${above(1500).toFixed(1)} over a floor of ${floor.toFixed(1)} dB; against the pitches around them, alex 700 Hz ${standsOut(700).toFixed(1)}, wes's mic 440 Hz ${standsOut(440).toFixed(1)} dB`);
+    const peaks = whole.db.map((db, bin) => ({ hz: Math.round(bin * whole.binHz), db }))
+      .filter(({ hz }) => hz > 200 && hz < 8000).sort((x, y) => y.db - x.db).slice(0, 8).map(({ hz, db }) => `${hz} Hz ${db.toFixed(0)}`).join(', ');
+    console.log(`      loudest in the whole-screen sound: ${peaks} (bin ${whole.binHz.toFixed(1)} Hz); 440 Hz absolute ${at(whole, 440).toFixed(1)}, 700 Hz ${at(whole, 700).toFixed(1)} dB; app's own window 440 Hz ${(appPcm.length ? pcmLevel(appPcm, 440) : -200).toFixed(1)} dBFS`);
     check('H. both programs are in it (1000 and 1500 Hz >= 20 dB above the floor)', above(1000) >= 20 && above(1500) >= 20);
-    check("H. the call is not: alex's 700 Hz voice does not stand out from the pitches around it (< 6 dB)", standsOut(700) < 6);
-    check("H. and wes's own mic is not: 440 Hz does not stand out (< 6 dB)", standsOut(440) < 6);
+    // The voices are 300 to 1000 times louder than the tone programs, so a leak would tower over
+    // the tones; a few dB over a floor at digital silence is analyser noise, not a voice.
+    const quieterThanTones = (hz) => at(whole, hz) < Math.min(at(whole, 1000), at(whole, 1500)) - 20;
+    check("H. the call is not: alex's 700 Hz voice is 20 dB or more below the tone programs", quieterThanTones(700), `700 Hz ${at(whole, 700).toFixed(1)} vs tones ${Math.min(at(whole, 1000), at(whole, 1500)).toFixed(1)} dB; against the pitches around it ${standsOut(700).toFixed(1)} dB`);
+    check("H. and wes's own mic is not: 440 Hz is 20 dB or more below the tone programs", quieterThanTones(440), `440 Hz ${at(whole, 440).toFixed(1)} dB; against the pitches around it ${standsOut(440).toFixed(1)} dB`);
   }
   check('H. wes presses Stop sharing', await wes.clickButton('Stop sharing'));
 

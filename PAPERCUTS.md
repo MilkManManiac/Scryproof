@@ -21,3 +21,9 @@ The server suite failed once with ERR_MODULE_NOT_FOUND for a file that exists, a
 
 ## 2026-10-12 Electron probe scripts print nothing and data: pages have no mediaDevices
 electron.exe is a GUI program on Windows, so console.log from a scratch probe goes nowhere under the shell; and a `data:` URL is not a secure context, so `navigator.mediaDevices` is undefined. Rule: probes write their log to a file and load their page with `loadFile`; each probe folder needs a package.json with `main`. Also: test tones are loud to Wes; keep probes silent (route to a muted device) or warn first.
+
+## 2026-10-14 Chrome cannot be made to share system audio without a human on the picker
+`--auto-select-desktop-capture-source` picks the screen but skips the dialog, and the system-audio box lives in the dialog, so `getDisplayMedia` returns no audio track. `--use-fake-ui-for-media-stream` returns an audio track, but it is the fake device, not loopback, so any measurement of what is in the share is meaningless. Rule: a browser-side share-sound check needs the real picker (hand-driven) or a real friend; do not read a fake-UI run as evidence.
+
+## 2026-10-14 A pass/fail that compares against a floor at digital silence fails on nothing
+The whole-screen share check said "440 Hz stands out 12 dB" over a floor of -138 dB, which is silence, while a real leak would sit 50 dB higher. Rule: when the floor can be digital silence, compare a suspect pitch against a known signal (the tone programs), not against the floor.

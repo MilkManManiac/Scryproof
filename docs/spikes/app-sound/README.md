@@ -6,3 +6,7 @@ Silent tones (gain 0.0003) from separate Electron apps: `tone --freq=1000` stand
 - `chain/`: the real `desktop/src/preload.cjs`, the helper code from `desktop/src/main.js`, and the real `web/src/lib/app-sound.ts` (bundle with `esbuild entry.ts --bundle --format=iife --outfile=page.js`). Result: a live track with the window's tone (-97 dB at that gain) and the game at -161 dB; Stop ends the helper.
 
 Run: start both tones with `Start-Process electron.exe <dir>\tone --freq=...`, find the 1000 Hz window's handle (`(Get-Process electron | ? MainWindowTitle -eq 'tone-1000').MainWindowHandle`), then `electron.exe chain --hwnd=<handle>`. Logs go to `out.txt` (electron.exe prints nothing to the shell).
+
+## Chrome, not the app (2026-10-14)
+
+- `chrome-restrict/probe.mjs`: does a plain Chrome (a friend sharing from the browser) keep its own sound out of a whole-screen share when the page asks for `restrictOwnAudio`? Inconclusive, twice: `--auto-select-desktop-capture-source` skips the picker where "Also share system audio" gets ticked, so no audio track comes back at all; `--use-fake-ui-for-media-stream` answers with a fake audio device ("Fake audio"), not the machine's loopback, so both rounds look the same. Proving it needs the real picker driven by hand, or a friend on Chrome in a real call. Chrome 155.0.8059.41.
