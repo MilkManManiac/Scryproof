@@ -20,6 +20,19 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-12-app-sound',
+    date: '2026-10-12',
+    title: 'Share one app\'s sound, pop streams out, 100 sounds',
+    notes: [
+      'In the desktop app on Windows, share a window with sound and only that app\'s sound goes out. Share Spotify and nobody hears your game. Share a movie player and nobody hears themselves come back through it. Sharing a whole screen with sound leaves the call out. This needs the new desktop app (0.5.8): it will offer to update.',
+      'Your connection panel says what sound your share is sending: this window only, this tab, or your whole PC.',
+      'Click someone\'s name in a voice channel while they are streaming and press Watch stream. Not in their call yet? Join and watch does both.',
+      'Pop out: any stream you are watching can open in a window of its own. Drag it to another screen, double-click it for full screen, and pop out as many as your computer can take. It stays open while you chat in other channels.',
+      'The soundboard holds 100 sounds a server, up from 24.',
+      'Stop watching a stream and watch it again: the picture comes back. Before, it could stay black.',
+    ],
+  },
+  {
     id: '2026-10-10-signed-out-everywhere',
     date: '2026-10-10',
     title: 'Signing out now signs out everywhere',

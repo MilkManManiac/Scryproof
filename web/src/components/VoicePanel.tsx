@@ -26,7 +26,9 @@ import { MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
 import { nameFor, useLocalNames } from '../lib/local-names';
 import { initials } from './Avatar';
 import { noPictureLabel } from '../lib/frame-watch';
-import { screenSound, type CallPlace, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
+import { canPopOut, popOut } from './PopOut';
+import { usePhone } from '../lib/usePhone';
+import { screenSound, type CallPlace, type ShareSound, type VoicePerson, type VoiceVideo } from '../lib/voice-session';
 import { useVoice } from '../state/useVoice';
 import { useStreamZoom, ZOOM_STEP } from '../lib/useStreamZoom';
 import { MAX_SCALE } from '../lib/zoom';
@@ -156,6 +158,13 @@ function VideoView({
   return <video ref={element} className={`${className}${mirrored ? ' mirrored' : ''}`} autoPlay playsInline muted />;
 }
 
+const SHARE_SOUND: Record<ShareSound, string> = {
+  window: 'this window only',
+  tab: 'this tab',
+  machine: 'whole PC, call left out',
+  'machine-and-call': 'whole PC, call included',
+};
+
 const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}`;
 
 /* --------------------------------- the stage -------------------------------- */
@@ -237,6 +246,7 @@ export function VoiceStage(
   const [settingsOpen, setSettingsOpen] = useState(false);
   const focusFrame = useRef<HTMLDivElement>(null);
   const [gridBox, grid] = useBoxSize();
+  const phone = usePhone();
 
   const inPlace = (entry: { channelId: string | null; dmId: string | null }): boolean =>
     place.kind === 'dm' ? entry.dmId === place.id : entry.channelId === place.id;
@@ -364,6 +374,21 @@ export function VoiceStage(
       <SpeakerGlyph size={16} off={!video.soundOn} />
     </button>
   );
+  /** Its own window, to drag onto another screen. Not on a phone, where a window is a tab. */
+  const popOutButton = (video: VoiceVideo, className: string) =>
+    canPopOut && !phone ? (
+      <button
+        type="button"
+        className={className}
+        title="Open in its own window, to put on another screen"
+        onClick={(event) => {
+          event.stopPropagation();
+          popOut(video, labelOf(video));
+        }}
+      >
+        Pop out
+      </button>
+    ) : null;
   const stopButton = (video: VoiceVideo, className: string) => (
     <button
       type="button"
@@ -434,6 +459,7 @@ export function VoiceStage(
           {theirs ? (
             <span className="call-tile-actions">
               {video.sound ? soundButton(video, 'call-tile-action') : null}
+              {popOutButton(video, 'call-tile-action')}
               {stopButton(video, 'call-tile-action')}
             </span>
           ) : null}
@@ -583,6 +609,7 @@ export function VoiceStage(
                 {Math.round(screenVolume(bigVideo.userId) * 100)}%
               </label>
             ) : null}
+            {bigVideo.userId !== selfId ? popOutButton(bigVideo, 'link-button') : null}
             {bigVideo.userId !== selfId ? stopButton(bigVideo, 'link-button') : null}
             {bigVideo.source === 'camera' && bigVideo.userId !== selfId ? (
               <button type="button" className="link-button" onClick={() => session.setCameraHidden(bigVideo.userId, true)}>
@@ -669,6 +696,12 @@ export function VoiceStage(
       ) : null}
       {live && voice.mediaError ? <p className="voice-stage-error">{voice.mediaError}</p> : null}
       {live && voice.shareNotice && !voice.sharing ? <p className="voice-stage-error">{voice.shareNotice}</p> : null}
+      {live && voice.sharing && voice.shareSound === 'machine-and-call' ? (
+        <p className="voice-stage-error">
+          This PC can't keep the call out of your shared sound, so people will hear themselves. Share a window
+          instead to send only its sound.
+        </p>
+      ) : null}
 
       {live && myState ? <MuteBanner state={myState} onChange={updateVoice} where="call" /> : null}
       <div className="call-controls">
@@ -927,6 +960,11 @@ export function ConnectionPanel() {
         {stats.receiving ? (
           <span className="connection-stat" title="The largest picture arriving right now">
             Video {stats.receiving}
+          </span>
+        ) : null}
+        {voice.sharing && voice.shareSound ? (
+          <span className="connection-stat" title="What sound your share is sending">
+            Share sound {SHARE_SOUND[voice.shareSound]}
           </span>
         ) : null}
         {voice.lastShareStop ? (

@@ -6039,6 +6039,9 @@ kbd {
 .profile-card-volume {
   margin-top: -2px;
 }
+.profile-card-watch {
+  align-self: flex-start;
+}
 .profile-card-volume .voice-range {
   width: 100%;
 }

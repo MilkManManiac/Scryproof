@@ -42,8 +42,8 @@ export const LIMITS = {
    */
   eventsPerServer: 50,
   soundName: { min: 1, max: 32 },
-  /** Enough for a board that fits on one panel without scrolling far. */
-  soundsPerServer: 24,
+  /** Wes, 2026-10-12: "Only 24 soundboard options. Rookie numbers!!!" The board scrolls. */
+  soundsPerServer: 100,
   soundBytes: 1024 * 1024,
   /**
    * A soundboard clip is a sting, not a song: 15 seconds (Wes, 2026-09-25). The browser cuts a clip to this

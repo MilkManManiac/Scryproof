@@ -99,12 +99,40 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
         ipcRenderer.send('scryproof:share-listen', false);
       };
     },
-    /** `{ id, withSound }` to share, null to cancel. Resolves to whether a share was started. */
+    /**
+     * `{ id, withSound, appSound }` to share, null to cancel. `appSound` says
+     * this page can take one program's sound (onAppSound). Resolves to whether
+     * a share was started.
+     */
     answerShare: (answer) =>
       ipcRenderer.invoke(
         'scryproof:share-answer',
-        answer && typeof answer.id === 'string' ? { id: answer.id, withSound: answer.withSound === true } : null,
+        answer && typeof answer.id === 'string'
+          ? { id: answer.id, withSound: answer.withSound === true, appSound: answer.appSound === true }
+          : null,
       ),
+    /**
+     * A shared window's own sound, recorded by the shell: `start` when it
+     * begins, `data` with raw 48 kHz stereo 16-bit PCM, `end` when it stops.
+     * Returns the way to stop listening.
+     */
+    onAppSound: (start, data, end) => {
+      const relayStart = () => start();
+      const relayData = (_event, chunk) => data(chunk);
+      const relayEnd = () => end();
+      ipcRenderer.on('scryproof:app-sound-start', relayStart);
+      ipcRenderer.on('scryproof:app-sound-data', relayData);
+      ipcRenderer.on('scryproof:app-sound-end', relayEnd);
+      return () => {
+        ipcRenderer.removeListener('scryproof:app-sound-start', relayStart);
+        ipcRenderer.removeListener('scryproof:app-sound-data', relayData);
+        ipcRenderer.removeListener('scryproof:app-sound-end', relayEnd);
+      };
+    },
+    /** Stop recording the shared window's sound. */
+    stopAppSound: () => ipcRenderer.send('scryproof:app-sound-stop'),
+    /** A stream may open in a window of its own (main.js streamWindow). */
+    canPopOut: true,
     /** Fresh pictures while the picker is open, or null once it is not. */
     refreshShare: () => ipcRenderer.invoke('scryproof:share-refresh'),
   }),

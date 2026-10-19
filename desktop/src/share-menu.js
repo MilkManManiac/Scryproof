@@ -4,16 +4,20 @@
  * (`web/src/components/SharePicker.tsx`); `main.js` gathers the screens and
  * windows, hands the page this list, and checks the answer that comes back.
  *
- * Sound is a choice, off unless the person turns it on. On Windows "with
- * sound" means loopback: everything the machine plays, which includes the
- * call itself. Electron 44 offers `'loopback'` and `'loopbackWithMute'` and
- * nothing that leaves one program out; the second mutes the sharer's own
- * speakers, so they would stop hearing the call. With two people sharing
- * sound, each share carries the other's voice and screen sound back into the
- * call, so the switch says so rather than leaving it to be found out.
+ * Sound is a choice, off unless the person turns it on. On Windows a window
+ * shared with sound sends that program's sound only: `app-sound/app-sound.exe`
+ * records the window's process and its children, and the page publishes it
+ * (`web/src/lib/app-sound.ts`). A screen, or a window when the helper cannot
+ * run (Windows older than 10 2004), gets loopback: everything the machine
+ * plays. The page asks for `restrictOwnAudio`, which turns that loopback into
+ * Chromium's `loopbackWithoutChrome`, so the call's own voices stay out
+ * (probed 2026-10-12 on Electron 44.4.3: this app's sound -185 dB, other
+ * programs untouched).
  */
 
-export const SOUND_LABEL = 'Include sound (the call may echo)';
+export const SOUND_LABEL = 'Include sound';
+/** For a window, where the helper can run: what goes out is that program's sound and nothing else. */
+export const APP_SOUND_LABEL = "Include this app's sound";
 
 /** Whether this machine can send its sound with a share at all. Loopback is Windows only. */
 export const canShareSound = (platform) => platform === 'win32';
@@ -33,6 +37,12 @@ export function sourceKind(id) {
   if (id.startsWith('screen:')) return 'screen';
   if (id.startsWith('window:')) return 'window';
   return null;
+}
+
+/** The window handle in a window source's id ('window:<hwnd>:0'), or null. */
+export function windowHandle(id) {
+  const match = /^window:(\d+):/.exec(typeof id === 'string' ? id : '');
+  return match ? match[1] : null;
 }
 
 /** A NativeImage as a data URL, or null when there is no picture (a minimised window has none). */
@@ -72,7 +82,9 @@ export function soundOffer({ audioRequested, platform, withSound }) {
  * was given: an id that was never offered, or anything that is not an answer
  * at all, is a cancel. Returns null for a cancel, otherwise the streams to
  * hand Electron and the sound choice to remember (null when there was no
- * choice to make).
+ * choice to make). `appWindow` is the window handle whose program's sound
+ * should be recorded instead of the whole machine: only for a window shared
+ * with sound, on Windows, by a page that said it can take that sound.
  */
 export function shareAnswer(offered, answer, { audioRequested, platform }) {
   if (!answer || typeof answer !== 'object' || typeof answer.id !== 'string') return null;
@@ -83,5 +95,6 @@ export function shareAnswer(offered, answer, { audioRequested, platform }) {
   return {
     streams: shareStreams(source, { audioRequested, platform, withSound }),
     remember: choosing ? withSound : null,
+    appWindow: withSound && answer.appSound === true ? windowHandle(source.id) : null,
   };
 }

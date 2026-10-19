@@ -106,7 +106,7 @@ function ProfileCard({
   onEdit: () => void;
   onStartGroup: (userId: string) => void;
 }) {
-  const { state, block, unblock } = useStore();
+  const { state, block, unblock, voice: session, joinVoice, selectChannel } = useStore();
   const { openWith, send } = useDms();
   const box = useRef<HTMLDivElement>(null);
   const say = useRef<HTMLInputElement>(null);
@@ -313,6 +313,21 @@ function ProfileCard({
               </span>
             ) : null}
           </div>
+        ) : null}
+
+        {!self && call?.sharingScreen && (sameCall || callChannel) ? (
+          <button
+            type="button"
+            className="button inline profile-card-watch"
+            onClick={() => {
+              session.watchWhenHere(user.id);
+              if (!sameCall && callChannel) joinVoice(callChannel.id);
+              if (callChannel) selectChannel(callChannel.id);
+              onClose();
+            }}
+          >
+            {sameCall ? 'Watch stream' : 'Join and watch'}
+          </button>
         ) : null}
 
         {sameCall ? (

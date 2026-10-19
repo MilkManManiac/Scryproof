@@ -33,6 +33,7 @@ import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage
 import { execFile, spawn } from 'node:child_process';
 import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { release } from 'node:os';
 import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -53,7 +54,7 @@ import {
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
 import { frameMicPrompt, permissionDecision, REFUSAL_HOLD_MS, shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
-import { pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
+import { APP_SOUND_LABEL, pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
 import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
 
@@ -67,6 +68,8 @@ const DEV_MEDIA = app.isPackaged ? '' : (process.env.SCRYPROOF_DEV_MEDIA ?? '');
 const ACTIVITIES_ORIGIN = new URL(app.isPackaged ? 'https://activities.scryproof.com' : (process.env.SCRYPROOF_ACTIVITIES_ORIGIN ?? 'https://activities.scryproof.com')).origin;
 
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
+/** The one-program sound recorder (`app-sound/AppSound.cs`), Windows only. */
+const APP_SOUND_EXE = app.isPackaged ? join(process.resourcesPath, 'app-sound.exe') : join(here, '..', 'app-sound', 'app-sound.exe');
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
 
 /** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
@@ -604,7 +607,10 @@ async function frameMicConsent(url) {
 }
 
 function armPermissions(ses) {
-  ses.setPermissionRequestHandler((_contents, permission, done, details) => {
+  // A popped-out stream's window (streamWindow below) may go full screen, and nothing else.
+  const popOutFullscreen = (contents, permission) => permission === 'fullscreen' && streamWindows.has(contents);
+  ses.setPermissionRequestHandler((contents, permission, done, details) => {
+    if (popOutFullscreen(contents, permission)) return done(true);
     const decision = permissionDecision(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null);
     if (decision !== 'ask') return done(decision === 'grant');
     void frameMicConsent(details.requestingUrl).then(done);
@@ -615,7 +621,8 @@ function armPermissions(ses) {
   // the dialog up, and Chromium asks the request handler first and the check
   // only after (seen under xvfb with a fake device, 2026-10-10), so a 'no'
   // here never stops the dialog.
-  ses.setPermissionCheckHandler((_contents, permission, origin, details) => {
+  ses.setPermissionCheckHandler((contents, permission, origin, details) => {
+    if (popOutFullscreen(contents, permission)) return true;
     const decision = permissionDecision(origin, permission, details.isMainFrame !== false, details.mediaType ?? null);
     if (decision !== 'ask') return decision === 'grant';
     try {
@@ -697,6 +704,7 @@ async function openSharePicker(request, done) {
     sources: offer(pick, sources),
     sound: soundOffer({ audioRequested: pick.audioRequested, platform: process.platform, withSound: shareWithSound() }),
     soundLabel: SOUND_LABEL,
+    soundLabels: { screen: SOUND_LABEL, window: appSoundWorks() ? APP_SOUND_LABEL : SOUND_LABEL },
   });
 }
 
@@ -704,13 +712,28 @@ function armSharePicker() {
   ipcMain.on('scryproof:share-listen', (event, on) => {
     if (ours(event)) pickerListening = on === true;
   });
-  ipcMain.handle('scryproof:share-answer', (event, answer) => {
+  ipcMain.handle('scryproof:share-answer', async (event, answer) => {
     const pick = picking;
     if (!ours(event) || !pick) return false;
     const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform });
     if (chosen && chosen.remember !== null) void setShareWithSound(chosen.remember);
+    // A window with sound: that program's sound alone, from the helper. If it
+    // cannot run, the whole machine's sound as before. One of this app's own
+    // windows (a popped-out stream) gets no sound: its program is the call.
+    if (chosen?.appWindow && BrowserWindow.getAllWindows().some((each) => each.getMediaSourceId() === answer.id)) {
+      finishPick(pick, { video: chosen.streams.video });
+      return true;
+    }
+    if (chosen?.appWindow && (await startAppSound(chosen.appWindow))) {
+      if (pick.answered) stopAppSound();
+      finishPick(pick, { video: chosen.streams.video });
+      return true;
+    }
     finishPick(pick, chosen ? chosen.streams : {});
     return chosen !== null;
+  });
+  ipcMain.on('scryproof:app-sound-stop', (event) => {
+    if (ours(event)) stopAppSound();
   });
   ipcMain.handle('scryproof:share-refresh', async (event) => {
     const pick = picking;
@@ -728,6 +751,75 @@ function armSharePicker() {
 function pageGone() {
   pickerListening = false;
   cancelPick();
+  stopAppSound();
+}
+
+/* -------------------------------- app sound -------------------------------- */
+
+/**
+ * One program's sound for a shared window. The helper prints "ok <pid>" or
+ * "error <why>" on stderr and then streams raw PCM on stdout, which goes to
+ * the page as it comes (`scryproof:app-sound-*`, preload `onAppSound`). It
+ * exits when its stdin closes, so it cannot outlive this process. One at a
+ * time: a new share, Stop on the page, or the page going away ends it.
+ */
+let appSound = null;
+
+function sendAppSound(channel, chunk) {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(channel, chunk);
+}
+
+function stopAppSound() {
+  const child = appSound;
+  appSound = null;
+  if (!child) return;
+  child.stdin.end();
+  child.kill();
+}
+
+/** Process loopback arrived in Windows 10 2004 (build 19041). Older Windows shares the whole machine. */
+const appSoundWorks = () =>
+  process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 19041 && existsSync(APP_SOUND_EXE);
+
+/** Resolves true once the helper is recording the window's program, false when it cannot. */
+function startAppSound(hwnd) {
+  stopAppSound();
+  if (!appSoundWorks()) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const child = spawn(APP_SOUND_EXE, [hwnd], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    appSound = child;
+    // Writing to or closing a pipe whose reader has gone must not take the app down.
+    child.stdin.on('error', () => undefined);
+    let started = false;
+    let said = '';
+    const timer = setTimeout(() => settle(false), 3000);
+    const settle = (ok) => {
+      clearTimeout(timer);
+      if (ok && !started && appSound === child) {
+        started = true;
+        sendAppSound('scryproof:app-sound-start');
+      }
+      if (!ok && appSound === child) stopAppSound();
+      resolve(ok);
+    };
+    child.stderr.on('data', (text) => {
+      said += text;
+      if (said.startsWith('ok ')) settle(true);
+      else if (said.includes('\n')) {
+        console.warn(`app sound: ${said.trim()}`);
+        settle(false);
+      }
+    });
+    child.stdout.on('data', (chunk) => {
+      if (started && appSound === child) sendAppSound('scryproof:app-sound-data', chunk);
+    });
+    child.on('error', () => settle(false));
+    child.on('exit', () => {
+      if (started) sendAppSound('scryproof:app-sound-end');
+      if (appSound === child) appSound = null;
+      settle(false);
+    });
+  });
 }
 
 /** Whether the last share was sent with sound. Remembered on this machine; off until ticked once. */
@@ -753,6 +845,11 @@ async function setShareWithSound(on) {
 /* ---------------------------------- window --------------------------------- */
 
 /** Opens a web address in the real browser. Used for links out of the page, and "Open link" on the right-click menu. */
+/** A popped-out stream's window: an empty page with the name the page gives it. Nothing else opens here. */
+const streamWindow = (url, frameName) => url === 'about:blank' && /^scryproof-stream-[\w-]+$/.test(frameName);
+/** Their pages, for the one thing they may ask: full screen. */
+const streamWindows = new Set();
+
 const outside = (target) => {
   try {
     const url = new URL(target);
@@ -872,9 +969,21 @@ function createWindow(visible = true) {
   // and a document there would be the server's code in the origin that holds
   // the keys. A redirect onto it is an ordinary navigation, so it is checked
   // the same way.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (streamWindow(url, frameName)) {
+      return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, backgroundColor: '#000000' } };
+    }
     outside(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child) => {
+    // A popped-out stream (web/src/components/PopOut.tsx): an empty page the
+    // app draws a <video> into. It goes nowhere and opens nothing.
+    child.removeMenu();
+    streamWindows.add(child.webContents);
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    child.webContents.on('will-navigate', (event) => event.preventDefault());
+    child.on('closed', () => streamWindows.delete(child.webContents));
   });
   win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
   win.webContents.on('will-redirect', (event, url) => allowGo(event, url));
@@ -930,6 +1039,7 @@ app.on('second-instance', show);
 app.on('before-quit', () => {
   quitting = true;
   stopPushToTalk();
+  stopAppSound();
 });
 // The window hides rather than closes, so this fires only while quitting. On the
 // Mac an app with no window is still running (the Dock icon stays), and Cmd-Q

@@ -92,7 +92,10 @@ export function SharePicker() {
           <ShareSound
             mac={onMacApp}
             offered={request.sound !== null}
-            label={request.soundLabel}
+            label={
+              request.soundLabels?.[request.sources.find((source) => source.id === selected)?.kind ?? 'screen'] ??
+              request.soundLabel
+            }
             checked={withSound}
             onChange={setWithSound}
           />
