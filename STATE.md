@@ -1,25 +1,24 @@
 # STATE — Scryproof, Trey's side
 
-**Updated:** 2026-10-10 15:05 ET. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's own living state is `docs/HANDOFF.md` (he rewrites its top section every session); this file is ours and is not part of his workflow. Work items are beads (`bd ready`); the epic is "Mac app 0.5.8" (`Scryproof-skk`, step `Scryproof-skk.7` open).
+**Updated:** 2026-10-19 16:15 CT. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's own living state is `docs/HANDOFF.md` (he rewrites its top section every session); this file is ours and is not part of his workflow. Work items are beads (`bd ready`); the epic is "Mac app 0.5.8" (`Scryproof-skk`, step `Scryproof-skk.7` open).
 
 ## What we own
 
 - The **Mac desktop app**: build, signing (Trey's Developer ID, team LRU27MC63Q, notary keychain profile `codex-pet-sidecar-notary`), notarization, the Mac shell update keys (everyday private key `~/.scryproof/mac-update-key.pem` on Trey's Mac; recovery private key in Trey's 1Password only; public halves in `desktop/src/update-key-mac.pub.pem` and `desktop/src/update-key-mac-recovery.pub.pem`). Wes owns Windows and the client signing key; Matt owns Linux.
 - Reviews on request (`docs/reviews/`).
 
-## Where things stand (branch `mac-0.5.8`, level with Forgejo origin, 9 commits past Wes's `main`; updated 2026-10-10 16:15 ET)
+## Where things stand (branch `mac-0.5.8`, pushed to Forgejo origin; updated 2026-10-19)
 
-- **0.5.8 is built, notarized, stapled, installed on Trey's Mac and running** (rebuilt 15:38 ET with the permission-notice wording: zip sha256 0b1efa82…, DMG bd5a81b3…, manifest `desktop/release/installer-mac-arm64.json`; every signing check and `scripts/publish-mac.sh --dry-run` pass; tightened entitlements shipped). Not published, not merged to main.
-- **Voice-join bug found and fixed here (commit 0ef5c0f, shared client code):** a saved microphone whose device id the browser no longer knows made every join hang itself up with a blank reason. Calls now fall back to the default mic, clear the stale choice and say so; mic errors carry words. Trey confirmed a join holds on the rebuilt app. Detail: `docs/HANDOFF.md` under "Mac app 0.5.8".
-- **Checked by Trey:** launch, keychain (no prompt is correct: same signature as before), join stays in, push-to-talk (Slash) with Scryproof in front and with another app in front, camera. The rebuilt app (0b1efa82…) is the one installed and running since 16:15 ET.
-- **Second finding, fixed 2026-10-10 15:15 ET:** push-to-talk was dead because macOS held a stale Accessibility grant from an earlier build (switch showed on, app refused). Cleared with `tccutil reset`, relaunched, granted fresh. Commit e7c5f8f makes both permission notices say what to do when the switch is already on. Detail in `docs/HANDOFF.md`.
-- **Not yet checked, needs Trey at the Mac (he said "later"):** Activities → Pass-along → Solo → add a vocals layer → Record shows the consent dialog once; a real call with Wes or Matt.
+- **Wes's GitHub main as of 10-14 is merged in** (per-app share sound on Windows, pop-out streams, watch from the name pop-up, 100 soundboard sounds). One conflict in the desktop permission handlers, both sides kept. The branch is now 11 commits ahead of Wes's main and contains all of it. GitHub has no remote in this checkout: fetch with `git fetch https://github.com/MilkManManiac/Scryproof.git '+refs/heads/*:refs/remotes/gh/*'`.
+- **Mac 0.5.9 is built, notarized, stapled, installed on Trey's Mac and running** (zip sha256 561cd472…, DMG 701b49b4…, manifest `desktop/release/installer-mac-arm64.json`). Every signing check and `scripts/publish-mac.sh --dry-run` pass. 0.5.9 because Wes's unreleased Windows build was also numbered 0.5.8. Detail: `docs/HANDOFF.md` under "Mac app 0.5.9".
+- **Not yet tried by hand on 0.5.9:** pop a stream out, watch from a name pop-up, a call. Earlier unchecked items still open: Activities → Pass-along → Record consent dialog; a real call with Wes or Matt.
+- **The GitHub repo is public** as of 2026-10-19 (GAMEPLAN says private until Wes decides otherwise); flagged to Trey, not acted on.
 
 ## What needs Trey
 
 1. The hands-on checks above.
-2. Publishing (`bash scripts/publish-mac.sh`) on Wes's word; then launch the kept 0.5.5 copy at `desktop/release/mac-arm64-0.5.5-kept/Scryproof.app` and watch it update to 0.5.8; a copy run from the DMG or a read-only folder gets the checked DMG opened for it.
-3. Getting commit 0ef5c0f (and the rest of this branch) to Wes: a GitHub push or PR is gated on Trey's word.
+2. Publishing (`bash scripts/publish-mac.sh`) on Wes's word, from a machine with `.env.box` and the box key (Wes's PC or Matt; not this Mac). Then launch the kept 0.5.5 copy at `desktop/release/mac-arm64-0.5.5-kept/Scryproof.app` and watch it update to 0.5.9.
+3. Getting this branch to Wes (mic fallback, Mac work, and the merge): a GitHub push or PR is gated on Trey's word. Until then, Wes's next client release from his main would drop the microphone fallback from Mac and Windows apps alike.
 
 ## Held / parked
 
