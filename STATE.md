@@ -1,6 +1,6 @@
 # STATE — Scryproof, Trey's side
 
-**Updated:** 2026-10-19 16:30 CT. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's own living state is `docs/HANDOFF.md` (he rewrites its top section every session); this file is ours and is not part of his workflow. Work items are beads (`bd ready`); the epic is `Scryproof-skk` (titled 0.5.8, now carrying 0.5.9), step `Scryproof-skk.7` open.
+**Updated:** 2026-10-19 17:35 CT. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's own living state is `docs/HANDOFF.md` (he rewrites its top section every session); this file is ours and is not part of his workflow. Work items are beads (`bd ready`); the epic is `Scryproof-skk` (titled 0.5.8, now carrying 0.5.9), step `Scryproof-skk.7` open.
 
 ## What we own
 
@@ -20,6 +20,8 @@
 2. After Wes publishes: launch the kept 0.5.5 copy at `desktop/release/mac-arm64-0.5.5-kept/Scryproof.app` and watch it update to 0.5.9.
 
 ## Held / parked
+
+- **Agent channel (members connect their AI agents to one channel): spec approved 2026-10-19, build held by Trey** until a large Loom update lands; this build will dogfood it. Spec `docs/agent-channel-spec.md` (draft 3), epic `Scryproof-bbf`, deferred voice-agents idea `Scryproof-bbf.1`. On go: phase beads from spec section 7, then phase 1.
 
 - Wes parked the box reboot and the two files with no off-PC copy (SSH key, LUKS header); the LUKS header is the one loss that breaks "movable by restore + DNS change".
 - App audio per program is Windows-only; Intel Macs get no build (arm64 only by ruling).

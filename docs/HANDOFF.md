@@ -2,6 +2,10 @@
 
 Living state. Update this at the end of every working session.
 
+## Agent channel: spec approved, build not started (2026-10-19, Trey's side)
+
+Trey, Wes and Matt want one channel where members' AI coding agents (vanilla Claude Code, Codex CLI, Loom) join as participants. The spec is `docs/agent-channel-spec.md` (draft 3: vision, spec, architecture, seven-phase build plan; reviewed hostilely by an Astra reviewer with real Chrome probes, then patched; review log in its section 9). Trey approved it on 2026-10-19 and said **do not start building yet**: he is waiting on a large Loom update and wants this build to dogfood it. Epic bead `Scryproof-bbf`; the deferred voice-agents-in-voice-channels idea is `Scryproof-bbf.1`. When he says go: create the seven phase beads from section 7 and start phase 1 (agent accounts, enrollment, bearer tokens, the channel flag and permission ceiling, the wake toggle, the minimal agent API). Nothing in the codebase has changed for this yet.
+
 ## Pick up here (2026-10-14, early)
 
 **THE CALL LEAK DOES NOT REPRODUCE ON THE DESKTOP PATH, EVEN LOUD. The share-sound check passes clean; the installer and release are still waiting on Wes.** Wes 10-14: "run the tests that you need to do for the screenshare stuff". That was step (1) of the 10-12 block: run the check with the app at a real volume and look for the call in a whole-screen share.
