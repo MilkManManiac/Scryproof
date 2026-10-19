@@ -9,7 +9,7 @@
 
 ## Where things stand (branch `mac-0.5.8`, pushed to Forgejo origin; updated 2026-10-19)
 
-- **Wes's GitHub main as of 10-14 is merged in** (per-app share sound on Windows, pop-out streams, watch from the name pop-up, 100 soundboard sounds). One conflict in the desktop permission handlers, both sides kept. The branch is now 11 commits ahead of Wes's main and contains all of it. GitHub has no remote in this checkout: fetch with `git fetch https://github.com/MilkManManiac/Scryproof.git '+refs/heads/*:refs/remotes/gh/*'`.
+- **Wes's GitHub main as of 10-14 is merged in** (per-app share sound on Windows, pop-out streams, watch from the name pop-up, 100 soundboard sounds). One conflict in the desktop permission handlers, both sides kept. The branch is 13 commits ahead of Wes's main and contains all of it. GitHub has no remote in this checkout: fetch with `git fetch https://github.com/MilkManManiac/Scryproof.git '+refs/heads/*:refs/remotes/gh/*'`.
 - **Mac 0.5.9 is built, notarized, stapled, installed on Trey's Mac and running** (zip sha256 561cd472…, DMG 701b49b4…, manifest `desktop/release/installer-mac-arm64.json`). Every signing check and `scripts/publish-mac.sh --dry-run` pass. 0.5.9 because Wes's unreleased Windows build was also numbered 0.5.8. Detail: `docs/HANDOFF.md` under "Mac app 0.5.9".
 - **Not yet tried by hand on 0.5.9:** pop a stream out, watch from a name pop-up, a call. Earlier unchecked items still open: Activities → Pass-along → Record consent dialog; a real call with Wes or Matt.
 - **The GitHub repo is public** as of 2026-10-19 (GAMEPLAN says private until Wes decides otherwise); flagged to Trey, not acted on.
