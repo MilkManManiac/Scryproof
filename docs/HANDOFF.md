@@ -49,7 +49,7 @@ Living state. Update this at the end of every working session.
 - **On the Mac:** share sound stays off (`canShareSound` is Windows only), so `app-sound.exe` never runs and is not in the Mac bundle. Pop-outs and watch-from-pop-up come along (the preload's `canPopOut`). The Mac app bundles the merged client under Wes's last signed client version (1791618424884), so its What's new shows Wes's 10-12 entry, which already says the sound part is Windows only.
 - **Checks:** typecheck clean, desktop unit 140 pass / 1 skipped, web 573/573 after the merge. `dist:mac` with `codex-pet-sidecar-notary`: app and DMG notarized (Accepted), DMG stapled. codesign strict OK, TeamIdentifier LRU27MC63Q, `spctl` "Notarized Developer ID", stapler validates the app, `syspolicy_check distribution` passes, entitlements only camera, audio-input, allow-jit. Zip sha256 561cd472…49d5, DMG sha256 701b49b4…a0af. `publish-mac.sh --dry-run` passes.
 - **Installed** over `/Applications/Scryproof.app` on Trey's Mac (0.5.8 set aside), launched: window up, signed in, What's new card showing. Not tried by hand yet: popping a stream out, watching from the name pop-up, a call.
-- **Not published.** `publish-mac.sh` runs only on Wes's word and needs `.env.box` and the box key, which are not on Trey's Mac (Wes's PC or Matt). The merged branch reaches Wes's GitHub only on Trey's word.
+- **Not published.** `publish-mac.sh` runs only on Wes's word and needs `.env.box` and the box key, which are not on Trey's Mac (Wes's PC or Matt). At Trey's word (2026-10-19) the branch went to GitHub as `mac-0.5.9`, PR #10 into main; publishing stays Wes's call.
 
 ## Mac app 0.5.8: code done on the devbox, Mac build pending (2026-10-10, Trey's side, branch `mac-0.5.8`)
 
