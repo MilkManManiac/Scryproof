@@ -24,6 +24,12 @@ import { COUNT_FROM, MAX_LENGTH, type StreamComment } from '../lib/stream-chat';
 import { Avatar, initials } from './Avatar';
 
 const NONE: StreamComment[] = [];
+/**
+ * Whether the column beside a screen is open. Starts closed (Wes 10-19: "the
+ * comments thing is kinda in the way") and remembers the last choice for the
+ * rest of this tab, across streams.
+ */
+let columnWanted = false;
 
 /** A name and a picture for anyone in the call: you, someone in this server, or someone from a conversation. */
 function usePeople(): (userId: string) => { name: string; user?: PublicUser } {
@@ -59,7 +65,14 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
   const comments = voice.comments[stream] ?? NONE;
   const [draft, setDraft] = useState('');
   const [resting, setResting] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpenState] = useState(variant !== 'side' || columnWanted);
+  const setOpen = (next: boolean) => {
+    columnWanted = next;
+    setOpenState(next);
+  };
+  /** How many were in the list the last time it was open, for the count on the closed button. */
+  const seen = useRef(comments.length);
+  if (open) seen.current = comments.length;
   const list = useRef<HTMLOListElement>(null);
   const atBottom = useRef(true);
 
@@ -99,9 +112,11 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
   };
 
   if (variant === 'side' && !open) {
+    const unseen = comments.length - seen.current;
     return (
       <button type="button" className="stream-chat-reopen" title="Show comments" onClick={() => setOpen(true)}>
         Comments
+        {unseen > 0 ? <span className="stream-chat-unseen">{unseen}</span> : null}
       </button>
     );
   }

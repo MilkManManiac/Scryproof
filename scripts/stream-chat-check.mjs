@@ -287,6 +287,11 @@ const linesIn = (person, scope, doc = 'document') => person.evaluate(`Array.from
 async function phase3() {
   const [wes, alex] = await call(['wes', 'alex']);
   const sid = await shareAndWatch(wes, [alex]);
+  // The column starts closed (Wes 10-19: "kinda in the way"); a Comments button beside the screen opens it.
+  const closed = await alex.until(`document.querySelector('.voice-focus.with-chat .stream-chat-reopen') ? true : null`, 10_000);
+  check('the comments start closed, as a Comments button beside the screen', Boolean(closed) && !(await alex.evaluate(`Boolean(document.querySelector('.stream-chat.side'))`)));
+  await alex.shoot('stream-chat-closed');
+  check('alex presses Comments', await alex.evaluate(`(() => { const b = document.querySelector('.stream-chat-reopen'); if (!b) return false; b.click(); return true; })()`));
   const side = await alex.until(`document.querySelector('.voice-focus.with-chat .stream-chat.side') ? true : null`, 10_000);
   check('the watcher sees the strip beside the big screen', Boolean(side));
   check('the strip says Encrypted', await alex.evaluate(`document.querySelector('.stream-chat.side .stream-chat-lock')?.textContent.trim() === 'Encrypted'`));
