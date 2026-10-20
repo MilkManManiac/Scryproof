@@ -41,7 +41,7 @@ export const CHANGELOG: readonly Release[] = [
   },
   {
     id: '2026-10-12-app-sound',
-    date: '2026-10-12',
+    date: '2026-10-19',
     title: 'Share one app\'s sound, pop streams out, 100 sounds',
     notes: [
       'In the desktop app on Windows, share a window with sound and only that app\'s sound goes out. Share Spotify and nobody hears your game. Share a movie player and nobody hears themselves come back through it. Sharing a whole screen with sound leaves the call out. This needs the new desktop app (0.5.8): it will offer to update.',
