@@ -21,14 +21,59 @@
  */
 
 import { createHash, createPublicKey, sign, verify } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 const CONTEXT = 'scryproof/desktop-client/v1';
 /** The whole client is under 2 MB. Anything far past that is not a client. */
 export const MAX_BUNDLE_BYTES = 40 * 1024 * 1024;
+/** No download (client, installer, Mac zip) is let grow past this, whatever its manifest says. The installer manifest allows 400 MB. */
+export const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+/**
+ * Whether any of the trusted keys made `signature` over `bytes`. Two keys are
+ * baked into the app: the one Wes signs with, and a recovery key kept offline,
+ * so losing the first is not a reinstall by hand for everyone (audit
+ * 2026-10-10, finding 26). A key that is not Ed25519 trusts nothing.
+ */
+export function signedByAny(bytes, signature, publicKeyPems) {
+  const sig = Buffer.from(signature, 'base64');
+  return [publicKeyPems].flat().some((pem) => {
+    try {
+      const key = createPublicKey(pem);
+      return key.asymmetricKeyType === 'ed25519' && verify(null, bytes, key, sig);
+    } catch {
+      return false;
+    }
+  });
+}
 const signedBytes = (version, hash) => Buffer.from(`${CONTEXT}\n${version}\n${hash}`, 'utf8');
+
+/**
+ * Write `source` (a stream or any async iterable of bytes, such as a response
+ * body) to `path` as it arrives, never holding it whole, and stop with an
+ * error as soon as it is past `limit` bytes, or MAX_DOWNLOAD_BYTES if that is
+ * smaller. The caller removes what was written when it throws.
+ */
+export async function saveCapped(source, path, limit) {
+  const cap = Math.min(limit, MAX_DOWNLOAD_BYTES);
+  let written = 0;
+  await pipeline(
+    source,
+    async function* (chunks) {
+      for await (const chunk of chunks) {
+        written += chunk.length;
+        if (written > cap) throw new Error('bigger than it was signed at');
+        yield chunk;
+      }
+    },
+    createWriteStream(path),
+  );
+  return written;
+}
 
 /** `files` is { 'index.html': Buffer, 'assets/index-abc.js': Buffer, ... }. */
 export function packBundle(files) {
@@ -49,10 +94,11 @@ export function signBundle(bundle, version, privateKey) {
 }
 
 /**
- * The manifest, if it is one and the key signed it. Null otherwise. Never
- * throws: what arrives here came off the network.
+ * The manifest, if it is one and a trusted key signed it. Null otherwise.
+ * `publicKeyPems` is one PEM or a list. Never throws: what arrives here came
+ * off the network.
  */
-export function readManifest(raw, publicKeyPem) {
+export function readManifest(raw, publicKeyPems) {
   try {
     const manifest = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const { version, sha256: hash, size, signature } = manifest;
@@ -60,9 +106,7 @@ export function readManifest(raw, publicKeyPem) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_BUNDLE_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    const key = createPublicKey(publicKeyPem);
-    if (key.asymmetricKeyType !== 'ed25519') return null;
-    if (!verify(null, signedBytes(version, hash), key, Buffer.from(signature, 'base64'))) return null;
+    if (!signedByAny(signedBytes(version, hash), signature, publicKeyPems)) return null;
     return { version, sha256: hash, size, signature };
   } catch {
     return null;

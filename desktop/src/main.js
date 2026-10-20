@@ -29,17 +29,17 @@
  * code as before.
  */
 
-import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
 import { execFile, spawn } from 'node:child_process';
-import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { constants, existsSync, readFileSync } from 'node:fs';
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { release } from 'node:os';
 import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 import { armContextMenu } from './context-menu.js';
+import { crashGuard } from './crash-core.js';
 import { APP_ORIGIN, hardenApiHeaders, isApiUrl } from './forward-core.js';
 import {
   hashFile,
@@ -52,11 +52,11 @@ import {
   versionFromFileName,
 } from './installer-core.js';
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
-import { shellPermission } from './permissions-core.js';
+import { gameMic, gameMicConsent, shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { APP_SOUND_LABEL, pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
-import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
+import { openBundle, readManifest, saveCapped } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -74,8 +74,11 @@ const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}
 
 /** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
 const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (process.env.SCRYPROOF_UPDATE_URL ?? '');
-const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
-const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
+/** The keys a client or installer may be signed by: Wes's, and the offline recovery key (signing-key.mjs). */
+const UPDATE_KEYS = ['update-key.pub.pem', 'update-key-recovery.pub.pem']
+  .map((name) => join(here, name))
+  .filter((file) => existsSync(file))
+  .map((file) => readFileSync(file, 'utf8'));
 const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
 const MAC = process.platform === 'darwin';
 /**
@@ -254,9 +257,9 @@ const updateDir = () => join(app.getPath('userData'), 'client-update');
 
 /** An update fetched on an earlier run. Checked again from scratch: the folder is only a cache. */
 async function loadStoredUpdate() {
-  if (!UPDATE_KEY) return;
+  if (UPDATE_KEYS.length === 0) return;
   try {
-    const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEY);
+    const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEYS);
     if (!manifest || manifest.version <= client.version) return;
     const files = openBundle(await readFile(join(updateDir(), 'client.bin')), manifest);
     if (files) client = { version: manifest.version, files };
@@ -264,29 +267,31 @@ async function loadStoredUpdate() {
 }
 
 async function checkForUpdate() {
-  if (!UPDATE_URL || !UPDATE_KEY) return;
+  if (!UPDATE_URL || UPDATE_KEYS.length === 0) return;
+  const part = join(updateDir(), 'client.bin.part');
   try {
-    const get = (name) => net.fetch(new URL(name, UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
-    const reply = await get('client.json');
+    const reply = await net.fetch(new URL('client.json', UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
     if (!reply.ok) return;
-    const manifest = readManifest(await reply.text(), UPDATE_KEY);
+    const manifest = readManifest(await reply.text(), UPDATE_KEYS);
     // Forward only. An older client, however genuinely signed, is not an update.
     if (!manifest || manifest.version <= Math.max(client.version, pending?.version ?? 0)) return;
 
-    const download = await get('client.bin');
-    if (!download.ok || Number(download.headers.get('content-length') ?? 0) > MAX_BUNDLE_BYTES) return;
-    const bundle = Buffer.from(await download.arrayBuffer());
-    const files = openBundle(bundle, manifest);
+    // To disk as it arrives, stopped at the signed size, and only then read back and checked.
+    await mkdir(updateDir(), { recursive: true });
+    await download(new URL('client.bin', UPDATE_URL).toString(), part, manifest.size);
+    const files = openBundle(await readFile(part), manifest);
     if (!files) return;
 
-    await mkdir(updateDir(), { recursive: true });
-    for (const [name, body] of [['client.bin', bundle], ['client.json', JSON.stringify(manifest)]]) {
-      await writeFile(join(updateDir(), `${name}.part`), body);
-      await rename(join(updateDir(), `${name}.part`), join(updateDir(), name));
-    }
+    await rename(part, join(updateDir(), 'client.bin'));
+    await writeFile(join(updateDir(), 'client.json.part'), JSON.stringify(manifest));
+    await rename(join(updateDir(), 'client.json.part'), join(updateDir(), 'client.json'));
     pending = { version: manifest.version, files };
     win?.webContents.send('scryproof:update-ready', manifest.version);
-  } catch { /* offline, or the server is down. Ask again later. */ }
+  } catch {
+    /* offline, or the server is down. Ask again later. */
+  } finally {
+    await rm(part, { force: true }).catch(() => {});
+  }
 }
 
 /** Whether a request over the bridge came from our own page. */
@@ -336,34 +341,26 @@ async function tidyShellDir() {
   } catch { /* no folder yet */ }
 }
 
-/** Download `url` to `path`, stopping as soon as it is bigger than it said it would be. */
+/**
+ * Download `url` to `path`, streamed to disk, stopping as soon as it is bigger
+ * than it said it would be or past MAX_DOWNLOAD_BYTES (`saveCapped`).
+ */
 async function download(url, path, size) {
   const reply = await net.fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
   if (!reply.ok || !reply.body) throw new Error(`HTTP ${reply.status}`);
   if (Number(reply.headers.get('content-length') ?? 0) > size) throw new Error('bigger than it was signed at');
-  let written = 0;
-  await pipeline(
-    Readable.fromWeb(reply.body),
-    async function* (source) {
-      for await (const chunk of source) {
-        written += chunk.length;
-        if (written > size) throw new Error('bigger than it was signed at');
-        yield chunk;
-      }
-    },
-    createWriteStream(path),
-  );
+  await saveCapped(Readable.fromWeb(reply.body), path, size);
 }
 
 async function checkForShellUpdate() {
-  if (!INSTALLER_URL || !UPDATE_KEY || shellChecking) return;
+  if (!INSTALLER_URL || UPDATE_KEYS.length === 0 || shellChecking) return;
   shellChecking = true;
   const part = join(shellDir(), 'installer.part');
   try {
     const get = (name) => net.fetch(new URL(name, INSTALLER_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
     const reply = await get('installer.json');
     if (!reply.ok) return;
-    const manifest = readInstallerManifest(await reply.text(), UPDATE_KEY);
+    const manifest = readInstallerManifest(await reply.text(), UPDATE_KEYS);
     // Forward only, and nothing already waiting is fetched twice.
     if (!manifest || !isNewerVersion(manifest.version, app.getVersion())) return;
     if (pendingShell && !isNewerVersion(manifest.version, pendingShell.version)) return;
@@ -538,9 +535,38 @@ function armGateway(ses) {
 
 /* ------------------------------- permissions ------------------------------- */
 
+/**
+ * A game asking for the microphone is asked about once per app run, in a plain
+ * system dialog: the game is served by the box, so what it hears leaves the
+ * end-to-end encryption the call has (audit 2026-10-10, finding 15).
+ */
+const GAME_MIC_QUESTION = {
+  type: 'question',
+  title: 'Scryproof',
+  message: 'The game wants your microphone.',
+  detail: 'Sound sent to a game is not end-to-end encrypted.',
+  buttons: ['Allow', "Don't allow"],
+  defaultId: 1,
+  cancelId: 1,
+  noLink: true,
+};
+const gameMicAllowed = gameMicConsent(async () => {
+  const parent = win && !win.isDestroyed() ? win : null;
+  const { response } = await (parent ? dialog.showMessageBox(parent, GAME_MIC_QUESTION) : dialog.showMessageBox(GAME_MIC_QUESTION));
+  return response === 0;
+});
+
 function armPermissions(ses) {
-  ses.setPermissionRequestHandler((contents, permission, done, details) => done((permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null)));
-  ses.setPermissionCheckHandler((contents, permission, origin, details) => (permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(origin, permission, details.isMainFrame !== false, details.mediaType ?? null));
+  ses.setPermissionRequestHandler((contents, permission, done, details) => {
+    const mainFrame = details.isMainFrame !== false;
+    if (gameMic(details.requestingUrl, permission, mainFrame, details.mediaTypes ?? null)) return void gameMicAllowed().then(done);
+    done((permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(details.requestingUrl, permission, mainFrame));
+  });
+  ses.setPermissionCheckHandler((contents, permission, origin, details) => {
+    const mainFrame = details.isMainFrame !== false;
+    if (gameMic(origin, permission, mainFrame, details.mediaType ?? null)) return gameMicAllowed.answer() === true;
+    return (permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(origin, permission, mainFrame);
+  });
 
   // Windows has no picker of its own to hand over to, so the page draws one.
   ses.setDisplayMediaRequestHandler((request, done) => {
@@ -804,6 +830,22 @@ const startsAtLogin = () =>
   app.isPackaged && (MAC ? app.getLoginItemSettings() : app.getLoginItemSettings({ args: loginItem.args })).openAtLogin;
 const setStartsAtLogin = (on) => app.setLoginItemSettings(MAC ? { openAtLogin: on } : { ...loginItem, openAtLogin: on });
 
+/**
+ * The page died (a renderer crash, out of memory, killed). Reload it once; a
+ * second death within a minute says so and quits, rather than looping
+ * (`crash-core.js`). Not while quitting: the page goes then on purpose.
+ */
+const crashed = crashGuard();
+function pageDied(_event, details) {
+  // A clean exit is the page going on purpose (a close, a navigation), not a crash.
+  if (details?.reason === 'clean-exit' || quitting || !win || win.isDestroyed()) return;
+  if (crashed() === 'reload') return win.reload();
+  quitting = true;
+  void dialog
+    .showMessageBox({ type: 'error', title: 'Scryproof', message: 'Scryproof stopped. Open it again.', buttons: ['OK'], noLink: true })
+    .finally(() => app.quit());
+}
+
 function show() {
   if (!win) return createWindow();
   if (win.isMinimized()) win.restore();
@@ -921,6 +963,7 @@ function createWindow(visible = true) {
     if (details.isMainFrame && !details.isSameDocument) pageGone();
   });
   win.webContents.on('render-process-gone', pageGone);
+  win.webContents.on('render-process-gone', pageDied);
   win.on('closed', () => {
     pageGone();
     win = null;

@@ -17,7 +17,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 import { openBundle, packBundle, readManifest, signBundle } from '../src/update-core.js';
@@ -34,7 +34,8 @@ if (!process.env.SCRYPROOF_UPDATE_OUT) {
     console.error(keyMismatchMessage());
     process.exit(1);
   }
-  writeFileSync(publicKeyPath, publicKeyPem);
+  // Written only on the very first run. Signing with the recovery key must not replace the baked key.
+  if (!existsSync(publicKeyPath)) writeFileSync(publicKeyPath, publicKeyPem);
 }
 
 if (!process.env.SCRYPROOF_UPDATE_SKIP_BUILD) {

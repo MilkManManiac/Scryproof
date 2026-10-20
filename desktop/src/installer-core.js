@@ -25,6 +25,8 @@ import { createHash, createPublicKey, sign, verify } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 
+import { signedByAny } from './update-core.js';
+
 const CONTEXT = 'scryproof/desktop-installer/v1';
 /** The installer is about 110 MB. Anything far past that is not our installer. */
 export const MAX_INSTALLER_BYTES = 400 * 1024 * 1024;
@@ -84,10 +86,11 @@ export function signInstaller({ version, sha256, size }, privateKey) {
 }
 
 /**
- * The manifest, if it is one and the key signed it as an installer. Null
- * otherwise. Never throws: what arrives here came off the network.
+ * The manifest, if it is one and a trusted key (one PEM or a list, as for the
+ * client) signed it as an installer. Null otherwise. Never throws: what
+ * arrives here came off the network.
  */
-export function readInstallerManifest(raw, publicKeyPem) {
+export function readInstallerManifest(raw, publicKeyPems) {
   try {
     const manifest = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const { version, sha256: hash, size, signature } = manifest;
@@ -95,9 +98,7 @@ export function readInstallerManifest(raw, publicKeyPem) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_INSTALLER_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    const key = createPublicKey(publicKeyPem);
-    if (key.asymmetricKeyType !== 'ed25519') return null;
-    if (!verify(null, signedBytes(version, hash), key, Buffer.from(signature, 'base64'))) return null;
+    if (!signedByAny(signedBytes(version, hash), signature, publicKeyPems)) return null;
     return { version, sha256: hash, size, signature };
   } catch {
     return null;
