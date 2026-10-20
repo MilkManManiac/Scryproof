@@ -30,3 +30,6 @@ The whole-screen share check said "440 Hz stands out 12 dB" over a floor of -138
 
 ## 2026-10-19 A long Python patch inside a bash heredoc died with "unexpected EOF while looking for matching `'`"
 A ~160-line `python - <<'EOF'` script holding JSX strings with `\"` and backticks failed to parse as a bash command at all. Rule: anything over a screen goes in a scratchpad `.py` file written with the Write tool and run with `python -I path`; keep heredocs for one-screen scripts.
+
+## 2026-10-19 Backslash-u escapes in tool input land on disk as the real characters
+Writing a regex with `\u202e`-style escapes (Write tool, and once through a bash heredoc into Python) put the literal invisible direction-override characters into `stream-chat.ts` instead of the six-character escapes. tsc and the tests were happy; only `grep -P '[^\x00-\x7F]'` (with `LC_ALL=C.UTF-8`) showed it. Rule: any source that needs a `\u` escape gets it built in a scratch Python script from `chr(92) + 'u'`, then grep the file for non-ASCII.

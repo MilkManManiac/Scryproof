@@ -12,6 +12,7 @@ import { MAX_PERSON_VOLUME, MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-p
 import type { PublicUser } from '@scryproof/shared';
 import { Avatar, initials } from './Avatar';
 import { ConnectionPanel } from './VoicePanel';
+import { StreamChat } from './StreamChat';
 import { SpeakerGlyph, SlidersGlyph } from './glyphs';
 
 function MusicListeners({
@@ -325,6 +326,7 @@ function CallMixer({ onClose }: { onClose: () => void }) {
               </p>
             ) : null}
             {ownMusic ? <MusicListeners ids={ownMusic.listeners} people={everyone} /> : null}
+            {ownMusic ? <StreamChat key={ownMusic.sid} stream={ownMusic.sid} variant="list" /> : null}
             <p className="mixer-listener-note">When you listen, your picture appears for everyone in the call.</p>
           </section>
           <div className="mixer-section-label">
@@ -391,6 +393,10 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                         onChange={(value) => voicePrefs.setVolumeFor(key, value)}
                       />
                       {music ? <MusicListeners ids={share.listeners} people={everyone} /> : null}
+                      {/* Comments for people listening; the sharer has them on their own card. */}
+                      {music && share.listening ? (
+                        <StreamChat key={share.sid} stream={share.sid} variant="list" />
+                      ) : null}
                     </div>
                   );
                 })}

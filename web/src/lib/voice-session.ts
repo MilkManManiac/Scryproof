@@ -44,6 +44,18 @@ import type { VoiceMembership, VoiceSignal } from '@scryproof/shared';
 
 import { MusicAudience, MUSIC_AUDIENCE_TOPIC, MUSIC_AUDIENCE_REFRESH_MS, readMusicAudience } from './music-audience';
 import { captureMusic, MUSIC_TRACK, musicSound } from './music-share';
+import {
+  CommentRate,
+  RECEIVE_GAP_MS,
+  RECEIVE_WINDOW_MS,
+  STREAM_CHAT_TOPIC,
+  StreamComments,
+  cleanComment,
+  newCommentId,
+  openStreamComment,
+  sealStreamComment,
+  type StreamComment,
+} from './stream-chat';
 import { drop as dropAppSound, takeAppSound } from './app-sound';
 import { api, ApiError } from './api';
 import { holdPushKey, onAccessibilityGranted } from './desktop';
@@ -120,6 +132,8 @@ export interface VoiceVideo {
   source: 'camera' | 'screen';
   /** Changes when the underlying track does, so the screen knows to re-attach. */
   sid: string;
+  /** The publication's own id, which comments on this stream are filed under. A new share is a new one. */
+  stream: string;
   /** A screen that carries sound, so its volume slider has something to turn. Always false for a camera. */
   sound: boolean;
   /**
@@ -191,6 +205,8 @@ export interface VoiceSnapshot {
   sharing: boolean;
   videos: VoiceVideo[];
   sharedAudio: SharedAudio[];
+  /** Comments on each screen or music share, by publication id. Memory only; gone when the stream ends. */
+  comments: Record<string, StreamComment[]>;
   musicSharing: boolean;
   musicBusy: boolean;
   musicError: string | null;
@@ -246,6 +262,7 @@ const IDLE: VoiceSnapshot = {
   sharing: false,
   videos: [],
   sharedAudio: [],
+  comments: {},
   musicSharing: false,
   musicBusy: false,
   musicError: null,
@@ -442,6 +459,9 @@ export class VoiceSession {
   private audienceSentAt = 0;
   private audienceWork: Promise<void> = Promise.resolve();
   private readonly audienceRequests = new Map<string, number>();
+  private readonly comments = new StreamComments();
+  private readonly commentRate = new CommentRate();
+  private readonly heardRate = new CommentRate(RECEIVE_GAP_MS, RECEIVE_WINDOW_MS);
   /** Set when the screen track itself ended (the window closed, the browser's own Stop bar). */
   private shareEnded: string | null = null;
 
@@ -722,6 +742,10 @@ export class VoiceSession {
     this.musicListening.clear();
     this.musicAudience.clear();
     this.audienceRequests.clear();
+    this.comments.clear();
+    this.commentRate.clear();
+    this.heardRate.clear();
+    if (Object.keys(this.snapshot.comments).length > 0) this.update({ comments: {} });
     this.audienceSent = '';
     this.audienceSentAt = 0;
     this.audienceWork = Promise.resolve();
@@ -1020,6 +1044,68 @@ export class VoiceSession {
     this.mix?.setVolumeFor(musicSound(userId), on ? (voicePrefs.get().volumes[musicSound(userId)] ?? 1) : 0);
     this.syncSubscription(publication, userId);
     this.refreshVideos();
+  }
+
+  /* ----------------------------- stream comments ---------------------------- */
+
+  /** A screen or music share someone in this room is publishing now, by its publication id. */
+  private isCommentable(sid: string): boolean {
+    const room = this.room;
+    if (!room) return false;
+    for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
+      const publication = participant.trackPublications.get(sid);
+      if (!publication) continue;
+      return (
+        publication.source === Track.Source.ScreenShare ||
+        (publication.source === Track.Source.ScreenShareAudio && publication.trackName === MUSIC_TRACK)
+      );
+    }
+    return false;
+  }
+
+  /** Milliseconds until this device may comment again. */
+  commentWait(): number {
+    return this.commentRate.wait(this.userId);
+  }
+
+  /**
+   * Comment on a screen or music share. Sealed with our own media key before
+   * it leaves (`stream-chat.ts`), and only while the call is encrypted. False
+   * when nothing was sent: too soon, empty or too long, the stream is gone.
+   */
+  async sendComment(stream: string, text: string): Promise<boolean> {
+    const room = this.room;
+    const call = this.call;
+    const clean = cleanComment(text);
+    if (!room || !call || this.snapshot.phase !== 'connected' || !room.isE2EEEnabled || clean === null) return false;
+    if (!this.isCommentable(stream) || !this.commentRate.take(this.userId)) return false;
+    const message = { stream, id: newCommentId(), text: clean };
+    const context = { callId: call.callId, sender: this.userId, epoch: call.epoch };
+    try {
+      const sealed = await sealStreamComment(call.mediaKey, context, message);
+      await room.localParticipant.publishData(sealed, { reliable: true, topic: STREAM_CHAT_TOPIC });
+    } catch {
+      return false;
+    }
+    if (this.room !== room || !this.isCommentable(stream)) return false;
+    if (this.comments.add(stream, this.userId, message.id, message.text)) this.update({ comments: this.comments.all() });
+    return true;
+  }
+
+  /** The room says who sent it; the seal proves it. Anything that does not open is dropped without a word. */
+  private async hearComment(room: Room, sender: string, bytes: Uint8Array): Promise<void> {
+    const call = this.call;
+    if (!call) return;
+    const seat = call.members.find((member) => member.announcement.userId === sender && sender !== this.userId);
+    const key = seat ? call.keyFor(sender, seat.announcement.deviceId) : null;
+    const message = await openStreamComment(bytes, key, { callId: call.callId, sender, epoch: call.epoch });
+    if (!message || this.room !== room || this.call !== call || !this.isCommentable(message.stream)) return;
+    if (!this.heardRate.take(sender)) return;
+    if (this.comments.add(message.stream, sender, message.id, message.text)) this.update({ comments: this.comments.all() });
+  }
+
+  private endComments(sid: string): void {
+    if (this.comments.end(sid)) this.update({ comments: this.comments.all() });
   }
 
   /* --------------------------- camera and screen --------------------------- */
@@ -1360,6 +1446,7 @@ export class VoiceSession {
           // Watch, Stop, Watch again can hand back a new track under the same
           // publication; a <video> left on the old one stays black.
           sid: publication.track ? `${publication.trackSid}:${publication.track.mediaStreamTrack.id}` : publication.trackSid,
+          stream: publication.trackSid,
           sound,
           state,
           soundOn: sound && this.screenSoundOn.has(participant.identity),
@@ -1930,6 +2017,13 @@ export class VoiceSession {
         this.announceMusicAudience(false, participant.identity);
       }
     });
+    room.on(RoomEvent.DataReceived, (bytes, participant, _kind, topic) => {
+      if (
+        this.room !== room || topic !== STREAM_CHAT_TOPIC || !participant ||
+        room.remoteParticipants.get(participant.identity) !== participant
+      ) return;
+      void this.hearComment(room, participant.identity, bytes);
+    });
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant) => {
       if (this.room !== room) return;
       // The unknown source is granted for the soundboard, which is sound. The
@@ -1990,6 +2084,7 @@ export class VoiceSession {
     // card, and its sound starts off again.
     room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
       if (this.room !== room) return;
+      this.endComments(publication.trackSid);
       if (publication.source === Track.Source.ScreenShare) {
         this.watching.delete(`${participant.identity}:screen`);
         this.screenSoundOn.delete(participant.identity);
@@ -2013,6 +2108,8 @@ export class VoiceSession {
       if (this.room !== room) return;
       this.musicAudience.remove(participant.identity);
       this.audienceRequests.delete(participant.identity);
+      this.heardRate.forget(participant.identity);
+      for (const publication of participant.trackPublications.values()) this.endComments(publication.trackSid);
       this.watching.delete(`${participant.identity}:camera`);
       this.watching.delete(`${participant.identity}:screen`);
       this.screenSoundOn.delete(participant.identity);
@@ -2043,6 +2140,7 @@ export class VoiceSession {
     room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
       if (this.room !== room) return;
       this.musicAudience.end(publication.trackSid);
+      this.endComments(publication.trackSid);
       if (publication.source === Track.Source.ScreenShareAudio) {
         dropAppSound(publication.track?.mediaStreamTrack);
         if (publication.trackName !== MUSIC_TRACK) this.update({ shareSound: null });

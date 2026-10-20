@@ -7,6 +7,8 @@
  * stays in this page's mix. It lives above the voice view, so switching to a
  * text channel keeps it open. It closes when the stream stops playing here,
  * when the call ends, or when this page goes away. Double-click: full screen.
+ * A popped-out screen keeps its comments beside it (StreamChat.tsx), drawn
+ * with copies of this page's styles.
  */
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
@@ -16,6 +18,7 @@ import { canPopOut } from '../lib/desktop';
 import type { VoiceVideo } from '../lib/voice-session';
 import { useStore } from '../state/store';
 import { useVoice } from '../state/useVoice';
+import { StreamChat } from './StreamChat';
 
 interface Popped {
   key: string;
@@ -49,6 +52,9 @@ export function popOut(video: VoiceVideo, title: string): void {
   body.style.margin = '0';
   body.style.background = '#000';
   body.style.overflow = 'hidden';
+  // The same styles and theme as this page, for the comments beside a screen.
+  for (const sheet of document.querySelectorAll('style, link[rel="stylesheet"]')) win.document.head.append(sheet.cloneNode(true));
+  if (document.documentElement.dataset.theme) win.document.documentElement.dataset.theme = document.documentElement.dataset.theme;
   const entry = { key, win };
   win.addEventListener('pagehide', () => set(popped.filter((other) => other !== entry)));
   set([...popped.filter((other) => other.key !== key), entry]);
@@ -104,14 +110,21 @@ function PoppedVideo({ video }: { video: VoiceVideo }) {
     };
   }, [session, video.userId, video.source, video.sid]);
 
-  return (
+  const picture = (
     <video
       ref={element}
       autoPlay
       playsInline
       muted
       title="Double-click for full screen"
-      style={{ display: 'block', width: '100vw', height: '100vh', objectFit: 'contain', background: '#000' }}
+      style={{ display: 'block', width: '100%', height: '100vh', minWidth: 0, objectFit: 'contain', background: '#000' }}
     />
+  );
+  if (video.source !== 'screen') return picture;
+  return (
+    <div style={{ display: 'flex', height: '100vh' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>{picture}</div>
+      <StreamChat key={video.stream} stream={video.stream} variant="side" />
+    </div>
   );
 }

@@ -2709,6 +2709,157 @@ video.mirrored {
   object-fit: contain;
   background: #000;
 }
+/* Comments on a stream (StreamChat.tsx): a column beside a big screen, a
+   short list under a music share or under the grid for the sharer. Under
+   700px the column goes under the picture. */
+.voice-focus.with-chat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+.voice-focus.with-chat > * {
+  grid-column: 1;
+}
+.voice-focus.with-chat > .stream-chat,
+.voice-focus.with-chat > .stream-chat-reopen {
+  grid-column: 2;
+  grid-row: 1 / -1;
+}
+.stream-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.stream-chat.side {
+  width: 260px;
+  background: var(--panel-solid);
+  border-left: 1px solid var(--line);
+}
+.stream-chat.list {
+  margin: 4px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+}
+.stream-chat-own {
+  width: min(520px, 100%);
+  margin: 0 auto;
+}
+.stream-chat-own > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.stream-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+.stream-chat-reopen {
+  align-self: start;
+  margin: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+}
+.stream-chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px;
+}
+.stream-chat.list .stream-chat-list {
+  flex: none;
+  max-height: 160px;
+}
+.stream-chat-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 3px 0;
+}
+.stream-chat-line .avatar.small {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+.stream-chat-words {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.stream-chat-words strong {
+  margin-right: 2px;
+}
+.stream-chat-empty,
+.stream-chat-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 0;
+  margin: 0;
+}
+.stream-chat-note {
+  padding: 6px 10px 8px;
+}
+.stream-chat-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+}
+.stream-chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+.stream-chat-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.stream-chat-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stream-chat-count.over {
+  color: var(--bad);
+}
+@media (max-width: 700px) {
+  .voice-focus.with-chat {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto auto;
+  }
+  .voice-focus.with-chat > .stream-chat,
+  .voice-focus.with-chat > .stream-chat-reopen {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .stream-chat.side {
+    width: auto;
+    height: 200px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
 .voice-focus-bar {
   display: flex;
   flex-wrap: wrap;
