@@ -24,7 +24,7 @@ export const CHANGELOG: readonly Release[] = [
     date: '2026-10-19',
     title: 'Comments on a stream',
     notes: [
-      'Watching someone\'s screen? Comments sit beside it. Type, press Enter, and everyone watching sees it, and so does the person sharing. It works in a popped-out window too.',
+      'Watching someone\'s screen? Press Comments at the top of the stream to open them. Type, press Enter, and everyone watching sees it, and so does the person sharing. They stay closed until you ask, and the button counts new ones. It works in a popped-out window too.',
       'Listening to someone\'s music? The same comments sit under it in the mixer, and on the sharer\'s Music together card.',
       'Nothing is kept. Comments disappear when the stream ends, and anyone who joins the call later sees only what comes after. They are locked with the call\'s keys, so this server cannot read them.',
     ],
