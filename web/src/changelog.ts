@@ -40,7 +40,7 @@ export const CHANGELOG: readonly Release[] = [
     ],
   },
   {
-    id: '2026-10-12-app-sound',
+    id: '2026-10-19-app-sound',
     date: '2026-10-19',
     title: 'Share one app\'s sound, pop streams out, 100 sounds',
     notes: [
