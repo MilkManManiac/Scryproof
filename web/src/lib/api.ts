@@ -494,6 +494,10 @@ export const api = {
     accept: (code: string) => post<{ server: ServerDetail }>(`/api/invites/${code}/accept`),
   },
 
+  linkPreview: {
+    youtube: (id: string) => get<{ title: string; author: string; thumbnail: string }>(`/api/link-preview/youtube/${id}`),
+  },
+
   voice: {
     config: () => get<{ configured: boolean; url: string | null }>('/api/voice/config'),
     token: (channelId: string) =>

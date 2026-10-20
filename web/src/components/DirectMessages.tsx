@@ -31,7 +31,8 @@ import { openPicture } from './Lightbox';
 import { applyMarkup, markerForKey } from '../lib/markup';
 import { MarkupTools } from './MarkupTools';
 import { Modal } from './Modal';
-import { PlayLine, Rich, jumpLimitNote } from './MessageList';
+import { PlayLine, Rich, firstYouTube, jumpLimitNote } from './MessageList';
+import { YouTubeCard } from './YouTubeCard';
 import { commandOffers, commandQueryAt, expandTextCommand, spawnOf } from '../lib/commands';
 import { emojiOffers, expandShortcodes } from '../lib/emoji';
 import { emojiQueryAt } from '../lib/mentions';
@@ -864,6 +865,8 @@ function DmMessages({
  * as a download and never given to the page to interpret.
  */
 const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
+/** Unlocked into memory when pressed, then played in place rather than downloaded. */
+const VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
 /** Past this a picture waits to be asked for rather than opening itself. */
 const AUTO_OPEN_BYTES = 15 * 1024 * 1024;
 
@@ -877,7 +880,7 @@ function objectUrlFor(dmId: string, file: DmFileRef): Promise<string | null> {
     const opened = await openFile(dmId, file, await api.dms.downloadFile(dmId, file.id));
     if (!opened) return null;
     // The type is only ever one of ours or a plain download: never what the sender typed.
-    const type = PICTURE_TYPES.has(file.type) ? file.type : 'application/octet-stream';
+    const type = PICTURE_TYPES.has(file.type) || VIDEO_TYPES.has(file.type) ? file.type : 'application/octet-stream';
     return URL.createObjectURL(new Blob([opened as BlobPart], { type }));
   })();
   made.catch(() => openedFiles.delete(file.id));
@@ -908,6 +911,7 @@ function DmFile({ dmId, file }: { dmId: string; file: DmFileRef }) {
 
 function DmFileRow({ dmId, file }: { dmId: string; file: DmFileRef }) {
   const picture = PICTURE_TYPES.has(file.type);
+  const video = VIDEO_TYPES.has(file.type);
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle');
 
@@ -935,6 +939,11 @@ function DmFileRow({ dmId, file }: { dmId: string; file: DmFileRef }) {
         setState('failed');
         return;
       }
+      if (video) {
+        setUrl(made);
+        setState('idle');
+        return;
+      }
       const link = document.createElement('a');
       link.href = made;
       link.download = file.name;
@@ -953,9 +962,11 @@ function DmFileRow({ dmId, file }: { dmId: string; file: DmFileRef }) {
     );
   }
 
+  if (video && url) return <video className="attachment-video" controls autoPlay src={url} />;
+
   return (
     <button type="button" className="attachment-file dm-file" disabled={state === 'working'} onClick={() => void save()}>
-      {file.name}
+      {video ? `Play ${file.name}` : file.name}
       <span style={{ color: 'var(--text-dim)' }}>
         {state === 'failed'
           ? 'could not be opened'
@@ -1113,6 +1124,10 @@ function DmRow({
             ) : (
               <Rich content={view.text} members={[]} emojis={[]} everyone={false} />
             )}
+            {(() => {
+              const youtube = spawnOf(view.text) ? null : firstYouTube(view.text);
+              return youtube ? <YouTubeCard key={youtube.id} id={youtube.id} href={youtube.href} ask={false} /> : null;
+            })()}
             {view.editedAt ? <span className="message-edited">edited</span> : null}
             {writtenMoved && view.sealedAt !== null ? (
               <span

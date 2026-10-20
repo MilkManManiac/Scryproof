@@ -20,6 +20,8 @@ import { VoicePlayer } from './VoiceNote';
  * as a download and never given to the page to interpret.
  */
 const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
+/** Unlocked into memory when pressed, then played in place rather than downloaded. */
+const VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
 /** Past this a picture waits to be asked for rather than opening itself. */
 const AUTO_OPEN_BYTES = 15 * 1024 * 1024;
 
@@ -37,7 +39,7 @@ function objectUrlFor(channelId: string, file: SealedFileRef, locked: Attachment
     const bytes = await bytesOf(channelId, file, locked);
     if (!bytes) return null;
     // The type is only ever one of ours or a plain download: never what the sender typed.
-    const type = PICTURE_TYPES.has(file.type) ? file.type : 'application/octet-stream';
+    const type = PICTURE_TYPES.has(file.type) || VIDEO_TYPES.has(file.type) ? file.type : 'application/octet-stream';
     return URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
   })();
   made.catch(() => opened.delete(file.id));
@@ -67,6 +69,7 @@ export function SealedFile({ channelId, file, locked }: { channelId: string; fil
 
 function SealedFileRow({ channelId, file, locked }: { channelId: string; file: SealedFileRef; locked: Attachment }) {
   const picture = PICTURE_TYPES.has(file.type);
+  const video = VIDEO_TYPES.has(file.type);
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle');
 
@@ -94,6 +97,11 @@ function SealedFileRow({ channelId, file, locked }: { channelId: string; file: S
         setState('failed');
         return;
       }
+      if (video) {
+        setUrl(made);
+        setState('idle');
+        return;
+      }
       const link = document.createElement('a');
       link.href = made;
       link.download = file.name;
@@ -112,9 +120,11 @@ function SealedFileRow({ channelId, file, locked }: { channelId: string; file: S
     );
   }
 
+  if (video && url) return <video className="attachment-video" controls autoPlay src={url} />;
+
   return (
     <button type="button" className="attachment-file dm-file" disabled={state === 'working'} onClick={() => void save()}>
-      {file.name}
+      {video ? `Play ${file.name}` : file.name}
       <span style={{ color: 'var(--text-dim)' }}>
         {state === 'failed' ? 'could not be opened' : state === 'working' ? 'unlocking' : sizeLabel(file.size)}
       </span>

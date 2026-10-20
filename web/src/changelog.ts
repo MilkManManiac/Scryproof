@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-19-youtube-and-video',
+    date: '2026-10-19',
+    title: 'YouTube cards, videos play in the app',
+    notes: [
+      'Paste a YouTube link and a card appears under it: the thumbnail, the title, who posted it. Click it to open the video on YouTube. This server fetches the card once; nobody in the room talks to Google.',
+      'In an encrypted channel or a DM the card waits for you to press Show preview, because asking for it tells this server which video the message pointed at.',
+      'Uploaded videos (mp4, webm) play right in the channel. No more downloading to watch a clip. In an encrypted channel press Play to unlock it first.',
+    ],
+  },
+  {
     id: '2026-10-12-app-sound',
     date: '2026-10-12',
     title: 'Share one app\'s sound, pop streams out, 100 sounds',

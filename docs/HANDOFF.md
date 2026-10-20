@@ -2,7 +2,18 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-14, early)
+## Pick up here (2026-10-19, night)
+
+**FINAL SHARE CHECKS RAN CLEAN; YOUTUBE CARDS AND AN IN-APP VIDEO PLAYER ARE BUILT, NOT RELEASED.** Wes 10-19: "run final tests needed for the screenshare bug. Then lets figure out a way to show like a thumbnail or something of a youtube vid in the app. Also maybe we add like a video player as well so they don't have to download videos that are uploaded."
+
+- **Share-sound check, 2026-10-19 ~22:15 ET, quiet run:** all 36 steps pass (window share: shared program +51 dB, other program and both mics at the floor; whole screen: both programs in, alex's voice and wes's mic 20 dB or more below them; helper gone after Stop). Suites: typecheck clean, server 398, web 573 (two new), desktop 89 pass 47 Mac skips. Nothing changed on the share path since 10-14; this is the pre-release gate, run once more.
+- **Still the open question on the leak:** the desktop path is clean on this PC. The friend who heard the call in their own stream (mute screen sound removed it, Wes 10-14) was on some other path: Chrome in a browser, Windows older than 10 2004, or an old app. Next time it happens: app or browser, and a screenshot of their connection panel while sharing.
+- **YouTube card (`server/src/routes/link-preview.ts`, `web/src/components/YouTubeCard.tsx`, `web/src/lib/youtube.ts`):** the first YouTube link in a message (watch, youtu.be, shorts, embed, live; not inside a spoiler) gets a card under it: thumbnail, title, author, opens YouTube in a new tab. The box fetches oEmbed and hqdefault.jpg once, caches 24 h in memory, serves the thumbnail itself as a sandboxed JPEG. Members never talk to Google (rule 1: the box makes one outbound request per video id; no Google script or iframe in the page, so no embedded player). In encrypted channels and DMs the card is click-to-load ("Show preview"), so a sealed message's link is not reported to the server unasked. 60 lookups a minute a person. Test: `server/src/tests/link-preview.test.ts` (upstream stubbed), `web/src/tests/youtube.test.ts`.
+- **Video player:** unsealed mp4/webm uploads play in place (`<video controls>`; the server already served those two types inline). Sealed files in encrypted channels and DMs show "Play name" and unlock into memory on press, then play. Shot `docs/shots/youtube-card-and-video.png` (dev box, real YouTube fetch, 4 s ffmpeg clip).
+- **Not proven:** the sealed-channel Play path and the DM card were typechecked, not clicked; the box's outbound HTTPS to youtube.com and i.ytimg.com (the firewall allows web-push out, so it should); what the card looks like on a phone.
+- **Waiting on Wes, each its own yes:** (1) desktop installer 0.5.8: build, sign, publish. (2) client/server release with `scripts/release.sh` (changelog entries `2026-10-19-youtube-and-video` and `2026-10-12-app-sound`; redate on the day).
+
+## Previous pick-up (2026-10-14, early)
 
 **THE CALL LEAK DOES NOT REPRODUCE ON THE DESKTOP PATH, EVEN LOUD. The share-sound check passes clean; the installer and release are still waiting on Wes.** Wes 10-14: "run the tests that you need to do for the screenshare stuff". That was step (1) of the 10-12 block: run the check with the app at a real volume and look for the call in a whole-screen share.
 

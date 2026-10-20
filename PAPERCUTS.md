@@ -27,3 +27,6 @@ electron.exe is a GUI program on Windows, so console.log from a scratch probe go
 
 ## 2026-10-14 A pass/fail that compares against a floor at digital silence fails on nothing
 The whole-screen share check said "440 Hz stands out 12 dB" over a floor of -138 dB, which is silence, while a real leak would sit 50 dB higher. Rule: when the floor can be digital silence, compare a suspect pitch against a known signal (the tone programs), not against the floor.
+
+## 2026-10-19 A long Python patch inside a bash heredoc died with "unexpected EOF while looking for matching `'`"
+A ~160-line `python - <<'EOF'` script holding JSX strings with `\"` and backticks failed to parse as a bash command at all. Rule: anything over a screen goes in a scratchpad `.py` file written with the Write tool and run with `python -I path`; keep heredocs for one-screen scripts.
