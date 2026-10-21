@@ -20,8 +20,8 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-10-20-ask-for-a-server',
-    date: '2026-10-20',
+    id: '2026-10-21-ask-for-a-server',
+    date: '2026-10-21',
     title: 'Ask for a server, and a tip jar',
     notes: [
       'Anyone can now press + on the left rail and ask for a server of their own. Wes sees who is waiting and says yes or no; when he says yes the server appears on your rail and you own it.',
