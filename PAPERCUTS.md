@@ -36,3 +36,6 @@ Writing a regex with `\u202e`-style escapes (Write tool, and once through a bash
 
 ## 2026-10-20 "Keep both sides" of a conflict hunk loses a shared closing line
 When two branches add two different functions at the same spot, git puts the one `}` they share after the `>>>>>>>` marker. Keeping both sides gives two bodies and one brace: `node --check` caught it twice (update-core.js, signing-key.mjs). Rule: after a both-sides resolve, run `node --check` on the file before anything else.
+
+## 2026-10-21 `npx asar extract-file` writes into the current folder, silently overwriting
+Ran `npx asar extract-file app.asar package.json` from `desktop/` to read the installed app's version. It wrote the extracted file as `desktop/package.json`, replacing the real one (scripts, build config gone), with no message. The next `npm run dist` failed with "Missing script". Caught by `git status`. Rule: read inside an asar with `@electron/asar` `extractFile()` in a `node -e` (returns a buffer, writes nothing), or run `asar` from the scratchpad. Never run an extracting tool with cwd in the repo.

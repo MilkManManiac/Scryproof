@@ -26,6 +26,7 @@ export const CHANGELOG: readonly Release[] = [
     notes: [
       'Anyone can now press + on the left rail and ask for a server of their own. Wes sees who is waiting and says yes or no; when he says yes the server appears on your rail and you own it.',
       'A $ at the top of every server opens Wes\'s Venmo. Scryproof runs on one box he pays for; a tip helps keep it up.',
+      'Closing a popped-out stream no longer crashes the desktop app with a "JavaScript error in the main process" box (desktop 0.5.9).',
       'If your saved microphone goes missing (unplugged, or the browser stopped seeing it), a call now falls back to the system default instead of hanging up a moment after connecting. Microphone errors say what went wrong.',
     ],
   },

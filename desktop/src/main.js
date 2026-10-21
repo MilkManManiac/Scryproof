@@ -969,11 +969,15 @@ function createWindow(visible = true) {
   win.webContents.on('did-create-window', (child) => {
     // A popped-out stream (web/src/components/PopOut.tsx): an empty page the
     // app draws a <video> into. It goes nowhere and opens nothing.
+    // Hold the contents now: by 'closed' the window is destroyed and reading
+    // child.webContents throws (an uncaught TypeError in the main process,
+    // which Electron shows as an error box and then exits).
+    const contents = child.webContents;
     child.removeMenu();
-    streamWindows.add(child.webContents);
-    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    child.webContents.on('will-navigate', (event) => event.preventDefault());
-    child.on('closed', () => streamWindows.delete(child.webContents));
+    streamWindows.add(contents);
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', (event) => event.preventDefault());
+    child.on('closed', () => streamWindows.delete(contents));
   });
   win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
   win.webContents.on('will-redirect', (event, url) => allowGo(event, url));
