@@ -33,3 +33,6 @@ A ~160-line `python - <<'EOF'` script holding JSX strings with `\"` and backtick
 
 ## 2026-10-19 Backslash-u escapes in tool input land on disk as the real characters
 Writing a regex with `\u202e`-style escapes (Write tool, and once through a bash heredoc into Python) put the literal invisible direction-override characters into `stream-chat.ts` instead of the six-character escapes. tsc and the tests were happy; only `grep -P '[^\x00-\x7F]'` (with `LC_ALL=C.UTF-8`) showed it. Rule: any source that needs a `\u` escape gets it built in a scratch Python script from `chr(92) + 'u'`, then grep the file for non-ASCII.
+
+## 2026-10-20 "Keep both sides" of a conflict hunk loses a shared closing line
+When two branches add two different functions at the same spot, git puts the one `}` they share after the `>>>>>>>` marker. Keeping both sides gives two bodies and one brace: `node --check` caught it twice (update-core.js, signing-key.mjs). Rule: after a both-sides resolve, run `node --check` on the file before anything else.
