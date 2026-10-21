@@ -42,6 +42,9 @@ export function ServerRail() {
   // it. Five at most; the @ badge still counts every one.
   const faces = waitingDms(dms).slice(0, 5);
   const [creating, setCreating] = useState(false);
+  /** Host only: the list of people waiting on a yes. */
+  const [answering, setAnswering] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -54,6 +57,8 @@ export function ServerRail() {
 
   function close() {
     setCreating(false);
+    setAnswering(false);
+    setSent(null);
     setJoining(false);
     setName('');
     setCode('');
@@ -68,15 +73,32 @@ export function ServerRail() {
     setBusy(true);
     setError(null);
     try {
-      const { server } = await api.servers.create(name.trim());
+      const made = await api.servers.create(name.trim());
+      if ('request' in made) {
+        // Not the host: it went to Wes. The server shows up on the rail when he says yes.
+        setSent(made.request.name);
+        setBusy(false);
+        return;
+      }
       // The gateway sends server_create too; selecting here just means the new
       // server is already open by the time the dialog closes.
-      selectServer(server.id);
+      selectServer(made.server.id);
       close();
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Could not create the server.');
       setBusy(false);
     }
+  }
+
+  async function answer(id: string, approve: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.servers.answerRequest(id, approve);
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'Could not answer that.');
+    }
+    setBusy(false);
   }
 
   async function acceptInvite() {
@@ -189,14 +211,23 @@ export function ServerRail() {
 
       {state.serverOrder.length > 0 ? <div className="rail-divider" /> : null}
 
-      {state.canCreateServers ? (
+      <button
+        type="button"
+        className="rail-item rail-add"
+        title={state.canCreateServers ? 'Create a server' : 'Ask for a server'}
+        onClick={() => setCreating(true)}
+      >
+        +
+      </button>
+      {state.canCreateServers && state.serverRequests.length > 0 ? (
         <button
           type="button"
           className="rail-item rail-add"
-          title="Create a server"
-          onClick={() => setCreating(true)}
+          title={`${state.serverRequests.length} waiting on you for a server`}
+          onClick={() => setAnswering(true)}
         >
-          +
+          ?
+          <span className="badge">{badgeText(state.serverRequests.length)}</span>
         </button>
       ) : null}
 
@@ -210,28 +241,64 @@ export function ServerRail() {
         &#8594;
       </button>
 
+      {answering ? (
+        <Modal
+          title="Asking for a server"
+          onClose={close}
+          footer={
+            <button type="button" className="button secondary inline" onClick={close}>
+              Close
+            </button>
+          }
+        >
+          {error ? <div className="error">{error}</div> : null}
+          {state.serverRequests.length === 0 ? <p className="field-note">Nobody is waiting.</p> : null}
+          {state.serverRequests.map((req) => (
+            <div key={req.id} className="field" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Avatar user={req.requester} small />
+              <span style={{ flex: 1 }}>
+                <strong>{req.requester.displayName}</strong> wants <strong>{req.name}</strong>
+              </span>
+              <button type="button" className="button inline" disabled={busy} onClick={() => void answer(req.id, true)}>
+                Approve
+              </button>
+              <button type="button" className="button secondary inline" disabled={busy} onClick={() => void answer(req.id, false)}>
+                No
+              </button>
+            </div>
+          ))}
+        </Modal>
+      ) : null}
+
       {creating ? (
         <Modal
-          title="Create a server"
+          title={state.canCreateServers ? 'Create a server' : 'Ask for a server'}
           onClose={close}
           footer={
             <>
               <button type="button" className="button secondary inline" onClick={close}>
-                Cancel
+                {sent ? 'Close' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                className="button inline"
-                disabled={busy}
-                onClick={() => void createServer()}
-              >
-                Create
-              </button>
+              {sent ? null : (
+                <button
+                  type="button"
+                  className="button inline"
+                  disabled={busy}
+                  onClick={() => void createServer()}
+                >
+                  {state.canCreateServers ? 'Create' : 'Ask'}
+                </button>
+              )}
             </>
           }
         >
           {error ? <div className="error">{error}</div> : null}
-          <div className="field">
+          {sent ? (
+            <p className="field-note">
+              Sent. Wes sees <strong>{sent}</strong> is waiting on him; it shows up here when he says yes.
+            </p>
+          ) : null}
+          <div className="field" style={sent ? { display: 'none' } : undefined}>
             <label htmlFor="server-name">Name</label>
             <input
               id="server-name"
@@ -243,7 +310,9 @@ export function ServerRail() {
               }}
             />
             <p className="field-note">
-              You will own it, with a text channel and a voice channel to start.
+              {state.canCreateServers
+                ? 'You will own it, with a text channel and a voice channel to start.'
+                : 'Wes gets asked. When he says yes you own it, with a text channel and a voice channel to start.'}
             </p>
           </div>
         </Modal>

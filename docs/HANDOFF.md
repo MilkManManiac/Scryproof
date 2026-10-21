@@ -2,7 +2,15 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-20, early)
+## Pick up here (2026-10-20, evening)
+
+**BUILT, NOT RELEASED (Wes, 2026-10-20: three asks, merged and built, waiting on his deploy word):**
+1. **Trey's PR 10 (`mac-0.5.9`) merged into main, commit 6326b15.** Both sides had built the audit's recovery update key and the game-microphone consent. Kept Trey's `trustedKeys`/`permissionDecision` shape (his Mac updater calls it), kept main's streamed download (`saveCapped`) and `crash-core` reload, made a bad baked key skip instead of throw (main's test). Desktop 101 pass, web 581, server 403, typecheck clean. Shared win for Windows: the missing-mic fallback (`voice-prefs.ts`, `voice-session.ts`). Desktop version is now 0.5.9. Trey's `STATE.md` and `.beads/` came along; drop them if Wes minds. Not run inside Electron on Windows from this tree yet.
+2. **Ask for a server (Wes: "open up the availability for other people to make servers but... I hit a button that approves it just so they don't go crazy with it").** Everyone sees the + on the rail; a non-host's Create becomes a request (`server_requests` table, migration 0035, one row per person, asking again renames it). Wes gets a `server_request` gateway event and a `?` rail button with a count; `ready` carries the waiting list so it survives reload. Approve makes the server owned by the asker and it appears on their rail like their own creation. Routes: `POST /api/servers` (non-host returns `{request}`), `GET/POST /api/host/server-requests[/:id]`. Test in `server-create.test.ts`. Shots: `docs/shots/server-ask.png`, `docs/shots/server-approve.png`. Skipped: a phone push to Wes (push is tied to messages), and telling the asker when it's a no (the request just goes away).
+3. **Tip jar (Wes: "add my Venmo me / tip thing at the top of basically every server").** A `$` in every server's sidebar header opens a Tip Wes dialog with his Venmo QR (`web/public/venmo-islandwes.png`, cropped from his phone screenshot) linking to venmo.com/u/islandwes. Shot: `docs/shots/tip-wes.png`.
+Changelog entry `2026-10-20-ask-for-a-server` is in. To ship: `scripts/release.sh` for the client, then Windows 0.5.9 build (`npm run dist` in `desktop`) and Trey's Mac files via `scripts/publish-mac.sh` from this PC, each on its own yes.
+
+## Earlier pick-up (2026-10-20, early)
 
 **LIVE 2026-10-19 23:58 ET (client 1792468584122; Wes: "yea go for it"): stream comments start closed. Wes on the first screenshot: "the comments thing is kinda in the way honestly"; he picked "start hidden or make it easy to hide". A Comments button at the top right of a watched screen opens the column, counts new ones while closed, and the choice holds for the rest of the tab (`columnWanted` in `StreamChat.tsx`). The check (`scripts/stream-chat-check.mjs 3`) now expects the closed start; shot `docs/shots/stream-chat-closed.png`. Wes also asked whether the speaking indicator still exists: yes, the ring on tiles and the sidebar plus the Mixer meters; alone in a call nobody else lights up.**
 

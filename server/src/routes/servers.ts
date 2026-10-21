@@ -26,6 +26,8 @@ import { loadAllServerDetails, loadServerDetail } from '../services/server-detai
 import {
   canCreateServers,
   createServer,
+  hostId,
+  requestServer,
   deleteServer,
   leaveServer,
   removeMember,
@@ -72,7 +74,11 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const user = requireUser(request);
     const body = z.object({ name: z.string().min(1).max(100) }).parse(request.body);
     if (!(await canCreateServers(user.id))) {
-      throw forbidden('Only the host can make new servers for now. Ask for an invite instead.');
+      // Not refused: asked for. The host answers from the rail.
+      const req = await requestServer(user.id, body.name);
+      const host = await hostId();
+      if (host) hub.sendToUser(host, { t: 'server_request', d: req });
+      return { request: req };
     }
 
     const created = await createServer({ name: body.name, ownerId: user.id });

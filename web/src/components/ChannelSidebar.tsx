@@ -42,7 +42,7 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
   const live = useVoice();
   const card = useProfileCard();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [dialog, setDialog] = useState<'channel' | 'category' | 'invite' | 'settings' | null>(null);
+  const [dialog, setDialog] = useState<'channel' | 'category' | 'invite' | 'settings' | 'tip' | null>(null);
   const [addMenu, setAddMenu] = useState(false);
   // Which category the New channel dialog should start on, when it was opened
   // from a heading rather than from the top of the sidebar.
@@ -105,6 +105,9 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
           {server.name}
         </span>
         <span className="sidebar-header-tools">
+          <button type="button" className="icon-button" title="Tip Wes on Venmo" onClick={() => setDialog('tip')}>
+            $
+          </button>
           <button
             type="button"
             className="icon-button"
@@ -546,6 +549,23 @@ export function ChannelSidebar({ server }: { server: ServerDetail }) {
       ) : null}
       {dialog === 'settings' ? (
         <ServerSettings server={server} onClose={() => setDialog(null)} />
+      ) : null}
+      {dialog === 'tip' ? (
+        <Modal
+          title="Tip Wes"
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="button secondary inline" onClick={() => setDialog(null)}>
+              Close
+            </button>
+          }
+        >
+          <p className="field-note">Scryproof runs on one box Wes pays for. A tip helps keep it up.</p>
+          <a href="https://venmo.com/u/islandwes" target="_blank" rel="noreferrer noopener" style={{ display: 'block', textAlign: 'center' }}>
+            <img src="/venmo-islandwes.png" alt="Venmo code for @islandwes" width={205} height={230} style={{ background: '#fff', borderRadius: 12, padding: 8 }} />
+            <div>@islandwes on Venmo</div>
+          </a>
+        </Modal>
       ) : null}
     </aside>
   );

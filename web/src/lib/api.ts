@@ -34,6 +34,7 @@ import type {
   SelfUser,
   Server,
   ServerDetail,
+  ServerRequest,
   Sound,
   Tracker,
   VoiceState,
@@ -219,7 +220,11 @@ export const api = {
   servers: {
     list: () => get<{ servers: ServerDetail[] }>('/api/servers'),
     one: (id: string) => get<{ server: ServerDetail }>(`/api/servers/${id}`),
-    create: (name: string) => post<{ server: ServerDetail }>('/api/servers', { name }),
+    /** The host gets a server; anyone else gets a request the host answers. */
+    create: (name: string) => post<{ server: ServerDetail } | { request: ServerRequest }>('/api/servers', { name }),
+    /** Host only. */
+    answerRequest: (id: string, approve: boolean) =>
+      post<{ ok: true; serverId: string | null }>(`/api/host/server-requests/${id}`, { approve }),
     update: (id: string, body: { name?: string }) =>
       patch<{ server: Server }>(`/api/servers/${id}`, body),
     remove: (id: string) => del<{ ok: true }>(`/api/servers/${id}`),

@@ -26,9 +26,32 @@ import * as hub from '../gateway/hub.js';
 import { badRequest, forbidden, notFound } from '../lib/http-error.js';
 import * as audit from '../services/audit.js';
 import { revokeAllSessions } from '../services/auth.js';
-import { canCreateServers, removeMember } from '../services/servers.js';
+import { canCreateServers, listServerRequests, removeMember, settleServerRequest } from '../services/servers.js';
+import { loadServerDetail } from '../services/server-detail.js';
 
 export async function registerHostRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/api/host/server-requests', async (request) => {
+    const actor = requireUser(request);
+    if (!(await canCreateServers(actor.id))) throw forbidden('Only the host sees server requests.');
+    return { requests: await listServerRequests() };
+  });
+
+  /** Approve or turn down a request. On approve the asker's server appears on their rail the same way their own creation would. */
+  app.post('/api/host/server-requests/:id', async (request) => {
+    const actor = requireUser(request);
+    if (!(await canCreateServers(actor.id))) throw forbidden('Only the host answers server requests.');
+    const { id } = z.object({ id: z.string().min(1).max(64) }).parse(request.params);
+    const { approve } = z.object({ approve: z.boolean() }).parse(request.body);
+    const { requesterId, server } = await settleServerRequest(id, approve);
+    hub.sendToUser(actor.id, { t: 'server_request_settled', d: { id } });
+    if (server) {
+      const detail = await loadServerDetail(server.id, requesterId);
+      hub.addUserToServer(requesterId, server.id);
+      if (detail) hub.sendToUser(requesterId, { t: 'server_create', d: detail });
+    }
+    return { ok: true, serverId: server?.id ?? null };
+  });
+
   app.post('/api/host/remove-account', async (request) => {
     const actor = requireUser(request);
     if (!(await canCreateServers(actor.id))) throw forbidden('Only the host can remove someone from Scryproof.');

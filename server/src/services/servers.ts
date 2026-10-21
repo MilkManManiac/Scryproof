@@ -4,6 +4,8 @@
 
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
+import type { ServerRequest } from '@scryproof/shared';
+
 import { DEFAULT_EVERYONE_PERMISSIONS, validateServerName } from '@scryproof/shared';
 
 import { getDb } from '../db/index.js';
@@ -14,11 +16,14 @@ import {
   memberRoles,
   members,
   roles,
+  serverRequests,
   servers,
+  users,
 } from '../db/schema.js';
 import { uuidv7 } from '../lib/ids.js';
 import { badRequest, forbidden } from '../lib/http-error.js';
 import type { ServerRow } from '../db/schema.js';
+import * as serialize from './serialize.js';
 
 /**
  * Who may make a new server: the owner of the first server this box ever had,
@@ -34,6 +39,58 @@ export async function canCreateServers(userId: string): Promise<boolean> {
     .orderBy(asc(servers.createdAt))
     .limit(1);
   return !first || first.ownerId === userId;
+}
+
+/** Whose server requests are waiting on the host, the host's own id, or null when the box has no host yet. */
+export async function hostId(): Promise<string | null> {
+  const [first] = await getDb().select({ ownerId: servers.ownerId }).from(servers).orderBy(asc(servers.createdAt)).limit(1);
+  return first?.ownerId ?? null;
+}
+
+const toRequest = (row: typeof serverRequests.$inferSelect, user: typeof users.$inferSelect): ServerRequest => ({
+  id: row.id,
+  name: row.name,
+  requester: serialize.publicUser(user),
+  createdAt: row.createdAt.toISOString(),
+});
+
+/**
+ * Ask the host for a server (Wes, 2026-10-20: "open up the availability for
+ * other people to make servers but... I hit a button that approves it just so
+ * they don't go crazy with it"). One request per person: asking again
+ * replaces the name, so nobody can pile them up.
+ */
+export async function requestServer(requesterId: string, name: string): Promise<ServerRequest> {
+  const trimmed = name.trim();
+  const check = validateServerName(trimmed);
+  if (!check.ok) throw badRequest(check.error, 'invalid_server_name');
+  const db = getDb();
+  const [row] = await db
+    .insert(serverRequests)
+    .values({ id: uuidv7(), name: trimmed, requesterId })
+    .onConflictDoUpdate({ target: serverRequests.requesterId, set: { name: trimmed, createdAt: new Date() } })
+    .returning();
+  const [user] = await db.select().from(users).where(eq(users.id, requesterId)).limit(1);
+  if (!row || !user) throw badRequest('Could not send the request.', 'request_failed');
+  return toRequest(row, user);
+}
+
+export async function listServerRequests(): Promise<ServerRequest[]> {
+  const rows = await getDb()
+    .select({ row: serverRequests, user: users })
+    .from(serverRequests)
+    .innerJoin(users, eq(users.id, serverRequests.requesterId))
+    .orderBy(asc(serverRequests.createdAt));
+  return rows.map(({ row, user }) => toRequest(row, user));
+}
+
+/** Answer a request. Approving makes the server, owned by whoever asked. Either way the request is gone. */
+export async function settleServerRequest(id: string, approve: boolean): Promise<{ requesterId: string; server: ServerRow | null }> {
+  const db = getDb();
+  const [row] = await db.delete(serverRequests).where(eq(serverRequests.id, id)).returning();
+  if (!row) throw badRequest('That request is already answered.', 'unknown_request');
+  const server = approve ? await createServer({ name: row.name, ownerId: row.requesterId }) : null;
+  return { requesterId: row.requesterId, server };
 }
 
 export interface CreateServerInput {

@@ -20,6 +20,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-20-ask-for-a-server',
+    date: '2026-10-20',
+    title: 'Ask for a server, and a tip jar',
+    notes: [
+      'Anyone can now press + on the left rail and ask for a server of their own. Wes sees who is waiting and says yes or no; when he says yes the server appears on your rail and you own it.',
+      'A $ at the top of every server opens Wes\'s Venmo. Scryproof runs on one box he pays for; a tip helps keep it up.',
+      'If your saved microphone goes missing (unplugged, or the browser stopped seeing it), a call now falls back to the system default instead of hanging up a moment after connecting. Microphone errors say what went wrong.',
+    ],
+  },
+  {
     id: '2026-10-19-stream-comments',
     date: '2026-10-19',
     title: 'Comments on a stream',

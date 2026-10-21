@@ -24,6 +24,7 @@ import type {
   SelfUser,
   Server,
   ServerDetail,
+  ServerRequest,
   Snowflake,
   Timestamp,
   VoiceState,
@@ -52,7 +53,7 @@ export type ServerEvent =
    * `blocks` is the ids this person has blocked, so the first paint already
    * collapses their messages rather than showing them and taking them back.
    */
-  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string; canCreateServers?: boolean; voiceOwnership?: boolean } }
+  | { t: 'ready'; d: { user: SelfUser; servers: ServerDetail[]; presences: Presence[]; voiceStates: VoiceState[]; readStates: ReadState[]; blocks: Snowflake[]; sessionId: string; canCreateServers?: boolean; serverRequests?: ServerRequest[]; voiceOwnership?: boolean } }
   | { t: 'heartbeat_ack'; d: { at: number } }
   | { t: 'message_create'; d: Message }
   | { t: 'message_update'; d: Message }
@@ -106,6 +107,10 @@ export type ServerEvent =
   | { t: 'server_create'; d: ServerDetail }
   | { t: 'server_update'; d: Server }
   | { t: 'server_delete'; d: { id: Snowflake } }
+  /** Host only: someone asked for a server. */
+  | { t: 'server_request'; d: ServerRequest }
+  /** Host only: a request was approved or turned down (here or on another device), so it leaves the list. */
+  | { t: 'server_request_settled'; d: { id: Snowflake } }
   | { t: 'channel_create'; d: Channel }
   | { t: 'channel_update'; d: Channel }
   | { t: 'channel_delete'; d: { id: Snowflake; serverId: Snowflake } }

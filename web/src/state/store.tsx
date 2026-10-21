@@ -32,6 +32,7 @@ import type {
   ReadState,
   SelfUser,
   ServerDetail,
+  ServerRequest,
   ServerEvent,
   Sound,
   Tracker,
@@ -96,6 +97,8 @@ export interface State {
   blocks: Set<string>;
   /** Whether the + for a new server is offered. The server refuses anyone else either way. */
   canCreateServers: boolean;
+  /** Host only: people waiting on a yes for a server of their own. */
+  serverRequests: ServerRequest[];
   /**
    * The initiative tracker per channel, null when none is running. Absent
    * means not asked yet. Fetched when a channel is opened, then kept by
@@ -126,6 +129,7 @@ const initialState: State = {
   replyingTo: {},
   blocks: new Set<string>(),
   canCreateServers: false,
+  serverRequests: [],
   trackers: {},
   selectedServerId: null,
   selectedChannelId: null,
@@ -538,6 +542,7 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
         readStates,
         blocks: new Set(event.d.blocks ?? []),
         canCreateServers: event.d.canCreateServers ?? false,
+        serverRequests: event.d.serverRequests ?? [],
         selectedServerId,
         selectedChannelId,
       };
@@ -734,6 +739,12 @@ function applyGatewayEvent(state: State, event: ServerEvent): State {
 
     case 'server_create':
       return upsertServer(state, withRemembrance(event.d));
+
+    case 'server_request':
+      return { ...state, serverRequests: [...state.serverRequests.filter((r) => r.id !== event.d.id), event.d] };
+
+    case 'server_request_settled':
+      return { ...state, serverRequests: state.serverRequests.filter((r) => r.id !== event.d.id) };
 
     case 'server_update': {
       const existing = state.servers[event.d.id];

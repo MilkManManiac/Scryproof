@@ -129,6 +129,21 @@ export const servers = pgTable('servers', {
   createdAt: createdAt(),
 });
 
+/**
+ * A member asking the host for a server of their own (Wes, 2026-10-20: "open
+ * up the availability for other people to make servers but... I hit a button
+ * that approves it"). One row per person at a time; gone once answered.
+ */
+export const serverRequests = pgTable('server_requests', {
+  id: id(),
+  name: text('name').notNull(),
+  requesterId: text('requester_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+});
+
 export const roles = pgTable(
   'roles',
   {
