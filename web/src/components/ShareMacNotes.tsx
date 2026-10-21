@@ -50,8 +50,9 @@ export function ScreenRecordingNoteView({ missing }: { missing: boolean }) {
   return (
     <div className="toggle-row">
       <span className="field-note warning">
-        macOS needs Screen Recording turned on for Scryproof before it can share a screen or a window. After turning it on, quit
-        and reopen Scryproof.
+        macOS needs Screen Recording turned on for Scryproof before it can share a screen or a window. If Scryproof is already
+        listed and on, turn it off and on again: macOS kept the entry from an older copy of the app. After turning it on, quit and
+        reopen Scryproof.
       </span>
       <button type="button" className="button secondary inline" onClick={() => openPermissionSettings('screen')}>
         Open System Settings

@@ -18,19 +18,24 @@ key="$root/desktop/src/update-key-mac.pub.pem"
 # Derive the zip name only from a verified version. A stale manifest never
 # selects the newest zip by accident, and path input cannot escape release/.
 version=$(node --input-type=module - "$root" <<'JS'
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const root = process.argv[2];
 const { readMacInstallerManifest, macInstallerFileName, verifyInstallerFile } =
   await import(pathToFileURL(join(root, 'desktop/src/installer-core.js')));
 try {
-  const manifest = readMacInstallerManifest(
-    readFileSync(join(root, 'desktop/release/installer-mac-arm64.json'), 'utf8'),
-    readFileSync(join(root, 'desktop/src/update-key-mac.pub.pem'), 'utf8'));
+  // The keys an installed app trusts: the everyday one, and the recovery one when it is baked in.
+  const keys = ['update-key-mac.pub.pem', 'update-key-mac-recovery.pub.pem']
+    .map((name) => join(root, 'desktop/src', name)).filter(existsSync).map((path) => readFileSync(path, 'utf8'));
+  const manifest = readMacInstallerManifest(readFileSync(join(root, 'desktop/release/installer-mac-arm64.json'), 'utf8'), keys);
   if (!manifest) throw new Error('The Mac manifest signature or fields are invalid.');
   if (!(await verifyInstallerFile(join(root, 'desktop/release', macInstallerFileName(manifest.version)), manifest))) {
     throw new Error('The Mac manifest hash/size does not match the zip. Sign it again: cd desktop && npm run sign-installer -- --mac');
+  }
+  if (!manifest.dmg) throw new Error('The Mac manifest has no signed DMG block. Sign it again: cd desktop && npm run sign-installer -- --mac');
+  if (!(await verifyInstallerFile(join(root, 'desktop/release/Scryproof.dmg'), manifest.dmg))) {
+    throw new Error('The Mac manifest DMG hash/size does not match Scryproof.dmg. Sign it again: cd desktop && npm run sign-installer -- --mac');
   }
   console.log(manifest.version);
 } catch (error) {

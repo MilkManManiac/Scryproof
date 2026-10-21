@@ -50,7 +50,8 @@ export function PushToTalkKeyRow({
           <span>
             Accessibility
             <span className="field-note warning">
-              macOS needs the Accessibility switch on for Scryproof to hear this key while another app is in front.
+              macOS needs the Accessibility switch on for Scryproof to hear this key while another app is in front. If Scryproof
+              is already listed and on, turn it off and on again: macOS kept the entry from an older copy of the app.
             </span>
           </span>
           <button type="button" className="button secondary inline" onClick={() => openPermissionSettings('accessibility')}>

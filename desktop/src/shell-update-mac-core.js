@@ -114,6 +114,15 @@ export function versionFromZipName(name, arch = 'arm64') {
   return match ? match[1] : null;
 }
 
+/** The DMG for a version, as kept in the shell-update folder (the published one is just `Scryproof.dmg`). */
+export const macDmgFileName = (version, arch = 'arm64') => `Scryproof-${version}-mac-${arch}.dmg`;
+
+/** The version a kept DMG is for, from its name, or null. */
+export function versionFromDmgName(name, arch = 'arm64') {
+  const match = new RegExp(`^Scryproof-(\\d{1,9}\\.\\d{1,9}\\.\\d{1,9})-mac-${arch}\\.dmg$`).exec(name);
+  return match ? match[1] : null;
+}
+
 /** The staged app's name among what `ditto` extracted: exactly one `.app`, or null. */
 export function stagedAppName(entries) {
   const apps = entries.filter((name) => name.endsWith('.app'));

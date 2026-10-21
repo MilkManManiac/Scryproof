@@ -21,11 +21,11 @@
  * No Electron in this file, so `node --test` can run it.
  */
 
-import { createHash, createPublicKey, sign, verify } from 'node:crypto';
+import { createHash, sign } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 
-import { signedByAny } from './update-core.js';
+import { signedByAny, trustedKeys } from './update-core.js';
 
 const CONTEXT = 'scryproof/desktop-installer/v1';
 /** The installer is about 110 MB. Anything far past that is not our installer. */
@@ -98,7 +98,7 @@ export function readInstallerManifest(raw, publicKeyPems) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_INSTALLER_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    if (!signedByAny(signedBytes(version, hash), signature, publicKeyPems)) return null;
+    if (!signedByAny(trustedKeys(publicKeyPems), signedBytes(version, hash), Buffer.from(signature, 'base64'))) return null;
     return { version, sha256: hash, size, signature };
   } catch {
     return null;
@@ -121,27 +121,56 @@ export async function verifyInstallerFile(path, manifest) {
 
 /** Mac shell releases have their own key and domain; Windows stays v1. */
 export const MAC_CONTEXT = 'scryproof/desktop-installer-mac/v1';
+/**
+ * The DMG the same release is also published as, for an app that cannot swap
+ * itself (it runs from a folder it may not write, or from the DMG). It is
+ * signed under words of its own, beside the zip's, so a manifest from before
+ * the DMG was signed still verifies as a zip (an older app reads it as it
+ * always did) and a zip hash can never be passed off as a DMG's.
+ */
+export const MAC_DMG_CONTEXT = 'scryproof/desktop-installer-mac-dmg/v1';
 export const macInstallerFileName = (version, arch = 'arm64') => `Scryproof-${version}-mac-${arch}.zip`;
 export const macManifestName = (arch = 'arm64') => `installer-mac-${arch}.json`;
 const macSignedBytes = (version, arch, hash) => Buffer.from(`${MAC_CONTEXT}\n${arch}\n${version}\n${hash}`, 'utf8');
+const macDmgSignedBytes = (version, arch, hash) => Buffer.from(`${MAC_DMG_CONTEXT}\n${arch}\n${version}\n${hash}`, 'utf8');
+const HASH = /^[0-9a-f]{64}$/;
 
-export function signMacInstaller({ version, arch, sha256, size }, privateKey) {
-  return { version, arch, sha256, size,
+/** `dmg` is `{ sha256, size }` of the DMG, or absent when only the zip is being signed. */
+export function signMacInstaller({ version, arch, sha256, size, dmg }, privateKey) {
+  const manifest = { version, arch, sha256, size,
     signature: sign(null, macSignedBytes(version, arch, sha256), privateKey).toString('base64') };
+  if (dmg) {
+    manifest.dmg = { sha256: dmg.sha256, size: dmg.size,
+      signature: sign(null, macDmgSignedBytes(version, arch, dmg.sha256), privateKey).toString('base64') };
+  }
+  return manifest;
 }
 
-/** Network input is untrusted, including the key or JSON being malformed. */
-export function readMacInstallerManifest(raw, publicKeyPem) {
+/**
+ * Network input is untrusted, including the key or JSON being malformed. The
+ * answer carries `dmg` (`{ sha256, size, signature }`) when the manifest has a
+ * DMG block that the same keys signed for this version, else `dmg: null`. A
+ * DMG block that is there but does not verify refuses the whole manifest: it
+ * is a manifest someone has been at.
+ */
+export function readMacInstallerManifest(raw, publicKeyPems) {
   try {
-    const { version, arch, sha256, size, signature } = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const { version, arch, sha256, size, signature, dmg } = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (!parts(version) || arch !== 'arm64') return null;
-    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) return null;
+    if (typeof sha256 !== 'string' || !HASH.test(sha256)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_INSTALLER_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    const key = createPublicKey(publicKeyPem);
-    if (key.asymmetricKeyType !== 'ed25519') return null;
-    if (!verify(null, macSignedBytes(version, arch, sha256), key, Buffer.from(signature, 'base64'))) return null;
-    return { version, arch, sha256, size, signature };
+    const keys = trustedKeys(publicKeyPems);
+    if (!signedByAny(keys, macSignedBytes(version, arch, sha256), Buffer.from(signature, 'base64'))) return null;
+    let dmgBlock = null;
+    if (dmg !== undefined && dmg !== null) {
+      if (typeof dmg !== 'object' || typeof dmg.sha256 !== 'string' || !HASH.test(dmg.sha256)) return null;
+      if (!Number.isSafeInteger(dmg.size) || dmg.size <= 0 || dmg.size > MAX_INSTALLER_BYTES) return null;
+      if (typeof dmg.signature !== 'string') return null;
+      if (!signedByAny(keys, macDmgSignedBytes(version, arch, dmg.sha256), Buffer.from(dmg.signature, 'base64'))) return null;
+      dmgBlock = { sha256: dmg.sha256, size: dmg.size, signature: dmg.signature };
+    }
+    return { version, arch, sha256, size, signature, dmg: dmgBlock };
   } catch {
     return null;
   }

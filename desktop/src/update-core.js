@@ -33,23 +33,6 @@ export const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-/**
- * Whether any of the trusted keys made `signature` over `bytes`. Two keys are
- * baked into the app: the one Wes signs with, and a recovery key kept offline,
- * so losing the first is not a reinstall by hand for everyone (audit
- * 2026-10-10, finding 26). A key that is not Ed25519 trusts nothing.
- */
-export function signedByAny(bytes, signature, publicKeyPems) {
-  const sig = Buffer.from(signature, 'base64');
-  return [publicKeyPems].flat().some((pem) => {
-    try {
-      const key = createPublicKey(pem);
-      return key.asymmetricKeyType === 'ed25519' && verify(null, bytes, key, sig);
-    } catch {
-      return false;
-    }
-  });
-}
 const signedBytes = (version, hash) => Buffer.from(`${CONTEXT}\n${version}\n${hash}`, 'utf8');
 
 /**
@@ -74,6 +57,28 @@ export async function saveCapped(source, path, limit) {
   );
   return written;
 }
+
+/**
+ * The keys a manifest may be signed by: one PEM, or a list (the key baked in
+ * and, when one is baked in beside it, a recovery key kept offline, so losing
+ * the everyday key does not mean every install is replaced by hand; audit
+ * 2026-10-10, finding 26). An entry that is not an Ed25519 public key trusts
+ * nothing and is skipped: a bad second key must never stop the good one.
+ */
+export function trustedKeys(publicKeyPems) {
+  const keys = [];
+  for (const pem of Array.isArray(publicKeyPems) ? publicKeyPems : [publicKeyPems]) {
+    if (typeof pem !== 'string' || pem === '') continue;
+    try {
+      const key = createPublicKey(pem);
+      if (key.asymmetricKeyType === 'ed25519') keys.push(key);
+    } catch { /* not a key */ }
+  }
+  return keys;
+}
+
+/** Whether any of `keys` made `signature` over `bytes`. No keys, no. */
+export const signedByAny = (keys, bytes, signature) => keys.some((key) => verify(null, bytes, key, signature));
 
 /** `files` is { 'index.html': Buffer, 'assets/index-abc.js': Buffer, ... }. */
 export function packBundle(files) {
@@ -106,7 +111,7 @@ export function readManifest(raw, publicKeyPems) {
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) return null;
     if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_BUNDLE_BYTES) return null;
     if (typeof signature !== 'string') return null;
-    if (!signedByAny(signedBytes(version, hash), signature, publicKeyPems)) return null;
+    if (!signedByAny(trustedKeys(publicKeyPems), signedBytes(version, hash), Buffer.from(signature, 'base64'))) return null;
     return { version, sha256: hash, size, signature };
   } catch {
     return null;

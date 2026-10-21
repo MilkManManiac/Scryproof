@@ -52,7 +52,7 @@ import {
   versionFromFileName,
 } from './installer-core.js';
 import { appMenuTemplate, armPermissionIpc, startsHidden } from './mac-integration.js';
-import { gameMic, gameMicConsent, shellPermission } from './permissions-core.js';
+import { frameMicPrompt, permissionDecision, REFUSAL_HOLD_MS, shellPermission } from './permissions-core.js';
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { APP_SOUND_LABEL, pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
@@ -74,11 +74,12 @@ const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}
 
 /** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
 const UPDATE_URL = app.isPackaged ? `${SERVER.origin}/desktop-update/` : (process.env.SCRYPROOF_UPDATE_URL ?? '');
-/** The keys a client or installer may be signed by: Wes's, and the offline recovery key (signing-key.mjs). */
-const UPDATE_KEYS = ['update-key.pub.pem', 'update-key-recovery.pub.pem']
-  .map((name) => join(here, name))
-  .filter((file) => existsSync(file))
-  .map((file) => readFileSync(file, 'utf8'));
+const UPDATE_KEY_FILE = join(here, 'update-key.pub.pem');
+const UPDATE_KEY = existsSync(UPDATE_KEY_FILE) ? readFileSync(UPDATE_KEY_FILE, 'utf8') : '';
+/** A baked public key beside the everyday one, or '' (`update-core.js`, `trustedKeys`). */
+const bakedKey = (name) => (existsSync(join(here, name)) ? readFileSync(join(here, name), 'utf8') : '');
+/** What a client manifest may be signed by: Wes's key, and his recovery key once he bakes one in. */
+const UPDATE_KEYS = [UPDATE_KEY, bakedKey('update-key-recovery.pub.pem')];
 const UPDATE_EVERY_MS = app.isPackaged ? 5 * 60_000 : Number(process.env.SCRYPROOF_UPDATE_EVERY_MS ?? 5 * 60_000);
 const MAC = process.platform === 'darwin';
 /**
@@ -95,8 +96,11 @@ const INSTALLER_URL = app.isPackaged && process.platform === 'win32' ? `${SERVER
  */
 const MAC_KEY_FILE = join(here, 'update-key-mac.pub.pem');
 const MAC_KEY = MAC && existsSync(MAC_KEY_FILE) ? readFileSync(MAC_KEY_FILE, 'utf8') : '';
+/** Trey's everyday key and, once baked in, his recovery key (`mac-update-key.mjs --recovery`). */
+const MAC_KEYS = [MAC_KEY, MAC ? bakedKey('update-key-mac-recovery.pub.pem') : ''];
 const INSTALLER_EVERY_MS = 60 * 60_000;
 const TIDY_AGAIN_MS = 60_000;
+/** A page that died is reloaded once; another death within this gap is not. */
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -461,7 +465,7 @@ function armMacShellUpdates() {
       return reply.ok ? reply.text() : null;
     },
     download,
-    readManifest: (raw) => readMacInstallerManifest(raw, MAC_KEY),
+    readManifest: (raw) => readMacInstallerManifest(raw, MAC_KEYS),
     isNewer: isNewerVersion,
     hashFile,
     stat,
@@ -476,6 +480,8 @@ function armMacShellUpdates() {
     },
     onReady: (version) => win?.webContents.send('scryproof:shell-ready', version),
     openExternal: (url) => void shell.openExternal(url),
+    // The checked DMG, opened the way a double-click would: Finder mounts it and shows the app to drag.
+    openPath: (path) => void shell.openPath(path),
     // `quitting` first: the window's close handler would otherwise hide instead of closing. The new bundle is
     // now at the old path, so the relaunch runs from there, without the login start's `--hidden`.
     relaunchAndQuit: (bundle) => {
@@ -536,36 +542,68 @@ function armGateway(ses) {
 /* ------------------------------- permissions ------------------------------- */
 
 /**
- * A game asking for the microphone is asked about once per app run, in a plain
- * system dialog: the game is served by the box, so what it hears leaves the
- * end-to-end encryption the call has (audit 2026-10-10, finding 15).
+ * An Activities frame asking for the microphone is answered by the person
+ * (`permissions-core.js`, 'ask'): a dialog, once a session an origin. One
+ * dialog at a time: a frame that asks again while it is up gets the same
+ * answer. A refusal holds for REFUSAL_HOLD_MS, so a game asking in a loop
+ * cannot keep the dialog coming back.
  */
-const GAME_MIC_QUESTION = {
-  type: 'question',
-  title: 'Scryproof',
-  message: 'The game wants your microphone.',
-  detail: 'Sound sent to a game is not end-to-end encrypted.',
-  buttons: ['Allow', "Don't allow"],
-  defaultId: 1,
-  cancelId: 1,
-  noLink: true,
-};
-const gameMicAllowed = gameMicConsent(async () => {
-  const parent = win && !win.isDestroyed() ? win : null;
-  const { response } = await (parent ? dialog.showMessageBox(parent, GAME_MIC_QUESTION) : dialog.showMessageBox(GAME_MIC_QUESTION));
-  return response === 0;
-});
+const frameMic = { allowed: new Set(), refusedAt: new Map(), asking: new Map() };
+
+async function frameMicConsent(url) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return false;
+  }
+  if (frameMic.allowed.has(origin)) return true;
+  if (Date.now() - (frameMic.refusedAt.get(origin) ?? 0) < REFUSAL_HOLD_MS) return false;
+  const open = frameMic.asking.get(origin);
+  if (open) return open;
+  const asked = (async () => {
+    try {
+      if (!win || win.isDestroyed()) return false;
+      const { message, detail, buttons } = frameMicPrompt(url);
+      const { response } = await dialog.showMessageBox(win, { type: 'question', message, detail, buttons, defaultId: 1, cancelId: 1, noLink: true });
+      const allowed = response === 0;
+      if (allowed) frameMic.allowed.add(origin);
+      else frameMic.refusedAt.set(origin, Date.now());
+      return allowed;
+    } catch {
+      return false;
+    } finally {
+      frameMic.asking.delete(origin);
+    }
+  })();
+  frameMic.asking.set(origin, asked);
+  return asked;
+}
 
 function armPermissions(ses) {
+  // A popped-out stream's window (streamWindow below) may go full screen, and nothing else.
+  const popOutFullscreen = (contents, permission) => permission === 'fullscreen' && streamWindows.has(contents);
   ses.setPermissionRequestHandler((contents, permission, done, details) => {
-    const mainFrame = details.isMainFrame !== false;
-    if (gameMic(details.requestingUrl, permission, mainFrame, details.mediaTypes ?? null)) return void gameMicAllowed().then(done);
-    done((permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(details.requestingUrl, permission, mainFrame));
+    if (popOutFullscreen(contents, permission)) return done(true);
+    const decision = permissionDecision(details.requestingUrl, permission, details.isMainFrame !== false, details.mediaTypes ?? null);
+    if (decision !== 'ask') return done(decision === 'grant');
+    void frameMicConsent(details.requestingUrl).then(done);
   });
+  // A check is "does this origin have it", with nobody to ask (it is
+  // synchronous: the Permissions API, device names in enumerateDevices). The
+  // frame microphone has it once the person said yes. A request is what puts
+  // the dialog up, and Chromium asks the request handler first and the check
+  // only after (seen under xvfb with a fake device, 2026-10-10), so a 'no'
+  // here never stops the dialog.
   ses.setPermissionCheckHandler((contents, permission, origin, details) => {
-    const mainFrame = details.isMainFrame !== false;
-    if (gameMic(origin, permission, mainFrame, details.mediaType ?? null)) return gameMicAllowed.answer() === true;
-    return (permission === 'fullscreen' && streamWindows.has(contents)) || shellPermission(origin, permission, mainFrame);
+    if (popOutFullscreen(contents, permission)) return true;
+    const decision = permissionDecision(origin, permission, details.isMainFrame !== false, details.mediaType ?? null);
+    if (decision !== 'ask') return decision === 'grant';
+    try {
+      return frameMic.allowed.has(new URL(origin).origin);
+    } catch {
+      return false;
+    }
   });
 
   // Windows has no picker of its own to hand over to, so the page draws one.

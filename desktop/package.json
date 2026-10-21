@@ -1,7 +1,7 @@
 {
   "name": "scryproof-desktop",
   "private": true,
-  "version": "0.5.8",
+  "version": "0.5.9",
   "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
   "author": "Scryproof",
   "type": "module",
@@ -14,12 +14,12 @@
     "dist": "npm run release && node scripts/build-app-sound.mjs && electron-builder --win nsis --publish never && npm run sign-installer",
     "sign-installer": "node scripts/sign-installer.mjs",
     "mac-update-key": "node scripts/mac-update-key.mjs",
-    "dist:mac": "node scripts/mac-preflight.mjs && npm run client && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=scryproof-notary APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && npm run notarize:mac:dmg && npm run sign-installer -- --mac",
+    "dist:mac": "node scripts/mac-preflight.mjs && npm run client && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=\"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && npm run notarize:mac:dmg && npm run sign-installer -- --mac",
     "dist:mac:adhoc": "npm run client && electron-builder --mac dir --arm64 --publish never --config.mac.identity=- --config.mac.notarize=false --config.mac.forceCodeSigning=false",
-    "notarize:mac:dmg": "xcrun notarytool submit release/Scryproof.dmg --keychain-profile scryproof-notary --wait && xcrun stapler staple release/Scryproof.dmg"
+    "notarize:mac:dmg": "xcrun notarytool submit release/Scryproof.dmg --keychain-profile \"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" --wait && xcrun stapler staple release/Scryproof.dmg"
   },
   "devDependencies": {
-    "electron": "44.4.3",
+    "electron": "44.5.1",
     "electron-builder": "26.15.3"
   },
   "build": {

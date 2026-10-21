@@ -9,7 +9,7 @@
  * this needed no change there.
  */
 
-import { captureOptions, voicePrefs } from './voice-prefs';
+import { openMicrophoneOrDefault, voicePrefs } from './voice-prefs';
 
 /** Longest clip, in seconds. The recorder stops itself here and the clip is sent. */
 export const MAX_VOICE_SECONDS = 120;
@@ -98,22 +98,15 @@ export function record(): Recording {
     }
     const prefs = voicePrefs.get();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: captureOptions(prefs) });
+      // The microphone picked in settings may have been unplugged since. The
+      // system default is a better answer than no clip at all.
+      stream = await openMicrophoneOrDefault(prefs, (options) => navigator.mediaDevices.getUserMedia({ audio: options }));
     } catch (problem) {
       const name = problem instanceof Error ? problem.name : '';
       if (name === 'NotAllowedError') {
         throw new Error('The microphone is blocked for this site. Allow it in the browser to record.');
       }
-      // The microphone picked in settings may have been unplugged since. The
-      // system default is a better answer than no clip at all.
-      if (name !== 'OverconstrainedError' || !prefs.inputDeviceId) {
-        throw new Error('The microphone could not be opened.');
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: captureOptions({ ...prefs, inputDeviceId: '' }) });
-      } catch {
-        throw new Error('The microphone could not be opened.');
-      }
+      throw new Error('The microphone could not be opened.');
     }
     if (cancelled) {
       release();

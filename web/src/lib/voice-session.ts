@@ -69,9 +69,11 @@ import { HOLD_MS, MicGate, OutputMix, audioContext, withHold } from './voice-aud
 const callSound = (moment: 'joined' | 'left'): void => playSound(notifyPrefs.get().moments[moment].sound);
 import { MicProcessor, isVoiceEffect, needsProcessor, type MicChoice } from './voice-effects';
 import {
+  MICROPHONE_FALLBACK_MESSAGE,
   cameraEncoding,
   cameraOptions,
   captureOptions,
+  openMicrophoneOrDefault,
   screenShareOptions,
   usesModel,
   voicePrefs,
@@ -330,8 +332,15 @@ interface Soundboard {
   playing: AudioBufferSourceNode | null;
 }
 
-function describeCaptureProblem(problem: unknown, what: 'camera' | 'screen'): string {
+function describeCaptureProblem(problem: unknown, what: 'camera' | 'microphone' | 'screen'): string {
   const name = problem instanceof Error ? problem.name : '';
+  if (what === 'microphone') {
+    if (name === 'NotAllowedError') return 'Scryproof is not allowed to use the microphone. Check the system\'s privacy settings.';
+    if (name === 'NotFoundError') return 'No microphone was found.';
+    if (name === 'NotReadableError') return 'The microphone is in use by another program.';
+    if (name === 'OverconstrainedError') return 'The chosen microphone could not be opened.';
+    return problem instanceof Error && problem.message ? problem.message : 'The microphone could not be started.';
+  }
   if (what === 'camera') {
     if (name === 'NotAllowedError') return 'The browser is not allowed to use the camera. Check the icon in the address bar.';
     if (name === 'NotFoundError') return 'No camera was found.';
@@ -1528,11 +1537,23 @@ export class VoiceSession {
    */
   private async publishMicrophone(room: Room): Promise<void> {
     const choice = this.micChoice();
+    const prefs = voicePrefs.get();
+    const fellBack = () => {
+      // The room keeps its own copy of the capture settings for later opens.
+      room.options.audioCaptureDefaults = captureOptions(voicePrefs.get());
+      this.update({ mediaError: MICROPHONE_FALLBACK_MESSAGE });
+    };
+    // A browser's capture error can carry no words at all (OverconstrainedError
+    // does), and the panel shows whatever message reaches it.
+    const openMic = <T>(open: (options: MediaTrackConstraints) => Promise<T>): Promise<T> =>
+      openMicrophoneOrDefault(prefs, open, fellBack).catch((problem: unknown) => {
+        throw new Error(describeCaptureProblem(problem, 'microphone'));
+      });
     if (!needsProcessor(choice)) {
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await openMic((options) => room.localParticipant.setMicrophoneEnabled(true, options));
       return;
     }
-    const [track] = await room.localParticipant.createTracks({ audio: captureOptions(voicePrefs.get()) });
+    const [track] = await openMic((options) => room.localParticipant.createTracks({ audio: options }));
     if (!track || track.kind !== Track.Kind.Audio) throw new Error('The microphone could not be opened.');
     const microphone = track as LocalAudioTrack;
     const context = audioContext();
