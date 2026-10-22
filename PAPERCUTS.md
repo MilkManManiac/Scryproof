@@ -48,3 +48,6 @@ Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests
 
 ## 2026-10-22 release.sh gate failed on a Node native crash in one test file, not a test
 `kicks-and-invites.test.ts` died with a V8 stack trace (no assertion) under the full `node --test` run; alone it passed, and the next full run passed. Looks like the pglite/WASM worker crashing under parallel test files. Rule: a gate failure with a `v8::` stack and no `AssertionError` is a rerun, not a bug hunt; if it repeats, run the server suite with `--test-concurrency=1`.
+
+## 2026-10-22 imagegen "profile already in use" was another session's job, not a stale Chrome
+`gen.py` failed with "Opening in existing browser session". The skill's recovery (kill every chrome.exe on `imagegen\profile`) was wrong here: a different Claude session was mid-run with `vid.py` (Rise video gen) on the same profile, and the kill took its browser down. Rule: before killing, check for a live owner with `Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*imagegen*' -and $_.Name -eq 'python.exe' }`. If a `gen.py`/`vid.py` is running, wait for it; only kill Chrome when no python owner exists. (Same note belongs in the imagegen skill.)

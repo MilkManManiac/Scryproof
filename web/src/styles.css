@@ -317,6 +317,7 @@ select {
   position: relative;
   width: 44px;
   height: 44px;
+  padding: 0; /* buttons keep 1px 6px by default; a picture at 100% then sat in a 32x42 box and cropped to a sliver */
   border-radius: var(--radius-lg);
   background: var(--panel-2);
   color: var(--text-muted);
