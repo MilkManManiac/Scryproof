@@ -45,3 +45,6 @@ Wrote a changelog note with `someone\'s` through a `python -I -` heredoc; the fi
 
 ## 2026-10-22 The dev API (`tsx watch`) kept serving old code after new files were added
 Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests passed, but the running `npm run dev` API answered the new route with a 500 (the route was registered, the table was not there: the process had not restarted, so boot-time migrations never ran). Its log was not reachable either (started by an earlier session). Fix: kill the PID on 8787 and start `npm run dev:server` again with output to a scratchpad log. Rule: after adding a migration or a new route file, restart the dev API before trusting a shot or a manual call against it, and start dev servers with a log file I can read.
+
+## 2026-10-22 release.sh gate failed on a Node native crash in one test file, not a test
+`kicks-and-invites.test.ts` died with a V8 stack trace (no assertion) under the full `node --test` run; alone it passed, and the next full run passed. Looks like the pglite/WASM worker crashing under parallel test files. Rule: a gate failure with a `v8::` stack and no `AssertionError` is a rerun, not a bug hunt; if it repeats, run the server suite with `--test-concurrency=1`.
