@@ -225,8 +225,14 @@ export const api = {
     /** Host only. */
     answerRequest: (id: string, approve: boolean) =>
       post<{ ok: true; serverId: string | null }>(`/api/host/server-requests/${id}`, { approve }),
-    update: (id: string, body: { name?: string }) =>
+    update: (id: string, body: { name: string }) =>
       patch<{ server: Server }>(`/api/servers/${id}`, body),
+    async uploadIcon(id: string, file: File): Promise<Server> {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      return (await upload<{ server: Server }>(`/api/servers/${id}/icon`, form)).server;
+    },
+    removeIcon: (id: string) => del<{ server: Server }>(`/api/servers/${id}/icon`),
     remove: (id: string) => del<{ ok: true }>(`/api/servers/${id}`),
     leave: (id: string) => post<{ ok: true }>(`/api/servers/${id}/leave`),
     members: (id: string) => get<{ members: Member[] }>(`/api/servers/${id}/members`),

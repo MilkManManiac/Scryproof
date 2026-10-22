@@ -192,7 +192,7 @@ export function ServerRail() {
               }}
               {...hold(() => setServerMenu(id))}
             >
-              {tile(server.name)}
+              {server.iconUrl ? <img className="rail-icon" src={server.iconUrl} alt="" /> : tile(server.name)}
               {mentions > 0 ? (
                 <span className="badge">{badgeText(mentions)}</span>
               ) : count > 0 && !muted ? (

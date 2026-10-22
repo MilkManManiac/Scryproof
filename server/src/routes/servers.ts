@@ -106,25 +106,16 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const user = requireUser(request);
     const { serverId } = z.object({ serverId: z.string() }).parse(request.params);
     const body = z
-      .object({ name: z.string().min(1).max(100).optional(), iconUrl: z.string().url().nullable().optional() })
+      .object({ name: z.string().min(1).max(100) })
       .parse(request.body);
 
     await requireServerPermission(serverId, user.id, Permission.MANAGE_SERVER);
 
-    if (body.name !== undefined) {
-      const check = validateServerName(body.name);
-      if (!check.ok) throw badRequest(check.error, 'invalid_server_name');
-    }
+    const check = validateServerName(body.name);
+    if (!check.ok) throw badRequest(check.error, 'invalid_server_name');
 
     const db = getDb();
-    const [updated] = await db
-      .update(servers)
-      .set({
-        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
-        ...(body.iconUrl !== undefined ? { iconUrl: body.iconUrl } : {}),
-      })
-      .where(eq(servers.id, serverId))
-      .returning();
+    const [updated] = await db.update(servers).set({ name: body.name.trim() }).where(eq(servers.id, serverId)).returning();
 
     if (!updated) throw notFound('That server does not exist.', 'unknown_server');
 
@@ -134,7 +125,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       action: 'server.update',
       targetType: 'server',
       targetId: serverId,
-      changes: { name: body.name, iconUrl: body.iconUrl },
+      changes: { name: body.name },
     });
 
     hub.broadcastToServer(serverId, { t: 'server_update', d: serialize.server(updated) });

@@ -11,7 +11,7 @@
  * a control.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LIMITS, Permission, toNames, decodeMask } from '@scryproof/shared';
 import type { AuditLogEntry, Invite, Member, PublicUser, ServerDetail } from '@scryproof/shared';
@@ -20,6 +20,8 @@ import { ApiError, INVITE_LIVES, api } from '../../lib/api';
 import { publicOrigin } from '../../lib/desktop';
 import { useLocalNames } from '../../lib/local-names';
 import { nameOf } from '../../lib/mentions';
+import { ScrubError, scrubImage } from '../../lib/scrub-image';
+import { squareOff } from '../../lib/square-off';
 import { PERMISSION_META, groupsForCategory } from '../../lib/permissionMeta';
 import { useStore } from '../../state/store';
 import { Avatar } from '../Avatar';
@@ -162,11 +164,60 @@ function Overview({
   const [confirm, setConfirm] = useState('');
 
   const dirty = name.trim() !== server.name;
+  const picker = useRef<HTMLInputElement>(null);
+
+  async function choose(file: File | null | undefined) {
+    if (!file) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // A GIF goes as it is, so it still moves; it carries no location data.
+      // Everything else is scrubbed and cut square like an avatar.
+      const clean = file.type === 'image/gif' ? file : await squareOff(await scrubImage(file));
+      await api.servers.uploadIcon(server.id, clean);
+    } catch (problem) {
+      setError(problem instanceof ApiError || problem instanceof ScrubError ? problem.message : 'Could not use that picture.');
+    } finally {
+      setSaving(false);
+      if (picker.current) picker.current.value = '';
+    }
+  }
 
   return (
     <>
       <h2 className="settings-heading">Overview</h2>
       {error ? <div className="error">{error}</div> : null}
+
+      {editable ? (
+        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span className="rail-item" style={{ cursor: 'default' }}>
+            {server.iconUrl ? <img className="rail-icon" src={server.iconUrl} alt="" /> : server.name.slice(0, 2).toUpperCase()}
+          </span>
+          <div>
+            <button type="button" className="button secondary inline" disabled={saving} onClick={() => picker.current?.click()}>
+              {server.iconUrl ? 'Change picture' : 'Add a picture'}
+            </button>
+            {server.iconUrl ? (
+              <button
+                type="button"
+                className="link-button"
+                disabled={saving}
+                onClick={() => void api.servers.removeIcon(server.id).catch(() => setError('Could not remove the picture.'))}
+              >
+                Remove
+              </button>
+            ) : null}
+            <p className="field-note">A picture or a GIF, up to 2 MB. Stills are cropped square and scrubbed of location data first.</p>
+          </div>
+          <input
+            ref={picker}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+            onChange={(event) => void choose(event.target.files?.[0])}
+          />
+        </div>
+      ) : null}
 
       <div className="field">
         <label htmlFor="server-name">Server name</label>

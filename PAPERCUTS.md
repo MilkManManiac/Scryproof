@@ -42,3 +42,6 @@ Ran `npx asar extract-file app.asar package.json` from `desktop/` to read the in
 
 ## 2026-10-22 Python edit script wrote `\'` as `'` inside a TS string, and the check ran before the edit
 Wrote a changelog note with `someone\'s` through a `python -I -` heredoc; the file got a bare `'`, which broke the TS string and gave 314 typecheck errors. Caught only by release.sh's gate, after I had already said "typecheck clean" (the check ran before the changelog edit). Rules: no apostrophes in changelog notes (reword), and the typecheck is the last thing before commit, after every edit.
+
+## 2026-10-22 The dev API (`tsx watch`) kept serving old code after new files were added
+Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests passed, but the running `npm run dev` API answered the new route with a 500 (the route was registered, the table was not there: the process had not restarted, so boot-time migrations never ran). Its log was not reachable either (started by an earlier session). Fix: kill the PID on 8787 and start `npm run dev:server` again with output to a scratchpad log. Rule: after adding a migration or a new route file, restart the dev API before trusting a shot or a manual call against it, and start dev servers with a log file I can read.

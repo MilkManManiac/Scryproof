@@ -253,6 +253,13 @@
       "when": 1792542526615,
       "tag": "0035_server_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792690317032,
+      "tag": "0036_server_icons",
+      "breakpoints": true
     }
   ]
 }

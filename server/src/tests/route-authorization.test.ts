@@ -17,7 +17,7 @@ process.env.DATA_DIR = dataDir;
 
 const { initDatabase, closeDatabase, runMigrations, getDb } = await import('../db/index.js');
 const { MIGRATIONS_FOLDER } = await import('../db/paths.js');
-const { avatars, channelOverwrites, categoryOverwrites, members } = await import('../db/schema.js');
+const { avatars, channelOverwrites, categoryOverwrites, members, serverIcons } = await import('../db/schema.js');
 const { registerUser, createSession } = await import('../services/auth.js');
 const { buildApp } = await import('../app.js');
 const { config } = await import('../config.js');
@@ -205,5 +205,32 @@ describe('route authorization', () => {
     });
     assert.equal(response.statusCode, 404, response.body);
     assert.equal(response.json().code, 'unknown_avatar');
+  });
+
+  it('hides a server icon from anyone outside the server', async () => {
+    const iconId = 'route-icon';
+    await getDb().insert(serverIcons).values({
+      id: iconId,
+      serverId: first.id,
+      storageKey: 'not-read-by-this-test',
+      contentType: 'image/gif',
+      size: 1,
+    });
+
+    const outside = await app.inject({
+      method: 'GET',
+      url: `/api/server-icons/${first.id}/${iconId}`,
+      headers: { cookie: stranger.cookie },
+    });
+    assert.equal(outside.statusCode, 404, outside.body);
+    assert.equal(outside.json().code, 'unknown_icon');
+
+    // Only someone who may manage the server may change its picture.
+    const remove = await app.inject({
+      method: 'DELETE',
+      url: `/api/servers/${first.id}/icon`,
+      headers: { cookie: friend.cookie },
+    });
+    assert.equal(remove.statusCode, 403, remove.body);
   });
 });

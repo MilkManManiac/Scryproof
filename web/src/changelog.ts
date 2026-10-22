@@ -22,8 +22,10 @@ export const CHANGELOG: readonly Release[] = [
   {
     id: '2026-10-22-profile-card-message',
     date: '2026-10-22',
-    title: 'Messages from a profile card arrive',
+    title: 'Server pictures, Queens crosses off for you',
     notes: [
+      'A server can have a picture now. Server settings, Overview: a still picture or a GIF, up to 2 MB. It shows on the rail in place of the letters.',
+      'Queens works like the real one: put a queen down and her row, column, colour and the squares around her are crossed off for you. Take her back and those crosses go with her; your own stay. Tapping one of those crossed squares puts a queen straight there.',
       'Typing into the box on a profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
     ],
   },

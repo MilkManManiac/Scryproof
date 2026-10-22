@@ -2,7 +2,16 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-20, evening)
+## Pick up here (2026-10-22, morning)
+
+**BUILT, NOT RELEASED (Wes, 2026-10-22: "make queenies work like the real version where once you add a queen it auto blocks the direct lines" and "Let people add pics or gifs for server icons"):**
+1. **Queenies auto-cross.** `Queens.tsx`: a placed queen's row, column, colour region and eight neighbours show as crosses (derived from the queens each render, `covered`, not stored; lighter style `.qn-cross.auto`). Tapping an auto-crossed empty square goes straight to a queen. `stuck()` sees the derived crosses. Help text in `GameHead.tsx` updated. Shot: `docs/shots/queens-auto-cross.png`.
+2. **Server pictures.** Table `server_icons` (migration 0036), routes in `server/src/routes/server-icon.ts`: `POST/DELETE /api/servers/:id/icon` (MANAGE_SERVER, 2 MB, png/jpeg/webp/gif), `GET /api/server-icons/:serverId/:iconId` (members only, cached a week, address changes per picture, old one deleted). `PATCH /api/servers/:id` no longer accepts `iconUrl` (an outside URL would be a third party in the data path). Web: Overview pane of server settings has the picker; stills go through `scrubImage` + `squareOff` (now `web/src/lib/square-off.ts`, shared with avatars), GIFs are sent as they are so they keep moving (no EXIF in GIF). Rail shows `<img class="rail-icon">` in place of the letters. Tests: `server-icon.test.ts`, and a hidden-from-outsiders case in `route-authorization.test.ts`. Shots: `docs/shots/server-icon.png`, `server-icon-rail.png`.
+Changelog: both are notes on `2026-10-22-profile-card-message` (title "Server pictures, Queens crosses off for you"). To ship: `scripts/release.sh` on Wes's yes. Dev API note: `tsx watch` did not pick up the new route/migration; it had to be killed and started again (PAPERCUTS 2026-10-22).
+
+**LIVE 2026-10-22 ~09:10 ET:** client 1792674470768 (profile-card message sends before switching to the DM).
+
+## Earlier pick-up (2026-10-20, evening)
 
 **LIVE as of 2026-10-21 ~06:35 ET (Wes, 02:3x: "Fix whatever and deploy whatever. going to bed. just do it").** Client 1792578641976 on scryproof.com; Windows installer 0.5.9 at /download (sha256 4561062de0095b697692f644f627c93d49b39fdc720cc3fd8d5aba15c587a781, update key sha256 755f8ba552e2d4aadd36c6a46fdeb085c12abf71f5818df322d65e07ae8ae35a). Not done: GitHub release notes with the hashes (public post, his call), and Mac 0.5.9 (Trey must rebuild from main after the pop-out fix, then `publish-mac.sh`).
 

@@ -153,6 +153,21 @@ function Board({ today, say }: { today: QueensToday; say: (text: string, good?: 
   const solved = new Set(today.queens ?? []);
   const placed = done ? [...solved] : marks.flatMap((mark, cell) => (mark === QUEEN ? [cell] : []));
   const clashes = done ? new Set<number>() : queensClashes(regions, placed);
+  // Like the real one: a queen crosses off her row, column, colour and the
+  // eight squares around her by herself. Derived, not stored, so taking the
+  // queen back takes her crosses with her and leaves your own alone.
+  const covered = new Set<number>();
+  for (const queen of placed) {
+    const [qr, qc] = [Math.floor(queen / size), queen % size];
+    regions.forEach((row, r) =>
+      row.forEach((region, c) => {
+        const cell = r * size + c;
+        if (cell === queen || marks[cell] === QUEEN) return;
+        if (r === qr || c === qc || region === regions[qr]![qc] || (Math.abs(r - qr) <= 1 && Math.abs(c - qc) <= 1)) covered.add(cell);
+      }),
+    );
+  }
+  const shown: Mark[] = marks.map((mark, cell) => (mark === NONE && covered.has(cell) ? CROSS : mark));
 
   // All of them down and none at odds: that is the answer, and the server is asked to say so.
   const ready = !done && placed.length === size && clashes.size === 0;
@@ -193,10 +208,13 @@ function Board({ today, say }: { today: QueensToday; say: (text: string, good?: 
     const dragged = stroke.current?.moved;
     stroke.current = null;
     if (done || dragged) return;
-    setMarks((before) => before.map((mark, at) => (at === cell ? (((mark + 1) % 3) as Mark) : mark)));
+    // A square already crossed off for you goes straight to a queen.
+    setMarks((before) =>
+      before.map((mark, at) => (at === cell ? (mark === NONE && covered.has(cell) ? QUEEN : (((mark + 1) % 3) as Mark)) : mark)),
+    );
   };
 
-  const shut = done || clashes.size > 0 ? null : stuck(regions, marks);
+  const shut = done || clashes.size > 0 ? null : stuck(regions, shown);
 
   const elapsed = done ? today.seconds ?? 0 : Math.max(0, (now - new Date(today.startedAt!).getTime()) / 1000);
 
@@ -242,9 +260,9 @@ function Board({ today, say }: { today: QueensToday; say: (text: string, good?: 
                 className={classes.join(' ')}
                 disabled={done}
                 onClick={() => tap(cell)}
-                aria-label={`Row ${r + 1}, column ${c + 1}: ${queen ? 'queen' : marks[cell] === CROSS ? 'crossed off' : 'empty'}`}
+                aria-label={`Row ${r + 1}, column ${c + 1}: ${queen ? 'queen' : shown[cell] === CROSS ? 'crossed off' : 'empty'}`}
               >
-                {queen ? <Crown /> : !done && marks[cell] === CROSS ? <span className="qn-cross" aria-hidden="true" /> : null}
+                {queen ? <Crown /> : !done && shown[cell] === CROSS ? <span className={`qn-cross${marks[cell] === CROSS ? '' : ' auto'}`} aria-hidden="true" /> : null}
               </button>
             );
           }),
