@@ -39,3 +39,6 @@ When two branches add two different functions at the same spot, git puts the one
 
 ## 2026-10-21 `npx asar extract-file` writes into the current folder, silently overwriting
 Ran `npx asar extract-file app.asar package.json` from `desktop/` to read the installed app's version. It wrote the extracted file as `desktop/package.json`, replacing the real one (scripts, build config gone), with no message. The next `npm run dist` failed with "Missing script". Caught by `git status`. Rule: read inside an asar with `@electron/asar` `extractFile()` in a `node -e` (returns a buffer, writes nothing), or run `asar` from the scratchpad. Never run an extracting tool with cwd in the repo.
+
+## 2026-10-22 Python edit script wrote `\'` as `'` inside a TS string, and the check ran before the edit
+Wrote a changelog note with `someone\'s` through a `python -I -` heredoc; the file got a bare `'`, which broke the TS string and gave 314 typecheck errors. Caught only by release.sh's gate, after I had already said "typecheck clean" (the check ran before the changelog edit). Rules: no apostrophes in changelog notes (reword), and the typecheck is the last thing before commit, after every edit.

@@ -24,7 +24,7 @@ export const CHANGELOG: readonly Release[] = [
     date: '2026-10-22',
     title: 'Messages from a profile card arrive',
     notes: [
-      'Typing into the box on someone's profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
+      'Typing into the box on a profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
     ],
   },
   {
