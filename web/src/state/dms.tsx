@@ -299,8 +299,12 @@ interface DmValue {
   /** Back to servers. */
   hideDms: () => void;
   openDm: (dmId: string) => void;
-  /** Open the conversation with a person, making it if need be. Answers its id. */
-  openWith: (userId: string) => Promise<string>;
+  /**
+   * Open the conversation with a person, making it if need be. Answers its id.
+   * `show: false` finds (and loads) it without switching the screen, for a
+   * sender that wants to put a message in first and show it after.
+   */
+  openWith: (userId: string, show?: boolean) => Promise<string>;
   /** Make a group of these people and yourself, and open it. Answers its id. */
   createGroup: (userIds: string[], title?: string | null) => Promise<string>;
   /** Bring someone into a group. They read from now on. */
@@ -801,13 +805,20 @@ export function DmProvider({ children }: { children: ReactNode }) {
   );
 
   const openWith = useCallback(
-    async (userId: string) => {
+    async (userId: string, show = true) => {
       const { dm } = await api.dms.open(userId);
       dispatch({ type: 'dm', dm });
-      openDm(dm.id);
+      if (show) {
+        openDm(dm.id);
+      } else if (!stateRef.current.loaded[dm.id]) {
+        // Loaded now, not alongside the send that follows: the first load
+        // replaces the message list, and would wipe a message that landed
+        // before it did.
+        await loadDm(dm.id);
+      }
       return dm.id;
     },
-    [openDm],
+    [openDm, loadDm],
   );
 
   const createGroup = useCallback(

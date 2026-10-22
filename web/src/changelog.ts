@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-22-profile-card-message',
+    date: '2026-10-22',
+    title: 'Messages from a profile card arrive',
+    notes: [
+      'Typing into the box on someone's profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
+    ],
+  },
+  {
     id: '2026-10-21-ask-for-a-server',
     date: '2026-10-21',
     title: 'Ask for a server, and a tip jar',
