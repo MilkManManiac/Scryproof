@@ -46,6 +46,13 @@ export interface StreamCommentMessage {
   stream: string;
   id: string;
   text: string;
+  /**
+   * A song request (Wes, 2026-10-06: "a comment or que section"; 2026-10-22:
+   * "Meant like a song request queue") goes in the comments and in the
+   * stream's queue. `played` is the sharer taking one off the queue: its text
+   * is the request's key. Absent for a plain comment.
+   */
+  kind?: 'request' | 'played';
 }
 
 export interface StreamComment {
@@ -53,7 +60,12 @@ export interface StreamComment {
   key: string;
   userId: string;
   text: string;
+  request?: boolean;
 }
+
+const KINDS = new Set(['request', 'played']);
+/** A request's key: the sender's id and the comment id. */
+const KEY = /^[^\s:]{1,64}:[0-9a-f]{16}$/;
 
 /**
  * A comment's words, the way everyone will see them: trimmed, newlines and
@@ -76,12 +88,16 @@ export function readStreamComment(bytes: Uint8Array): StreamCommentMessage | nul
     const value = JSON.parse(new TextDecoder().decode(bytes));
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const keys = Object.keys(value);
-    if (keys.length !== 3 || !['stream', 'id', 'text'].every((key) => keys.includes(key))) return null;
-    const { stream, id, text } = value;
+    const kinded = keys.includes('kind');
+    if (keys.length !== (kinded ? 4 : 3) || !['stream', 'id', 'text'].every((key) => keys.includes(key))) return null;
+    const { stream, id, text, kind } = value;
     if (typeof stream !== 'string' || typeof id !== 'string' || typeof text !== 'string') return null;
     if (!SID.test(stream) || !ID.test(id)) return null;
+    if (kinded && (typeof kind !== 'string' || !KINDS.has(kind))) return null;
+    if (kind === 'played') return KEY.test(text) ? { stream, id, text, kind } : null;
     const clean = cleanComment(text);
-    return clean === null ? null : { stream, id, text: clean };
+    if (clean === null) return null;
+    return kinded ? { stream, id, text: clean, kind } : { stream, id, text: clean };
   } catch {
     return null;
   }
@@ -207,24 +223,44 @@ export class CommentRate {
   }
 }
 
-/** Comments by stream, newest last. Gone when the stream ends or the call does. */
+/** Comments by stream, newest last, and each stream's song requests still waiting. Gone when the stream ends or the call does. */
 export class StreamComments {
-  private readonly streams = new Map<string, { list: StreamComment[]; seen: Set<string> }>();
+  private readonly streams = new Map<string, { list: StreamComment[]; queue: StreamComment[]; seen: Set<string> }>();
 
-  /** False for a comment id this sender already used on this stream. */
-  add(stream: string, userId: string, id: string, text: string): boolean {
+  /** False for a comment id this sender already used on this stream. A request also joins the queue. */
+  add(stream: string, userId: string, id: string, text: string, request = false): boolean {
     let entry = this.streams.get(stream);
-    if (!entry) this.streams.set(stream, (entry = { list: [], seen: new Set() }));
+    if (!entry) this.streams.set(stream, (entry = { list: [], queue: [], seen: new Set() }));
     const key = `${userId}:${id}`;
     if (entry.seen.has(key)) return false;
     entry.seen.add(key);
+    const comment: StreamComment = request ? { key, userId, text, request: true } : { key, userId, text };
     // A new array each time, so a screen drawing the old one sees the change.
-    entry.list = [...entry.list, { key, userId, text }].slice(-KEEP);
+    entry.list = [...entry.list, comment].slice(-KEEP);
+    if (request) entry.queue = [...entry.queue, comment].slice(-KEEP);
+    return true;
+  }
+
+  /** The sharer played (or passed on) a request. True if it was waiting. */
+  played(stream: string, key: string): boolean {
+    const entry = this.streams.get(stream);
+    if (!entry || !entry.queue.some((comment) => comment.key === key)) return false;
+    entry.queue = entry.queue.filter((comment) => comment.key !== key);
     return true;
   }
 
   list(stream: string): StreamComment[] {
     return this.streams.get(stream)?.list ?? [];
+  }
+
+  queue(stream: string): StreamComment[] {
+    return this.streams.get(stream)?.queue ?? [];
+  }
+
+  queues(): Record<string, StreamComment[]> {
+    const out: Record<string, StreamComment[]> = {};
+    for (const [stream, entry] of this.streams) if (entry.queue.length > 0) out[stream] = entry.queue;
+    return out;
   }
 
   /** The stream ended. True if it had anything. */

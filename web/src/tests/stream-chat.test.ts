@@ -107,3 +107,28 @@ test('each stream keeps its newest 50, ignores a repeated id, and empties when i
   comments.clear();
   assert.deepEqual(comments.all(), {});
 });
+
+test('a song request is a comment with a kind; a played mark names a request key; anything else is refused', () => {
+  const request = { ...good, kind: 'request' };
+  assert.deepEqual(readStreamComment(encode(request)), request);
+  const played = { ...good, kind: 'played', text: 'alex:0123456789abcdef' };
+  assert.deepEqual(readStreamComment(encode(played)), played);
+  assert.equal(readStreamComment(encode({ ...good, kind: 'played' })), null, 'played needs a key, not words');
+  assert.equal(readStreamComment(encode({ ...good, kind: 'shout' })), null);
+  assert.equal(readStreamComment(encode({ ...good, kind: 'request', extra: 1 })), null);
+
+  const comments = new StreamComments();
+  comments.add('TR_a', 'alex', '0000000000000001', 'play freebird', true);
+  comments.add('TR_a', 'wes', '0000000000000002', 'nice', false);
+  comments.add('TR_a', 'mara', '0000000000000003', 'anything by prince', true);
+  assert.deepEqual(comments.queue('TR_a').map((entry) => entry.text), ['play freebird', 'anything by prince']);
+  assert.equal(comments.list('TR_a').length, 3, 'a request is in the comments too');
+  assert.equal(comments.list('TR_a')[0]?.request, true);
+  assert.equal(comments.played('TR_a', 'alex:0000000000000001'), true);
+  assert.equal(comments.played('TR_a', 'alex:0000000000000001'), false, 'already off the queue');
+  assert.equal(comments.played('TR_a', 'wes:0000000000000002'), false, 'a plain comment was never queued');
+  assert.deepEqual(comments.queue('TR_a').map((entry) => entry.text), ['anything by prince']);
+  assert.deepEqual(Object.keys(comments.queues()), ['TR_a']);
+  comments.end('TR_a');
+  assert.deepEqual(comments.queues(), {});
+});

@@ -2824,6 +2824,51 @@ video.mirrored {
   padding: 8px 10px;
   border-top: 1px solid var(--line);
 }
+.stream-chat-ask {
+  flex: none;
+  width: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.stream-chat-ask.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.stream-chat-queue {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.stream-chat-queue-head {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.stream-chat-queue ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.stream-chat-queue li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.stream-chat-queue li .stream-chat-words {
+  flex: 1;
+}
+.stream-chat-request {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-right: 2px;
+}
 .stream-chat-input {
   flex: 1;
   min-width: 0;

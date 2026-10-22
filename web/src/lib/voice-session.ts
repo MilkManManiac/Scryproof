@@ -50,6 +50,7 @@ import {
   RECEIVE_WINDOW_MS,
   STREAM_CHAT_TOPIC,
   StreamComments,
+  type StreamCommentMessage,
   cleanComment,
   newCommentId,
   openStreamComment,
@@ -209,6 +210,8 @@ export interface VoiceSnapshot {
   sharedAudio: SharedAudio[];
   /** Comments on each screen or music share, by publication id. Memory only; gone when the stream ends. */
   comments: Record<string, StreamComment[]>;
+  /** Song requests still waiting on each stream, oldest first. Same life as the comments. */
+  queues: Record<string, StreamComment[]>;
   musicSharing: boolean;
   musicBusy: boolean;
   musicError: string | null;
@@ -265,6 +268,7 @@ const IDLE: VoiceSnapshot = {
   videos: [],
   sharedAudio: [],
   comments: {},
+  queues: {},
   musicSharing: false,
   musicBusy: false,
   musicError: null,
@@ -754,7 +758,7 @@ export class VoiceSession {
     this.comments.clear();
     this.commentRate.clear();
     this.heardRate.clear();
-    if (Object.keys(this.snapshot.comments).length > 0) this.update({ comments: {} });
+    if (Object.keys(this.snapshot.comments).length > 0 || Object.keys(this.snapshot.queues).length > 0) this.update({ comments: {}, queues: {} });
     this.audienceSent = '';
     this.audienceSentAt = 0;
     this.audienceWork = Promise.resolve();
@@ -1072,6 +1076,20 @@ export class VoiceSession {
     return false;
   }
 
+  /** Who is publishing this stream, by user id, or null if nobody is. */
+  sharerOf(sid: string): string | null {
+    const room = this.room;
+    if (!room) return null;
+    for (const participant of [room.localParticipant, ...room.remoteParticipants.values()]) {
+      if (participant.trackPublications.has(sid)) return participant.identity;
+    }
+    return null;
+  }
+
+  private publishComments(): void {
+    this.update({ comments: this.comments.all(), queues: this.comments.queues() });
+  }
+
   /** Milliseconds until this device may comment again. */
   commentWait(): number {
     return this.commentRate.wait(this.userId);
@@ -1082,13 +1100,14 @@ export class VoiceSession {
    * it leaves (`stream-chat.ts`), and only while the call is encrypted. False
    * when nothing was sent: too soon, empty or too long, the stream is gone.
    */
-  async sendComment(stream: string, text: string): Promise<boolean> {
+  async sendComment(stream: string, text: string, kind?: 'request' | 'played'): Promise<boolean> {
     const room = this.room;
     const call = this.call;
-    const clean = cleanComment(text);
+    // A 'played' carries a request's key, not words; only the sharer may send one.
+    const clean = kind === 'played' ? (this.sharerOf(stream) === this.userId ? text : null) : cleanComment(text);
     if (!room || !call || this.snapshot.phase !== 'connected' || !room.isE2EEEnabled || clean === null) return false;
     if (!this.isCommentable(stream) || !this.commentRate.take(this.userId)) return false;
-    const message = { stream, id: newCommentId(), text: clean };
+    const message: StreamCommentMessage = kind ? { stream, id: newCommentId(), text: clean, kind } : { stream, id: newCommentId(), text: clean };
     const context = { callId: call.callId, sender: this.userId, epoch: call.epoch };
     try {
       const sealed = await sealStreamComment(call.mediaKey, context, message);
@@ -1097,8 +1116,14 @@ export class VoiceSession {
       return false;
     }
     if (this.room !== room || !this.isCommentable(stream)) return false;
-    if (this.comments.add(stream, this.userId, message.id, message.text)) this.update({ comments: this.comments.all() });
+    if (this.take(stream, this.userId, message)) this.publishComments();
     return true;
+  }
+
+  /** File a comment, request or played-mark from this sender. True if anything changed. */
+  private take(stream: string, sender: string, message: StreamCommentMessage): boolean {
+    if (message.kind === 'played') return this.sharerOf(stream) === sender && this.comments.played(stream, message.text);
+    return this.comments.add(stream, sender, message.id, message.text, message.kind === 'request');
   }
 
   /** The room says who sent it; the seal proves it. Anything that does not open is dropped without a word. */
@@ -1110,11 +1135,11 @@ export class VoiceSession {
     const message = await openStreamComment(bytes, key, { callId: call.callId, sender, epoch: call.epoch });
     if (!message || this.room !== room || this.call !== call || !this.isCommentable(message.stream)) return;
     if (!this.heardRate.take(sender)) return;
-    if (this.comments.add(message.stream, sender, message.id, message.text)) this.update({ comments: this.comments.all() });
+    if (this.take(message.stream, sender, message)) this.publishComments();
   }
 
   private endComments(sid: string): void {
-    if (this.comments.end(sid)) this.update({ comments: this.comments.all() });
+    if (this.comments.end(sid)) this.publishComments();
   }
 
   /* --------------------------- camera and screen --------------------------- */

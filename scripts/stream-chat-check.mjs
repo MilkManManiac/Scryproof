@@ -262,6 +262,19 @@ async function phase2() {
   check('mara, holding the wrong key for wes, never shows it', !JSON.stringify(maraList).includes('from the sharer'), JSON.stringify(maraList));
   check('a plain unsealed packet is shown to nobody', ![alexList, maraList, wesList].some((l) => JSON.stringify(l).includes('forged')), JSON.stringify(wesList));
   check('comments are not written to localStorage', ![wes, alex].length || !(await alex.evaluate(`JSON.stringify(localStorage).includes('hello from alex')`)));
+  // Song requests (Wes 10-22: "a song request queue"): a request lands in the
+  // comments and in the queue; only the sharer can take it off.
+  await sleep(1200);
+  check('alex requests a song', (await alex.evaluate(`window.__voice.sendComment('${sid}', 'play freebird', 'request')`)) === true);
+  const queued = await wes.until(`(() => { const q = window.__voice.getSnapshot().queues[${JSON.stringify(sid)}]; return q && q.length ? q : null; })()`, 10_000);
+  check('the sharer sees it in the queue, tagged as a request', Boolean(queued) && queued[0].text === 'play freebird' && queued[0].request === true, JSON.stringify(queued));
+  const key = queued?.[0]?.key ?? '';
+  await sleep(1200);
+  check('alex, not the sharer, cannot mark it played', (await alex.evaluate(`window.__voice.sendComment('${sid}', ${JSON.stringify(key)}, 'played')`)) === false);
+  check('the sharer marks it played', (await wes.evaluate(`window.__voice.sendComment('${sid}', ${JSON.stringify(key)}, 'played')`)) === true);
+  const cleared = await alex.until(`(window.__voice.getSnapshot().queues[${JSON.stringify(sid)}] ?? []).length === 0 ? true : null`, 10_000);
+  check('the queue empties for the watcher once played', Boolean(cleared));
+  check('the request stays in the comments', JSON.stringify(await alex.evaluate(commentsOn(sid))).includes('play freebird'));
   check('wes stops sharing', await wes.clickButton('Stop sharing') || await wes.evaluate(`window.__voice.stopScreenShare?.().then(() => true)`));
   const emptied = await Promise.all([wes, alex, mara].map((p) => p.until(`Object.keys(window.__voice.getSnapshot().comments).length === 0`, 10_000)));
   check('stopping the share empties every snapshot', emptied.every(Boolean));
@@ -309,12 +322,22 @@ async function phase3() {
   check('alex sends a third', (await typeIn(alex, '.stream-chat.side', 'gg')) === 'sent');
   check('Send rests right after sending', await alex.evaluate(`document.querySelector('.stream-chat.side .stream-chat-form button[type=submit]').disabled`));
   await wes.until(`document.querySelectorAll('.stream-chat-own .stream-chat-line').length === 3`, 10_000);
+  // A song request from the strip: the note button, then the words.
+  await sleep(1500);
+  check('alex presses the note and asks for a song', await alex.evaluate(`(() => { const b = document.querySelector('.stream-chat.side .stream-chat-ask'); if (!b) return false; b.click(); return true; })()`) && (await typeIn(alex, '.stream-chat.side', 'Freebird, the long one')) === 'sent');
+  const queueShown = await wes.until(`document.querySelector('.stream-chat-own .stream-chat-queue') ? true : null`, 10_000);
+  check('the sharer sees a Song requests list with a Played button', Boolean(queueShown) && (await wes.evaluate(`document.querySelector('.stream-chat-own .stream-chat-queue')?.textContent.includes('Played')`)));
+  check('the watcher sees the list without a Played button', await alex.evaluate(`(() => { const q = document.querySelector('.stream-chat.side .stream-chat-queue'); return Boolean(q) && !q.textContent.includes('Played'); })()`));
   await alex.shoot('stream-chat-screen');
   await wes.shoot('stream-chat-sharer');
+  await sleep(1500);
+  check('wes presses Played', await wes.evaluate(`(() => { const b = document.querySelector('.stream-chat-own .stream-chat-queue button'); if (!b) return false; b.click(); return true; })()`));
+  check('the list goes for both', Boolean(await alex.until(`document.querySelector('.stream-chat.side .stream-chat-queue') ? null : true`, 10_000)));
+  await wes.until(`document.querySelectorAll('.stream-chat-own .stream-chat-line').length === 4`, 10_000);
   // Pop out: the same strip in the window of its own.
   check('alex presses Pop out', await alex.clickButton('Pop out'));
   const popDoc = `window.open('', 'scryproof-stream-${wes.userId}-screen').document`;
-  const popped = await alex.until(`${popDoc}.querySelectorAll('.stream-chat.side .stream-chat-line').length === 3`, 10_000);
+  const popped = await alex.until(`${popDoc}.querySelectorAll('.stream-chat.side .stream-chat-line').length === 4`, 10_000);
   check('the popped-out screen shows the same comments', Boolean(popped), JSON.stringify(await linesIn(alex, '.stream-chat.side', popDoc).catch((e) => String(e))));
   check('the popped-out strip is styled (copied stylesheet)', await alex.evaluate(`getComputedStyle(${popDoc}.querySelector('.stream-chat.side')).width === '260px'`));
   await sleep(1100);

@@ -63,7 +63,10 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
   const voice = useVoice();
   const personOf = usePeople();
   const comments = voice.comments[stream] ?? NONE;
+  const queue = voice.queues[stream] ?? NONE;
   const [draft, setDraft] = useState('');
+  /** The next send is a song request, not a comment. */
+  const [asking, setAsking] = useState(false);
   const [resting, setResting] = useState(false);
   const [open, setOpenState] = useState(variant !== 'side' || columnWanted);
   const setOpen = (next: boolean) => {
@@ -106,9 +109,18 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
     if (!draft.trim() || tooLong || resting) return;
     const text = draft;
     // The rate is counted the moment this is called, so the rest that follows knows how long to wait.
-    const sending = session.sendComment(stream, text);
+    const sending = session.sendComment(stream, text, asking ? 'request' : undefined);
     setResting(true);
-    if (await sending) setDraft((now) => (now === text ? '' : now));
+    if (await sending) {
+      setDraft((now) => (now === text ? '' : now));
+      setAsking(false);
+    }
+  };
+  const sharing = session.sharerOf(stream) === selfId;
+  const played = (key: string): void => {
+    if (resting) return;
+    void session.sendComment(stream, key, 'played');
+    setResting(true);
   };
 
   if (variant === 'side' && !open) {
@@ -131,6 +143,25 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
           </button>
         </header>
       ) : null}
+      {queue.length > 0 ? (
+        <div className="stream-chat-queue">
+          <div className="stream-chat-queue-head">Song requests</div>
+          <ol>
+            {queue.map((request) => (
+              <li key={request.key}>
+                <span className="stream-chat-words">
+                  <strong>{personOf(request.userId).name}</strong> {request.text}
+                </span>
+                {sharing ? (
+                  <button type="button" className="link-button" disabled={resting} onClick={() => played(request.key)}>
+                    Played
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
       <ol
         ref={list}
         className="stream-chat-list"
@@ -152,7 +183,7 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
                 </span>
               )}
               <span className="stream-chat-words">
-                <strong>{person.name}</strong> {comment.text}
+                <strong>{person.name}</strong> {comment.request ? <span className="stream-chat-request">request</span> : null} {comment.text}
               </span>
             </li>
           );
@@ -168,12 +199,22 @@ export function StreamChat({ stream, variant }: { stream: string; variant: 'side
             void send();
           }}
         >
+          <button
+            type="button"
+            className={`stream-chat-ask${asking ? ' on' : ''}`}
+            title={asking ? 'Sending as a song request' : 'Request a song'}
+            aria-pressed={asking}
+            disabled={!voice.encrypted}
+            onClick={() => setAsking((now) => !now)}
+          >
+            &#9834;
+          </button>
           <input
             className="stream-chat-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Say something"
-            aria-label="Comment on this stream"
+            placeholder={asking ? 'Request a song' : 'Say something'}
+            aria-label={asking ? 'Request a song on this stream' : 'Comment on this stream'}
             disabled={!voice.encrypted}
           />
           <button
