@@ -42,3 +42,6 @@ desktop/app-sound/app-sound.exe
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+# Logo drafts from imagegen; only the chosen one is kept.
+assets/gen/scry-logo-*
+!assets/gen/scry-logo-dial.png
