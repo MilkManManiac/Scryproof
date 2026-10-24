@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-23-own-share-hidden',
+    date: '2026-10-23',
+    title: 'Your own share stays out of your way',
+    notes: [
+      'When you share your screen, you no longer see your own stream in the call. Your tile says "Sharing your screen" with a Show me link if you want to check what is going out, and a Hide button on it to put it away again. Everyone else sees your share as before.',
+    ],
+  },
+  {
     id: '2026-10-22-profile-card-message',
     date: '2026-10-22',
     title: 'Server pictures, song requests, Queens crosses off for you',
