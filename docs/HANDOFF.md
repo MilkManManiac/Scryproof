@@ -2,7 +2,15 @@
 
 Living state. Update this at the end of every working session.
 
-## Pick up here (2026-10-22, morning)
+## Pick up here (2026-10-23, afternoon)
+
+**Built, not shipped (Wes, 2026-10-23: "when you share something, for the person sharing their screen, they don't have to see the stream").** `VoicePanel.tsx`: your own screen share renders as a card ("Sharing your screen", Show me link) instead of the live picture; the live tile gets a Hide button that also drops focus if it was big. State is `peekOwn`, local to the panel, off by default; `asCard()` decides, `focusKeyOf` uses it so a hidden own share cannot be big. Other people's tiles untouched. Comments-on-your-screen list unchanged. Typecheck clean, stream-watch tests 13/13. No screenshot: the share harnesses run on the Linux devbox. Changelog `2026-10-23-own-share-hidden`. To ship: `scripts/release.sh` on Wes's yes.
+
+**Mac (Wes, 2026-10-23: "I thought we planned to have you plan to build for both versions" then "we leave that for trey or matt").** Fact found today: no Mac installer has ever been on the box (`downloads/` has only installer.json), so the Mac button on /download 404s for every Mac user. Trey's notarized 0.5.9 (10-19) never reached this PC. Fix when Trey or Matt pick it up: (1) send the three files, `publish-mac.sh` here on Wes's yes; (2) a GitHub Actions Mac runner that builds and notarizes from main (Trey's cert + notary login as repo secrets).
+
+**eMudhra/emSign CA compromise (Cortland's note, 2026-10-23):** does not touch us. Our cert is Let's Encrypt; the box's ca-certificates is already the USN-8944-1 fix; browsers block the keys. Loose end: the box's Node 24.19.0 carries its own root list with the old root, affects only outbound fetches (YouTube card, web push); bump Node when a release removes it.
+
+## Earlier pick-up (2026-10-22, morning)
 
 **Closed by Wes, 2026-10-22:** Lady of the Lake theme (drop it, "we don't care about that"); ask-for-a-server works ("tested it with someone"); the screen-share audio leak ("I think the audio share is now fixed"); Discord question answered. Mac: Wes wants every desktop change built "with intentions of updating it for both windows and Mac", Trey testing and publishing the Mac side. A Mac build cannot be made on this PC (signing and notarising need macOS), so the rule is: desktop version bumps and `main` stay Mac-ready, Trey runs `npm run dist:mac` from `main` and sends the three files, `scripts/publish-mac.sh` runs here on Wes's yes.
 
