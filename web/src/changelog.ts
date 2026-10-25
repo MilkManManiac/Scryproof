@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-25-queens-your-crosses',
+    date: '2026-10-25',
+    title: 'Queens: the crosses are yours again',
+    notes: [
+      'Queens no longer crosses off squares for you when you put a queen down. The board shows only the crosses you make yourself, the way it did before. Tap once for a cross, twice for a queen.',
+    ],
+  },
+  {
     id: '2026-10-23-own-share-hidden',
     date: '2026-10-23',
     title: 'Your own share stays out of your way',
@@ -30,12 +38,11 @@ export const CHANGELOG: readonly Release[] = [
   {
     id: '2026-10-22-profile-card-message',
     date: '2026-10-22',
-    title: 'Server pictures, song requests, Queens crosses off for you',
+    title: 'Server pictures, song requests',
     notes: [
       'Song requests on a stream. Next to the comment box on a screen or music share there is a note button: press it and what you type goes in as a request. Requests sit in a list at the top of the comments until whoever is sharing marks them played. Like the comments, they are gone when the stream ends.',
       'A server can have a picture now. Server settings, Overview: a still picture or a GIF, up to 2 MB. It shows on the rail in place of the letters.',
       'Server pictures on the left rail were showing as a thin cropped strip instead of the whole picture. They fill the tile now.',
-      'Queens works like the real one: put a queen down and her row, column, colour and the squares around her are crossed off for you. Take her back and those crosses go with her; your own stay. Tapping one of those crossed squares puts a queen straight there.',
       'Typing into the box on a profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
     ],
   },

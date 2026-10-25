@@ -8937,9 +8937,6 @@ kbd {
   opacity: 0.55;
   pointer-events: none;
 }
-.qn-cross.auto {
-  opacity: 0.3;
-}
 .qn-cross::before,
 .qn-cross::after {
   content: '';
