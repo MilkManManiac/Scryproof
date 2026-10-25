@@ -1,6 +1,6 @@
 # Scryproof handoff
 
-**BUILT, NOT DEPLOYED (Wes, 2026-10-25: "get rid of the update we most recently did with queenies. they don't like it"):** the Queens auto-cross from 2026-10-22 is reverted in commit 0b72068 (`Queens.tsx`, `GameHead.tsx` help text, `.qn-cross.auto` style, the changelog note). New top What's new entry `2026-10-25-queens-your-crosses`. Web tests 582 pass, typecheck clean. The live site still has the auto-cross until `scripts/release.sh` runs on his yes.
+**LIVE 2026-10-25 ~18:58 ET, client 1792968983494 (Wes: "deply"). Built from (Wes, 2026-10-25: "get rid of the update we most recently did with queenies. they don't like it"):** the Queens auto-cross from 2026-10-22 is reverted in commit 0b72068 (`Queens.tsx`, `GameHead.tsx` help text, `.qn-cross.auto` style, the changelog note). New top What's new entry `2026-10-25-queens-your-crosses`. Web tests 582 pass, typecheck clean. Released with `scripts/release.sh`; health ok, box serves 1792968983494.
 
 Living state. Update this at the end of every working session.
 
