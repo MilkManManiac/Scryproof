@@ -45,3 +45,8 @@ desktop/app-sound/app-sound.exe
 # Logo drafts from imagegen; only the chosen one is kept.
 assets/gen/scry-logo-*
 !assets/gen/scry-logo-dial.png
+
+# Locally compiled Mac capture helper and real-call fixtures.
+desktop/mac-audio/mac-audio
+.mac-audio-check/
+references/

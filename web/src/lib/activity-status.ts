@@ -20,11 +20,12 @@ export function readActivityStatus(
 /**
  * What the Activities toolbar says before gameplay is shared. The desktop
  * picker's sound switch exists only where the shell can capture the machine's
- * own sound (Windows, as `share-menu.js` canShareSound says); on a Mac or
- * Linux the share goes out silent and the hint must not offer sound.
+ * own sound. A Mac leaves the Scryproof app itself out to exclude the call;
+ * unsupported shells must not offer sound.
  */
-export function idleShareHint(desktop: boolean, canShareSound: boolean): string {
+export function idleShareHint(desktop: boolean, canShareSound: boolean, mac = false): string {
   if (!desktop) return 'Choose this Scryproof tab when sharing. Friends in your call can press Watch on your stream.';
+  if (mac && canShareSound) return 'Share another app with sound, or this Scryproof window for video only. Scryproof sound is left out to keep the call out.';
   return canShareSound
     ? 'Share the Scryproof window so friends can watch. Enable sound only if it will not capture your call.'
     : 'Share the Scryproof window so friends can watch. This screen share has no sound yet, so friends will not hear the game.';

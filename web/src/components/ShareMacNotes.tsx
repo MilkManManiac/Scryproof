@@ -1,5 +1,5 @@
 /**
- * What the share picker says on a Mac: the sound that is not there, and the
+ * What the share picker says on a Mac: native sound capability and the
  * permission that has to be turned on first.
  */
 
@@ -7,12 +7,11 @@ import { onMacApp, openPermissionSettings, screenRecordingMissing } from '../lib
 import { usePermissions } from '../lib/desktop-hooks';
 
 /**
- * Whether the share goes out with sound. Electron has no way to capture a
- * Mac's own sound, so on a Mac it never does, whatever the switch says.
+ * Sound goes out only if the shell offered it and the person opted in.
  */
-export const soundToShare = (mac: boolean, offered: boolean, chosen: boolean): boolean => !mac && offered && chosen;
+export const soundToShare = (mac: boolean, offered: boolean, chosen: boolean): boolean => offered && chosen;
 
-/** The sound switch at the left of the footer: Windows's own, or the reason a Mac has none. */
+/** The sound switch, or the reason an unsupported Mac has none. */
 export function ShareSound({
   mac,
   offered,
@@ -27,11 +26,11 @@ export function ShareSound({
   checked: boolean;
   onChange: (on: boolean) => void;
 }) {
-  if (mac) {
+  if (mac && !offered) {
     return (
       <label className="share-picker-sound">
         <input type="checkbox" className="perm-switch" checked={false} disabled />
-        <span>No sound with a Mac screen share yet.</span>
+        <span>Sound sharing needs macOS 14.2 or newer and the latest Scryproof app.</span>
       </label>
     );
   }

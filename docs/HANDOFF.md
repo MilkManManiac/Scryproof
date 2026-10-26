@@ -4,6 +4,21 @@
 
 Living state. Update this at the end of every working session.
 
+## Mac audio 0.5.10 implementation checkpoint (2026-10-26, isolated build lane)
+
+**Built, incomplete, not release-ready.** The approved brief is `docs/briefs/mac-audio.md`; implementation, inventory, commands and evidence are in `docs/SPEC-mac-audio.md`. Swift Core Audio tap helper, native PCM bridge reuse, Mac capability/sound picker, mixer music guard for unsupported Macs, first-Screen-Recording preflight and stale-error clearing are implemented. Desktop is 0.5.10; Mac packaging compiles/copies/signs the helper and includes the audio-capture usage string. Windows capture selection is retained.
+
+Checks: desktop **152 passed / 1 existing skip**, targeted web **83 passed**, typecheck and web build pass, Swift helper compiles cleanly for arm64. **12 unit red proofs** observed assertion failures under deliberate mutations and restored green. No full gate or signed/notarized build was run by the lane.
+
+**Blocked at live capture:** wes in dev Electron and alex in headless Chromium joined a real local encrypted call; Mac picker offers sound. The native helper blocks at `AudioDeviceCreateIOProcIDWithBlock`; a standalone probe produced zero PCM. The call check ended with 3 failures (receiver had no displayed video or decoded share-audio analyser; next screen picker unavailable). The coordinator confirmed Trey was away, display dark, no confirmed TCC grant. A permission grant may unblock this, but that cause is not yet proved. The normal call check, window/screen/music isolation and deliberate call-leak red proof remain unproven. The installed Scryproof app and its permissions were untouched. Every lane-started dev server/app/tone/helper was stopped.
+
+![Mac native sound switch offered](shots/mac-audio-picker-window.png)
+![Encrypted call and sender sound label; not PCM proof](shots/mac-audio-connection-window.png)
+
+Resume after a person allows **Electron** (`com.github.Electron`) in System Settings > Privacy & Security > Screen & System Audio Recording, including its System Audio Recording request, then relaunches. If macOS attributes the helper separately, allow the entry actually shown for **mac-audio**; the lane could not observe/confirm the TCC prompt's displayed app name. Do not change installed **Scryproof** grants. Rebuild helper and web/dist before the check. The worktree-local `.mac-audio-check/livekit-server` is native 1.13.6; the supplied `.tools` symlink points to Linux and cannot run on this Mac. The check discovers the installed Playwright Chromium; the Google Chrome.app wrapper points to a missing cache version. `--red-proof` deliberately admits the dev call into native global capture and must fail specifically on its call-exclusion assertion, with the audible-call control passing; it restores main.js in `finally`.
+
+Activities inside Scryproof still share video only on Mac: game sound and call output share one Chromium audio process, which must be excluded. Separate application/game audio is the supported helper source. After runtime proof, the parent reviews and runs the integrated gate, builds/notarizes 0.5.10, installs and repeats the Trey/Wes call. Wes publishes the Mac installer/zip/manifest; web changes stay in the bundled client until he releases a web client containing them.
+
 ## Agent channel: next after the Mac sound build, not started (2026-10-26, Trey's side)
 
 Trey, Wes and Matt want one channel where members' AI coding agents (vanilla Claude Code, Codex CLI, Loom) join as participants. The spec is `docs/agent-channel-spec.md` (draft 3: vision, spec, architecture, seven-phase build plan in section 7; hostile review log in section 9). Trey approved it 2026-10-19 and held the build for a large Loom update so the build dogfoods it; Loom is now 0.6.4, with Post channel integration merged 2026-10-23. Trey 2026-10-26: "get us setup to switch to working on the new agent channel build". Epic bead `Scryproof-bbf`; deferred voice-agents idea `Scryproof-bbf.1`.

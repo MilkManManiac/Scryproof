@@ -35,3 +35,27 @@ test('ending a session publishes the reason and informs the presence owner', asy
   assert.equal(session.getSnapshot().error, 'You joined this call from another device.');
   assert.deepEqual(ended, ['failed', 'moved']);
 });
+
+test('a new share clears the prior failure and a new session carries no share error', async () => {
+  let fail = true;
+  const participant = {
+    identity: 'me', trackPublications: new Map(),
+    getTrackPublication: () => undefined,
+    setScreenShareEnabled: async () => { if (fail) throw new Error('Invalid capture constraints'); },
+  };
+  const session = new VoiceSession(() => 'me', () => {});
+  Object.assign(session, {
+    room: { localParticipant: participant, remoteParticipants: new Map() },
+    snapshot: { ...session.getSnapshot(), can: { speak: true, video: true, screenShare: true } },
+  });
+  await session.setScreenShare(true);
+  assert.match(session.getSnapshot().mediaError ?? '', /Invalid capture constraints/);
+  assert.ok(session.getSnapshot().lastShareStop);
+  fail = false;
+  await session.setScreenShare(true);
+  assert.equal(session.getSnapshot().mediaError, null);
+  assert.equal(session.getSnapshot().lastShareStop, null);
+  const restarted = new VoiceSession(() => 'me', () => {});
+  assert.equal(restarted.getSnapshot().mediaError, null);
+  assert.equal(restarted.getSnapshot().lastShareStop, null);
+});

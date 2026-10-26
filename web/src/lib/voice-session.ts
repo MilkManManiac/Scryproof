@@ -57,9 +57,9 @@ import {
   sealStreamComment,
   type StreamComment,
 } from './stream-chat';
-import { drop as dropAppSound, takeAppSound } from './app-sound';
+import { appSoundScope, drop as dropAppSound, takeAppSound } from './app-sound';
 import { api, ApiError } from './api';
-import { holdPushKey, onAccessibilityGranted } from './desktop';
+import { holdPushKey, onAccessibilityGranted, prepareScreenShare } from './desktop';
 import { noteFrames, stalledSeconds, type FrameWatch } from './frame-watch';
 import { screenGain, shouldSubscribe, streamState, type PublicationFacts, type StreamState } from './stream-watch';
 import { loadSound, soundGain } from './sounds';
@@ -763,6 +763,7 @@ export class VoiceSession {
     this.audienceSentAt = 0;
     this.audienceWork = Promise.resolve();
     this.musicTurn += 1;
+    dropAppSound(this.musicTrack);
     this.musicTrack?.stop();
     this.musicTrack = null;
     this.musicUnpublishing = false;
@@ -972,6 +973,7 @@ export class VoiceSession {
     const turn = ++this.musicTurn;
     const room = this.room;
     const track = this.musicTrack;
+    dropAppSound(track);
     this.musicTrack = null;
     track?.stop();
     this.musicUnpublishing = Boolean(track);
@@ -1171,10 +1173,11 @@ export class VoiceSession {
       return;
     }
     this.shareBusy = true;
-    this.update(on ? { mediaError: null, shareNotice: null } : { mediaError: null });
+    this.update(on ? { mediaError: null, shareNotice: null, lastShareStop: null } : { mediaError: null });
     const quality = screenShareOptions(voicePrefs.get());
     this.stoppingShare = !on;
     try {
+      if (on) await prepareScreenShare();
       await room.localParticipant.setScreenShareEnabled(
         on,
         {
@@ -1232,7 +1235,11 @@ export class VoiceSession {
     const picture = local.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack;
     const machine = local.getTrackPublication(Track.Source.ScreenShareAudio)?.track?.mediaStreamTrack;
     if (machine) return this.update({ shareSound: capturedSound(picture, machine) });
-    const track = await takeAppSound();
+    let track: MediaStreamTrack | null;
+    try { track = await takeAppSound(); } catch (problem) {
+      await local.setScreenShareEnabled(false).catch(() => undefined);
+      throw problem;
+    }
     if (!track) return;
     if (!sharing()) return dropAppSound(track);
     await local.publishTrack(track, {
@@ -1245,7 +1252,7 @@ export class VoiceSession {
       await local.unpublishTrack(track).catch(() => undefined);
       return dropAppSound(track);
     }
-    this.update({ shareSound: 'window' });
+    this.update({ shareSound: appSoundScope(track) });
   }
 
   /** Our share ended without Stop being pressed: say so now, and keep it for the connection panel. */
