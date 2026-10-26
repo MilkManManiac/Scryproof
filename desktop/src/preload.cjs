@@ -55,6 +55,8 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
     shellUpdateHow: () => ipcRenderer.invoke('scryproof:shell-how'),
     /** 'darwin', 'win32' or 'linux'. */
     platform: process.platform,
+    prepareScreenShare: () => ipcRenderer.invoke('scryproof:prepare-share'),
+    canShareSound: process.platform === 'win32' || read('native-sound') === 'true',
     /**
      * What macOS has granted, without asking: `{ accessibility, screen }`. Off
      * the Mac, accessibility is true and screen is 'unknown'.
@@ -116,17 +118,20 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld(
      * begins, `data` with raw 48 kHz stereo 16-bit PCM, `end` when it stops.
      * Returns the way to stop listening.
      */
-    onAppSound: (start, data, end) => {
-      const relayStart = () => start();
+    onAppSound: (start, data, end, error) => {
+      const relayStart = (_event, scope) => start(scope === 'machine' ? 'machine' : 'window');
       const relayData = (_event, chunk) => data(chunk);
       const relayEnd = () => end();
+      const relayError = (_event, message) => error?.(String(message));
       ipcRenderer.on('scryproof:app-sound-start', relayStart);
       ipcRenderer.on('scryproof:app-sound-data', relayData);
       ipcRenderer.on('scryproof:app-sound-end', relayEnd);
+      ipcRenderer.on('scryproof:app-sound-error', relayError);
       return () => {
         ipcRenderer.removeListener('scryproof:app-sound-start', relayStart);
         ipcRenderer.removeListener('scryproof:app-sound-data', relayData);
         ipcRenderer.removeListener('scryproof:app-sound-end', relayEnd);
+        ipcRenderer.removeListener('scryproof:app-sound-error', relayError);
       };
     },
     /** Stop recording the shared window's sound. */

@@ -4,6 +4,30 @@
 
 Living state. Update this at the end of every working session.
 
+## Mac audio 0.5.10: local call proof and review fixes (2026-10-26, Trey's isolated lane)
+
+**Implemented; release integration/signing still belongs to the parent.** See `docs/SPEC-mac-audio.md` for the route, path inventory, review dispositions, exact commands and output. Swift Core Audio taps feed the existing PCM/LiveKit E2EE bridge for Mac window sound, whole-screen sound and music. Desktop is 0.5.10, with helper packaging/signing inputs and capability guards for macOS 14.2+.
+
+- **R1:** process ownership includes responsible PID, capturing launchd-parented WebKit XPC audio while call exclusion wins. A separate WKWebView app's tone reached alex; another program/call/mic stayed out.
+- **R2:** partial writes are completed; EAGAIN drops only whole pending chunks under a 0.5-second application queue cap. A real pipe reader paused for one second and then received fresh PCM. Four native scenarios and nine mutation red proofs passed.
+- **R3:** the permission message now says Cmd-Q and explains that closing hides the app. The first share showed that instruction without Invalid capture constraints; after a real quit/reopen the old error was absent. No Screen Recording prompt appeared on this Mac, so Trey added dev Electron manually using + in Settings. The message includes that fallback.
+- **R4:** picker/Activities/mixer/connection text is Mac-appropriate; the live check asserts "this Mac".
+- **R5:** Electron's combined Screen & System Audio Recording grant yielded 61,440 PCM bytes / 15,892 nonzero bytes, with no separate audio-only prompt. The coordinator declined an extra toggle-off denial test. No actual denied-buffer behavior is claimed. The installed Scryproof app/grants were untouched.
+
+The real call uses wes in LaunchServices-launched Electron and alex in headless Chromium, local LiveKit 1.13.6 and real sender-key agreement. A=1000 Hz (WebKit), B=1500 Hz, mic=440 Hz, final call tone=2500 Hz; output volume 0.3. A separate native include tap proves the call actually plays above -45 dBFS. Window, screen and music must exclude call/mic by 25 dB. The passing before-red run is in `docs/checks/mac-audio-before-red.txt`; the red proof in `docs/checks/mac-audio-red.txt` deliberately admitted the call at -35.3 dB against programs around -44.9 dB, while its -20.8 dBFS playback control passed. Two primary call assertions failed as required (plus two then-active supplemental assertions).
+
+The coordinator approved 2500 Hz after the 700 Hz search's 750 Hz neighbour picked up program/codec side noise: ON/OFF stayed within 1 dB and independent native taps rejected the call. He later ruled that ON/OFF stays pass/fail in the controlled window mix and diagnostic-only in whole-screen/music, where unrelated audio changes between time windows. The intermittent music ON -108.8 / OFF -129.0 / floor -130.4 dB and extra 609/797/844 Hz peaks are retained in `docs/checks/mac-audio-restored.txt`; the primary 25 dB check passed. This history is not silently tuned away. Final output is `docs/checks/mac-audio-call.txt`: **0 failures** under the final rule. A final cleanup-only fix stops the unpublished capture track if native music startup throws; its targeted test was observed red before the fix and green afterwards.
+
+Checks: desktop **152 passed / 1 existing notarized-release skip**, targeted web **84 passed**, native **4 scenarios / 11 assertions**, spectrum **2 passed**, root typecheck, web build and clean arm64 helper compilation. New native/spectrum/permission-wording tests were red-proofed. No full gate or signed/notarized build was run. All lane-started services/apps/helpers are stopped before commit.
+
+![Mac window sound picker](shots/mac-audio-picker-window.png)
+![Mac screen sound and connection panel](shots/mac-audio-connection-screen.png)
+![Mac music sharing](shots/mac-audio-connection-music.png)
+
+For another live check, keep the display awake with `caffeinate -dimsu -- ...` and launch dev Electron through LaunchServices (the script does this), so TCC names Electron rather than cmux. Dev Electron (`com.github.Electron`) is allowed now; do not reset installed Scryproof or cmux grants. The worktree-local `.mac-audio-check/livekit-server` is native 1.13.6; the supplied `.tools` symlink is Linux-only. The checker discovers installed Playwright Chromium; the Google Chrome.app wrapper points to a missing cache version.
+
+Activities inside Scryproof remain video-only on Mac because their sound shares the call's Chromium audio process. A separate game/app is the supported sound source. Parent next: inspect/integrate the lane, run the integrated gate once, build/sign/notarize 0.5.10, inspect the packaged helper and repeat the Trey/Wes call. Wes publishes installer/zip/manifest; web changes stay bundled-only until his web-client release. Other macOS versions, device changes during capture and the signed installed-runtime lane remain unproven.
+
 ## Agent channel: next after the Mac sound build, not started (2026-10-26, Trey's side)
 
 Trey, Wes and Matt want one channel where members' AI coding agents (vanilla Claude Code, Codex CLI, Loom) join as participants. The spec is `docs/agent-channel-spec.md` (draft 3: vision, spec, architecture, seven-phase build plan in section 7; hostile review log in section 9). Trey approved it 2026-10-19 and held the build for a large Loom update so the build dogfoods it; Loom is now 0.6.4, with Post channel integration merged 2026-10-23. Trey 2026-10-26: "get us setup to switch to working on the new agent channel build". Epic bead `Scryproof-bbf`; deferred voice-agents idea `Scryproof-bbf.1`.

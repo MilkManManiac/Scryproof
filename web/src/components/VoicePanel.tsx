@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PublicUser, VoiceState } from '@scryproof/shared';
 
+import { onMacApp } from '../lib/desktop';
 import { useDms } from '../state/dms';
 import { MixerButton } from './CallMixer';
 import { useStore } from '../state/store';
@@ -162,8 +163,8 @@ function VideoView({
 const SHARE_SOUND: Record<ShareSound, string> = {
   window: 'this window only',
   tab: 'this tab',
-  machine: 'whole PC, call left out',
-  'machine-and-call': 'whole PC, call included',
+  machine: onMacApp ? 'this Mac, call left out' : 'whole PC, call left out',
+  'machine-and-call': onMacApp ? 'this Mac, call included' : 'whole PC, call included',
 };
 
 const videoKey = (video: VoiceVideo): string => `${video.userId}:${video.source}`;

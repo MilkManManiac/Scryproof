@@ -33,12 +33,14 @@ interface DesktopBridge {
   answerShare?: (answer: { id: string; withSound: boolean; appSound?: boolean } | null) => Promise<boolean>;
   refreshShare?: () => Promise<ShareSource[] | null>;
   /** Absent in shells built before a shared window could send its own sound alone (0.5.7 and older). */
-  onAppSound?: (start: () => void, data: (chunk: Uint8Array) => void, end: () => void) => () => void;
+  onAppSound?: (start: (scope?: 'window' | 'machine') => void, data: (chunk: Uint8Array) => void, end: () => void, error?: (message: string) => void) => () => void;
   stopAppSound?: () => void;
   /** Absent in shells that refuse every new window (0.5.7 and older). */
   canPopOut?: boolean;
   /** Absent in shells built before the Mac app (0.5.x). */
   platform?: 'darwin' | 'win32' | 'linux';
+  canShareSound?: boolean;
+  prepareScreenShare?: () => Promise<boolean>;
   permissionState?: () => Promise<PermissionState>;
   openPermissionSettings?: (which: 'accessibility' | 'screen') => Promise<void>;
   /** 'download' when the app cannot replace itself (its folder is not writable): the shell opens the download link instead. */
@@ -100,14 +102,13 @@ export function isMacPlatform(
 }
 
 /**
- * Whether the shell can send the machine's own sound with a share (Windows
- * only: `share-menu.js` canShareSound). Shells that send no platform are the
- * older Windows ones.
+ * Whether this shell can send native share sound. Older Windows shells have
+ * no capability flag; old Mac shells stay silent.
  */
-export const canShareSound = bridge?.platform === undefined || bridge.platform === 'win32';
+export const canShareSound = bridge?.canShareSound ?? (bridge?.platform === undefined || bridge.platform === 'win32');
 
 /** The Activities toolbar's hint before gameplay is shared, for this shell. */
-export const activityShareHint = (): string => idleShareHint(isDesktop, canShareSound);
+export const activityShareHint = (): string => idleShareHint(isDesktop, canShareSound, onMacApp);
 
 /** What the update fallback says to do after downloading, for this shell. */
 export const updateDownloadFollowUp = (): string => updateFollowUp(onMacApp);
@@ -315,8 +316,8 @@ export const answerShare = (answer: { id: string; withSound: boolean } | null): 
 };
 
 /** A shared window's own sound from the shell (`app-sound.ts`). Null in a browser or an older shell. */
-export function onAppSound(start: () => void, data: (chunk: Uint8Array) => void, end: () => void): (() => void) | null {
-  return bridge?.onAppSound ? bridge.onAppSound(start, data, end) : null;
+export function onAppSound(start: (scope?: 'window' | 'machine') => void, data: (chunk: Uint8Array) => void, end: () => void, error?: (message: string) => void): (() => void) | null {
+  return bridge?.onAppSound ? bridge.onAppSound(start, data, end, error) : null;
 }
 
 export const stopAppSound = (): void => bridge?.stopAppSound?.();
@@ -490,3 +491,10 @@ export const shellUpdateStore = liveValue<'restart' | 'download' | null>(null, (
   }
   return () => {};
 });
+
+/** macOS first-time screen permission must finish before asking Chromium to capture. */
+export async function prepareScreenShare(): Promise<void> {
+  if (onMacApp && bridge?.prepareScreenShare && !(await bridge.prepareScreenShare())) {
+    throw new Error('Allow Screen Recording for Scryproof (Electron in development) in System Settings > Privacy & Security > Screen & System Audio Recording, If no prompt appears, add Scryproof from Applications with the + button in that pane (Electron in development). Then quit the app with Cmd-Q and reopen it before sharing. Closing the window keeps it running.');
+  }
+}

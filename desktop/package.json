@@ -1,7 +1,7 @@
 {
   "name": "scryproof-desktop",
   "private": true,
-  "version": "0.5.9",
+  "version": "0.5.10",
   "description": "Scryproof for the desktop. The client ships inside the installer, not from the server.",
   "author": "Scryproof",
   "type": "module",
@@ -10,13 +10,14 @@
     "client": "cd .. && npm run build --workspace web",
     "start": "electron .",
     "release": "node scripts/make-update.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=8 test/*.test.mjs",
     "dist": "npm run release && node scripts/build-app-sound.mjs && electron-builder --win nsis --publish never && npm run sign-installer",
     "sign-installer": "node scripts/sign-installer.mjs",
     "mac-update-key": "node scripts/mac-update-key.mjs",
-    "dist:mac": "node scripts/mac-preflight.mjs && npm run client && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=\"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && npm run notarize:mac:dmg && npm run sign-installer -- --mac",
-    "dist:mac:adhoc": "npm run client && electron-builder --mac dir --arm64 --publish never --config.mac.identity=- --config.mac.notarize=false --config.mac.forceCodeSigning=false",
-    "notarize:mac:dmg": "xcrun notarytool submit release/Scryproof.dmg --keychain-profile \"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" --wait && xcrun stapler staple release/Scryproof.dmg"
+    "dist:mac": "node scripts/mac-preflight.mjs && npm run client && npm run build:mac-audio && env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER APPLE_KEYCHAIN_PROFILE=\"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" APPLE_TEAM_ID=LRU27MC63Q electron-builder --mac --arm64 --publish never && npm run notarize:mac:dmg && npm run sign-installer -- --mac",
+    "dist:mac:adhoc": "npm run client && npm run build:mac-audio && electron-builder --mac dir --arm64 --publish never --config.mac.identity=- --config.mac.notarize=false --config.mac.forceCodeSigning=false",
+    "notarize:mac:dmg": "xcrun notarytool submit release/Scryproof.dmg --keychain-profile \"${APPLE_KEYCHAIN_PROFILE:-scryproof-notary}\" --wait && xcrun stapler staple release/Scryproof.dmg",
+    "build:mac-audio": "node scripts/build-mac-audio.mjs"
   },
   "devDependencies": {
     "electron": "44.5.1",
@@ -96,8 +97,18 @@
       "artifactName": "Scryproof-${version}-mac-${arch}.${ext}",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Scryproof uses your microphone so people in your call can hear you.",
-        "NSCameraUsageDescription": "Scryproof uses your camera when you choose to share video."
-      }
+        "NSCameraUsageDescription": "Scryproof uses your camera when you choose to share video.",
+        "NSAudioCaptureUsageDescription": "Scryproof records the sound you choose to share with your call. The call itself is left out."
+      },
+      "extraResources": [
+        {
+          "from": "mac-audio/mac-audio",
+          "to": "mac-audio"
+        }
+      ],
+      "binaries": [
+        "Contents/Resources/mac-audio"
+      ]
     },
     "dmg": {
       "artifactName": "Scryproof.dmg"

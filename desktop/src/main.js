@@ -38,6 +38,7 @@ import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import { macAudioSupported } from './mac-audio.js';
 import { armContextMenu } from './context-menu.js';
 import { crashGuard } from './crash-core.js';
 import { APP_ORIGIN, hardenApiHeaders, isApiUrl } from './forward-core.js';
@@ -70,6 +71,8 @@ const ACTIVITIES_ORIGIN = new URL(app.isPackaged ? 'https://activities.scryproof
 const CLIENT_DIR = app.isPackaged ? join(process.resourcesPath, 'client') : join(here, '..', '..', 'web', 'dist');
 /** The one-program sound recorder (`app-sound/AppSound.cs`), Windows only. */
 const APP_SOUND_EXE = app.isPackaged ? join(process.resourcesPath, 'app-sound.exe') : join(here, '..', 'app-sound', 'app-sound.exe');
+const MAC_AUDIO = app.isPackaged ? join(process.resourcesPath, 'mac-audio') : join(here, '..', 'mac-audio', 'mac-audio');
+const macAudioWorks = () => process.platform === 'darwin' && macAudioSupported(release(), existsSync(MAC_AUDIO));
 const GATEWAY = `${SERVER.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER.host}/gateway`;
 
 /** Where newer clients are looked for. An installed copy looks on its one server and cannot be told otherwise. */
@@ -676,24 +679,45 @@ async function openSharePicker(request, done) {
   if (picking !== pick || !win) return finishPick(pick, {});
   win.webContents.send('scryproof:share-open', {
     sources: offer(pick, sources),
-    sound: soundOffer({ audioRequested: pick.audioRequested, platform: process.platform, withSound: shareWithSound() }),
+    sound: soundOffer({ audioRequested: pick.audioRequested, platform: process.platform, nativeSound: macAudioWorks(), withSound: shareWithSound() }),
     soundLabel: SOUND_LABEL,
     soundLabels: { screen: SOUND_LABEL, window: appSoundWorks() ? APP_SOUND_LABEL : SOUND_LABEL },
   });
 }
 
 function armSharePicker() {
+  // Ask before getDisplayMedia holds an active request. The first macOS grant
+  // needs a relaunch; stale capture sources otherwise become 'Invalid capture constraints'.
+  const screenGrantedAtLaunch = !MAC || systemPreferences.getMediaAccessStatus('screen') === 'granted';
+  ipcMain.handle('scryproof:prepare-share', async (event) => {
+    if (!ours(event)) return false;
+    if (!MAC) return true;
+    if (!screenGrantedAtLaunch) {
+      try { await shareSources(); } catch { /* macOS owns the permission prompt */ }
+      return false;
+    }
+    return systemPreferences.getMediaAccessStatus('screen') === 'granted';
+  });
   ipcMain.on('scryproof:share-listen', (event, on) => {
     if (ours(event)) pickerListening = on === true;
   });
   ipcMain.handle('scryproof:share-answer', async (event, answer) => {
     const pick = picking;
     if (!ours(event) || !pick) return false;
-    const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform });
+    const chosen = shareAnswer([...pick.offered.values()], answer, { audioRequested: pick.audioRequested, platform: process.platform, nativeSound: macAudioWorks() });
     if (chosen && chosen.remember !== null) void setShareWithSound(chosen.remember);
     // A window with sound: that program's sound alone, from the helper. If it
     // cannot run, the whole machine's sound as before. One of this app's own
     // windows (a popped-out stream) gets no sound: its program is the call.
+    if (MAC) {
+      if (chosen?.remember === true && answer.appSound === true) {
+        const target = chosen.appWindow ?? 'all';
+        await startAppSound(target);
+        if (picking !== pick) return false;
+      }
+      finishPick(pick, chosen ? { video: chosen.streams.video } : {});
+      return chosen !== null;
+    }
     if (chosen?.appWindow && BrowserWindow.getAllWindows().some((each) => each.getMediaSourceId() === answer.id)) {
       finishPick(pick, { video: chosen.streams.video });
       return true;
@@ -749,29 +773,36 @@ function stopAppSound() {
   if (!child) return;
   child.stdin.end();
   child.kill();
+  if (MAC) {
+    const reaped = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 2000);
+    reaped.unref();
+  }
 }
 
 /** Process loopback arrived in Windows 10 2004 (build 19041). Older Windows shares the whole machine. */
 const appSoundWorks = () =>
-  process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 19041 && existsSync(APP_SOUND_EXE);
+  macAudioWorks() || (process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 19041 && existsSync(APP_SOUND_EXE));
 
 /** Resolves true once the helper is recording the window's program, false when it cannot. */
 function startAppSound(hwnd) {
   stopAppSound();
   if (!appSoundWorks()) return Promise.resolve(false);
   return new Promise((resolve) => {
-    const child = spawn(APP_SOUND_EXE, [hwnd], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(MAC ? MAC_AUDIO : APP_SOUND_EXE, MAC ? [String(process.pid), hwnd] : [hwnd], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     appSound = child;
     // Writing to or closing a pipe whose reader has gone must not take the app down.
     child.stdin.on('error', () => undefined);
     let started = false;
     let said = '';
-    const timer = setTimeout(() => settle(false), 3000);
+    const timer = setTimeout(() => {
+      if (MAC) sendAppSound('scryproof:app-sound-error', 'macOS did not allow audio recording. Allow Electron (or Scryproof in the installed app) in System Settings > Privacy & Security > Screen & System Audio Recording, then quit the app with Cmd-Q and reopen it. Closing the window keeps it running.');
+      settle(false);
+    }, MAC ? 120_000 : 3000);
     const settle = (ok) => {
       clearTimeout(timer);
       if (ok && !started && appSound === child) {
         started = true;
-        sendAppSound('scryproof:app-sound-start');
+        sendAppSound('scryproof:app-sound-start', MAC && hwnd === 'all' ? 'machine' : 'window');
       }
       if (!ok && appSound === child) stopAppSound();
       resolve(ok);
@@ -781,13 +812,17 @@ function startAppSound(hwnd) {
       if (said.startsWith('ok ')) settle(true);
       else if (said.includes('\n')) {
         console.warn(`app sound: ${said.trim()}`);
+        if (MAC) sendAppSound('scryproof:app-sound-error', said.trim().replace(/^error /, ''));
         settle(false);
       }
     });
     child.stdout.on('data', (chunk) => {
       if (started && appSound === child) sendAppSound('scryproof:app-sound-data', chunk);
     });
-    child.on('error', () => settle(false));
+    child.on('error', () => {
+      if (MAC) sendAppSound('scryproof:app-sound-error', 'The audio helper could not start. Reinstall Scryproof and try again.');
+      settle(false);
+    });
     child.on('exit', () => {
       if (started) sendAppSound('scryproof:app-sound-end');
       if (appSound === child) appSound = null;
@@ -948,7 +983,7 @@ function createWindow(visible = true) {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      additionalArguments: [`--scryproof-server=${SERVER.origin}`, `--scryproof-gateway=${GATEWAY}`, `--scryproof-shell=${app.getVersion()}`],
+      additionalArguments: [`--scryproof-server=${SERVER.origin}`, `--scryproof-gateway=${GATEWAY}`, `--scryproof-shell=${app.getVersion()}`, `--scryproof-native-sound=${macAudioWorks()}`],
     },
   });
 

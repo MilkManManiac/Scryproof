@@ -1,0 +1,63 @@
+WebKit tone app PID 10657 (window share must capture its responsible XPC audio service)
+chrome: DevTools listening on ws://127.0.0.1:9362/devtools/browser/44b90360-c718-4656-8bed-c8889746bac5
+PASS  wes signs in
+PASS  Mac shell reports native sound capability
+PASS  alex signs in
+PASS  both join the channel
+PASS  encrypted real call
+PASS  real quit/reopen cleared prior capture error
+PASS  wes requests window share
+PASS  picker offers sound for window
+screenshot: docs/shots/mac-audio-picker-window.png
+PASS  alex watches the share
+window peaks: 984Hz -45dB, 1031Hz -46dB, 938Hz -53dB, 1078Hz -58dB, 891Hz -75dB, 1125Hz -90dB, 844Hz -103dB, 1172Hz -104dB
+window: A 1000 Hz -44.8, B 1500 Hz -122.4, call 2500 Hz -136.6, mic 440 Hz -126.2, floor -137.4 dB
+PASS  window: shared program A received
+PASS  window: unshared program B excluded
+PASS  window: call excluded (2500 Hz at least 25 dB below programs)
+PASS  window: microphone excluded (440 Hz at least 25 dB below programs)
+window diagnostic: call ON 2500Hz -136.6; call OFF 2500Hz -104.7; OFF 1000Hz -44.5; OFF 1500Hz -95.1
+PASS  window: call ON stays below OFF+3 dB or floor+6 dB
+      ON -136.6, OFF -104.7, floor -137.4 dB
+screenshot: docs/shots/mac-audio-connection-window.png
+PASS  wes stops the screen share
+PASS  wes requests whole screen
+PASS  picker offers sound for screen
+screenshot: docs/shots/mac-audio-picker-screen.png
+PASS  panel identifies whole-machine audio with call left out
+PASS  alex watches the share
+control helper: ok 10689 rate=48000.0 tapRate=48000.0
+PASS  positive control: captured call keeps its 2500 Hz pitch
+      strongest 2500 Hz at -20.9 dBFS
+PASS  positive control: app plays alex at real volume (> -45 dBFS)
+      -20.9 dBFS, 720896 PCM bytes; output volume 0.3
+screen peaks: 1500Hz -44dB, 984Hz -45dB, 1031Hz -46dB, 1453Hz -49dB, 1547Hz -49dB, 938Hz -53dB, 1078Hz -58dB, 1406Hz -65dB
+screen: A 1000 Hz -44.9, B 1500 Hz -44.3, call 2500 Hz -128.2, mic 440 Hz -118.1, floor -136.6 dB
+PASS  screen: shared program A received
+PASS  screen: program B received
+PASS  screen: call excluded (2500 Hz at least 25 dB below programs)
+PASS  screen: microphone excluded (440 Hz at least 25 dB below programs)
+screen diagnostic: call ON 2500Hz -128.2; call OFF 2500Hz -128.8; OFF 1000Hz -44.5; OFF 1500Hz -44.0
+PASS  screen: call ON stays below OFF+3 dB or floor+6 dB
+      ON -128.2, OFF -128.8, floor -136.6 dB
+screenshot: docs/shots/mac-audio-connection-screen.png
+PASS  wes stops the screen share
+PASS  opens mixer
+PASS  Mac mixer names this Mac
+PASS  starts music share
+PASS  picker offers sound for screen
+screenshot: docs/shots/mac-audio-picker-screen.png
+PASS  music sharing is active
+PASS  alex sees music publication
+music peaks: 1500Hz -44dB, 984Hz -45dB, 1031Hz -46dB, 1453Hz -49dB, 1547Hz -49dB, 938Hz -53dB, 1078Hz -58dB, 1406Hz -65dB
+music: A 1000 Hz -44.9, B 1500 Hz -44.5, call 2500 Hz -125.6, mic 440 Hz -119.7, floor -136.7 dB
+PASS  music: shared program A received
+PASS  music: program B received
+PASS  music: call excluded (2500 Hz at least 25 dB below programs)
+PASS  music: microphone excluded (440 Hz at least 25 dB below programs)
+music diagnostic: call ON 2500Hz -125.6; call OFF 2500Hz -125.3; OFF 1000Hz -44.5; OFF 1500Hz -44.1
+PASS  music: call ON stays below OFF+3 dB or floor+6 dB
+      ON -125.6, OFF -125.3, floor -136.7 dB
+screenshot: docs/shots/mac-audio-connection-music.png
+PASS  no uncaught page errors
+PASS Mac real-call audio check: 0 failure(s).
