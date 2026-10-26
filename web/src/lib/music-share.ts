@@ -27,7 +27,13 @@ export async function captureMusic(): Promise<MediaStreamTrack> {
   } as DisplayMediaStreamOptions);
   // A window chosen in the desktop app comes without sound: the shell records
   // that program alone and hands it over separately (app-sound.ts).
-  const audio = stream.getAudioTracks()[0] ?? (await takeAppSound());
+  let audio: MediaStreamTrack | null | undefined;
+  try {
+    audio = stream.getAudioTracks()[0] ?? (await takeAppSound());
+  } catch (problem) {
+    for (const track of stream.getTracks()) track.stop();
+    throw problem;
+  }
   for (const track of stream.getTracks()) if (track !== audio) track.stop();
   if (!audio)
     throw new Error(

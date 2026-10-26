@@ -795,7 +795,7 @@ function startAppSound(hwnd) {
     let started = false;
     let said = '';
     const timer = setTimeout(() => {
-      if (MAC) sendAppSound('scryproof:app-sound-error', 'macOS did not allow audio recording. Allow Electron (or Scryproof in the installed app) in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen the app.');
+      if (MAC) sendAppSound('scryproof:app-sound-error', 'macOS did not allow audio recording. Allow Electron (or Scryproof in the installed app) in System Settings > Privacy & Security > Screen & System Audio Recording, then quit the app with Cmd-Q and reopen it. Closing the window keeps it running.');
       settle(false);
     }, MAC ? 120_000 : 3000);
     const settle = (ok) => {

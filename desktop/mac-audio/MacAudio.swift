@@ -82,13 +82,14 @@ final class Capture {
     var inputFormat: AVAudioFormat!
     var converter: AVAudioConverter!
     let outputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 2, interleaved: true)!
+    var pipe: PCMWriter!
     var stopped = false
     var lastProcesses: [AudioObjectID] = []
 
     init(root: pid_t, window: UInt32?) throws {
         self.root = root
         included = try window.map(windowOwner)
-        if let included, try processTree(root).contains(included) {
+        if let included, !eligibleAudioProcess(included, bundle: "", own: try processTree(root), wanted: nil) {
             throw CaptureError("This window belongs to the call. Share another app to include sound.")
         }
         description = CATapDescription()
@@ -101,6 +102,10 @@ final class Capture {
         // A newly spawned process is silent until classified; an exclusion tap
         // would briefly leak a new Chromium audio service before its notification.
         description.isExclusive = false
+        if #available(macOS 26.0, *) {
+            description.isProcessRestoreEnabled = false
+            description.bundleIDs = []
+        }
         description.muteBehavior = .unmuted
         try refreshDescription()
     }
@@ -111,8 +116,7 @@ final class Capture {
         for object in try audioProcesses() {
             let pid = try property(object, kAudioProcessPropertyPID, pid_t(0))
             let bundle = (try? property(object, kAudioProcessPropertyBundleID, "" as CFString)) as String? ?? ""
-            let isScryproof = bundle == "com.scryproof.desktop" || bundle.hasPrefix("com.scryproof.desktop.")
-            if included == nil ? (!own.contains(pid) && !isScryproof) : (wanted!.contains(pid) && !own.contains(pid) && !isScryproof) {
+            if eligibleAudioProcess(pid, bundle: bundle, own: own, wanted: wanted) {
                 selected.append(object)
             }
         }
@@ -135,12 +139,6 @@ final class Capture {
               format.mBytesPerFrame > 0, format.mChannelsPerFrame > 0 else {
             throw CaptureError("The audio tap returned an invalid PCM format")
         }
-        var asbd = format
-        guard let input = AVAudioFormat(streamDescription: &asbd), let convert = AVAudioConverter(from: input, to: outputFormat) else {
-            throw CaptureError("The audio device format cannot be converted")
-        }
-        inputFormat = input
-        converter = convert
         let outputDevice = try property(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(0))
         guard outputDevice != 0 else { throw CaptureError("No audio output device is available") }
         let outputUID = try property(outputDevice, kAudioDevicePropertyDeviceUID, "" as CFString) as String
@@ -156,6 +154,20 @@ final class Capture {
         ]
         trace("creating aggregate")
         try checked(AudioHardwareCreateAggregateDevice(config as CFDictionary, &device), "Create capture device")
+        pipe = PCMWriter(fd: STDOUT_FILENO) { [weak self] code in
+            self?.queue.async { [weak self] in self?.fail(CaptureError("The audio receiver closed (errno \(code))")) }
+        }
+        // The aggregate can run at a different rate from the tap's initial
+        // ASBD (observed: tap 44100, aggregate 48000). Trust its actual clock.
+        let rate = try property(device, kAudioDevicePropertyNominalSampleRate, Double(0))
+        guard rate > 0 else { throw CaptureError("The capture device has no sample rate") }
+        var asbd = format
+        asbd.mSampleRate = rate
+        guard let input = AVAudioFormat(streamDescription: &asbd), let convert = AVAudioConverter(from: input, to: outputFormat) else {
+            throw CaptureError("The audio device format cannot be converted")
+        }
+        inputFormat = input
+        converter = convert
         trace("creating IO reader")
         try checked(AudioDeviceCreateIOProcIDWithBlock(&io, device, queue) { [weak self] _, data, _, output, _ in
             // The aggregate uses the output device as its clock. We send it
@@ -175,7 +187,7 @@ final class Capture {
         tick.setEventHandler { [weak self] in self?.refresh() }
         timer = tick
         tick.resume()
-        FileHandle.standardError.write(Data("ok \(included ?? root)\n".utf8))
+        FileHandle.standardError.write(Data("ok \(included ?? root) rate=\(rate) tapRate=\(format.mSampleRate)\n".utf8))
     }
     func refresh() {
         guard !stopped else { return }
@@ -207,9 +219,7 @@ final class Capture {
         if status == .error { return fail(error ?? CaptureError("PCM conversion failed") as NSError) }
         let buffer = output.audioBufferList.pointee.mBuffers
         if buffer.mDataByteSize > 0, let bytes = buffer.mData {
-            // A slow/closed page ends capture; never queue unbounded audio.
-            let count = Darwin.write(STDOUT_FILENO, bytes, Int(buffer.mDataByteSize))
-            if count != Int(buffer.mDataByteSize) { fail(CaptureError("The audio receiver stopped reading")) }
+            pipe.enqueue(Data(bytes: bytes, count: Int(buffer.mDataByteSize)))
         }
     }
     func fail(_ error: Error) {
@@ -219,6 +229,7 @@ final class Capture {
     func stop(code: Int32 = 0) {
         guard !stopped else { return }
         stopped = true
+        pipe?.close()
         timer?.cancel()
         DispatchQueue.global().async { [self] in
             if let listener {
@@ -235,6 +246,9 @@ final class Capture {
         }
     }
 }
+@main
+struct MacAudioCommand {
+    static func main() {
 if #available(macOS 14.2, *) {
     do {
         let args = CommandLine.arguments
@@ -266,4 +280,7 @@ if #available(macOS 14.2, *) {
 } else {
     FileHandle.standardError.write(Data("error Sound sharing requires macOS 14.2 or newer\n".utf8))
     exit(1)
+}
+
+    }
 }

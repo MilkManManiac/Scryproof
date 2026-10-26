@@ -495,6 +495,6 @@ export const shellUpdateStore = liveValue<'restart' | 'download' | null>(null, (
 /** macOS first-time screen permission must finish before asking Chromium to capture. */
 export async function prepareScreenShare(): Promise<void> {
   if (onMacApp && bridge?.prepareScreenShare && !(await bridge.prepareScreenShare())) {
-    throw new Error('Allow Screen Recording for Scryproof (Electron in development) in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen the app before sharing.');
+    throw new Error('Allow Screen Recording for Scryproof (Electron in development) in System Settings > Privacy & Security > Screen & System Audio Recording, If no prompt appears, add Scryproof from Applications with the + button in that pane (Electron in development). Then quit the app with Cmd-Q and reopen it before sharing. Closing the window keeps it running.');
   }
 }

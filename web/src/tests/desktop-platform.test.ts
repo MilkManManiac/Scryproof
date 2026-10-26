@@ -236,12 +236,14 @@ describe('the Accessibility explanation', () => {
 });
 
 describe('the Screen Recording explanation', () => {
-  it('says to quit and reopen, and has the button, only when it is missing', async () => {
+  it('explains Cmd-Q and manual permission setup, only when permission is missing', async () => {
     await pageWith(null);
     const { ScreenRecordingNoteView } = await import('../components/ShareMacNotes');
     const html = renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: true }));
     assert.match(html, /needs Screen Recording turned on for Scryproof/);
-    assert.match(html, /quit\s+and reopen Scryproof/);
+    assert.match(html, /quit Scryproof with Cmd-Q and\s+reopen it/);
+    assert.match(html, /Closing the window keeps Scryproof running/);
+    assert.match(html, /using the \+ button/);
     assert.match(html, /Open System Settings/);
     assert.equal(renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: false })), '');
   });
@@ -384,7 +386,7 @@ describe('Mac sound capability and first screen permission', () => {
   });
   it('explains the relaunch before Chromium capture and permits a granted Mac', async () => {
     const denied = (await pageWith({ ...bridge, platform: 'darwin', prepareScreenShare: async () => false })).desktop;
-    await assert.rejects(denied.prepareScreenShare(), /quit and reopen/);
+    await assert.rejects(denied.prepareScreenShare(), /add Scryproof.*\+ button.*Cmd-Q.*Closing the window/);
     const granted = (await pageWith({ ...bridge, platform: 'darwin', prepareScreenShare: async () => true })).desktop;
     await assert.doesNotReject(granted.prepareScreenShare());
     let asked = false;

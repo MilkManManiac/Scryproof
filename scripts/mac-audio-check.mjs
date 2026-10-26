@@ -3,7 +3,7 @@
  * SHARE_SOUND_SHOTS=docs/shots node scripts/mac-audio-check.mjs
  * --red-proof temporarily makes the development app include its own process tree, then restores it.
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { WebSocket } from 'ws';
+import { pcmToneLevel } from './mac-audio-spectrum.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const desktop = join(root, 'desktop');
@@ -20,6 +21,7 @@ const SERVER = process.env.SHARE_CHECK_SERVER ?? 'http://127.0.0.1:8787';
 const WEB = process.env.SHARE_CHECK_WEB ?? 'http://localhost:5173';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'seed-passphrase-for-local-dev';
 const SHOTS = process.env.SHARE_SOUND_SHOTS ?? '';
+const CALL_HZ = Number(process.env.SHARE_CHECK_CALL_HZ ?? '2500');
 /** Audible call playback is mandatory: a muted control cannot reveal a leak. */
 const VOLUME = Number(process.env.SHARE_CHECK_VOLUME ?? '0.3');
 if (!Number.isFinite(VOLUME) || VOLUME < 0.2 || VOLUME > 1) throw new Error('Mac call-leak proof requires SHARE_CHECK_VOLUME between 0.2 and 1');
@@ -173,7 +175,7 @@ const FAKE_MIC = `
   })();
 `;
 
-/** Alex's microphone: a steady 700 Hz voice, untouched by noise removal, so it can be looked for. */
+/** Alex's microphone: a steady, independently spaced voice tone, untouched by noise removal, so it can be looked for. */
 const ALEX_MIC = `
   (() => {
     const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -182,7 +184,8 @@ const ALEX_MIC = `
       const context = new AudioContext({ sampleRate: 48000 });
       const tone = context.createOscillator();
       const gain = context.createGain();
-      tone.frequency.value = 700;
+      window.__checkAlexGain = gain;
+      tone.frequency.value = ${CALL_HZ};
       gain.gain.value = 0.3;
       const out = context.createMediaStreamDestination();
       tone.connect(gain).connect(out);
@@ -197,24 +200,10 @@ const ALEX_MIC = `
   })();
 `;
 
-/** One tone's level in s16 stereo PCM (left channel), dB below full scale. */
-const pcmLevel = (pcm, hz) => {
-  const n = Math.floor(pcm.length / 4);
-  const w = (2 * Math.PI * hz) / 48000;
-  let re = 0;
-  let im = 0;
-  for (let i = 0; i < n; i += 1) {
-    const x = pcm.readInt16LE(i * 4) / 32768;
-    re += x * Math.cos(w * i);
-    im -= x * Math.sin(w * i);
-  }
-  return 20 * Math.log10((2 * Math.hypot(re, im)) / n + 1e-12);
-};
-
 /** Native include-tap control: what the call app is actually playing. */
-const recordWindow = (windowId, ms) => new Promise((resolve, reject) => {
+const recordWindow = (windowId, ms, rootPID = process.pid) => new Promise((resolve, reject) => {
   const chunks = [];
-  const child = spawn(join(desktop, 'mac-audio', 'mac-audio'), [String(process.pid), windowId], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(join(desktop, 'mac-audio', 'mac-audio'), [String(rootPID), windowId], { stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', (chunk) => chunks.push(chunk));
   child.stderr.on('data', (text) => console.log(`control helper: ${text.toString().trim()}`));
   child.on('error', reject);
@@ -267,19 +256,36 @@ const choose = async (kind, title) => {
   check(`picker offers sound for ${kind}`, await wes.evaluate(`document.querySelector('.share-picker-sound input')?.checked === true && !document.querySelector('.share-picker-sound input')?.disabled`));
   await wes.shoot(`picker-${kind}`);
   await wes.evaluate(`window.__checkSources = null; window.scryproofDesktop.refreshShare().then(s=>window.__checkSources=s)`);
-  if (!await wes.evaluate(`(() => {const b=Array.from(document.querySelectorAll('.share-picker button')).find(b=>b.textContent.trim()==='Share');if(!b||b.disabled)return false;b.click();return true;})()`)) throw new Error('Cannot press Share');
+  if (!await wes.evaluate(`(() => {const b=Array.from(document.querySelectorAll('.share-picker button')).find(b=>['Share','Share audio'].includes(b.textContent.trim()));if(!b||b.disabled)return false;b.click();return true;})()`)) throw new Error('Cannot press Share');
 };
 const measure = async (name, key, all) => {
   await sleep(2000);
   const spectrum = await alex.evaluate(SPECTRUM(`window.__voice.mix?.voices?.get(${JSON.stringify(key)})?.analyser`, 4000));
   if (!spectrum) { check(`${name}: received audio has an analyser`, false, JSON.stringify(await alex.evaluate(`(()=>{const s=window.__voice.getSnapshot();return {phase:s.phase,people:s.people,videos:s.videos.map(v=>({source:v.source,state:v.state,sound:v.sound,soundOn:v.soundOn})),audio:s.sharedAudio};})()`))); return; }
   const tone = Math.min(at(spectrum, 1000), ...(all ? [at(spectrum, 1500)] : []));
-  const floor = floorOf(spectrum, [1000, 1500, 700, 440]);
-  console.log(`${name}: A 1000 Hz ${at(spectrum,1000).toFixed(1)}, B 1500 Hz ${at(spectrum,1500).toFixed(1)}, call 700 Hz ${at(spectrum,700).toFixed(1)}, mic 440 Hz ${at(spectrum,440).toFixed(1)}, floor ${floor.toFixed(1)} dB`);
+  const floor = floorOf(spectrum, [1000, 1500, CALL_HZ, 440]);
+  console.log(`${name} peaks: `+spectrum.db.map((db,bin)=>({hz:Math.round(bin*spectrum.binHz),db:Math.round(db)})).filter(x=>x.hz>150&&x.hz<5000).sort((a,b)=>b.db-a.db).slice(0,8).map(x=>`${x.hz}Hz ${x.db}dB`).join(', '));
+  console.log(`${name}: A 1000 Hz ${at(spectrum,1000).toFixed(1)}, B 1500 Hz ${at(spectrum,1500).toFixed(1)}, call ${CALL_HZ} Hz ${at(spectrum,CALL_HZ).toFixed(1)}, mic 440 Hz ${at(spectrum,440).toFixed(1)}, floor ${floor.toFixed(1)} dB`);
   check(`${name}: shared program A received`, at(spectrum, 1000) - floor > 20);
   check(`${name}: ${all ? 'program B received' : 'unshared program B excluded'}`, all ? at(spectrum, 1500) - floor > 20 : at(spectrum, 1500) < tone - 25);
-  check(`${name}: call excluded (700 Hz at least 25 dB below programs)`, at(spectrum, 700) < tone - 25);
+  check(`${name}: call excluded (${CALL_HZ} Hz at least 25 dB below programs)`, at(spectrum, CALL_HZ) < tone - 25);
   check(`${name}: microphone excluded (440 Hz at least 25 dB below programs)`, at(spectrum, 440) < tone - 25);
+  {
+    await alex.evaluate(`window.__checkAlexGain.gain.value=0`);
+    await sleep(1500);
+    const off = await alex.evaluate(SPECTRUM(`window.__voice.mix?.voices?.get(${JSON.stringify(key)})?.analyser`, 2000));
+    console.log(`${name} diagnostic: call ON ${CALL_HZ}Hz ${at(spectrum,CALL_HZ).toFixed(1)}; call OFF ${CALL_HZ}Hz ${at(off,CALL_HZ).toFixed(1)}; OFF 1000Hz ${at(off,1000).toFixed(1)}; OFF 1500Hz ${at(off,1500).toFixed(1)}`);
+    const comparison = `ON ${at(spectrum,CALL_HZ).toFixed(1)}, OFF ${at(off,CALL_HZ).toFixed(1)}, floor ${floor.toFixed(1)} dB`;
+    if (!all) check(`${name}: call ON stays below OFF+3 dB or floor+6 dB`,at(spectrum,CALL_HZ)<=Math.max(at(off,CALL_HZ)+3,floor+6),comparison);
+    else console.log(`${name}: ON/OFF diagnostic only (whole-machine mix): ${comparison}`);
+    await alex.evaluate(`window.__checkAlexGain.gain.value=0.3`);
+    await sleep(1500);
+    if (process.env.MAC_AUDIO_DIAGNOSTIC === '1') {
+    const windowId = all ? 'all' : await wes.evaluate(`window.__checkSources.find(s=>s.name==='tone-1000')?.id.split(':')[1]`);
+    const native = await recordWindow(windowId,2000,app.pid);
+    console.log(`${name} native tap (call ON): ${CALL_HZ}Hz ${pcmToneLevel(native,CALL_HZ).toFixed(1)}, 1000Hz ${pcmToneLevel(native,1000).toFixed(1)}, 1500Hz ${pcmToneLevel(native,1500).toFixed(1)} dBFS`);
+    }
+  }
 };
 try {
   if (process.platform !== 'darwin') throw new Error('Run on macOS');
@@ -294,18 +300,37 @@ try {
     console.log('RED PROOF: development native tap deliberately includes the call. Expect FAIL.');
   }
   for (const freq of [1000, 1500]) {
+    if (freq === 1000 && process.env.MAC_AUDIO_WEBKIT === '1') {
+      const bundle = join(scratch, 'WebKit Tone.app');
+      const contents = join(bundle, 'Contents');
+      mkdirSync(join(contents, 'MacOS'), { recursive: true });
+      writeFileSync(join(contents, 'Info.plist'), `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.scryproof.mac-audio-tone</string><key>CFBundleExecutable</key><string>tone</string><key>CFBundleName</key><string>WebKit Tone</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`);
+      execFileSync('xcrun', ['swiftc', '-swift-version', '5', '-framework', 'AppKit', '-framework', 'WebKit', '-o', join(contents, 'MacOS', 'tone'), join(root, 'scripts', 'fixtures', 'mac-audio-tone.swift')]);
+      const pidFile = join(scratch, 'webkit.pid');
+      execFileSync('open', ['-n', '-a', bundle, '--args', pidFile]);
+      for (let n=0; n<100 && !existsSync(pidFile); n++) await sleep(100);
+      if (!existsSync(pidFile)) throw new Error('WebKit fixture did not open');
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      tones.push({ pid, kill(signal) { try { if (execFileSync('ps',['-p',String(pid),'-o','command='],{encoding:'utf8'}).includes(scratch)) process.kill(pid,signal); } catch {} } });
+      console.log(`WebKit tone app PID ${pid} (window share must capture its responsible XPC audio service)`);
+      continue;
+    }
     const folder = join(scratch, `tone-${freq}`);
     mkdirSync(folder);
     writeFileSync(join(folder, 'package.json'), JSON.stringify({ name: `tone-${freq}`, main: 'main.cjs' }));
     writeFileSync(join(folder, 'main.cjs'), `const {app,BrowserWindow}=require('electron'); app.whenReady().then(()=>{const w=new BrowserWindow({width:400,height:200,title:'tone-${freq}',webPreferences:{autoplayPolicy:'no-user-gesture-required'}});w.loadURL('data:text/html,<title>tone-${freq}</title><h1>Tone ${freq}</h1><script>const c=new AudioContext(); const o=c.createOscillator(); const g=c.createGain();o.frequency.value=${freq};g.gain.value=0.03;o.connect(g).connect(c.destination);o.start();<\/script>');w.on('page-title-updated',e=>e.preventDefault());});`);
     tones.push(spawn(electron, [folder, `--user-data-dir=${join(scratch, `tone-profile-${freq}`)}`], { stdio: 'ignore' }));
   }
-  app = spawn(electron, [desktop, '--remote-debugging-port=9361', `--user-data-dir=${join(scratch,'wes')}`], { env: { ...process.env, SCRYPROOF_SERVER: SERVER, SCRYPROOF_DEV_MEDIA: 'ws://127.0.0.1:7880' }, stdio: ['ignore', 'ignore', 'pipe'] });
-  app.stderr.on('data', b => { const s=b.toString(); if (/app sound|capture|permission/i.test(s)) console.log(s.trim()); });
+  const electronBundle = join(electron, '../../..');
+  execFileSync('open', ['-n', '-a', electronBundle, '--env', `SCRYPROOF_SERVER=${SERVER}`, '--env', 'SCRYPROOF_DEV_MEDIA=ws://127.0.0.1:7880', '--args', desktop, '--remote-debugging-port=9361', `--user-data-dir=${join(scratch, 'wes')}`]);
   chrome = spawn(BROWSER, ['--headless=new','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream','--autoplay-policy=no-user-gesture-required','--mute-audio','--allow-loopback-in-peer-connection','--remote-debugging-port=9362',`--user-data-dir=${join(scratch,'alex')}`,'--window-size=1280,900','about:blank'], { stdio:['ignore','ignore','pipe'] });
   chrome.stderr.on('data',b=>{if(/DevTools/.test(b.toString()))console.log('chrome: '+b.toString().trim());});
   const appTarget=await firstTarget(9361,t=>t.type==='page'&&t.url.startsWith('app://'));
   if(!appTarget)throw new Error('Electron did not open its app page');
+  const desktopPID = Number(execFileSync('lsof', ['-t', '-iTCP:9361', '-sTCP:LISTEN'], { encoding: 'utf8' }).trim());
+  app = { pid: desktopPID, exitCode: null, signalCode: null, kill(signal) {
+    try { if (execFileSync('ps', ['-p', String(desktopPID), '-o', 'command='], { encoding: 'utf8' }).includes(scratch)) process.kill(desktopPID, signal); } catch {}
+  } };
   wes=await new Page('wes',appTarget.webSocketDebuggerUrl).connect();
   await wes.send('Page.addScriptToEvaluateOnNewDocument',{source:FAKE_MIC});
   await wes.send('Emulation.setFocusEmulationEnabled',{enabled:true});
@@ -328,8 +353,16 @@ try {
   check('encrypted real call',Boolean(await alex.until(`(()=>{const s=window.__voice.getSnapshot();return s.phase==='connected'&&s.encrypted&&s.people.length===1&&s.people[0].state==='secured';})()`,45000))&&Boolean(await wes.until(`document.querySelector('.connection-panel')?.textContent.includes('Encrypted end to end · 2 people')`,45000)));
   // The app's output volume is real, and its own audio is measured with a
   // separate native include tap. Muted or near-silent playback cannot pass.
+  check('real quit/reopen cleared prior capture error', await wes.evaluate(`!document.body.innerText.includes('Invalid capture constraints') && !document.body.innerText.includes('Cmd-Q')`));
+  if (process.env.MAC_AUDIO_PERMISSION_ONLY === '1') await wes.evaluate(`(() => { window.__audioProbe={started:false,bytes:0,nonzero:0,error:null}; window.scryproofDesktop.onAppSound(()=>window.__audioProbe.started=true,b=>{window.__audioProbe.bytes+=b.length;for(const n of b)if(n)window.__audioProbe.nonzero++;},()=>{},s=>window.__audioProbe.error=s); })()`);
   check('wes requests window share',await wes.clickButton('Share your screen'));
   await choose('window','tone-1000');
+  if (process.env.MAC_AUDIO_PERMISSION_ONLY === '1') {
+    await wes.until(`window.__audioProbe.error || window.__audioProbe.bytes > 48000`,600000);
+    console.log('SYSTEM AUDIO PERMISSION OBSERVATION:',JSON.stringify(await wes.evaluate(`window.__audioProbe`)));
+    await wes.shoot('first-audio');
+    throw new Error('Permission-only observation finished; full proof must follow a granted relaunch');
+  }
   const panel=await wes.until(`document.querySelector('.connection-panel')?.textContent.includes('Share sound this window only')`,130000);
   if(!panel)throw new Error(`Window sound did not start: ${await wes.evaluate(`document.body.innerText.slice(-3000)`)}`);
   const playing=`window.__voice.getSnapshot().videos.some(v=>v.userId==='${wesId}'&&v.source==='screen'&&v.state==='playing')`;
@@ -337,22 +370,32 @@ try {
   await watch();
   await measure('window',`${wesId}:screen`,false);
   await wes.shoot('connection-window');
-  await wes.clickButton('Stop sharing');
+  check('wes stops the screen share', await wes.clickButton('Stop sharing'));
+  await wes.until(`document.querySelector('button[aria-label="Share your screen"]') !== null`,10000);
+  await alex.until(`!window.__voice.getSnapshot().sharedAudio.some(s=>s.userId==='${wesId}'&&s.kind==='screen')`,10000);
+  await sleep(500);
   check('wes requests whole screen',await wes.clickButton('Share your screen'));
   await choose('screen');
-  check('panel identifies whole-machine audio with call left out',Boolean(await wes.until(`document.querySelector('.connection-panel')?.textContent.includes('Share sound whole PC, call left out')`,130000)));
+  check('panel identifies whole-machine audio with call left out',Boolean(await wes.until(`document.querySelector('.connection-panel')?.textContent.includes('Share sound this Mac, call left out')`,130000)));
   await watch();
   // Capture the app's own sound as the positive control, using the offered
   // window list (never the share's already-excluded output).
   const appWindow=await wes.evaluate(`window.__checkSources?.find(s=>s.kind==='window'&&/Scryproof/i.test(s.name))?.id.split(':')[1]`);
   if(!appWindow)throw new Error('No Scryproof window ID for audible-call control');
   const pcm=await recordWindow(appWindow,4000);
-  const level=pcm.length?pcmLevel(pcm,700):-200;
+  writeFileSync(join(root,'.mac-audio-check','control.pcm'),pcm);
+  const level=pcm.length?pcmToneLevel(pcm,CALL_HZ):-200;
+  const peak = Array.from({length:31}, (_,i)=>CALL_HZ-75+i*5).map(hz=>({hz,db:pcmToneLevel(pcm,hz)})).sort((a,b)=>b.db-a.db)[0];
+  check(`positive control: captured call keeps its ${CALL_HZ} Hz pitch`,Math.abs(peak.hz-CALL_HZ)<=10,`strongest ${peak.hz} Hz at ${peak.db.toFixed(1)} dBFS`);
   check('positive control: app plays alex at real volume (> -45 dBFS)',level > -45,`${level.toFixed(1)} dBFS, ${pcm.length} PCM bytes; output volume ${VOLUME}`);
   await measure('screen',`${wesId}:screen`,true);
   await wes.shoot('connection-screen');
-  await wes.clickButton('Stop sharing');
+  check('wes stops the screen share', await wes.clickButton('Stop sharing'));
+  await wes.until(`document.querySelector('button[aria-label="Share your screen"]') !== null`,10000);
+  await alex.until(`!window.__voice.getSnapshot().sharedAudio.some(s=>s.userId==='${wesId}'&&s.kind==='screen')`,10000);
+  await sleep(500);
   check('opens mixer',await wes.clickButton('Open call mixer'));
+  check('Mac mixer names this Mac',await wes.evaluate(`document.querySelector('.call-mixer')?.textContent.includes('everything this Mac plays') && !document.querySelector('.call-mixer')?.textContent.includes('the PC')`));
   check('starts music share',await wes.clickButton('Share music'));
   await choose('screen');
   check('music sharing is active',Boolean(await wes.until(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Stop sharing music')`,130000)));
