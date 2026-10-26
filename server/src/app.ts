@@ -36,6 +36,7 @@ import { registerVoiceRoutes } from './routes/voice.js';
 import { registerDmRoutes } from './routes/dms.js';
 import { registerChannelKeyRoutes } from './routes/channel-keys.js';
 import { registerProfileRoutes } from './routes/profile.js';
+import { registerServerIconRoutes } from './routes/server-icon.js';
 import { registerBlockRoutes } from './routes/blocks.js';
 import { registerDownloadRoutes } from './routes/downloads.js';
 import { registerPushRoutes } from './routes/push.js';
@@ -47,6 +48,7 @@ import { registerTravleRoutes } from './routes/travle.js';
 import { registerThriceRoutes } from './routes/thrice.js';
 import { registerRoundsRoutes } from './routes/rounds.js';
 import { registerHostRoutes } from './routes/host.js';
+import { registerLinkPreviewRoutes } from './routes/link-preview.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -256,9 +258,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerDmRoutes(app);
   await registerChannelKeyRoutes(app);
   await registerProfileRoutes(app);
+  await registerServerIconRoutes(app);
   await registerBlockRoutes(app);
   await registerDownloadRoutes(app);
   await registerPushRoutes(app);
+  await registerLinkPreviewRoutes(app);
   await registerPurdleRoutes(app);
   await registerCuntectionsRoutes(app);
   await registerBeeRoutes(app);

@@ -86,8 +86,9 @@ export function signInstaller({ version, sha256, size }, privateKey) {
 }
 
 /**
- * The manifest, if it is one and the key signed it as an installer. Null
- * otherwise. Never throws: what arrives here came off the network.
+ * The manifest, if it is one and a trusted key (one PEM or a list, as for the
+ * client) signed it as an installer. Null otherwise. Never throws: what
+ * arrives here came off the network.
  */
 export function readInstallerManifest(raw, publicKeyPems) {
   try {

@@ -26,7 +26,7 @@ import { loadAllServerDetails, memberIdsForServers } from '../services/server-de
 import { readStatesFor } from '../services/read-state.js';
 import { blockedBy } from '../services/blocks.js';
 import { dmIdsFor } from '../services/dm-calls.js';
-import { canCreateServers } from '../services/servers.js';
+import { canCreateServers, listServerRequests } from '../services/servers.js';
 import * as serialize from '../services/serialize.js';
 import { uuidv7 } from '../lib/ids.js';
 import { logger } from '../lib/logger.js';
@@ -250,6 +250,7 @@ async function sendReady(connection: hub.Connection, request: IncomingMessage): 
       sessionId: connection.sessionId,
       // Decided on the server; the client only hides the button.
       canCreateServers: await canCreateServers(connection.userId),
+      serverRequests: (await canCreateServers(connection.userId)) ? await listServerRequests() : [],
       // This gateway answers a call join with `voice_owned` (or a
       // `voice_replaced` / `voice_left` error). A client must not wait for
       // that from a gateway that does not say so: an older one never sends it.

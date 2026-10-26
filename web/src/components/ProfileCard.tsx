@@ -107,7 +107,7 @@ function ProfileCard({
   onStartGroup: (userId: string) => void;
 }) {
   const { state, block, unblock, voice: session, joinVoice, selectChannel } = useStore();
-  const { openWith, send } = useDms();
+  const { openWith, openDm, send } = useDms();
   const box = useRef<HTMLDivElement>(null);
   const say = useRef<HTMLInputElement>(null);
   const [spot, setSpot] = useState<{ top: number; left: number } | null>(null);
@@ -200,9 +200,13 @@ function ProfileCard({
     setSending(true);
     setProblem(null);
     try {
-      const dmId = await openWith(user.id);
+      // Send first, show after. Showing first unmounts this card, so a send
+      // that failed (no key for them yet, say) had nowhere to say so, and the
+      // screen looked like the message had simply gone.
+      const dmId = await openWith(user.id, false);
       await send(dmId, text);
       setDraft('');
+      openDm(dmId);
       onClose();
     } catch (error) {
       setProblem(error instanceof Error ? error.message : 'Could not send that.');

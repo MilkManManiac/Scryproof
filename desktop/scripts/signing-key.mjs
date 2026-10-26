@@ -22,8 +22,35 @@ export const macRecoveryKeyPath = process.env.SCRYPROOF_MAC_RECOVERY_KEY ?? join
 export const macRecoveryPublicKeyPath = join(root, 'desktop', 'src', 'update-key-mac-recovery.pub.pem');
 /** The public half, baked into every installer. What installed apps trust. */
 export const publicKeyPath = join(root, 'desktop', 'src', 'update-key.pub.pem');
-/** A recovery key for Wes's everyday key, the same way, when he makes one. */
+/**
+ * The recovery key (audit 2026-10-10, finding 26): a second key installed apps
+ * also trust, kept offline and used only if the first is lost. Its private
+ * half sits beside the first, with `-recovery` on the name; it is backed up
+ * away from this PC and never used for an ordinary release. To sign with it,
+ * point SCRYPROOF_UPDATE_KEY at it.
+ */
+export const recoveryKeyPath = join(homedir(), '.scryproof', 'update-key-recovery.pem');
 export const recoveryPublicKeyPath = join(root, 'desktop', 'src', 'update-key-recovery.pub.pem');
+
+/**
+ * Make the recovery key, once. Refuses if either half already exists: a second
+ * run must never replace a key that shipped apps trust.
+ *
+ *   node -e "import('./scripts/signing-key.mjs').then((k) => k.makeRecoveryKey())"
+ */
+export function makeRecoveryKey() {
+  for (const path of [recoveryKeyPath, recoveryPublicKeyPath]) {
+    if (existsSync(path)) {
+      console.error(`${path} already exists. No recovery key was made.`);
+      process.exit(1);
+    }
+  }
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  mkdirSync(dirname(recoveryKeyPath), { recursive: true });
+  writeFileSync(recoveryKeyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600, flag: 'wx' });
+  writeFileSync(recoveryPublicKeyPath, publicKey.export({ type: 'spki', format: 'pem' }), { flag: 'wx' });
+  console.log(`Made the recovery key at ${recoveryKeyPath}. Back it up off this PC.`);
+}
 
 /** The public keys installed apps trust for `kind` ('client' or 'mac'): the baked one, and the recovery one when it is baked in too. */
 export function trustedPublicKeyPems(kind) {
@@ -54,14 +81,16 @@ export function loadSigningKey({ create = false } = {}) {
 }
 
 /**
- * Whether `publicKeyPem` is the key installed apps were built to trust. True
- * when there is no baked key yet (the first run writes it). Out of step, every
- * update would be refused, so the callers stop.
+ * Whether `publicKeyPem` is a key installed apps were built to trust: the
+ * baked key or the recovery key. True when there is no baked key yet (the
+ * first run writes it). Out of step, every update would be refused, so the
+ * callers stop.
  */
 export function matchesBakedKey(publicKeyPem) {
   if (!existsSync(publicKeyPath)) return true;
   // Git on Windows may have rewritten the line endings. The key is the same key.
-  return readFileSync(publicKeyPath, 'utf8').replace(/\r\n/g, '\n') === publicKeyPem;
+  const baked = (path) => existsSync(path) && readFileSync(path, 'utf8').replace(/\r\n/g, '\n') === publicKeyPem;
+  return baked(publicKeyPath) || baked(recoveryPublicKeyPath);
 }
 
 export const keyMismatchMessage = () =>

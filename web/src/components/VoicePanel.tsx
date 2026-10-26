@@ -38,6 +38,7 @@ import { CallQuality } from './CallQuality';
 import { VoiceSettings } from './VoiceSettings';
 import { SoundBoard } from './SoundBoard';
 import { MuteBanner } from './MuteStatus';
+import { StreamChat } from './StreamChat';
 import {
   CameraGlyph,
   ExpandGlyph,
@@ -240,6 +241,9 @@ export function VoiceStage(
   /** Whose right-click volume menu is open: the same setting as the profile card, where Discord keeps it. */
   const [volumeMenu, setVolumeMenu] = useState<{ userId: string; spot: MenuSpot } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
+  // Your own share is a card, not a picture: a whole-screen share drawing
+  // itself is a hall of mirrors, and you can already see your screen.
+  const [peekOwn, setPeekOwn] = useState(false);
   const [picture, setPicture] = useState<Picture | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
@@ -327,11 +331,17 @@ export function VoiceStage(
   ];
   // A person with their camera on is focused by their camera's key, so a
   // camera turning off takes the focus with it.
+  const asCard = (tile: Tile): boolean =>
+    tile.kind === 'screen' && (tile.video.state !== 'playing' || (tile.video.userId === selfId && !peekOwn));
   const focusKeyOf = (tile: Tile): string | null =>
-    tile.kind === 'screen' ? (tile.video.state === 'playing' ? tile.key : null) : tile.camera ? videoKey(tile.camera) : null;
+    tile.kind === 'screen' ? (asCard(tile) ? null : tile.key) : tile.camera ? videoKey(tile.camera) : null;
   const big = focused === null ? null : (tiles.find((tile) => focusKeyOf(tile) === focused) ?? null);
   const bigVideo = big ? (big.kind === 'screen' ? big.video : (big.camera ?? null)) : null;
   const zoom = useStreamZoom(picture, bigVideo?.sid);
+  // Comments sit beside a screen that is big: one this viewer pressed Watch on, or their own.
+  const chatOn = connected && bigVideo?.source === 'screen' && bigVideo.state === 'playing';
+  // The sharer sees comments on their own screen without having to make it big.
+  const ownScreen = connected ? screens.find((video) => video.userId === selfId) : undefined;
 
   const labelOf = (video: VoiceVideo): string => {
     const own = video.userId === selfId;
@@ -418,10 +428,11 @@ export function VoiceStage(
 
   /** One tile, in the grid or in the strip under the big picture. */
   const renderTile = (tile: Tile) => {
-    if (tile.kind === 'screen' && tile.video.state !== 'playing') {
+    if (tile.kind === 'screen' && asCard(tile)) {
       const { video } = tile;
       const person = personOf(video.userId);
       const name = nameOf(video.userId);
+      const own = video.userId === selfId;
       return (
         <div
           key={tile.key}
@@ -433,8 +444,14 @@ export function VoiceStage(
             <span className="call-tile-avatar">
               {person?.avatarUrl ? <img src={person.avatarUrl} alt="" /> : initials(name)}
             </span>
-            <span className="call-tile-say">Sharing their screen</span>
-            {watchButton(video)}
+            <span className="call-tile-say">{own ? 'Sharing your screen' : 'Sharing their screen'}</span>
+            {own ? (
+              <button type="button" className="link-button" onClick={() => setPeekOwn(true)}>
+                Show me
+              </button>
+            ) : (
+              watchButton(video)
+            )}
           </div>
           <span className="call-tile-name">{labelOf(video)}</span>
         </div>
@@ -456,6 +473,22 @@ export function VoiceStage(
           <span className="call-tile-live">Live</span>
           <span className="call-tile-name">{labelOf(video)}</span>
           {note ? <span className={`call-tile-note voice-stalled${theirs ? ' under-actions' : ''}`}>{note}</span> : null}
+          {!theirs ? (
+            <span className="call-tile-actions">
+              <button
+                type="button"
+                className="call-tile-action"
+                title="Stop showing your own share here (everyone else still sees it)"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPeekOwn(false);
+                  setFocused((current) => (current === tile.key ? null : current));
+                }}
+              >
+                Hide
+              </button>
+            </span>
+          ) : null}
           {theirs ? (
             <span className="call-tile-actions">
               {video.sound ? soundButton(video, 'call-tile-action') : null}
@@ -563,7 +596,7 @@ export function VoiceStage(
       {!here ? <h2 className="voice-stage-title">{channelName}</h2> : null}
 
       {big && bigVideo ? (
-        <div className="voice-focus" ref={focusFrame}>
+        <div className={`voice-focus${chatOn ? ' with-chat' : ''}`} ref={focusFrame}>
           <div
             ref={zoom.frameRef}
             className={`voice-focus-frame${zoom.zoomed ? ' zoomed' : ''}${zoom.dragging ? ' dragging' : ''}`}
@@ -673,6 +706,7 @@ export function VoiceStage(
           {bigVideo.source === 'camera' && bigVideo.userId === selfId && picture ? (
             <div className="voice-focus-report">{session.cameraReport()}</div>
           ) : null}
+          {chatOn ? <StreamChat key={bigVideo.stream} stream={bigVideo.stream} variant="side" /> : null}
         </div>
       ) : null}
 
@@ -685,6 +719,13 @@ export function VoiceStage(
           {tiles.map(renderTile)}
         </div>
       )}
+
+      {ownScreen && !(chatOn && bigVideo?.userId === selfId) ? (
+        <div className="stream-chat-own">
+          <span>Comments on your screen</span>
+          <StreamChat key={ownScreen.stream} stream={ownScreen.stream} variant="list" />
+        </div>
+      ) : null}
 
       {mine && (voice.phase === 'failed' || voice.phase === 'moved' || voice.phase === 'ended') ? (
         <p className="voice-stage-error">

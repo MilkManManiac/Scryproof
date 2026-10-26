@@ -42,6 +42,8 @@ import type { Character } from '../lib/commands';
 import { isVoiceFile, isVoiceLabel } from '../lib/voice-note';
 import { SealedFile } from './SealedFile';
 import { VoicePlayer } from './VoiceNote';
+import { YouTubeCard } from './YouTubeCard';
+import { youtubeIdOf } from '../lib/youtube';
 
 /** Consecutive messages from one author within this window share a header. */
 const GROUP_WINDOW_MS = 7 * 60 * 1000;
@@ -658,6 +660,19 @@ export function Rich({
   );
 }
 
+/** The first YouTube link in a body, outside any spoiler: a spoiler hides what it hides. */
+export function firstYouTube(content: string): { id: string; href: string } | null {
+  for (const part of splitContent(content)) {
+    const links = part.kind === 'link' ? [part] : part.kind === 'style' ? part.parts.filter((p) => p.kind === 'link') : [];
+    for (const link of links) {
+      if (link.kind !== 'link') continue;
+      const id = youtubeIdOf(link.href);
+      if (id) return { id, href: link.href };
+    }
+  }
+  return null;
+}
+
 /** A message body with the people it names drawn as names. */
 function MessageContent(props: { content: string; members: Member[]; emojis: Emoji[]; selfId?: string; everyone: boolean }) {
   return (
@@ -926,6 +941,7 @@ function MessageRow({
     onEditorOpened?.();
   }, [openEditor, editing, message.content, members, serverRoles, onEditorOpened]);
 
+  const youtube = message.content ? firstYouTube(message.content) : null;
   const blocked = state.blocks.has(message.authorId);
   if (blocked && !shown) {
     return (
@@ -1237,6 +1253,9 @@ function MessageRow({
                 />
               </RoleMentions.Provider>
             ) : null}
+            {message.content && !spawn && !message.deleted && youtube ? (
+              <YouTubeCard key={youtube.id} id={youtube.id} href={youtube.href} ask={!encrypted} />
+            ) : null}
 
             {message.editedAt ? <span className="message-edited">edited</span> : null}
             {message.sealed === 'unverified' ? (
@@ -1266,6 +1285,9 @@ function MessageRow({
                     return new Uint8Array(await response.arrayBuffer());
                   }}
                 />
+              ) : attachment.contentType.startsWith('video/') ? (
+                // Served inline by the server for mp4 and webm only; watched here, not downloaded.
+                <video key={attachment.id} className="attachment-video" controls preload="metadata" src={attachment.url} />
               ) : attachment.contentType.startsWith('image/') ? (
                 <button
                   key={attachment.id}

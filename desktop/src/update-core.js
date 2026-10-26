@@ -21,30 +21,58 @@
  */
 
 import { createHash, createPublicKey, sign, verify } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 const CONTEXT = 'scryproof/desktop-client/v1';
 /** The whole client is under 2 MB. Anything far past that is not a client. */
 export const MAX_BUNDLE_BYTES = 40 * 1024 * 1024;
+/** No download (client, installer, Mac zip) is let grow past this, whatever its manifest says. The installer manifest allows 400 MB. */
+export const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
 const signedBytes = (version, hash) => Buffer.from(`${CONTEXT}\n${version}\n${hash}`, 'utf8');
+
+/**
+ * Write `source` (a stream or any async iterable of bytes, such as a response
+ * body) to `path` as it arrives, never holding it whole, and stop with an
+ * error as soon as it is past `limit` bytes, or MAX_DOWNLOAD_BYTES if that is
+ * smaller. The caller removes what was written when it throws.
+ */
+export async function saveCapped(source, path, limit) {
+  const cap = Math.min(limit, MAX_DOWNLOAD_BYTES);
+  let written = 0;
+  await pipeline(
+    source,
+    async function* (chunks) {
+      for await (const chunk of chunks) {
+        written += chunk.length;
+        if (written > cap) throw new Error('bigger than it was signed at');
+        yield chunk;
+      }
+    },
+    createWriteStream(path),
+  );
+  return written;
+}
 
 /**
  * The keys a manifest may be signed by: one PEM, or a list (the key baked in
  * and, when one is baked in beside it, a recovery key kept offline, so losing
  * the everyday key does not mean every install is replaced by hand; audit
- * 2026-10-10, finding 26). Every entry must be an Ed25519 public key: a baked
- * file that is not one is a broken build, and throws, which the readers turn
- * into a refusal.
+ * 2026-10-10, finding 26). An entry that is not an Ed25519 public key trusts
+ * nothing and is skipped: a bad second key must never stop the good one.
  */
 export function trustedKeys(publicKeyPems) {
   const keys = [];
   for (const pem of Array.isArray(publicKeyPems) ? publicKeyPems : [publicKeyPems]) {
     if (typeof pem !== 'string' || pem === '') continue;
-    const key = createPublicKey(pem);
-    if (key.asymmetricKeyType !== 'ed25519') throw new Error('an update key that is not Ed25519');
-    keys.push(key);
+    try {
+      const key = createPublicKey(pem);
+      if (key.asymmetricKeyType === 'ed25519') keys.push(key);
+    } catch { /* not a key */ }
   }
   return keys;
 }
@@ -71,8 +99,9 @@ export function signBundle(bundle, version, privateKey) {
 }
 
 /**
- * The manifest, if it is one and the key signed it. Null otherwise. Never
- * throws: what arrives here came off the network.
+ * The manifest, if it is one and a trusted key signed it. Null otherwise.
+ * `publicKeyPems` is one PEM or a list. Never throws: what arrives here came
+ * off the network.
  */
 export function readManifest(raw, publicKeyPems) {
   try {

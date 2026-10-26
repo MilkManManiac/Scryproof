@@ -216,6 +216,14 @@ export interface ScheduledEvent extends ScheduledEventBase {
 }
 
 /** A server plus everything the client needs to render it. */
+/** Someone asking the host for a server of their own. Lives until the host answers. */
+export interface ServerRequest {
+  id: Snowflake;
+  name: string;
+  requester: PublicUser;
+  createdAt: Timestamp;
+}
+
 export interface ServerDetail extends Server {
   categories: Category[];
   channels: Channel[];

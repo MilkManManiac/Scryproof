@@ -20,8 +20,66 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
-    id: '2026-10-12-app-sound',
-    date: '2026-10-12',
+    id: '2026-10-25-queens-your-crosses',
+    date: '2026-10-25',
+    title: 'Queens: the crosses are yours again',
+    notes: [
+      'Queens no longer crosses off squares for you when you put a queen down. The board shows only the crosses you make yourself, the way it did before. Tap once for a cross, twice for a queen.',
+    ],
+  },
+  {
+    id: '2026-10-23-own-share-hidden',
+    date: '2026-10-23',
+    title: 'Your own share stays out of your way',
+    notes: [
+      'When you share your screen, you no longer see your own stream in the call. Your tile says "Sharing your screen" with a Show me link if you want to check what is going out, and a Hide button on it to put it away again. Everyone else sees your share as before.',
+    ],
+  },
+  {
+    id: '2026-10-22-profile-card-message',
+    date: '2026-10-22',
+    title: 'Server pictures, song requests',
+    notes: [
+      'Song requests on a stream. Next to the comment box on a screen or music share there is a note button: press it and what you type goes in as a request. Requests sit in a list at the top of the comments until whoever is sharing marks them played. Like the comments, they are gone when the stream ends.',
+      'A server can have a picture now. Server settings, Overview: a still picture or a GIF, up to 2 MB. It shows on the rail in place of the letters.',
+      'Server pictures on the left rail were showing as a thin cropped strip instead of the whole picture. They fill the tile now.',
+      'Typing into the box on a profile card and pressing Enter sometimes jumped to the conversation with nothing in it. It now sends first and opens the conversation after; if it cannot send (they have no key yet, say), the card says so instead of going quiet.',
+    ],
+  },
+  {
+    id: '2026-10-21-ask-for-a-server',
+    date: '2026-10-21',
+    title: 'Ask for a server, and a tip jar',
+    notes: [
+      'Anyone can now press + on the left rail and ask for a server of their own. Wes sees who is waiting and says yes or no; when he says yes the server appears on your rail and you own it.',
+      'A $ at the top of every server opens Wes\'s Venmo. Scryproof runs on one box he pays for; a tip helps keep it up.',
+      'Closing a popped-out stream no longer crashes the desktop app with a "JavaScript error in the main process" box (desktop 0.5.9).',
+      'If your saved microphone goes missing (unplugged, or the browser stopped seeing it), a call now falls back to the system default instead of hanging up a moment after connecting. Microphone errors say what went wrong.',
+    ],
+  },
+  {
+    id: '2026-10-19-stream-comments',
+    date: '2026-10-19',
+    title: 'Comments on a stream',
+    notes: [
+      'Watching someone\'s screen? Press Comments at the top of the stream to open them. Type, press Enter, and everyone watching sees it, and so does the person sharing. They stay closed until you ask, and the button counts new ones. It works in a popped-out window too.',
+      'Listening to someone\'s music? The same comments sit under it in the mixer, and on the sharer\'s Music together card.',
+      'Nothing is kept. Comments disappear when the stream ends, and anyone who joins the call later sees only what comes after. They are locked with the call\'s keys, so this server cannot read them.',
+    ],
+  },
+  {
+    id: '2026-10-19-youtube-and-video',
+    date: '2026-10-19',
+    title: 'YouTube cards, videos play in the app',
+    notes: [
+      'Paste a YouTube link and a card appears under it: the thumbnail, the title, who posted it. Click it to open the video on YouTube. This server fetches the card once; nobody in the room talks to Google.',
+      'In an encrypted channel or a DM the card waits for you to press Show preview, because asking for it tells this server which video the message pointed at.',
+      'Uploaded videos (mp4, webm) play right in the channel. No more downloading to watch a clip. In an encrypted channel press Play to unlock it first.',
+    ],
+  },
+  {
+    id: '2026-10-19-app-sound',
+    date: '2026-10-19',
     title: 'Share one app\'s sound, pop streams out, 100 sounds',
     notes: [
       'In the desktop app on Windows, share a window with sound and only that app\'s sound goes out. Share Spotify and nobody hears your game. Share a movie player and nobody hears themselves come back through it. Sharing a whole screen with sound leaves the call out. This needs the new desktop app (0.5.8): it will offer to update.',

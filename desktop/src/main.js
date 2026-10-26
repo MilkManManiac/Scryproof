@@ -31,15 +31,15 @@
 
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, protocol, session, shell, systemPreferences, Tray } from 'electron';
 import { execFile, spawn } from 'node:child_process';
-import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { constants, existsSync, readFileSync } from 'node:fs';
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { release } from 'node:os';
 import { basename, dirname, extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 import { armContextMenu } from './context-menu.js';
+import { crashGuard } from './crash-core.js';
 import { APP_ORIGIN, hardenApiHeaders, isApiUrl } from './forward-core.js';
 import {
   hashFile,
@@ -56,7 +56,7 @@ import { frameMicPrompt, permissionDecision, REFUSAL_HOLD_MS, shellPermission } 
 import { armPushToTalk, stopPushToTalk } from './push-to-talk.js';
 import { APP_SOUND_LABEL, pickerList, shareAnswer, SOUND_LABEL, soundOffer } from './share-menu.js';
 import { bundlePathFor, createMacShellUpdater, restoreAside } from './shell-update-mac.js';
-import { MAX_BUNDLE_BYTES, openBundle, readManifest } from './update-core.js';
+import { openBundle, readManifest, saveCapped } from './update-core.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -101,8 +101,6 @@ const MAC_KEYS = [MAC_KEY, MAC ? bakedKey('update-key-mac-recovery.pub.pem') : '
 const INSTALLER_EVERY_MS = 60 * 60_000;
 const TIDY_AGAIN_MS = 60_000;
 /** A page that died is reloaded once; another death within this gap is not. */
-const PAGE_DEATH_GAP_MS = 60_000;
-let lastPageDeath = 0;
 const BUNDLED_VERSION = (() => {
   try {
     return Number(JSON.parse(readFileSync(join(here, 'client-version.json'), 'utf8')).version) || 0;
@@ -263,7 +261,7 @@ const updateDir = () => join(app.getPath('userData'), 'client-update');
 
 /** An update fetched on an earlier run. Checked again from scratch: the folder is only a cache. */
 async function loadStoredUpdate() {
-  if (!UPDATE_KEY) return;
+  if (UPDATE_KEYS.length === 0) return;
   try {
     const manifest = readManifest(await readFile(join(updateDir(), 'client.json'), 'utf8'), UPDATE_KEYS);
     if (!manifest || manifest.version <= client.version) return;
@@ -273,47 +271,31 @@ async function loadStoredUpdate() {
 }
 
 async function checkForUpdate() {
-  if (!UPDATE_URL || !UPDATE_KEY) return;
+  if (!UPDATE_URL || UPDATE_KEYS.length === 0) return;
+  const part = join(updateDir(), 'client.bin.part');
   try {
-    const get = (name) => net.fetch(new URL(name, UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
-    const reply = await get('client.json');
+    const reply = await net.fetch(new URL('client.json', UPDATE_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
     if (!reply.ok) return;
     const manifest = readManifest(await reply.text(), UPDATE_KEYS);
     // Forward only. An older client, however genuinely signed, is not an update.
     if (!manifest || manifest.version <= Math.max(client.version, pending?.version ?? 0)) return;
 
-    const download = await get('client.bin');
-    if (!download.ok) return;
-    const bundle = await readCapped(download, MAX_BUNDLE_BYTES);
-    if (!bundle) return;
-    const files = openBundle(bundle, manifest);
+    // To disk as it arrives, stopped at the signed size, and only then read back and checked.
+    await mkdir(updateDir(), { recursive: true });
+    await download(new URL('client.bin', UPDATE_URL).toString(), part, manifest.size);
+    const files = openBundle(await readFile(part), manifest);
     if (!files) return;
 
-    await mkdir(updateDir(), { recursive: true });
-    for (const [name, body] of [['client.bin', bundle], ['client.json', JSON.stringify(manifest)]]) {
-      await writeFile(join(updateDir(), `${name}.part`), body);
-      await rename(join(updateDir(), `${name}.part`), join(updateDir(), name));
-    }
+    await rename(part, join(updateDir(), 'client.bin'));
+    await writeFile(join(updateDir(), 'client.json.part'), JSON.stringify(manifest));
+    await rename(join(updateDir(), 'client.json.part'), join(updateDir(), 'client.json'));
     pending = { version: manifest.version, files };
     win?.webContents.send('scryproof:update-ready', manifest.version);
-  } catch { /* offline, or the server is down. Ask again later. */ }
-}
-
-/**
- * The body of `reply`, or null once it passes `max` bytes. The server's own
- * content-length is not taken at its word: the count is kept while the bytes
- * arrive, and a body that grows past the cap is dropped there, not held.
- */
-async function readCapped(reply, max) {
-  if (Number(reply.headers.get('content-length') ?? 0) > max || !reply.body) return null;
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of Readable.fromWeb(reply.body)) {
-    total += chunk.length;
-    if (total > max) return null;
-    chunks.push(chunk);
+  } catch {
+    /* offline, or the server is down. Ask again later. */
+  } finally {
+    await rm(part, { force: true }).catch(() => {});
   }
-  return Buffer.concat(chunks);
 }
 
 /** Whether a request over the bridge came from our own page. */
@@ -363,34 +345,26 @@ async function tidyShellDir() {
   } catch { /* no folder yet */ }
 }
 
-/** Download `url` to `path`, stopping as soon as it is bigger than it said it would be. */
+/**
+ * Download `url` to `path`, streamed to disk, stopping as soon as it is bigger
+ * than it said it would be or past MAX_DOWNLOAD_BYTES (`saveCapped`).
+ */
 async function download(url, path, size) {
   const reply = await net.fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
   if (!reply.ok || !reply.body) throw new Error(`HTTP ${reply.status}`);
   if (Number(reply.headers.get('content-length') ?? 0) > size) throw new Error('bigger than it was signed at');
-  let written = 0;
-  await pipeline(
-    Readable.fromWeb(reply.body),
-    async function* (source) {
-      for await (const chunk of source) {
-        written += chunk.length;
-        if (written > size) throw new Error('bigger than it was signed at');
-        yield chunk;
-      }
-    },
-    createWriteStream(path),
-  );
+  await saveCapped(Readable.fromWeb(reply.body), path, size);
 }
 
 async function checkForShellUpdate() {
-  if (!INSTALLER_URL || !UPDATE_KEY || shellChecking) return;
+  if (!INSTALLER_URL || UPDATE_KEYS.length === 0 || shellChecking) return;
   shellChecking = true;
   const part = join(shellDir(), 'installer.part');
   try {
     const get = (name) => net.fetch(new URL(name, INSTALLER_URL).toString(), { cache: 'no-store', credentials: 'omit', redirect: 'error' });
     const reply = await get('installer.json');
     if (!reply.ok) return;
-    const manifest = readInstallerManifest(await reply.text(), UPDATE_KEY);
+    const manifest = readInstallerManifest(await reply.text(), UPDATE_KEYS);
     // Forward only, and nothing already waiting is fetched twice.
     if (!manifest || !isNewerVersion(manifest.version, app.getVersion())) return;
     if (pendingShell && !isNewerVersion(manifest.version, pendingShell.version)) return;
@@ -894,6 +868,22 @@ const startsAtLogin = () =>
   app.isPackaged && (MAC ? app.getLoginItemSettings() : app.getLoginItemSettings({ args: loginItem.args })).openAtLogin;
 const setStartsAtLogin = (on) => app.setLoginItemSettings(MAC ? { openAtLogin: on } : { ...loginItem, openAtLogin: on });
 
+/**
+ * The page died (a renderer crash, out of memory, killed). Reload it once; a
+ * second death within a minute says so and quits, rather than looping
+ * (`crash-core.js`). Not while quitting: the page goes then on purpose.
+ */
+const crashed = crashGuard();
+function pageDied(_event, details) {
+  // A clean exit is the page going on purpose (a close, a navigation), not a crash.
+  if (details?.reason === 'clean-exit' || quitting || !win || win.isDestroyed()) return;
+  if (crashed() === 'reload') return win.reload();
+  quitting = true;
+  void dialog
+    .showMessageBox({ type: 'error', title: 'Scryproof', message: 'Scryproof stopped. Open it again.', buttons: ['OK'], noLink: true })
+    .finally(() => app.quit());
+}
+
 function show() {
   if (!win) return createWindow();
   if (win.isMinimized()) win.restore();
@@ -979,11 +969,15 @@ function createWindow(visible = true) {
   win.webContents.on('did-create-window', (child) => {
     // A popped-out stream (web/src/components/PopOut.tsx): an empty page the
     // app draws a <video> into. It goes nowhere and opens nothing.
+    // Hold the contents now: by 'closed' the window is destroyed and reading
+    // child.webContents throws (an uncaught TypeError in the main process,
+    // which Electron shows as an error box and then exits).
+    const contents = child.webContents;
     child.removeMenu();
-    streamWindows.add(child.webContents);
-    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    child.webContents.on('will-navigate', (event) => event.preventDefault());
-    child.on('closed', () => streamWindows.delete(child.webContents));
+    streamWindows.add(contents);
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', (event) => event.preventDefault());
+    child.on('closed', () => streamWindows.delete(contents));
   });
   win.webContents.on('will-navigate', (event, url) => allowGo(event, url));
   win.webContents.on('will-redirect', (event, url) => allowGo(event, url));
@@ -1010,22 +1004,8 @@ function createWindow(visible = true) {
   win.webContents.on('did-start-navigation', (details) => {
     if (details.isMainFrame && !details.isSameDocument) pageGone();
   });
-  // A page that dies (out of memory, a renderer bug) left a dead window
-  // before: no page, no gateway, no calls, nothing to click. It is reloaded
-  // once; a second death within a minute is left where it is, so a page that
-  // dies on load does not reload itself without end.
-  win.webContents.on('render-process-gone', (_event, details) => {
-    pageGone();
-    if (details.reason === 'clean-exit' || !win || win.isDestroyed()) return;
-    const now = Date.now();
-    if (now - lastPageDeath < PAGE_DEATH_GAP_MS) {
-      console.warn(`Scryproof: the page died again (${details.reason}); leaving it`);
-      return;
-    }
-    lastPageDeath = now;
-    console.warn(`Scryproof: the page died (${details.reason}); reloading once`);
-    win.webContents.reload();
-  });
+  win.webContents.on('render-process-gone', pageGone);
+  win.webContents.on('render-process-gone', pageDied);
   win.on('closed', () => {
     pageGone();
     win = null;
