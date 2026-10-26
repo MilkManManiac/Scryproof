@@ -64,7 +64,9 @@ if [ "$(uname -s)" = Darwin ]; then
   cleanup_dmg
   trap - EXIT
 fi
-hash() { shasum -a 256 "$1" | cut -d' ' -f1; }
+# Git Bash on Windows (where Wes publishes) has sha256sum and no shasum; macOS has shasum.
+if command -v sha256sum >/dev/null 2>&1; then sha256() { sha256sum "$@"; }; else sha256() { shasum -a 256 "$@"; }; fi
+hash() { sha256 "$1" | cut -d' ' -f1; }
 dmg_sum=$(hash "$dmg")
 zip_sum=$(hash "$zip")
 manifest_sum=$(hash "$manifest")
@@ -109,7 +111,7 @@ for name in Scryproof.dmg Scryproof-mac-arm64.zip installer-mac-arm64.json; do
     Scryproof-mac-arm64.zip) expected=$zip_sum ;;
     installer-mac-arm64.json) expected=$manifest_sum ;;
   esac
-  served=$(curl -fsS "https://scryproof.com/download/$name" | shasum -a 256 | cut -d' ' -f1)
+  served=$(curl -fsS "https://scryproof.com/download/$name" | sha256 | cut -d' ' -f1)
   [ "$served" = "$expected" ] || { echo "The box serves a different $name ($served, expected $expected)." >&2; exit 1; }
   echo "https://scryproof.com/download/$name matches the release just sent ($expected)."
 done
