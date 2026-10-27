@@ -1,27 +1,27 @@
 # STATE — Scryproof, Trey's side
 
-**Updated:** 2026-10-19 16:15 CT. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's own living state is `docs/HANDOFF.md` (he rewrites its top section every session); this file is ours and is not part of his workflow. Work items are beads (`bd ready`); the epic is "Mac app 0.5.8" (`Scryproof-skk`, step `Scryproof-skk.7` open).
+**Updated:** 2026-10-26 16:30 CT. Our view of Wes's project: what we own, what is in flight, what needs Trey. Wes's living state is `docs/HANDOFF.md`; our two sections sit at its top. Work items are beads (`bd ready`): Mac epic `Scryproof-skk` (step `Scryproof-skk.7`), agent channel epic `Scryproof-bbf`.
 
 ## What we own
 
-- The **Mac desktop app**: build, signing (Trey's Developer ID, team LRU27MC63Q, notary keychain profile `codex-pet-sidecar-notary`), notarization, the Mac shell update keys (everyday private key `~/.scryproof/mac-update-key.pem` on Trey's Mac; recovery private key in Trey's 1Password only; public halves in `desktop/src/update-key-mac.pub.pem` and `desktop/src/update-key-mac-recovery.pub.pem`). Wes owns Windows and the client signing key; Matt owns Linux.
-- Reviews on request (`docs/reviews/`).
+- The **Mac desktop app**: build, signing (Developer ID team LRU27MC63Q, notary keychain profile `codex-pet-sidecar-notary`), notarization, the Mac shell update keys (everyday private key `~/.scryproof/mac-update-key.pem`; recovery private key in Trey's 1Password; public halves in `desktop/src/`). Wes owns Windows and the client signing key, and publishes from his PC; Matt owns Linux.
 
-## Where things stand (branch `mac-0.5.8`, pushed to Forgejo origin; updated 2026-10-19)
+## Now
 
-- **Wes's GitHub main as of 10-14 is merged in** (per-app share sound on Windows, pop-out streams, watch from the name pop-up, 100 soundboard sounds). One conflict in the desktop permission handlers, both sides kept. The branch is 13 commits ahead of Wes's main and contains all of it. GitHub has no remote in this checkout: fetch with `git fetch https://github.com/MilkManManiac/Scryproof.git '+refs/heads/*:refs/remotes/gh/*'`.
-- **Mac 0.5.9 is built, notarized, stapled, installed on Trey's Mac and running** (zip sha256 561cd472…, DMG 701b49b4…, manifest `desktop/release/installer-mac-arm64.json`). Every signing check and `scripts/publish-mac.sh --dry-run` pass. 0.5.9 because Wes's unreleased Windows build was also numbered 0.5.8. Detail: `docs/HANDOFF.md` under "Mac app 0.5.9".
-- **Not yet tried by hand on 0.5.9:** pop a stream out, watch from a name pop-up, a call. Earlier unchecked items still open: Activities → Pass-along → Record consent dialog; a real call with Wes or Matt.
-- **The GitHub repo is public** as of 2026-10-19 (GAMEPLAN says private until Wes decides otherwise); flagged to Trey, not acted on.
+- **Mac 0.5.10 with sound on the Mac: ready for the second call with Wes (2026-10-26).** Window, whole-screen and music sharing with sound, call left out, plus the "Invalid capture constraints" fix. Real encrypted-call check passes (0 failures, red-proofed), also with the signed helper; full gate green; notarized; installed on Trey's Mac; folder `desktop/release/Mac 0.5.10 for Wes/`. Next: the call with Wes, then Wes publishes and the one-file GitHub PR. Detail: `docs/HANDOFF.md`, "Mac audio 0.5.10".
+- **Mac 0.5.9 from main: verified and call-tested 2026-10-26** (everything passed; Wes's Windows share with sound has no echo), superseded by 0.5.10. Not published: publishing and the one-file GitHub PR from branch `mac-publish-from-windows` wait for the second call (ruling `trey-ruling-2026-10-26-mac-059-github-hold`). Detail: `docs/HANDOFF.md`, "Mac app from main".
+- **After that: the agent channel build.** Branch `agent-channel` (Forgejo). First step: build graph from `docs/agent-channel-spec.md` section 7 per `~/.claude-shared/reference/build-plan-template.md`, then phase 1. Detail: `docs/HANDOFF.md`, "Agent channel".
 
 ## What needs Trey
 
-1. The hands-on checks above.
-2. Publishing (`bash scripts/publish-mac.sh`) on Wes's word, from a machine with `.env.box` and the box key (Wes's PC or Matt; not this Mac). Then launch the kept 0.5.5 copy at `desktop/release/mac-arm64-0.5.5-kept/Scryproof.app` and watch it update to 0.5.9.
-3. Getting this branch to Wes (mic fallback, Mac work, and the merge): a GitHub push or PR is gated on Trey's word. Until then, Wes's next client release from his main would drop the microphone fallback from Mac and Windows apps alike.
+1. The second call test with Wes, when the sound build is ready (I will say so).
+2. macOS permission prompts for system audio recording, if the build needs a click.
+3. After the call: go for the GitHub PR and publishing.
 
 ## Held / parked
 
-- Wes parked the box reboot and the two files with no off-PC copy (SSH key, LUKS header); the LUKS header is the one loss that breaks "movable by restore + DNS change".
+- Wes's idea of a GitHub Actions Mac runner holding Trey's signing cert and notary login as repo secrets: not decided. Our view: don't put Trey's personal Developer ID in that repo; a self-hosted runner on Trey's Mac or Wes's own Apple account are the alternatives.
+- Box reboot and the two files with no off-PC copy (SSH key, LUKS header): parked by Wes.
 - App audio per program is Windows-only; Intel Macs get no build (arm64 only by ruling).
-- The bead `Scryproof-skk.7` is still claimed by the dead devbox session (`bd` refused the takeover); progress lives in its comments.
+- Repo visibility and publishing are Wes's calls (ruling `trey-ruling-2026-10-19-publish-and-public`). GitHub has no remote here: fetch with `git fetch https://github.com/MilkManManiac/Scryproof.git '+refs/heads/*:refs/remotes/gh/*'`.
+- Cross-machine coordination: Helm (Loom on the devbox, `~/Code/hq`) at `participant:loom-048a697c@trey`.

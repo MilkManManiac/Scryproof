@@ -5,7 +5,7 @@ import { useVoice } from '../state/useVoice';
 import { useDms } from '../state/dms';
 import { useLayer } from '../lib/back';
 import { nameFor, useLocalNames } from '../lib/local-names';
-import { isDesktop } from '../lib/desktop';
+import { canShareSound, isDesktop, onMacApp } from '../lib/desktop';
 import { musicSound } from '../lib/music-share';
 import { screenSound } from '../lib/voice-session';
 import { MAX_PERSON_VOLUME, MAX_STREAM_VOLUME, voicePrefs } from '../lib/voice-prefs';
@@ -250,7 +250,8 @@ function CallMixer({ onClose }: { onClose: () => void }) {
     .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
   const people = everyone.filter((person) => person.userId !== state.user?.id);
   const ownMusic = call.sharedAudio.find((share) => share.userId === state.user?.id && share.kind === 'music');
-  const canCapture = Boolean(navigator.mediaDevices?.getDisplayMedia);
+  const macUnsupported = onMacApp && !canShareSound;
+  const canCapture = Boolean(navigator.mediaDevices?.getDisplayMedia) && !macUnsupported;
   const deafened = Boolean(self?.selfDeaf || self?.serverDeaf);
   const blocked = call.sharing || !call.can.screenShare || self?.serverMute || !canCapture;
   return createPortal(
@@ -314,11 +315,13 @@ function CallMixer({ onClose }: { onClose: () => void }) {
                   ? 'You do not have sharing permission in this call.'
                   : self?.serverMute
                     ? 'A moderator has muted you.'
-                    : !canCapture
-                      ? 'This browser can listen, but cannot share audio.'
-                      : isDesktop
-                        ? "Turn on Include sound in the picker and pick the music program's window: only that program's sound goes out. A whole screen sends everything the PC plays except this call."
-                        : 'Choose a music tab and enable Share audio. Only audio is sent. Screen and music sharing use the same slot.'}
+                    : macUnsupported
+                      ? 'Music sharing needs macOS 14.2 or newer and the latest Scryproof app. You can still listen.'
+                      : !canCapture
+                        ? 'This browser can listen, but cannot share audio.'
+                        : isDesktop
+                          ? `Turn on Include sound in the picker and pick the music program's window: only that program's sound goes out. A whole screen sends everything ${onMacApp ? 'this Mac' : 'the PC'} plays except this call.`
+                          : 'Choose a music tab and enable Share audio. Only audio is sent. Screen and music sharing use the same slot.'}
             </p>
             {call.musicError ? (
               <p className="mixer-error" role="alert">

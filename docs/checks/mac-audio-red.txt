@@ -1,0 +1,64 @@
+RED PROOF: development native tap deliberately includes the call. Expect FAIL.
+WebKit tone app PID 11735 (window share must capture its responsible XPC audio service)
+chrome: DevTools listening on ws://127.0.0.1:9362/devtools/browser/7de46f8a-3c43-4688-b639-5873b7de8a65
+PASS  wes signs in
+PASS  Mac shell reports native sound capability
+PASS  alex signs in
+PASS  both join the channel
+PASS  encrypted real call
+PASS  real quit/reopen cleared prior capture error
+PASS  wes requests window share
+PASS  picker offers sound for window
+screenshot: .mac-audio-check/red-shots/mac-audio-picker-window.png
+PASS  alex watches the share
+window peaks: 984Hz -45dB, 1031Hz -46dB, 938Hz -53dB, 1078Hz -58dB, 891Hz -75dB, 1125Hz -90dB, 797Hz -104dB, 1172Hz -104dB
+window: A 1000 Hz -44.9, B 1500 Hz -122.0, call 2500 Hz -137.4, mic 440 Hz -125.4, floor -137.3 dB
+PASS  window: shared program A received
+PASS  window: unshared program B excluded
+PASS  window: call excluded (2500 Hz at least 25 dB below programs)
+PASS  window: microphone excluded (440 Hz at least 25 dB below programs)
+window diagnostic: call ON 2500Hz -137.4; call OFF 2500Hz -137.8; OFF 1000Hz -44.5; OFF 1500Hz -122.0
+PASS  window: call ON stays below OFF+3 dB or floor+6 dB
+      ON -137.4, OFF -137.8, floor -137.3 dB
+screenshot: .mac-audio-check/red-shots/mac-audio-connection-window.png
+PASS  wes stops the screen share
+PASS  wes requests whole screen
+PASS  picker offers sound for screen
+screenshot: .mac-audio-check/red-shots/mac-audio-picker-screen.png
+PASS  panel identifies whole-machine audio with call left out
+PASS  alex watches the share
+control helper: ok 11768 rate=48000.0 tapRate=48000.0
+PASS  positive control: captured call keeps its 2500 Hz pitch
+      strongest 2500 Hz at -20.8 dBFS
+PASS  positive control: app plays alex at real volume (> -45 dBFS)
+      -20.8 dBFS, 722944 PCM bytes; output volume 0.3
+screen peaks: 2484Hz -35dB, 2531Hz -37dB, 2438Hz -43dB, 984Hz -45dB, 1500Hz -45dB, 1031Hz -46dB, 2578Hz -48dB, 1453Hz -49dB
+screen: A 1000 Hz -44.9, B 1500 Hz -44.5, call 2500 Hz -35.3, mic 440 Hz -119.8, floor -131.1 dB
+PASS  screen: shared program A received
+PASS  screen: program B received
+FAIL  screen: call excluded (2500 Hz at least 25 dB below programs)
+PASS  screen: microphone excluded (440 Hz at least 25 dB below programs)
+screen diagnostic: call ON 2500Hz -35.3; call OFF 2500Hz -48.1; OFF 1000Hz -44.5; OFF 1500Hz -44.0
+FAIL  screen: call ON stays below OFF+3 dB or floor+6 dB
+      ON -35.3, OFF -48.1, floor -131.1 dB
+screenshot: .mac-audio-check/red-shots/mac-audio-connection-screen.png
+PASS  wes stops the screen share
+PASS  opens mixer
+PASS  Mac mixer names this Mac
+PASS  starts music share
+PASS  picker offers sound for screen
+screenshot: .mac-audio-check/red-shots/mac-audio-picker-screen.png
+PASS  music sharing is active
+PASS  alex sees music publication
+music peaks: 2484Hz -35dB, 2531Hz -37dB, 2438Hz -43dB, 1500Hz -44dB, 984Hz -45dB, 1031Hz -46dB, 2578Hz -48dB, 1453Hz -49dB
+music: A 1000 Hz -44.9, B 1500 Hz -44.4, call 2500 Hz -35.3, mic 440 Hz -121.0, floor -131.1 dB
+PASS  music: shared program A received
+PASS  music: program B received
+FAIL  music: call excluded (2500 Hz at least 25 dB below programs)
+PASS  music: microphone excluded (440 Hz at least 25 dB below programs)
+music diagnostic: call ON 2500Hz -35.3; call OFF 2500Hz -48.1; OFF 1000Hz -44.5; OFF 1500Hz -44.0
+FAIL  music: call ON stays below OFF+3 dB or floor+6 dB
+      ON -35.3, OFF -48.1, floor -131.1 dB
+screenshot: .mac-audio-check/red-shots/mac-audio-connection-music.png
+PASS  no uncaught page errors
+FAIL Mac real-call audio check: 4 failure(s) (deliberate call leak).

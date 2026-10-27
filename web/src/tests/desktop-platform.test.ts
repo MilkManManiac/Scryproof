@@ -236,12 +236,14 @@ describe('the Accessibility explanation', () => {
 });
 
 describe('the Screen Recording explanation', () => {
-  it('says to quit and reopen, and has the button, only when it is missing', async () => {
+  it('explains Cmd-Q and manual permission setup, only when permission is missing', async () => {
     await pageWith(null);
     const { ScreenRecordingNoteView } = await import('../components/ShareMacNotes');
     const html = renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: true }));
     assert.match(html, /needs Screen Recording turned on for Scryproof/);
-    assert.match(html, /quit\s+and reopen Scryproof/);
+    assert.match(html, /quit Scryproof with Cmd-Q and\s+reopen it/);
+    assert.match(html, /Closing the window keeps Scryproof running/);
+    assert.match(html, /using the \+ button/);
     assert.match(html, /Open System Settings/);
     assert.equal(renderToStaticMarkup(createElement(ScreenRecordingNoteView, { missing: false })), '');
   });
@@ -259,26 +261,30 @@ describe('the Screen Recording explanation', () => {
 });
 
 describe('sound in a screen share', () => {
-  it('never goes out from a Mac, whatever was offered or switched on', async () => {
+  it('takes the native Mac sound offer and keeps sound opt-in', async () => {
     await pageWith(null);
     const { soundToShare } = await import('../components/ShareMacNotes');
-    assert.equal(soundToShare(true, true, true), false);
+    assert.equal(soundToShare(true, true, true), true);
+    assert.equal(soundToShare(true, false, true), false);
+    assert.equal(soundToShare(true, true, false), false);
     assert.equal(soundToShare(false, true, true), true, 'Windows keeps its switch');
     assert.equal(soundToShare(false, true, false), false);
     assert.equal(soundToShare(false, false, true), false);
   });
 
-  it('shows a Mac the reason in place of the switch, and Windows its switch', async () => {
+  it('shows a capable Mac its sound switch and an older Mac an honest hint', async () => {
     await pageWith(null);
     const { ShareSound } = await import('../components/ShareMacNotes');
     const render = (mac: boolean, offered: boolean) =>
       renderToStaticMarkup(
         createElement(ShareSound, { mac, offered, label: 'Share sound', checked: false, onChange: () => {} }),
       );
-    const mac = render(true, true);
-    assert.match(mac, /No sound with a Mac screen share yet/);
+    const mac = render(true, false);
+    assert.match(mac, /macOS 14.2 or newer/);
     assert.match(mac, /disabled/);
     assert.doesNotMatch(mac, /Share sound/);
+    assert.match(render(true, true), /Share sound/);
+    assert.doesNotMatch(render(true, true), /disabled/);
     assert.match(render(false, true), /Share sound/);
     assert.doesNotMatch(render(false, true), /disabled/);
     assert.equal(render(false, false), '');
@@ -368,5 +374,24 @@ describe('the update bar', () => {
     assert.equal(await restart.desktop.shellUpdateHow(), 'restart');
     const odd = await pageWith({ ...bridge, platform: 'darwin', shellUpdateHow: async () => 'nonsense' });
     assert.equal(await odd.desktop.shellUpdateHow(), 'restart');
+  });
+});
+
+
+describe('Mac sound capability and first screen permission', () => {
+  it('trusts the shell capability and keeps older Mac shells silent', async () => {
+    assert.equal((await pageWith({ ...bridge, platform: 'darwin', canShareSound: true })).desktop.canShareSound, true);
+    assert.equal((await pageWith({ ...bridge, platform: 'darwin', canShareSound: false })).desktop.canShareSound, false);
+    assert.equal((await pageWith({ ...bridge, platform: 'darwin' })).desktop.canShareSound, false);
+  });
+  it('explains the relaunch before Chromium capture and permits a granted Mac', async () => {
+    const denied = (await pageWith({ ...bridge, platform: 'darwin', prepareScreenShare: async () => false })).desktop;
+    await assert.rejects(denied.prepareScreenShare(), /add Scryproof.*\+ button.*Cmd-Q.*Closing the window/);
+    const granted = (await pageWith({ ...bridge, platform: 'darwin', prepareScreenShare: async () => true })).desktop;
+    await assert.doesNotReject(granted.prepareScreenShare());
+    let asked = false;
+    const windows = (await pageWith({ ...bridge, platform: 'win32', prepareScreenShare: async () => { asked = true; return false; } })).desktop;
+    await windows.prepareScreenShare();
+    assert.equal(asked, false);
   });
 });

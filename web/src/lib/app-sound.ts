@@ -1,7 +1,7 @@
 /**
- * A shared window's own sound, from the desktop app on Windows. When a window
+ * Native sound from the desktop app (Windows process loopback or Mac process taps). When a window
  * is shared with sound, the shell records that program and its children alone
- * (`desktop/app-sound`) and streams raw 48 kHz stereo 16-bit PCM here; this
+ * (`desktop/app-sound` or `desktop/mac-audio`) and streams raw 48 kHz stereo 16-bit PCM here; this
  * turns it into a track the share publishes. The game in the background and
  * the call's own voices are never in it. Nothing here runs in a browser.
  */
@@ -19,6 +19,7 @@ interface Generator extends MediaStreamTrack {
 
 interface Live {
   track: MediaStreamTrack;
+  scope: 'window' | 'machine';
   startedAt: number;
   taken: boolean;
   write(chunk: Uint8Array): void;
@@ -26,9 +27,10 @@ interface Live {
 }
 
 let live: Live | null = null;
+let captureError: string | null = null;
 const waiting = new Set<() => void>();
 
-function open(): Live | null {
+function open(scope: 'window' | 'machine'): Live | null {
   const Make = (globalThis as { MediaStreamTrackGenerator?: new (init: { kind: 'audio' }) => Generator })
     .MediaStreamTrackGenerator;
   if (!Make || typeof AudioData === 'undefined') return null;
@@ -63,16 +65,17 @@ function open(): Live | null {
     timestamp += (frames * 1_000_000) / RATE;
     writer.write(data).catch(() => drop(track));
   };
-  return { track, startedAt: Date.now(), taken: false, write, close };
+  return { track, scope, startedAt: Date.now(), taken: false, write, close };
 }
 
 const fresh = (): boolean => live !== null && !live.taken && Date.now() - live.startedAt < FRESH_MS;
 
 const listening =
   onAppSound(
-    () => {
+    (scope = 'window') => {
+      captureError = null;
       live?.close();
-      live = open();
+      live = open(scope);
       if (!live) stopAppSound();
       for (const wake of [...waiting]) wake();
     },
@@ -80,6 +83,12 @@ const listening =
     () => {
       live?.close();
       live = null;
+    },
+    (message) => {
+      captureError = message;
+      live?.close();
+      live = null;
+      for (const wake of [...waiting]) wake();
     },
   ) !== null;
 
@@ -90,7 +99,7 @@ const listening =
  */
 export async function takeAppSound(waitMs = 1000): Promise<MediaStreamTrack | null> {
   if (!listening) return null;
-  if (!fresh()) {
+  if (!fresh() && !captureError) {
     await new Promise<void>((resolve) => {
       const done = (): void => {
         clearTimeout(timer);
@@ -100,6 +109,11 @@ export async function takeAppSound(waitMs = 1000): Promise<MediaStreamTrack | nu
       const timer = setTimeout(done, waitMs);
       waiting.add(done);
     });
+  }
+  if (captureError) {
+    const message = captureError;
+    captureError = null;
+    throw new Error(message);
   }
   if (!live || !fresh()) return null;
   live.taken = true;
@@ -112,4 +126,9 @@ export function drop(track: MediaStreamTrack | null | undefined): void {
   live.close();
   live = null;
   stopAppSound();
+}
+
+/** What the native helper is recording; never infer it from a generated track's settings. */
+export function appSoundScope(track: MediaStreamTrack): 'window' | 'machine' {
+  return live?.track === track ? live.scope : 'window';
 }

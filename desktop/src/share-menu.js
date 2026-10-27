@@ -19,8 +19,8 @@ export const SOUND_LABEL = 'Include sound';
 /** For a window, where the helper can run: what goes out is that program's sound and nothing else. */
 export const APP_SOUND_LABEL = "Include this app's sound";
 
-/** Whether this machine can send its sound with a share at all. Loopback is Windows only. */
-export const canShareSound = (platform) => platform === 'win32';
+/** Windows loopback or an available native Mac helper. */
+export const canShareSound = (platform, nativeSound = false) => platform === 'win32' || (platform === 'darwin' && nativeSound);
 
 /**
  * What to hand Electron once a screen or window is chosen: the picture, and
@@ -72,8 +72,8 @@ export function pickerList(sources) {
  * Whether the picker offers sound, and in which position the switch starts.
  * Null means no switch: sound was not asked for, or this machine cannot send it.
  */
-export function soundOffer({ audioRequested, platform, withSound }) {
-  return audioRequested && canShareSound(platform) ? withSound === true : null;
+export function soundOffer({ audioRequested, platform, withSound, nativeSound = false }) {
+  return audioRequested && canShareSound(platform, nativeSound) ? withSound === true : null;
 }
 
 /**
@@ -86,11 +86,11 @@ export function soundOffer({ audioRequested, platform, withSound }) {
  * should be recorded instead of the whole machine: only for a window shared
  * with sound, on Windows, by a page that said it can take that sound.
  */
-export function shareAnswer(offered, answer, { audioRequested, platform }) {
+export function shareAnswer(offered, answer, { audioRequested, platform, nativeSound = false }) {
   if (!answer || typeof answer !== 'object' || typeof answer.id !== 'string') return null;
   const source = offered.find((candidate) => candidate.id === answer.id && sourceKind(candidate.id) !== null);
   if (!source) return null;
-  const choosing = soundOffer({ audioRequested, platform, withSound: false }) !== null;
+  const choosing = soundOffer({ audioRequested, platform, nativeSound, withSound: false }) !== null;
   const withSound = choosing && answer.withSound === true;
   return {
     streams: shareStreams(source, { audioRequested, platform, withSound }),

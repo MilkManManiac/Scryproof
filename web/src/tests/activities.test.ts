@@ -81,3 +81,9 @@ test('a downloaded update is installed by running it on Windows and replacing th
   assert.match(updateFollowUp(true), /replace the old app/);
   assert.doesNotMatch(updateFollowUp(true), /installer/);
 });
+
+
+test('Mac Activities hint explains why the call app itself shares video only', () => {
+  assert.match(idleShareHint(true, true, true), /Scryproof sound is left out/);
+  assert.match(idleShareHint(true, true, true), /another app with sound/);
+});
