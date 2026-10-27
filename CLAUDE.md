@@ -21,3 +21,6 @@ Wes's own Discord: servers, channels, roles, voice, video, screen share. Private
 Follow the `milk-project` skill. Short version: he's not a developer but he is the fastest error-detector you'll work with. One terminal command at a time, get the paste or screenshot, then the next. Don't ask him to design; build it and let him choose between real alternatives. Don't flatter. Say when he's wrong. Read `references/the-wall.md` in that skill before any redo or when the project feels stuck.
 
 Secrets live in `infra/.env` on the box only. Never commit them.
+
+## Skills (added 2026-10-25)
+Before building anything here, open the routing table in `~/.claude/skills/toolbox/SKILL.md`, row "Web/canvas game", and invoke the skills it names first. If the need is not covered, run `node ~/.claude/skills/toolbox/find.js <words>`. Say in the reply which skills shaped the work.
