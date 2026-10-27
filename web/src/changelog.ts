@@ -20,6 +20,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-10-27-mac-sound-share',
+    date: '2026-10-27',
+    title: 'Share sound from a Mac',
+    notes: [
+      'The Mac app can now send sound with a share, the same as Windows: one app's sound with a window, everything the Mac plays with the whole screen (the call itself is left out), or music from the mixer. Needs macOS 14.2 or newer and Mac app 0.5.10 from the download page.',
+      'On a Mac, the first screen share after allowing Screen Recording no longer fails. If the permission is missing, the app says what to turn on and reminds you to quit with Cmd-Q, since closing the window keeps it running.',
+    ],
+  },
+  {
     id: '2026-10-25-queens-your-crosses',
     date: '2026-10-25',
     title: 'Queens: the crosses are yours again',
