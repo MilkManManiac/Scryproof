@@ -51,3 +51,6 @@ Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests
 
 ## 2026-10-22 imagegen "profile already in use" was another session's job, not a stale Chrome
 `gen.py` failed with "Opening in existing browser session". The skill's recovery (kill every chrome.exe on `imagegen\profile`) was wrong here: a different Claude session was mid-run with `vid.py` (Rise video gen) on the same profile, and the kill took its browser down. Rule: before killing, check for a live owner with `Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*imagegen*' -and $_.Name -eq 'python.exe' }`. If a `gen.py`/`vid.py` is running, wait for it; only kill Chrome when no python owner exists. (Same note belongs in the imagegen skill.)
+
+## 2026-10-26 — backticks inside a double-quoted shell string ran a deploy script
+Writing handoff text through `python -c "..."` inside Bash: every backtick-quoted path in the prose was treated as command substitution. Most just errored, but `bash scripts/publish-mac.sh` ran a second time (idempotent, same hashes, no harm). Rule: prose with backticks goes through a single-quoted heredoc (`<<'EOF'`) into a file, never inline in a double-quoted string.

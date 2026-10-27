@@ -62,17 +62,7 @@ Trey 2026-10-26: "let's get a macos update done and working and published". Wes 
 
 ## Pick up here (2026-10-26, night)
 
-**LIVE 2026-10-26 ~22:00 ET: Mac app 0.5.10 on scryproof.com/download (Wes: "go ahead and deploy").** Trey's PR #11 () merged into main at e683f81: Mac sound sharing via a Swift Core Audio helper (, macOS 14.2+), the screen-share permission fix,  fixed for Git Bash, agent-channel spec (, no code). Checked here: typecheck clean, web 591, server 406, desktop 103 pass + 50 Mac-only skips. The three files came from the draft GitHub release  (left as a draft) into , then Sending Mac release 0.5.10...
-https://scryproof.com/download/Scryproof.dmg matches the release just sent (391a199c78349b26852b7f41fe1e4ebd508e58ce4cabfd71460f9d6e8a3fa873).
-https://scryproof.com/download/Scryproof-mac-arm64.zip matches the release just sent (936b4e480cee075e812ea54882b707088cdda2cd6033ef6efa029b9fee7a7607).
-https://scryproof.com/download/installer-mac-arm64.json matches the release just sent (baf81989d6498ae8e41131a30517e8351a62985aa1f1334d08b4a8c6f0fb496e).
-
-Mac release 0.5.10
-  DMG        SHA-256: 391a199c78349b26852b7f41fe1e4ebd508e58ce4cabfd71460f9d6e8a3fa873
-  zip        SHA-256: 936b4e480cee075e812ea54882b707088cdda2cd6033ef6efa029b9fee7a7607
-  update key SHA-256: 192949c7c5d08dfe02c782d9d80fe4da52493442664808eb17b5d59be9c708ae
-Paste these into the GitHub release notes (or a message you send by hand).
-The hashes must be published somewhere the box cannot change.. DMG sha256 391a199c78349b26852b7f41fe1e4ebd508e58ce4cabfd71460f9d6e8a3fa873, zip 936b4e480cee075e812ea54882b707088cdda2cd6033ef6efa029b9fee7a7607, update key 192949c7c5d08dfe02c782d9d80fe4da52493442664808eb17b5d59be9c708ae. **Not done:** a web client release from this main (, needs Wes's yes; Mac users only see the sound switch once the web client is built from this main), and the GitHub release notes with the hashes (public post, his call).
+**LIVE 2026-10-26 ~22:00 ET: Mac app 0.5.10 on scryproof.com/download (Wes: "go ahead and deploy").** Trey's PR #11 (`mac-sound-0.5.10`) merged into main at e683f81: Mac sound sharing via a Swift Core Audio helper (`desktop/mac-audio/`, macOS 14.2+), the screen-share permission fix, `publish-mac.sh` fixed for Git Bash, agent-channel spec (`docs/agent-channel-spec.md`, no code). Checked here: typecheck clean, web 591, server 406, desktop 103 pass + 50 Mac-only skips. The three files came from the draft GitHub release `mac-0.5.10` (left as a draft) into `desktop/release/`, then `bash scripts/publish-mac.sh`. DMG sha256 391a199c78349b26852b7f41fe1e4ebd508e58ce4cabfd71460f9d6e8a3fa873, zip 936b4e480cee075e812ea54882b707088cdda2cd6033ef6efa029b9fee7a7607, update key 192949c7c5d08dfe02c782d9d80fe4da52493442664808eb17b5d59be9c708ae. **Not done:** a web client release from this main (`scripts/release.sh`, needs Wes's yes; Mac users only see the sound switch once the web client is built from this main), and the GitHub release notes with the hashes (public post, his call).
 
 ## Earlier pick-up (2026-10-23, afternoon)
 
