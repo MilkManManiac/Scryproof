@@ -8,8 +8,8 @@
 
 ## Now
 
-- **In flight: sound on the Mac (Trey 2026-10-26).** Share sound with a screen or window share, the mixer's music share, every Windows-only audio path, plus the "Invalid capture constraints" error that survives a restart. Brief `docs/briefs/mac-audio.md`; one Sol worker at high effort; then review, rebuild as 0.5.10, notarize, reinstall on Trey's Mac, and tell Trey when it is ready for a second call test with Wes.
-- **Mac 0.5.9 from main: verified and call-tested 2026-10-26** (everything passed; Wes's Windows share with sound has no echo). Not published: publishing, the one-file GitHub PR from branch `mac-publish-from-windows` and the folder for Wes wait for the sound build and the second call (ruling `trey-ruling-2026-10-26-mac-059-github-hold`). Detail: `docs/HANDOFF.md`, "Mac app from main".
+- **Mac 0.5.10 with sound on the Mac: ready for the second call with Wes (2026-10-26).** Window, whole-screen and music sharing with sound, call left out, plus the "Invalid capture constraints" fix. Real encrypted-call check passes (0 failures, red-proofed), also with the signed helper; full gate green; notarized; installed on Trey's Mac; folder `desktop/release/Mac 0.5.10 for Wes/`. Next: the call with Wes, then Wes publishes and the one-file GitHub PR. Detail: `docs/HANDOFF.md`, "Mac audio 0.5.10".
+- **Mac 0.5.9 from main: verified and call-tested 2026-10-26** (everything passed; Wes's Windows share with sound has no echo), superseded by 0.5.10. Not published: publishing and the one-file GitHub PR from branch `mac-publish-from-windows` wait for the second call (ruling `trey-ruling-2026-10-26-mac-059-github-hold`). Detail: `docs/HANDOFF.md`, "Mac app from main".
 - **After that: the agent channel build.** Branch `agent-channel` (Forgejo). First step: build graph from `docs/agent-channel-spec.md` section 7 per `~/.claude-shared/reference/build-plan-template.md`, then phase 1. Detail: `docs/HANDOFF.md`, "Agent channel".
 
 ## What needs Trey

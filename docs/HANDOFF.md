@@ -4,9 +4,18 @@
 
 Living state. Update this at the end of every working session.
 
-## Mac audio 0.5.10: local call proof and review fixes (2026-10-26, Trey's isolated lane)
+## Mac audio 0.5.10: built, notarized, installed on Trey's Mac; waiting on the second call with Wes (2026-10-26)
 
-**Implemented; release integration/signing still belongs to the parent.** See `docs/SPEC-mac-audio.md` for the route, path inventory, review dispositions, exact commands and output. Swift Core Audio taps feed the existing PCM/LiveKit E2EE bridge for Mac window sound, whole-screen sound and music. Desktop is 0.5.10, with helper packaging/signing inputs and capability guards for macOS 14.2+.
+**Integrated and shipped to Trey's Mac 2026-10-26 ~19:00 CT, not published.** Lane merged into `mac-0.5.8` (merge 3bb78b2), plus a plain-wording fix to the first-share permission message (the lane's version read "…Recording, If no prompt appears…" and named the dev Electron app to users). Pushed to Forgejo; nothing on GitHub (ruling `trey-ruling-2026-10-26-mac-059-github-hold` still holds until after the second call).
+
+- **Gate on the integrated branch:** typecheck clean, server 406/406, web 591/591, desktop 152 pass / 1 existing skip, native helper 4 scenarios, spectrum 2/2.
+- **Build:** `APPLE_KEYCHAIN_PROFILE=codex-pet-sidecar-notary npm run dist:mac`: app notarization successful, DMG notarized (Accepted) and stapled. codesign strict OK; the helper `Contents/Resources/mac-audio` is Developer ID LRU27MC63Q, hardened runtime, timestamped, arm64; stapler validates app and DMG; `syspolicy_check distribution` passes; Info.plist has `NSAudioCaptureUsageDescription`; entitlements unchanged (camera, audio-input, allow-jit). Bundled client-version 1792968983494 = live client.json. `publish-mac.sh --dry-run` passes. DMG sha256 391a199c…a873, zip 936b4e48…7607, manifest baf81989…496e.
+- **Signed helper in a real call:** the signed, hardened-runtime helper from the built app, dropped into the lane worktree's dev Electron, passed the full real-call check with 0 failures (window incl. WebKit, whole screen, music): `docs/checks/mac-audio-signed-helper-0.5.10.txt`. So hardened runtime and the shipped entitlements do not block Core Audio taps.
+- **Installed:** `/Applications/Scryproof.app` = 0.5.10 from the DMG (0.5.9 moved to `desktop/release/mac-arm64-0.5.9-installed-aside/`); launched, signed in to scryproof.com, no crash report. Not yet exercised in the installed app: a sound share under the Scryproof identity (TCC grant is Trey's existing Screen & System Audio Recording entry for Scryproof), which is the second call's first item.
+- **Wes's folder:** `desktop/release/Mac 0.5.10 for Wes/` (DMG, zip, manifest, fixed `publish-mac.sh`, READ ME FIRST with sha256s and a warning: a web-client release built without the Mac sound page code would take the sound switch away from Macs until a client with it ships).
+- **Not proven:** other macOS versions (built and tested on macOS 27.0.1 only), output-device changes during a share (the helper's clock is the default output device at share start; switching to AirPods mid-share is untested), and Activities sound (by design video-only on a Mac).
+
+**The lane's own record follows.** See `docs/SPEC-mac-audio.md` for the route, path inventory, review dispositions, exact commands and output. Swift Core Audio taps feed the existing PCM/LiveKit E2EE bridge for Mac window sound, whole-screen sound and music. Desktop is 0.5.10, with helper packaging/signing inputs and capability guards for macOS 14.2+.
 
 - **R1:** process ownership includes responsible PID, capturing launchd-parented WebKit XPC audio while call exclusion wins. A separate WKWebView app's tone reached alex; another program/call/mic stayed out.
 - **R2:** partial writes are completed; EAGAIN drops only whole pending chunks under a 0.5-second application queue cap. A real pipe reader paused for one second and then received fresh PCM. Four native scenarios and nine mutation red proofs passed.
@@ -26,7 +35,7 @@ Checks: desktop **152 passed / 1 existing notarized-release skip**, targeted web
 
 For another live check, keep the display awake with `caffeinate -dimsu -- ...` and launch dev Electron through LaunchServices (the script does this), so TCC names Electron rather than cmux. Dev Electron (`com.github.Electron`) is allowed now; do not reset installed Scryproof or cmux grants. The worktree-local `.mac-audio-check/livekit-server` is native 1.13.6; the supplied `.tools` symlink is Linux-only. The checker discovers installed Playwright Chromium; the Google Chrome.app wrapper points to a missing cache version.
 
-Activities inside Scryproof remain video-only on Mac because their sound shares the call's Chromium audio process. A separate game/app is the supported sound source. Parent next: inspect/integrate the lane, run the integrated gate once, build/sign/notarize 0.5.10, inspect the packaged helper and repeat the Trey/Wes call. Wes publishes installer/zip/manifest; web changes stay bundled-only until his web-client release. Other macOS versions, device changes during capture and the signed installed-runtime lane remain unproven.
+Activities inside Scryproof remain video-only on Mac because their sound shares the call's Chromium audio process. A separate game/app is the supported sound source. (Parent steps done; see the top of this section. Remaining: the Trey/Wes call.) Wes publishes installer/zip/manifest; web changes stay bundled-only until his web-client release. Other macOS versions, device changes during capture and the signed installed-runtime lane remain unproven.
 
 ## Agent channel: next after the Mac sound build, not started (2026-10-26, Trey's side)
 
