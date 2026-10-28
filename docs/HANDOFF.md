@@ -4,6 +4,15 @@
 
 Living state. Update this at the end of every working session.
 
+## Pick up here: Scry as a product, vision doc draft 2 pushed (2026-10-28)
+
+Discord announced 2026-10-27 that Discoverable Server messages (1,000+ members, opted in) go to Google: server pages 2026-11-16, messages mid-December. Trey asked Wes for a full vision doc in 48 hours so his builders can work from it. Wes: "i think we have a real opportunity to make a product for more folks than just friends."
+
+- **`docs/VISION.md` draft 2 is on main** (commit 5974cfb). It is the authority on what Scry is and who it is for; GAMEPLAN stays the how. Wes's pick 1: both doors (run your own box, or pay us for a dedicated box per group, Stripe billing per Matt), scryproof.com stays ours with a guest door. Picks 2 to 9 (public code, price shape, entity, name, hosted unlock, demo box, the door, what's missing) are open; Wes said he is "open on some of these things."
+- **Next:** Wes and Trey brainstorm in Scry this afternoon, Trey records. Draft 3 gets written from that recording or Wes's summary of the decisions: fill section 9, then re-order section 8 if Trey moves phases. Fable writes it; no builder launches until section 9 is answered.
+- **Wes's pre-public list** is in VISION section 8 (voice-join bug for newcomers, Windows message delivery, phone jank, remove the Loaf and static themes, sound upgrade, cleanup). Two of them block the guest door.
+- **Nothing was deployed.** No code changed. Repo visibility unchanged (private). The uncommitted edits to `docs/box/if-the-pc-dies.md` and `scripts/loaf-collage.py` predate this session and were left alone.
+
 ## Mac audio 0.5.10: built, notarized, installed on Trey's Mac; waiting on the second call with Wes (2026-10-26)
 
 **Integrated and shipped to Trey's Mac 2026-10-26 ~19:00 CT, not published.** Lane merged into `mac-0.5.8` (merge 3bb78b2), plus a plain-wording fix to the first-share permission message (the lane's version read "…Recording, If no prompt appears…" and named the dev Electron app to users). Pushed to Forgejo; nothing on GitHub (ruling `trey-ruling-2026-10-26-mac-059-github-hold` still holds until after the second call).
