@@ -54,3 +54,5 @@ Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests
 
 ## 2026-10-26 — backticks inside a double-quoted shell string ran a deploy script
 Writing handoff text through `python -c "..."` inside Bash: every backtick-quoted path in the prose was treated as command substitution. Most just errored, but `bash scripts/publish-mac.sh` ran a second time (idempotent, same hashes, no harm). Rule: prose with backticks goes through a single-quoted heredoc (`<<'EOF'`) into a file, never inline in a double-quoted string.
+
+- 2026-10-28: a ~3,300-word single-quoted heredoc (cat > docs/VISION.md <<'EOF') failed in the Bash tool with "unexpected EOF while looking for matching `''" at line 60, with no unbalanced quote in the body. Long prose heredocs are not reliable here; the Write tool took the same content first try. Rule: anything over a screen of prose goes through Write, not a heredoc.
