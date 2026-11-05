@@ -4,6 +4,10 @@ Written 2026-11-05 by Fable from Wes's words, while he is on the road. **Status:
 
 Wes, 2026-11-05: **"One thing we should maybe plan, or at least brainstorm, is turning this into, like, forking this or whatever into a different type of product for different types of users and clients. Right now its targeting gamers at some point we should probably consider a more corporate professional industry as well."**
 
+Wes, same day, after reading draft 1 of this file: **"I've had slight interest from certain people about marketing slash selling slash giving a version of Scry to small companies to use as their internal messaging system... we would change just about everything with how it works. It would follow the same general rules of either we sell them the software and tell them how to set it up on their own, or they pay us to host... the whole games would get cut probably, or at least the way they work right now... the themes would clean them up to be a little bit more corporate... it would be an entirely different entity, but running on with the same core principles of hyper secure, hyper, you know, encoded, all that stuff... We don't have to build it yet or deploy it or anything like that. It's just a, hey, at some point we may do this. So let's think through it."**
+
+Reading of "entirely different entity," so nobody builds the wrong thing: a different name, a different front door, different defaults, and maybe its own line in the business. The same engine, the same installer, the same apps. Section 4 says why.
+
 ---
 
 ## The short version
@@ -11,8 +15,8 @@ Wes, 2026-11-05: **"One thing we should maybe plan, or at least brainstorm, is t
 1. **Not a fork.** Three people cannot keep two codebases alive. The work version is the same Scry with a switch set at install: "This Scry is for friends" or "This Scry is for work." The switch changes the defaults (theme, which modules show, sounds, the tip jar, the wording), not the engine. One installer, one set of apps, one set of rules.
 2. **The pitch already covers more than gamers.** `VISION.md` says "a D&D table, a gaming crew, a podcast, a family, a small studio." What is gamer is the *surface*: the soundboard, the games folder, song requests, the Loaf theme. A work edition is mostly a different surface plus five or six office features, not a new product.
 3. **The one position that makes it honest: Scry is for firms that have to keep secrets, not firms that have to keep records.** This is the whole brainstorm in one line. Details below.
-4. **Not now.** The friend product is not public yet, nobody has paid, capacity is unmeasured, the LLC is not formed. The work edition is a 2027 door. Three cheap things done now keep it open (section 6).
-5. **Three picks for Wes** at the end: which kind of firm first, whether the firm's owner gets a way to read every channel, and whether this goes in the proposal now or stays parked.
+4. **Not now, but not 2027 either.** The friend product is not public yet, nobody has paid, capacity is unmeasured, the LLC is not formed. But the interest is real (Wes has people asking), so the right first step is one pilot company at cost, installed by hand, as soon as the installer exists. Three cheap things done now keep the door open (section 7).
+5. **Four picks for Wes** at the end: which kind of company first, whether the company's owner gets a way to read every channel, what "sell them the software" means next to public code, and whether this goes in the proposal now or stays parked.
 
 ---
 
@@ -33,6 +37,8 @@ The one honest middle: a firm's owner can be a member of every work channel, and
 **For:** a firm of three to fifty people who already know each other, with something to protect. A two-partner law office. A therapy practice with five clinicians. An accounting firm in tax season. A ten-person dev shop with three clients' repos. A consultancy that wants one private room per client engagement. Same size band as the friend product, on purpose: one box per group, one owner, no IT department.
 
 **Not for:** anything with an IT department that wants single sign-on through Google or Microsoft (that is a third party in the auth path, rule 1), anything with a compliance officer who needs an archive, anyone over about fifty people, government, defense, anything that needs a certification we do not have (SOC 2, ISO). Say so on the page so the wrong buyers leave early and the right ones trust the page more.
+
+**What a small company uses today, which is the real competition.** Not Slack Enterprise. A company of five to thirty people runs on Slack's free plan, Teams' free plan, a WhatsApp group, or texting. Slack's free plan hides anything older than 90 days ([Slack help](https://slack.com/help/articles/27204752526611), [dupple](https://dupple.com/learn/is-slack-free)). A WhatsApp group lives on employees' personal phones; when someone leaves, they leave with the whole history and the company has no way to remove them from anything. The pitch to a small company is not "encryption." It is: **your company's chat on a box the company owns, not on Slack's free plan and not on your employees' personal phones.** Encrypted is the second sentence.
 
 **The one angle nobody else has:** a consultancy or agency gets one box per client engagement, and at the end hands the client the restore and the keys. "Ours means we can leave" becomes "the client owns the record." No chat product offers that, because no chat product is one box per group.
 
@@ -80,9 +86,19 @@ Friend groups are priced at one flat fee per group, aiming at the number in prop
 
 Two honest ways to price a firm without breaking "one flat price per group": flat tiers by size (up to 10, up to 25, up to 50), or per seat. The numbers are Wes's and wait for the capacity test like everything else. The point here is only that the work door is where the money is, and the friend door is where the trust is. Both are needed; they are not the same business.
 
-## 6. When, and what to do now
+## 6. What a company forces that friends do not
 
-**Not now.** Order stays as the proposal has it: capacity test, front door, guest access, multi-home clients, installer, billing, ten friend groups at cost. The work edition starts the day a stranger has paid for a friend box and it stayed up for a month. Earlier than that it is a distraction from the thing that proves the box.
+Friends forgive. A company that moved its internal messaging onto Scry does not, and each of these is a decision, not code.
+
+- **Someone to call during business hours.** If the chat is down at 2pm on a Tuesday, the company wants a person within the hour. Three people with day jobs cannot promise that honestly. Options: say plainly what the response time is (next business day) and price for it; or a work customer only ever gets door 1 (self-hosted, their own box, we help) until there is someone whose job it is. Hosted work customers wait for that person.
+- **Unlock after a reboot.** Today the owner unlocks the volume after a reboot (rule 9). For friends that is a feature. For a company it means the host reboots the box at 2pm, the owner is in a meeting, and the whole company's chat is locked until they get out. This pushes proposal pick 6 the other way for work boxes: Scry holds the unlock for hosted work customers, says so in the header, and the owner can take it. Self-hosted companies keep it themselves and are told why two people should hold it.
+- **An employee leaves.** The admin removes them, their devices lose access from that moment, and channel keys rotate so nothing new reaches them. What they already saw stays on their device, which is true of every encrypted product and should be said on the trust page rather than discovered. Needs checking: that kick and ban rotate every channel key the person held, not only the guest path.
+- **Paperwork.** Terms of service, a privacy policy, a one-page "what we can and cannot see," an invoice instead of a card receipt, and a company may ask whether the vendor carries insurance. None of it is code; all of it is Wes's, and all of it must exist before the first company pays.
+- **"Sell them the software" and public code.** Proposal pick 2 recommends publishing the code under AGPL. Under AGPL anyone can install Scry for free, so "selling the software" cannot mean a licence; it means selling the install, the support and the hosting (the Red Hat shape), which is what door 1 and door 2 already are. The other road is keeping a work edition closed (friend product public, work extras private), and that stops working the moment the work features are search, pins and status, which the friend product needs too. Pick 3 below.
+
+## 7. When, and what to do now
+
+**Not now, but sooner than draft 1 said.** Order stays as the proposal has it: capacity test, front door, guest access, multi-home clients, installer, billing, ten friend groups at cost. The change since draft 1 is that Wes has people asking. So the first work step is not a work edition; it is **one pilot company, at cost, installed by hand by one of the three of you, the week the installer works.** They get door 1 with a plain theme and the games turned off by hand. In return they are the capacity test for a company (business-hours load, phones, a real offboarding) and the source of the real gap list. The work edition proper starts after that pilot has run a month and a friend group has paid. Earlier than that it is a distraction from the thing that proves the box.
 
 **Three cheap things now, so the door stays open:**
 
@@ -92,7 +108,9 @@ Two honest ways to price a firm without breaking "one flat price per group": fla
 
 **What not to do now:** no work landing page, no work theme, no pricing page, no "HIPAA" anywhere, no second repo.
 
-## 7. Other editions the same switch would carry
+**One thing only Wes can answer, which decides pick 1:** who the interested people are and what their companies do. A dev shop, a dealership, an accounting office and a clinic are four different first customers with four different gap lists and one of them has a legal question attached.
+
+## 8. Other editions the same switch would carry
 
 Wes said "different types of users and clients," not only firms. The switch generalises. None of these need building; they need not being closed off.
 
@@ -101,21 +119,24 @@ Wes said "different types of users and clients," not only firms. The switch gene
 - **The practice:** therapists, support groups, recovery groups. Kind A to the bone; the pitch writes itself and the legal question in section 3 is the gate.
 - **The shop:** dev shops and studios. The agent channel is the hook. This is Trey's audience and the nearest thing to a work customer that exists today.
 
-## 8. Wes's picks
+## 9. Wes's picks
 
 Recommendation first in each. Say a letter or say nothing; nothing means parked.
 
 1. **Which firm first, when the time comes.** (a) **Dev shops and small studios** (recommended: closest to what exists, the agent channel sells it, they can self-install through door 1, and the three of you know some). (b) Firms with a confidentiality duty (law, accounting, therapy): the stronger pitch and the better money, but needs the legal question answered and the business paperwork done first. (c) Consultancies with one box per client engagement: the most original pitch, the smallest market.
 2. **Can a firm's owner read every channel?** (a) **No special feature** (recommended: the owner joins the channels the firm's work happens in and holds those keys on their own devices like any member; DMs stay private; rule 8 holds untouched). (b) An owner-held escrow key on the owner's device that can open any channel in that Scry, shown in every channel's header so members know. Rule 8 still holds since the server never has it, but it changes what "encrypted" means to a member and I would not do it without a real buyer asking.
-3. **Where this lives.** (a) **Parked here**, linked from `PRODUCT-PROPOSAL.md` as a known door, with the three cheap things from section 6 added to the proposal's phase 5 and 5.13 (recommended). (b) A section in the next proposal draft, so Trey plans for it. (c) Drop it until ten friend groups have paid.
+3. **What "sell them the software" means.** (a) **Code public under AGPL as the proposal recommends; a company pays for the install, the support and the hosting, never for a licence** (recommended: it is what both doors already are, and it keeps one codebase). (b) Friend product public, a work edition kept closed and sold as a licence: stops working once the work features are the ones the friend product needs too. (c) Keep everything private and sell licences: closes door 1 for everyone and reverses pick 2.
+4. **Where this lives.** (a) **Parked here**, linked from `PRODUCT-PROPOSAL.md` as a known door, with the three cheap things from section 7 added to the proposal's phase 5 and 5.13 and the pilot added to its build order after billing (recommended). (b) A section in the next proposal draft, so Trey plans for it. (c) Drop it until ten friend groups have paid.
 
-## 9. Decisions I made (overrule any)
+## 10. Decisions I made (overrule any)
 
 - Called it a switch, not a fork, and said why: two codebases would kill a three-person project.
 - Put the secrets-versus-records line at the centre, because it is the only way a work product keeps rule 8 and stays honest, and because refusing the wrong buyer is what makes the right buyer trust it.
 - Kept every rule in `VISION.md` section 6 intact. No SSO, no email from boxes, no server-side key, no shared box, no Docker, no third party in the data path. A work edition that needs any of those is a different company's product.
 - Did not pick numbers. The capacity test and Wes decide prices.
-- Said "not now" plainly and gave three cheap things instead, so the idea costs nothing today and nothing closes it off.
+- Said "not now" plainly and gave three cheap things instead, so the idea costs nothing today and nothing closes it off. After Wes said the interest is real, added one pilot company at cost as the first step, because a real company on the box is a better test than a tenth friend group.
+- Read "entirely different entity" as a different name and front door on the same engine, and "games would get cut" as off by default rather than deleted, because deleting from a shared codebase costs more than hiding and a company that wants the soundboard on Fridays can have it.
+- Took the hosted-unlock lean the other way for work boxes (Scry holds it, labelled), because a company cannot be locked out of its own chat until its owner gets out of a meeting.
 
 ## Sources
 
