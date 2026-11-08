@@ -20,6 +20,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    id: '2026-11-08-videos-play',
+    date: '2026-11-08',
+    title: 'Videos play all the way through',
+    notes: [
+      'A video posted in a channel used to play its first couple of seconds and then stop. It now plays to the end, and you can skip around in it.',
+    ],
+  },
+  {
     id: '2026-10-27-mac-sound-share',
     date: '2026-10-27',
     title: 'Share sound from a Mac',
