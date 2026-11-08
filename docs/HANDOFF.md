@@ -4,6 +4,8 @@
 
 Living state. Update this at the end of every working session.
 
+**LIVE 2026-11-08 ~03:29 ET, client 1794126426579 (Wes: "go ahead and deploy"):** attachments now serve HTTP byte ranges (206 / Accept-Ranges / 416), so channel videos play past the first ~2 s (they stalled because the player's `bytes=N-` request got the whole file from byte 0). `server/src/lib/byte-range.ts` + test; DM files are encrypted blobs decoded client-side, so untouched. Wes's two uncommitted edits (docs/box/if-the-pc-dies.md, scripts/loaf-collage.py) were stashed for the release and restored.
+
 ## Pick up here: the product proposal is on main; Wes reads it before the call (2026-10-28)
 
 `docs/PRODUCT-PROPOSAL.md` is Trey's proposal for Scry beyond our friends: first principles, the vision as we understand it, the rules, the research, and a first spec with the reasoning for each piece. It answers Wes's picks 2 to 8 with recommendations and leaves the decisions to him; it supersedes `docs/VISION.md` draft 2, which stays as the record of where the conversation was. The research behind it is in `docs/research/` (box providers; pricing and Docker alternatives). Also on main as of today: the agent channel's spec amendments, build plan, lane briefs and reviews (the section below); its code is still on Forgejo and comes as a pull request.
