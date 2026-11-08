@@ -59,11 +59,11 @@ export async function saveStream(key: string, input: Readable): Promise<StoredFi
   return { key, size: info.size };
 }
 
-export function readStream(key: string): Readable {
+export function readStream(key: string, range?: { start: number; end: number }): Readable {
   if (config.storage.driver === 's3') {
     throw new Error('S3 reads are served by presigned URLs, not by this process.');
   }
-  return createReadStream(localPathFor(key));
+  return createReadStream(localPathFor(key), range);
 }
 
 export async function deleteObject(key: string): Promise<void> {

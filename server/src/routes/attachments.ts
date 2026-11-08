@@ -19,6 +19,7 @@ import { getDb } from '../db/index.js';
 import { attachments, channels, messages } from '../db/schema.js';
 import { HttpError, badRequest, forbidden, notFound, tooManyRequests } from '../lib/http-error.js';
 import { consume } from '../lib/rate-limit.js';
+import { parseByteRange } from '../lib/byte-range.js';
 import { uuidv7 } from '../lib/ids.js';
 import * as serialize from '../services/serialize.js';
 import { requireChannelPermission } from '../services/permissions.js';
@@ -183,8 +184,19 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
       );
     }
 
+    // Byte ranges, so a video can keep streaming past its first chunk.
+    const range = parseByteRange(request.headers.range, row.size);
+    void reply.header('Accept-Ranges', 'bytes');
+    if (range === 'unsatisfiable') {
+      void reply.header('Content-Range', `bytes */${row.size}`);
+      return reply.code(416).send();
+    }
     void reply.header('Content-Type', row.contentType);
-    void reply.header('Content-Length', String(row.size));
+    void reply.header('Content-Length', String(range ? range.end - range.start + 1 : row.size));
+    if (range) {
+      void reply.code(206);
+      void reply.header('Content-Range', `bytes ${range.start}-${range.end}/${row.size}`);
+    }
     void reply.header(
       'Content-Disposition',
       `${INLINE_TYPES.has(row.contentType) ? 'inline' : 'attachment'}; filename="${encodeURIComponent(row.filename)}"`,
@@ -196,9 +208,10 @@ export async function registerAttachmentRoutes(app: FastifyInstance): Promise<vo
     void reply.header('Content-Security-Policy', "default-src 'none'; sandbox");
 
     if (config.storage.driver === 's3') {
-      return reply.send(await readFromS3(row.storageKey));
+      const whole = await readFromS3(row.storageKey);
+      return reply.send(range ? whole.subarray(range.start, range.end + 1) : whole);
     }
-    return reply.send(readStream(row.storageKey));
+    return reply.send(readStream(row.storageKey, range ?? undefined));
   });
 
   app.delete('/api/attachments/:attachmentId', async (request) => {
