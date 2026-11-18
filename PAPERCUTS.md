@@ -62,3 +62,8 @@ Writing handoff text through `python -c "..."` inside Bash: every backtick-quote
 
 ## 2026-11-17 A client clock offset worked out in render froze the clock
 Conveyor computed `server now - Date.now()` on every render, so `elapsed` came out the same every tick and the belt counter sat at 1/20 and the minute never started. Typecheck and server tests were green; only playing it in the headless browser showed it. Rule: a clock skew is taken once, when the server's answer arrives (`useMemo` on the answer's timestamp), never in render.
+
+## 2026-11-17: npm and npx cannot find node from the Claude shells
+`npx tsx ...` and `npm run dev` both die with `"node" is not recognized` from PowerShell and Git Bash tool shells, though `node` itself runs. Workaround: skip npm and call the entry files with node: `node ..
+ode_modules	sx\dist\cli.mjs src/index.ts` in `server`, `node ..
+ode_modulesiteinite.js` in `web`. Second time today (the builder hit it on the gate).
