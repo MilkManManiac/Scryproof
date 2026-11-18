@@ -74,3 +74,4 @@ export const travle = daily(() => api.travle.today());
 export const thrice = daily(() => api.thrice.today());
 export const whereabouts = daily(() => api.whereabouts.today());
 export const lowball = daily(() => api.lowball.today());
+export const conveyor = daily(() => api.conveyor.today());

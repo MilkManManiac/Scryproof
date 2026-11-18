@@ -9,9 +9,9 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { BEE, CUNTECTIONS, LOWBALL, PURDLE, QUEENS, ROUND_MAX, ROUNDS_MAX, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
+import { BEE, CONVEYOR, CUNTECTIONS, LOWBALL, PURDLE, QUEENS, ROUND_MAX, ROUNDS_MAX, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
 
-export type GameId = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball';
+export type GameId = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball' | 'conveyor';
 
 interface Rule {
   /** A square of the colour the line is about. */
@@ -93,6 +93,16 @@ const RULES: Record<GameId, { goal: string; rules: Rule[] }> = {
       { text: 'Scroll or double-click the photo to zoom in on signs, plates and road lines. Drag to look around it.' },
       { text: 'Zoom the map the same way. Click to drop your pin, click again to move it, then press Guess.' },
       { text: 'One guess a photo. After it you see where it really was.' },
+    ],
+  },
+  conveyor: {
+    goal: `${CONVEYOR.items} things ride past on a belt, once. Then you have a minute to name as many as you can.`,
+    rules: [
+      { text: 'Press Start and watch. Every thing has its picture and its name. No pausing, no going back.' },
+      { text: 'When the belt is empty the minute starts. Type a name and press Enter, one at a time, any order.' },
+      { text: 'Capitals, spaces and a plural do not matter, and a slip of one letter is forgiven in a longer name. Other names for a thing count too: sofa for couch.' },
+      { text: `Your score is how many of the ${CONVEYOR.items} you named. A wrong name costs nothing. Done ends it early.` },
+      { text: 'One go a day. The clock keeps running if you close it.' },
     ],
   },
   lowball: {

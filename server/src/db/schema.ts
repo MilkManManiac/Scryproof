@@ -1160,6 +1160,33 @@ export const thricePlays = pgTable(
 );
 
 /**
+ * Which twenty things a day of Conveyor got, picked the first time that day
+ * is opened and kept whole (names, aliases, pictures), so a later edit to the
+ * bank cannot change a day already played.
+ */
+export const conveyorDays = pgTable('conveyor_days', {
+  day: integer('day').primaryKey(),
+  items: jsonb('items').$type<{ id: string; name: string; aliases: string[]; file: string }[]>().notNull(),
+});
+
+/** One person's Conveyor for one day: when the belt started, and what they named. */
+export const conveyorPlays = pgTable(
+  'conveyor_plays',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).notNull(),
+    /** Every guess that named something, in order. The score is worked out from these. */
+    guesses: jsonb('guesses').$type<string[]>().notNull(),
+    score: integer('score').notNull().default(0),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] }), index('conveyor_plays_day_idx').on(table.day)],
+);
+
+/**
  * Which five photos a day of Whereabouts or Lowball got, picked the first
  * time that day is opened and kept. `items` are ids from the game's stock
  * (`server/src/rounds/stock.ts`).
@@ -1198,6 +1225,7 @@ export type QueensPlayRow = typeof queensPlays.$inferSelect;
 export type RoundsPlayRow = typeof roundsPlays.$inferSelect;
 export type TravlePlayRow = typeof travlePlays.$inferSelect;
 export type ThricePlayRow = typeof thricePlays.$inferSelect;
+export type ConveyorPlayRow = typeof conveyorPlays.$inferSelect;
 export type CuntectionsPlayRow = typeof cuntectionsPlays.$inferSelect;
 export type DmFileRow = typeof dmFiles.$inferSelect;
 export type DeviceKeyRow = typeof deviceKeys.$inferSelect;

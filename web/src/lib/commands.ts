@@ -16,7 +16,7 @@
  * 2026-09-22: "do a /Tang-jump and the character jumps across the screen".
  */
 
-import { BEE, LOWBALL, QUEENS, ROUNDS_OPEN, THRICE, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
+import { BEE, CONVEYOR, LOWBALL, QUEENS, ROUNDS_OPEN, THRICE, TRAVLE, WHEREABOUTS } from '@scryproof/shared';
 
 export interface Character {
   /** What is typed: `/<id>-jump`. Also the sheet's file name. */
@@ -93,7 +93,7 @@ export function isPurdleCommand(content: string): boolean {
   return /^\/purdle$/i.test(content.trim());
 }
 
-export type Game = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball';
+export type Game = 'purdle' | 'cuntections' | 'bee' | 'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball' | 'conveyor';
 
 /** What is typed to open each daily game. */
 const GAME_COMMANDS: Record<string, Game> = {
@@ -105,7 +105,9 @@ const GAME_COMMANDS: Record<string, Game> = {
   degree: 'thrice',
   whereabouts: 'whereabouts',
   lowball: 'lowball',
+  conveyor: 'conveyor',
   // What people will reach for first.
+  belt: 'conveyor',
   geo: 'whereabouts',
   geoguesser: 'whereabouts',
   geoguessr: 'whereabouts',
@@ -199,6 +201,7 @@ export function commandOffers(query: string, limit = 7): CommandOffer[] {
     { key: 'travle', written: '/trundle', name: '/trundle', note: `open today's ${TRAVLE.name} (only you see it)` },
     { key: 'thrice', written: '/degree', name: '/degree', note: `open today's ${THRICE.name} (only you see it)` },
     { key: 'whereabouts', written: '/whereabouts', name: '/whereabouts', note: `open today's ${WHEREABOUTS.name} (only you see it)` },
+    { key: 'conveyor', written: '/conveyor', name: '/conveyor', note: `open today's ${CONVEYOR.name} (only you see it)` },
     ...(ROUNDS_OPEN.lowball
       ? [{ key: 'lowball', written: '/lowball', name: '/lowball', note: `open today's ${LOWBALL.name} (only you see it)` }]
       : []),

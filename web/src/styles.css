@@ -10619,3 +10619,270 @@ kbd {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* -------------------------------------------------------------- conveyor */
+/* Conveyor, twenty things on a belt (Conveyor.tsx). */
+
+.purdle.cv {
+  --cv-belt: #2b2724;
+  --cv-tray: #f4efe6;
+  --cv-on-tray: #2a241c;
+  --cv-got: #538d4e;
+  --cv-item: 124px;
+  width: min(680px, 100%);
+}
+.cv-start {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px 8px 8px;
+  text-align: center;
+  color: var(--text);
+}
+.cv-start p {
+  margin: 0;
+  font-size: 15px;
+}
+.cv-go {
+  margin-top: 12px;
+  min-width: 140px;
+}
+.cv-stage {
+  align-self: stretch;
+  display: grid;
+  gap: 8px;
+}
+.cv-count {
+  justify-self: end;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.cv-track {
+  position: relative;
+  height: calc(var(--cv-item) + 52px);
+  overflow: hidden;
+  container-type: inline-size;
+  border-radius: 10px;
+  background: linear-gradient(var(--panel-2), var(--panel-2)) padding-box;
+}
+.cv-belt {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  height: 34px;
+  border-radius: 17px;
+  background:
+    linear-gradient(rgb(255 255 255 / 0.08), transparent 40%, rgb(0 0 0 / 0.25)),
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 0.1) 0 3px, transparent 3px 40px),
+    var(--cv-belt);
+  animation: cv-roll var(--cv-roll, 1s) linear infinite;
+}
+.cv-roller {
+  position: absolute;
+  bottom: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #8a8178 0 4px, #4a433d 5px 100%);
+  z-index: 2;
+}
+.cv-roller.left {
+  left: 2px;
+}
+.cv-roller.right {
+  right: 2px;
+}
+.cv-item {
+  position: absolute;
+  left: 100%;
+  bottom: 28px;
+  width: var(--cv-item);
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  z-index: 1;
+  animation-name: cv-ride;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  will-change: transform;
+}
+.cv-tray {
+  width: 100%;
+  aspect-ratio: 1.15;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--cv-tray);
+  box-shadow: 0 6px 0 -2px rgb(0 0 0 / 0.35), inset 0 -4px 0 rgb(0 0 0 / 0.08);
+}
+.cv-tray img {
+  width: 66%;
+  height: auto;
+  user-select: none;
+}
+.cv-item figcaption {
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--cv-tray);
+  color: var(--cv-on-tray);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+@keyframes cv-ride {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100cqw - 100%));
+  }
+}
+@keyframes cv-roll {
+  from {
+    background-position: 0 0, 0 0, 0 0;
+  }
+  to {
+    background-position: 0 0, -40px 0, 0 0;
+  }
+}
+.cv-recall {
+  align-self: stretch;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+.cv-timer {
+  font-family: var(--display);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.cv-timer.low {
+  color: #d9534f;
+}
+.cv-score {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.cv-score b {
+  font-size: 18px;
+  color: var(--text);
+}
+.cv-form {
+  display: flex;
+  gap: 8px;
+  width: min(420px, 100%);
+}
+.cv-form .game-input {
+  flex: 1;
+}
+.cv-form.shake {
+  animation: purdle-shake 400ms ease-in-out;
+}
+.cv-found {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-height: 52px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cv-found li {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--cv-tray);
+  animation: cv-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.cv-found img {
+  width: 34px;
+  height: 34px;
+}
+@keyframes cv-pop {
+  from {
+    transform: translateY(-18px) scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.cv-total {
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.cv-reveal {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cv-reveal li {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 4px 6px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text);
+  animation: arrive var(--t-arrive) var(--ease) both;
+}
+.cv-reveal img {
+  width: 44px;
+  height: 44px;
+}
+.cv-reveal li.got {
+  border-color: var(--cv-got);
+}
+.cv-reveal li.missed {
+  opacity: 0.38;
+  filter: grayscale(0.85);
+}
+@media (max-width: 520px) {
+  .purdle.cv {
+    --cv-item: 92px;
+  }
+  .cv-reveal {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Items step across instead of sliding; nothing else moves. */
+  .cv-item {
+    animation-timing-function: steps(6, jump-none);
+  }
+  .cv-belt,
+  .cv-found li,
+  .cv-reveal li,
+  .cv-form.shake {
+    animation: none !important;
+  }
+}

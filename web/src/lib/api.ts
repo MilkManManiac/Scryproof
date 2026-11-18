@@ -59,6 +59,9 @@ import type {
   RoundsStanding,
   LowballToday,
   WhereToday,
+  ConveyorFinish,
+  ConveyorStanding,
+  ConveyorToday,
   ThriceFinish,
   ThriceStanding,
   ThriceToday,
@@ -675,6 +678,15 @@ export const api = {
     answer: (said: string) => post<ThriceToday>('/api/thrice/answer', { said }),
     server: (serverId: string) =>
       get<{ day: number; finishes: ThriceFinish[]; standings: ThriceStanding[] }>(`/api/thrice/servers/${serverId}`),
+  },
+
+  conveyor: {
+    today: () => get<ConveyorToday>('/api/conveyor/today'),
+    start: () => post<ConveyorToday>('/api/conveyor/start', {}),
+    guess: (said: string) => post<ConveyorToday>('/api/conveyor/guess', { said }),
+    finish: () => post<ConveyorToday>('/api/conveyor/finish', {}),
+    server: (serverId: string) =>
+      get<{ day: number; finishes: ConveyorFinish[]; standings: ConveyorStanding[] }>(`/api/conveyor/servers/${serverId}`),
   },
 
   whereabouts: {

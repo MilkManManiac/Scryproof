@@ -19,6 +19,16 @@ export interface Release {
 }
 
 export const CHANGELOG: readonly Release[] = [
+  // Release day: set the date (and the id's date) to the day it ships.
+  {
+    id: '2026-11-17-conveyor',
+    date: '2026-11-17',
+    title: 'New daily game: Conveyor',
+    notes: [
+      'Twenty things ride past on a belt, each with its picture and its name. When the belt is empty you have one minute to name as many as you can remember. Same twenty for everyone, new ones at midnight Eastern.',
+      'Open it from the games folder, or type /conveyor in any channel.',
+    ],
+  },
   {
     id: '2026-11-08-videos-play',
     date: '2026-11-08',

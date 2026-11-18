@@ -46,6 +46,7 @@ import { registerBeeRoutes } from './routes/bee.js';
 import { registerQueensRoutes } from './routes/queens.js';
 import { registerTravleRoutes } from './routes/travle.js';
 import { registerThriceRoutes } from './routes/thrice.js';
+import { registerConveyorRoutes } from './routes/conveyor.js';
 import { registerRoundsRoutes } from './routes/rounds.js';
 import { registerHostRoutes } from './routes/host.js';
 import { registerLinkPreviewRoutes } from './routes/link-preview.js';
@@ -269,6 +270,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerQueensRoutes(app);
   await registerTravleRoutes(app);
   await registerThriceRoutes(app);
+  await registerConveyorRoutes(app);
   await registerRoundsRoutes(app);
   await registerHostRoutes(app);
 

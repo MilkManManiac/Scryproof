@@ -40,6 +40,9 @@ describe('isPurdleCommand', () => {
     assert.equal(gameCommand('/degree'), 'thrice');
     assert.equal(gameCommand('/whereabouts'), 'whereabouts');
     assert.equal(gameCommand('/GeoGuesser'), 'whereabouts');
+    assert.equal(gameCommand('/conveyor'), 'conveyor');
+    assert.equal(gameCommand('/Belt'), 'conveyor');
+    assert.equal(commandOffers('conv')[0]?.written, '/conveyor');
     // Lowball is not out yet (ROUNDS_OPEN): its commands open nothing until it is.
     assert.equal(gameCommand('/lowball'), ROUNDS_OPEN.lowball ? 'lowball' : null);
     assert.equal(gameCommand('/houses'), ROUNDS_OPEN.lowball ? 'lowball' : null);

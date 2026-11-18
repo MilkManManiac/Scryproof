@@ -54,6 +54,7 @@ import { BeeGate } from './components/Bee';
 import { QueensGate } from './components/Queens';
 import { TravleGate } from './components/Travle';
 import { ThriceGate } from './components/Thrice';
+import { ConveyorGate } from './components/Conveyor';
 import { LowballGate, WhereaboutsGate } from './components/Rounds';
 import { ConnectionPanel, VoiceStage } from './components/VoicePanel';
 import { IncomingCall } from './components/IncomingCall';
@@ -439,6 +440,7 @@ function Shell() {
       <ThriceGate />
       <WhereaboutsGate />
       {ROUNDS_OPEN.lowball ? <LowballGate /> : null}
+      <ConveyorGate />
       </div>
 
       {channelSettings && server && channel ? (

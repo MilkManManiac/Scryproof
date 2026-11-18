@@ -38,12 +38,12 @@ import type {
   Tracker,
   VoiceState,
 } from '@scryproof/shared';
-import { UNREAD_COUNT_CAP, voiceRoomOf } from '@scryproof/shared';
+import { CONVEYOR, UNREAD_COUNT_CAP, voiceRoomOf } from '@scryproof/shared';
 
 import { purdle } from '../lib/purdle';
 import { cuntections } from '../lib/cuntections';
 import { bee } from '../lib/bee';
-import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
+import { conveyor, lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { api, whenSessionGone } from '../lib/api';
 import { noticeFor, notices, previewOf } from '../lib/notices';
 import type { Notice } from '../lib/notices';
@@ -186,7 +186,8 @@ type Action =
  * be in the key. Matches the gateway's own bookkeeping.
  */
 /** What each of the other daily games is called on screen, for a pop-up. */
-const GAME_NAMES: Record<'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball', string> = {
+const GAME_NAMES: Record<'queens' | 'travle' | 'thrice' | 'whereabouts' | 'lowball' | 'conveyor', string> = {
+  conveyor: CONVEYOR.name,
   queens: 'Queens',
   travle: 'Trundle',
   thrice: 'Thrice',
@@ -1616,7 +1617,7 @@ export function StoreProvider({
       if (event.t === 'purdle_done') purdle.done(event.d);
       if (event.t === 'cuntections_done') cuntections.done(event.d);
       if (event.t === 'bee_score') bee.moved(event.d);
-      if (event.t === 'game_done') ({ queens, travle, thrice, whereabouts, lowball })[event.d.game].done(event.d);
+      if (event.t === 'game_done') ({ queens, travle, thrice, whereabouts, lowball, conveyor })[event.d.game].done(event.d);
 
       if (event.t === 'sounds_changed') {
         const serverId = event.d.serverId;

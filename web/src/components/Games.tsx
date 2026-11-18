@@ -10,12 +10,12 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { BEE, BEE_RANKS, LOWBALL, PURDLE, QUEENS, ROUNDS_MAX, ROUNDS_OPEN, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS, queensClock } from '@scryproof/shared';
+import { BEE, BEE_RANKS, CONVEYOR, LOWBALL, PURDLE, QUEENS, ROUNDS_MAX, ROUNDS_OPEN, THRICE, THRICE_MAX, TRAVLE, WHEREABOUTS, queensClock } from '@scryproof/shared';
 import { createPortal } from 'react-dom';
 
 import { bee } from '../lib/bee';
 import { cuntections } from '../lib/cuntections';
-import { lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
+import { conveyor, lowball, queens, thrice, travle, whereabouts } from '../lib/daily';
 import { purdle } from '../lib/purdle';
 import { useStore } from '../state/store';
 
@@ -197,6 +197,27 @@ const ALL_GAMES: readonly Game[] = [
     ),
     store: lowball,
     standing: () => roundsStanding(lowball),
+  },
+  {
+    id: 'conveyor',
+    name: CONVEYOR.name,
+    about: 'Twenty things go by. Name them.',
+    glyph: glyph(
+      <>
+        <rect x="1.5" y="15" width="21" height="5" rx="2.5" fill="#d9a441" opacity="0.45" />
+        <circle cx="4.5" cy="17.5" r="1.4" fill="#d9a441" />
+        <circle cx="19.5" cy="17.5" r="1.4" fill="#d9a441" />
+        <rect x="3.5" y="7" width="6.5" height="6.5" rx="1.5" fill="#d9a441" />
+        <rect x="13" y="5" width="7" height="8.5" rx="1.5" fill="#d9a441" opacity="0.7" />
+      </>,
+    ),
+    store: conveyor,
+    standing() {
+      const today = conveyor.get().today;
+      if (!today) return null;
+      if (today.state === 'done') return { fresh: false, done: true, says: `${today.score} of ${CONVEYOR.items}` };
+      return today.state === 'fresh' ? { fresh: true, done: false, says: 'Not played' } : { fresh: false, done: false, says: 'Belt running' };
+    },
   },
 ];
 
