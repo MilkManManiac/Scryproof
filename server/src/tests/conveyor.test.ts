@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONVEYOR, CONVEYOR_DEADLINE_MS, conveyorDay, conveyorFound, conveyorShare, conveyorStats, namesMatch, plainName } from '@scryproof/shared';
+import { CONVEYOR, CONVEYOR_DEADLINE_MS, conveyorDay, conveyorFound, conveyorShare, conveyorStats, nameForms, namesMatch } from '@scryproof/shared';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'scryproof-conveyor-'));
 process.env.DATA_DIR = dataDir;
@@ -38,7 +38,7 @@ describe('conveyor bank', () => {
     const owner = new Map<string, string>();
     for (const item of BANK) {
       assert.ok(existsSync(join(pictures, item.file)), `${item.file} is missing`);
-      for (const name of new Set([item.name, ...item.aliases].map(plainName))) {
+      for (const name of new Set([item.name, ...item.aliases].flatMap(nameForms))) {
         assert.ok(!owner.has(name), `"${name}" is both ${owner.get(name)} and ${item.id}`);
         owner.set(name, item.id);
       }
@@ -53,6 +53,8 @@ describe('the matcher', () => {
     assert.ok(namesMatch('hot-dogs', ['Hot dog']));
     assert.ok(namesMatch('hotdog', ['Hot dog']));
     assert.ok(namesMatch('pineapples', ['Pineapple']));
+    assert.ok(namesMatch('jeanss', ['Jeans']), 'a plural on a name that already ends in s');
+    assert.ok(namesMatch('glass', ['Glasses']));
     assert.ok(namesMatch('pinapple', ['Pineapple']), 'one letter missing');
     assert.ok(namesMatch('sofa', ['Couch', 'sofa']));
     assert.ok(namesMatch('the giraffe', ['Giraffe']));

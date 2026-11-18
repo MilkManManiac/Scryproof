@@ -90,10 +90,15 @@ Solve your own problems. If one thing eats 20 minutes, take the simplest version
 
 ## Summary (builder fills this in, plain English, for Wes)
 
-- What you can do now:
-- What it looks like (screenshot paths):
-- What was cut or simplified, and why:
-- Picture set used, licence, how many items:
-- Test gate result:
-- Commits and branch:
-- What needs his word (release, anything else):
+- What you can do now: open Conveyor from the Games folder (or type `/conveyor`, or `/belt`). Press Start and 20 things ride past on a belt, picture and name on a tray, right to left, once, about 55 seconds. When the last one leaves, a 60-second clock starts with a box: type a name, Enter. A hit drops its picture into a row and the count goes up, a miss shakes the box, a repeat says "Already got it", Done ends early. Then the score ("13 / 20"), the whole belt again in order with the ones you got lit and the rest dimmed, Played / Average / Best / Streak, Copy result and Put in #channel, and the server board (Today ranked by score, All time with Days, Avg, Best, Streak). Same 20 for everyone, new belt at midnight Eastern. The clock is the server's: a reload picks up mid-belt or mid-minute, closing it does not pause it, a guess after the minute (+5 s) is refused, and the score is worked out on the server from what you typed.
+- What it looks like (screenshot paths): `docs/shots/conveyor-start.png`, `docs/shots/conveyor-belt.png` (desktop, mid-belt), `docs/shots/conveyor-belt-phone.png` (390 px wide), `docs/shots/conveyor-recall.png` (the minute, 13 found, "Already got it"), `docs/shots/conveyor-result.png`, `docs/shots/conveyor-board.png` (Today, two players), `docs/shots/conveyor-board-all.png` (All time). Pasted share text from that play:
+  ```
+  Conveyor #1
+  13/20
+  🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩⬛⬛⬛⬛⬛⬛⬛
+  ```
+- What was cut or simplified, and why: (1) No separate fake-data phase: built straight on the real bank and server, since the bank was ready first. (2) A phone shows about three things on the belt, smaller, not two: the belt runs on one clock for everyone, so the spacing is the same on every screen. (3) Only names that hit are sent to the server (misses are judged in the app and cost nothing); the server still re-checks every one. (4) A play whose minute ran out without Done is closed by the server the next time anyone loads the game or the board, without a "finished" ping to the server's members. (5) `firstDay` (which day is #1) and the What's new date are set to 2026-11-17; set both to the release day when it ships. (6) The board's All time is ranked by average, then days played.
+- Picture set used, licence, how many items: Microsoft Fluent Emoji, flat SVG style, MIT licence (checked in the downloaded repo's LICENSE; copied as `web/public/conveyor/LICENSE.txt`). 409 things across 13 kinds (animals, food, drink, plants, vehicles, tools, home, science, tech, paper, clothes, music, sport), names written by hand in `server/src/conveyor/bank.ts`. No faces, hands, flags or symbols. Nothing is fetched at runtime.
+- Test gate result: green. `scripts/release.sh --check-only`, run once at the end (with `npm_config_script_shell` set to Git bash, see PAPERCUTS 2026-11-17): typecheck clean, server `ℹ tests 421 / ℹ pass 421 / ℹ fail 0`, web `ℹ tests 591 / ℹ pass 591 / ℹ fail 0`. Also played one full day by hand-script in a headless test Chrome against the dev build: 13 named in the app, 13 on the server, a second player (8) on the board.
+- Commits and branch: branch `conveyor-game` (cut from main 6bbcae5), pushed to GitHub. Not merged to main.
+- What needs his word (release, anything else): the release (`scripts/release.sh`, after setting `firstDay` and the What's new date to the day); the name ("Conveyor" is one constant, `CONVEYOR.name` in `shared/src/conveyor.ts`); the commands `/conveyor` and `/belt`; merging the branch to main.

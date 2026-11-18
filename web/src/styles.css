@@ -10763,6 +10763,8 @@ kbd {
   display: grid;
   justify-items: center;
   gap: 10px;
+  /* Room above the clock for "Already got it", so it never covers the time. */
+  padding-top: 30px;
 }
 .cv-timer {
   font-family: var(--display);

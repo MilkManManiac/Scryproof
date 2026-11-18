@@ -9,7 +9,7 @@
  * worked out from the server's start stamp, so a reload picks up mid-belt.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {
   CONVEYOR,
   CONVEYOR_CROSS_MS,
@@ -43,16 +43,18 @@ export function ConveyorGate() {
 
 /** Ms since the server's start stamp, on the server's clock, ticking while the day is live. */
 function useElapsed(today: ConveyorToday | null): number {
-  const [now, setNow] = useState(() => Date.now());
+  const [, setTick] = useState(0);
   const live = today?.state === 'playing';
+  // How far the server's clock is ahead of this one, taken when its answer arrives.
+  const serverNow = today?.now;
+  const skew = useMemo(() => (serverNow ? Date.parse(serverNow) - Date.now() : 0), [serverNow]);
   useEffect(() => {
     if (!live) return undefined;
-    const timer = setInterval(() => setNow(Date.now()), 200);
+    const timer = setInterval(() => setTick((tick) => tick + 1), 200);
     return () => clearInterval(timer);
   }, [live]);
   if (!today?.startedAt) return 0;
-  const skew = Date.parse(today.now) - Date.now();
-  return Math.max(now, Date.now()) + skew - Date.parse(today.startedAt);
+  return Date.now() + skew - Date.parse(today.startedAt);
 }
 
 function Conveyor({ today }: { today: ConveyorToday | null }) {

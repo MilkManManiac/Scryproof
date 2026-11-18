@@ -56,3 +56,9 @@ Added `server/src/routes/server-icon.ts` and migration 0036; typecheck and tests
 Writing handoff text through `python -c "..."` inside Bash: every backtick-quoted path in the prose was treated as command substitution. Most just errored, but `bash scripts/publish-mac.sh` ran a second time (idempotent, same hashes, no harm). Rule: prose with backticks goes through a single-quoted heredoc (`<<'EOF'`) into a file, never inline in a double-quoted string.
 
 - 2026-10-28: a ~3,300-word single-quoted heredoc (cat > docs/VISION.md <<'EOF') failed in the Bash tool with "unexpected EOF while looking for matching `''" at line 60, with no unbalanced quote in the body. Long prose heredocs are not reliable here; the Write tool took the same content first try. Rule: anything over a screen of prose goes through Write, not a heredoc.
+
+## 2026-11-17 npm scripts and npx die with '"node"' is not recognized from this shell
+`npx drizzle-kit generate` and `bash scripts/release.sh --check-only` (its `npm run typecheck`) both failed at once with `'"node"' is not recognized as an internal or external command`, though `where node` finds it in cmd. The .cmd shims npm runs under cmd.exe cannot see node from the Claude Bash tool. Workarounds that worked: `node node_modules/drizzle-kit/bin.cjs generate --name x` (from `server/`), and `npm_config_script_shell="C:/Program Files/Git/bin/bash.exe" bash scripts/release.sh --check-only`. A gate that fails in the first second with this line has not run a single test.
+
+## 2026-11-17 A client clock offset worked out in render froze the clock
+Conveyor computed `server now - Date.now()` on every render, so `elapsed` came out the same every tick and the belt counter sat at 1/20 and the minute never started. Typecheck and server tests were green; only playing it in the headless browser showed it. Rule: a clock skew is taken once, when the server's answer arrives (`useMemo` on the answer's timestamp), never in render.

@@ -8,15 +8,20 @@
  * wrong, missing or extra letter.
  */
 
-/** "The Hot-Dogs" -> "hotdog". */
+/** "The Hot-Dogs" -> "hotdogs". */
 export function plainName(text: string): string {
-  const flat = text
+  return text
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/^\s*(the|a|an)\s+/, '')
     .replace(/[^a-z0-9]+/g, '');
-  return flat.length >= 4 && flat.endsWith('s') ? flat.slice(0, -1) : flat;
+}
+
+/** A name as written and without its trailing "s": "jeans" is also "jean". */
+export function nameForms(text: string): string[] {
+  const plain = plainName(text);
+  return plain.length >= 4 && plain.endsWith('s') ? [plain, plain.slice(0, -1)] : [plain];
 }
 
 function distance(a: string, b: string): number {
@@ -33,17 +38,11 @@ function distance(a: string, b: string): number {
 
 /** Whether what someone typed names a thing called any of `names`. */
 export function namesMatch(said: string, names: readonly string[]): boolean {
-  const plain = plainName(said);
-  if (!plain) return false;
+  const typed = nameForms(said);
+  if (!typed[0]) return false;
   return names.some((name) => {
-    const want = plainName(name);
-    if (plain === want) return true;
-    return want.length >= 5 && distance(plain, want) <= 1;
+    const wanted = nameForms(name);
+    if (typed.some((form) => wanted.includes(form))) return true;
+    return wanted[0]!.length >= 5 && typed.some((form) => wanted.some((want) => distance(form, want) <= 1));
   });
-}
-
-/** Exactly the same once case, spaces and the rest are ignored: no slip allowed. */
-export function namesSame(said: string, names: readonly string[]): boolean {
-  const plain = plainName(said);
-  return plain !== '' && names.some((name) => plainName(name) === plain);
 }
