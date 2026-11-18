@@ -6,14 +6,23 @@ Living state. Update this at the end of every working session.
 
 **LIVE 2026-11-08 ~03:29 ET, client 1794126426579 (Wes: "go ahead and deploy"):** attachments now serve HTTP byte ranges (206 / Accept-Ranges / 416), so channel videos play past the first ~2 s (they stalled because the player's `bytes=N-` request got the whole file from byte 0). `server/src/lib/byte-range.ts` + test; DM files are encrypted blobs decoded client-side, so untouched. Wes's two uncommitted edits (docs/box/if-the-pc-dies.md, scripts/loaf-collage.py) were stashed for the release and restored.
 
-## Pick up here: Conveyor, a new daily game, built on branch `conveyor-game`, not deployed (2026-11-17)
+## Pick up here: Conveyor is live (2026-11-17)
+
+**LIVE 2026-11-17 ~21:25 ET, client 1794968538312 (Wes: "yup good. ship it").** `conveyor-game` fast-forwarded into main at b2241d9; release.sh signed and committed 736adcf and deployed (deploy exit=0). `CONVEYOR.firstDay` and the What's new entry are both 2026-11-17.
+
+- **Gate:** typecheck clean, server 421/421, web 591/591.
+- **Checked on the live box, signed out:** `/api/health` 200 ok; `/api/conveyor/today` 401 "You are not signed in.", same as `/api/thrice/today` (it was 404 before the release); `/conveyor/apple.svg` 200 image/svg+xml; the served bundle has the Conveyor route and its What's new entry; box serves client 1794968538312. Not played on the live site.
+- **Release from a tool shell:** `npm` and `make-update.mjs`'s `npm run build` fail with "not recognized" unless the node folder is first on PATH. What worked: `PATH="<node dir>:$PATH" npm_config_script_shell="C:/Program Files/Git/bin/bash.exe" bash scripts/release.sh`, run from the conveyor worktree with main checked out (`git checkout --ignore-other-worktrees main`) so Wes's two uncommitted files in the main checkout were never stashed; the main checkout's three signed-client files were then restored to HEAD.
+- **Next:** Unzoom is specced and parked at `docs/SPEC-unzoom-game.md`, not started.
+
+## Conveyor, a new daily game, built on branch `conveyor-game` (2026-11-17, before the release)
 
 Built from `docs/SPEC-conveyor-game.md` (its Summary section has the details). Twenty things ride past on a belt once, then a minute to name them; server clock, server scoring, Today / All time board, share, `/conveyor` and `/belt`. Pictures: 409 Microsoft Fluent Emoji (flat, MIT) in `web/public/conveyor/`, names in `server/src/conveyor/bank.ts`. Matcher in `shared/src/match.ts` (meant to be shared with Unzoom later). Migration `0037_conveyor.sql`.
 
 - **Shots:** `docs/shots/conveyor-start.png`, `conveyor-belt.png`, `conveyor-belt-phone.png`, `conveyor-recall.png`, `conveyor-result.png`, `conveyor-board.png`, `conveyor-board-all.png`.
 - **Gate:** `release.sh --check-only` green: typecheck clean, server 421/421, web 591/591.
 - **Waiting on Wes:** merge to main, the release (set `CONVEYOR.firstDay` and the What's new date to release day first), the name and commands. Unzoom (`docs/SPEC-unzoom-game.md`) was not started, on Wes's word.
-- **Nothing was deployed.**
+- **Nothing was deployed** (at that point; see above).
 
 ## Pick up here: the product proposal is on main; Wes reads it before the call (2026-10-28)
 
