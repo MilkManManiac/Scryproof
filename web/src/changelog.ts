@@ -19,7 +19,6 @@ export interface Release {
 }
 
 export const CHANGELOG: readonly Release[] = [
-  // Release day: set the date (and the id's date) to the day it ships.
   {
     id: '2026-11-17-conveyor',
     date: '2026-11-17',
